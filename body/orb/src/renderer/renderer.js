@@ -650,8 +650,7 @@ window.addEventListener('load', initScene);
 // changes. S.starting === S.idle values, so the hand-off is pop-free.
 setTimeout(() => {
   if (orbState.orbState === 'starting') {
-    orbState.orbState = 'idle';
-    updateSubtitle('idle');
+    orbState.orbState = 'idle'; // boot 'idle' text flash removed (user request)
   }
 }, 5400); // after the finishing spin window (ends at genT 4600ms)
 
@@ -662,7 +661,9 @@ if (window.raphael) {
     if (s.shapeHint && s.shapeHint !== prevShape) {
       startMorphTo(s.shapeHint);
     }
-    updateSubtitle(s.subtitle || s.orbState);
+    // state-name text REMOVED (user: "text flashes when switching states") —
+    // only explicit subtitles (spoken narration) are ever shown.
+    if (s.subtitle) updateSubtitle(s.subtitle);
   });
   window.raphael.onSubtitle((t) => {
     if (t && t.text) updateSubtitle(t.text);

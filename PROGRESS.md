@@ -228,3 +228,12 @@ See docs/PAID_USAGE.md. Running total: $0.00 of $2.00.
 - brain/voice/wake.py: ASR-tolerant gate — whisper renders "Raphael" as "Rafael"; plain fuzzy can't discriminate (difflib 0.77 for BOTH rafael/raphael and rachel/raphael) -> PHONETIC FOLD (ph->f, silent-h drop): raphael==rafael ✓ / rachel->racel ✗ / banana ✗; +um/uh fillers. Gate sanity7/7, voice tests 20/20.
 - PROOFS: VAD unit (peaky opens/closes/click-reject) PASS; in-process mic acoustic OPEN/CLOSE PASS; acoustic transcription "What time is it?" (boosted) PASS; DIGITAL WAKE FINAL: stt "Rafael, what time is it?" -> gate -> job j_0021 queued/running/DONE PASS.
 - Known noise: desk clicks open tiny segments -> whisper returns '' -> gate ignores (harmless GPU blips); free-form replies still stub (TODO §3d).
+
+## 2026-10-05 14:0x — CONVERSATIONAL RAPHAEL (user requests: long talks, no chops, no flash, girl voice)
+- REAL REPLIES: brain/router/core._chat replaces the "[provider:model] response" STUB — ollama /api/chat (gpt-oss:120b-cloud free) + OpenAI-style zen/go, persona system prompt (female, voice-first, length-adaptive), 400-token budget, real usage counts; llm plan timeout 15s->45s for long generations. LIVE PROOF: job j_0025 done with a 336-char natural self-introduction (no stub text).
+- NO-CHOP: audio_out drain budget now scales with buffered audio (~1.5x realtime) — newest utterance: in=185016B out=185016B EXACT EQUALITY (old code truncated ~40%: 439136->265824). underruns = fish inter-sentence generation gaps (cadence polish, TODO §3e).
+- LONG REQUESTS: VAD SILENCE_CLOSE 1.5s->2.5s (natural pauses don't split), MAX_LEN 20s->60s (hard mid-sentence chop removed); brain buffer cap 10MB ≈ 5min headroom.
+- NO STUCK: transcription hard timeout 120s (TimeoutError -> error frame + ack; session can never hang on whisper).
+- FLASH TEXT: orb renderer no longer shows state names in the subtitle (was `s.subtitle || s.orbState`) and boot 'idle' text flash removed — only explicit narration subtitles remain.
+- GIRL VOICE: scripts/win/make-ref-voice.ps1 (Zira en-US Female, 22s natural sample) -> resampled 24k -> assets/raphael_reference.wav (fish in-context reference per request body); 16 old-timbre phrase-cache files cleared; fish respawned fresh.
+- Suites green post-patch: brain 30/30, voice 20/20, tests 10/10, body compile OK. One self-inflicted bug caught live (urllib Request import) and fixed same-cycle.

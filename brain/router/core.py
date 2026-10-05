@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import time
 from collections import deque
 from dataclasses import asdict, dataclass, field
@@ -237,6 +238,66 @@ class Router:
             return None
         return None
 
+    SYSTEM_PROMPT = (
+        "You are Raphael, a warm and direct local-first desktop companion "
+        "with a female voice, talking with the person at this Windows PC. "
+        "Voice-first conversation: plain spoken text only — no markdown, no "
+        "lists, no emojis, no code. Match length to the ask: one sentence "
+        "for quick answers, a few sentences or a short paragraph when "
+        "explaining. Be candid about what you don't know. Never announce "
+        "that you are a language model."
+    )
+
+    async def _chat(self, provider: str, model: str, prompt: str):
+        return await asyncio.to_thread(self._chat_sync, provider, model, prompt)
+
+    def _chat_sync(self, provider: str, model: str, prompt: str):
+        """REAL provider calls (the stub used to speak '[provider:model]
+        response' aloud — user-visible nonsense). ~400-token budget:
+        conversational, length-adaptive replies."""
+        from urllib import request as urlrequest
+        Request = urlrequest.Request  # Request lives in urllib.request, not urllib
+        messages = [
+            {"role": "system", "content": self.SYSTEM_PROMPT},
+            {"role": "user", "content": prompt},
+        ]
+        if provider == "ollama":
+            base = self.config.local_model.ollama_url.rstrip("/")
+            body = json.dumps({
+                "model": model, "messages": messages, "stream": False,
+                "options": {"temperature": 0.7, "num_predict": 400},
+            }).encode()
+            req = Request(base + "/api/chat", data=body,
+                          headers={"Content-Type": "application/json"})
+            with urlrequest.urlopen(req, timeout=30) as resp:
+                data = json.loads(resp.read())
+            text = ((data.get("message") or {}).get("content") or "").strip()
+            usage = data.get("usage") or {}
+            return (text,
+                    int(usage.get("prompt_eval_count") or len(prompt.split())),
+                    int(usage.get("eval_count") or len(text.split())))
+        # zen_free / go: OpenAI-compatible chat completions
+        base = (self.config.providers.zen_base_url if provider == "zen_free"
+                else self.config.providers.go_base_url).rstrip("/")
+        key = os.environ.get("OPENCODE_API_KEY") or os.environ.get("ZEN_API_KEY")
+        if not key:
+            raise RuntimeError(f"no API key configured for {provider}")
+        body = json.dumps({
+            "model": model, "messages": messages,
+            "temperature": 0.7, "max_tokens": 400,
+        }).encode()
+        req = Request(base + "/chat/completions", data=body, headers={
+            "Content-Type": "application/json",
+            "Authorization": "Bearer " + key,
+        })
+        with urlrequest.urlopen(req, timeout=30) as resp:
+            data = json.loads(resp.read())
+        text = ((data.get("choices") or [{}])[0].get("message") or {}).get("content") or ""
+        usage = data.get("usage") or {}
+        return (text.strip(),
+                int(usage.get("prompt_tokens") or 0),
+                int(usage.get("completion_tokens") or 0))
+
     async def complete(
         self,
         provider: str,
@@ -294,7 +355,8 @@ class Router:
             )
             return res
         try:
-            text = f"[{provider}:{model}] response"
+            text, tok_in, tok_out = await asyncio.wait_for(
+                self._chat(provider, model, prompt or ""), timeout=40)
             latency_ms = (self._now() - start) * 1000.0
             stats.circuit.record_success()
             res = CallResult(
@@ -302,8 +364,8 @@ class Router:
                 model=model,
                 ok=True,
                 text=text,
-                tokens_input=len((prompt or "").split()),
-                tokens_output=len(text.split()),
+                tokens_input=tok_in,
+                tokens_output=tok_out,
                 latency_ms=latency_ms,
                 outcome=Outcome.SUCCESS,
             )

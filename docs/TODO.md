@@ -30,7 +30,7 @@ Priority order after Phase 3 completes. Do not let these silently vanish.
 - Was: poll() hardcoded None → a crashed external body was never relaunched (observed live: old body died on binary TTS, stayed dead until a task restart).
 - Now: poll() verifies the PID the body writes into its single-instance lock (%TMP%\raphael_body.lock — the rc=0 bounce pid was always dead, so the lock is the authoritative source): no lock/dead pid → -1 → body_status relaunches. Synthetic test: dead→-1, alive→None, no-lock→-1 PASS.
 
-## 3d. Router providers: core.complete() is a fake-text stub (confirmed 2026-10-05)
+## 3d. Router providers: core.complete() fake-text stub — FIXED 2026-10-05 (real /api/chat + OpenAI-style calls, system persona, 400-token budget, 45s plan timeout; original note below)
 - brain/router/core.py:297 literally returns `f"[{provider}:{model}] response"` — free-form chat answers are placeholder text (visible as job result "[ollama:gpt-oss:120b-cloud] response").
 - config.yaml providers.chain = [zen_free, go, ollama] already configured (allow_go_runtime/allow_paid_runtime false per user directive).
 - Needed (router-dev phase): real HTTP calls to zen free-tier + local ollama via the existing discovery/circuit-breaker/rate-limit scaffolding; fastpath commands unaffected (they act for real).

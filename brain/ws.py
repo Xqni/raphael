@@ -626,8 +626,11 @@ class WsHub:
         voice = get_voice()
         
         try:
-            # ARCHITECTURE §4: no blocking calls on the loop
-            res = await asyncio.to_thread(voice.transcribe_result, buf)
+            # ARCHITECTURE §4: no blocking calls on the loop; HARD timeout so
+            # a stuck whisper can never hang the session ("don't get stuck" —
+            # TimeoutError falls into the generic except -> error frame + ack).
+            res = await asyncio.wait_for(
+                asyncio.to_thread(voice.transcribe_result, buf), timeout=120)
             
             # 1. Broadcast transcript to Body and UI
             self.broadcast(stt_final_frame(res.text, res.lang, res.rtf), roles={'body', 'ui'})

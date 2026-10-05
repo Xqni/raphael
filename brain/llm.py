@@ -49,7 +49,7 @@ def _code_for(exc: BaseException) -> str:
 
 async def plan(text: str, task_kind: Optional[str] = None,
                timeout: Optional[float] = None) -> LLMResult:
-    timeout = timeout or float(os.environ.get('RAPHAEL_LLM_TIMEOUT_S', '15'))
+    timeout = timeout or float(os.environ.get('RAPHAEL_LLM_TIMEOUT_S', '45'))  # long replies need generation time
     if not router_available():
         return LLMResult(ok=False, code='E_OFFLINE',
                          error='no provider (router disabled or unavailable)')

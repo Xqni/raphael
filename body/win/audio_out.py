@@ -61,7 +61,14 @@ class StreamPlayer:
             has_data = bool(self._buf)
         if has_data and self._stream is None:
             self._open()
-        deadline = asyncio.get_event_loop().time() + DRAIN_TIMEOUT_S
+        # Long replies arrive as BURSTS (brain pushes chunks back-to-back);
+        # the fixed 5s budget truncated them mid-sentence (in!=out — user
+        # heard chopped audio). Budget scales with buffered audio at ~1.5x
+        # realtime: healthy drains never expire; a dead device still bounds out.
+        with self._lock:
+            _buffered = len(self._buf)
+        deadline = (asyncio.get_event_loop().time() + 4
+                    + (_buffered / max(1, self.rate * 2)) * 1.5 + 3)
         while True:
             with self._lock:
                 empty = not self._buf

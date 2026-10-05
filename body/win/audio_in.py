@@ -104,12 +104,11 @@ class VadSegmenter:
     """
 
     SPEECH_MIN = 2      # >=200ms above threshold to open a segment
-    SILENCE_CLOSE = 15  # >=1.5s silent -> close (a 'Raphael,' pause or
-                        # fish inter-sentence gap must NOT split the
-                        # phrase: split = wake word in seg1, command in
-                        # seg2, gate rejects both)
+    SILENCE_CLOSE = 25  # >=2.5s silent -> close (CONVERSATIONAL: natural
+                        # thinking pauses must not split an utterance;
+                        # adds ~2.5s latency before transcription)
     MIN_LEN = 3         # discard segments <300ms (clicks/blips)
-    MAX_LEN = 200       # force-close at 20s (constant-noise guard)
+    MAX_LEN = 600       # force-close at 60s (long REQUESTS allowed; was 20s = hard mid-sentence chop)
     NOISE_EMA = 0.93    # quiet-level tracker (only updates when quiet)
     MULT = 3.5          # trigger = max(ABS_FLOOR, noise*3.5)
     ABS_FLOOR = 80      # int16 RMS (measured: ambient 20, speaker-fed
