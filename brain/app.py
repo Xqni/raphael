@@ -42,6 +42,19 @@ async def lifespan(app: FastAPI):
     start_loop(hub=hub)            # wires runner, starts workers, marks interrupted
     await hub.start()
     get_mode()                     # load persisted mode flags
+    # Pre-warm Fish TTS in the background: a COLD fish server made the user's
+    # first spoken reply silent in the wild (spawn window + empty fallback
+    # after the phrase cache was cleared). warmup() never raises.
+    async def _warm_tts():
+        try:
+            from .voice import get_voice
+            await get_voice().warmup()
+            print("[tts] fish pre-warmed at startup", flush=True)
+        except Exception as _e:  # noqa: BLE001 — warmup must never block boot
+            print(f"[tts] fish pre-warm skipped: {type(_e).__name__}: {_e}",
+                  flush=True)
+    import asyncio as _aio
+    _aio.create_task(_warm_tts())
     # Authoritative pidfile for supervisor's process-mode recycle: written by
     # the RUNNING uvicorn itself (the launch-time shell `echo $$` drifted by
     # one process layer; supervisor verifies the cmdline before any kill).

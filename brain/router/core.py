@@ -257,8 +257,14 @@ class Router:
         conversational, length-adaptive replies."""
         from urllib import request as urlrequest
         Request = urlrequest.Request  # Request lives in urllib.request, not urllib
+        now = datetime.now()
+        system = self.SYSTEM_PROMPT + (
+            f"\nCurrent local date/time on the user's machine: {now:%A}, "
+            f"{now:%B %d, %Y %H:%M}. You HAVE clock/calendar access through "
+            f"this line — answer time and date questions directly."
+        )
         messages = [
-            {"role": "system", "content": self.SYSTEM_PROMPT},
+            {"role": "system", "content": system},
             {"role": "user", "content": prompt},
         ]
         if provider == "ollama":

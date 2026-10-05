@@ -237,3 +237,9 @@ See docs/PAID_USAGE.md. Running total: $0.00 of $2.00.
 - FLASH TEXT: orb renderer no longer shows state names in the subtitle (was `s.subtitle || s.orbState`) and boot 'idle' text flash removed — only explicit narration subtitles remain.
 - GIRL VOICE: scripts/win/make-ref-voice.ps1 (Zira en-US Female, 22s natural sample) -> resampled 24k -> assets/raphael_reference.wav (fish in-context reference per request body); 16 old-timbre phrase-cache files cleared; fish respawned fresh.
 - Suites green post-patch: brain 30/30, voice 20/20, tests 10/10, body compile OK. One self-inflicted bug caught live (urllib Request import) and fixed same-cycle.
+
+## 2026-10-05 14:5x — user live-test fixes: silent reply + "no clock access"
+- SILENT FIRST REPLY root cause: user's 2 voice replies hit the fish COLD-SPAWN window (server was killed at the stack bounce; fallback was empty because the phrase cache had just been cleared) -> subtitle showed, audio didn't. FIX: brain lifespan now pre-warms Fish via get_voice().warmup() (never-raises) — brain.log "[tts] fish pre-warmed at startup" verified; subsequent replies proven (j_0028 +18 chunks, time answer +52 chunks, in==out both).
+- CLOCK: model legitimately has no clock -> now (a) 9 fastpath clock/date intents (instant, deterministic: "It's 2:46 PM on Monday, October 5, 2026" verified live) + (b) current local date/time injected into the router SYSTEM context for free-form phrasings.
+- SNEAKY pre-existing bug found by the unit: wake transcripts are punctuation-normalized but the status intent keyword had an apostrophe ("what's running" never matched voice) -> added apostrophe-less variants.
+- KNOWN (next polish): fish TTS gen = 13.4s/phrase (10.4 tok/s, GPU 1.95GB) -> ask-to-audio ≈15-20s. Acceleration options: fish --compile/torch.compile, speed_factor, or pre-buffer design. Time-check answers feel this most.

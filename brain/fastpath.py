@@ -108,10 +108,29 @@ def register_builtin_intents():
         return IntentResult(text='Taking a screenshot…', tool='screenshot',
                             tool_args={'max_px': 1280})
 
+    def _now(text, ctx):
+        from datetime import datetime
+        now = datetime.now()
+        h = now.hour % 12 or 12
+        ampm = 'AM' if now.hour < 12 else 'PM'
+        return IntentResult(
+            text=(f"It's {h}:{now.minute:02d} {ampm} on {now:%A}, "
+                  f"{now:%B} {now.day}, {now:%Y}"))
+
+    for _kw in ('what time', 'what is the time', "what's the time",
+                'tell me the time', 'current time', 'what day is it',
+                'what is the date', "what's the date", 'time today'):
+        register_intent(_kw, _now)
+
     register_intent('open ', _open)
     register_intent('screenshot', _screenshot)
     register_intent('take a screenshot', _screenshot)
+    # NOTE: wake-extracted commands are punctuation-NORMALIZED — both forms
+    # must exist or voice never matches (found: "what's running" kw vs the
+    # transcript "whats running").
     register_intent("what's running", _status)
+    register_intent('whats running', _status)
+    register_intent('whats going on with my system', _status)
     register_intent('whats running', _status)
     register_intent('status', _status)
     register_intent('echo ', _echo)
