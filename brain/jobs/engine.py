@@ -24,7 +24,11 @@ from .lock import InputLock
 
 class JobEngine:
     def __init__(self):
-        self._queue: "asyncio.PriorityQueue" = asyncio.PriorityQueue()
+        # asyncio primitives bind to the running event loop on first use
+        # (py3.10+); the engine singleton outlives individual loops (uvicorn
+        # restart, test portals), so the queue is (re)created per loop.
+        self._queue: Optional["asyncio.PriorityQueue"] = None
+        self._queue_loop: Optional[asyncio.AbstractEventLoop] = None
         self._tasks: Dict[int, asyncio.Task] = {}
         self._workers: List[asyncio.Task] = []
         self._submit_seq = 0
@@ -36,6 +40,13 @@ class JobEngine:
         # narration hooks (ws hub wires these; None = unit-test mode)
         self.sink: Optional[Callable[[Dict[str, Any]], Any]] = None
         self.on_state: Optional[Callable[[Dict[str, Any]], Any]] = None
+
+    def _ensure_queue(self) -> "asyncio.PriorityQueue":
+        loop = asyncio.get_running_loop()
+        if self._queue is None or self._queue_loop is not loop:
+            self._queue = asyncio.PriorityQueue()
+            self._queue_loop = loop
+        return self._queue
 
     # ---- lifecycle ---------------------------------------------------------
     @property
@@ -111,18 +122,20 @@ class JobEngine:
                                 input_lock=input_lock, session=session, task=task)
         self._submit_seq += 1
         rank = store.PRIORITY_RANK.get(snap['priority'], 1)
-        await self._queue.put((rank, self._submit_seq, snap['id']))
+        q = self._ensure_queue()
+        await q.put((rank, self._submit_seq, snap['id']))
         self.emit_event(snap, 'queued', stage='routing', progress=0.0,
                         text=(snap.get('text') or '')[:160])
         return snap
 
     # ---- workers -----------------------------------------------------------
     async def _worker_loop(self, idx: int):
+        q = self._ensure_queue()
         while self._running:
             if self._pause_event is not None:
                 await self._pause_event.wait()
             try:
-                _rank, _seq, rowid = await asyncio.wait_for(self._queue.get(), timeout=0.5)
+                _rank, _seq, rowid = await asyncio.wait_for(q.get(), timeout=0.5)
             except asyncio.TimeoutError:
                 continue
             except asyncio.CancelledError:

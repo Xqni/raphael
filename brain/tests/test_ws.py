@@ -152,15 +152,15 @@ def test_ws_role_capability_enforced(token_path):
             # role=ui must not send act_res / audio (PROTOCOL §4)
             ws.send_text(json.dumps({'type': 'act_res', 'v': 1, 'job': 'j_x',
                                      'ok': True}))
-            msg = _recv_until(ws, lambda m: m.get('type') == 'error')
+            msg, _ = _recv_until(ws, lambda m: m.get('type') == 'error')
             assert msg['code'] == 'E_UNSUPPORTED'
             ws.send_text(json.dumps({'type': 'audio_start', 'v': 1,
                                      'sample_rate': 16000}))
-            msg = _recv_until(ws, lambda m: m.get('type') == 'error')
+            msg, _ = _recv_until(ws, lambda m: m.get('type') == 'error')
             assert msg['code'] == 'E_UNSUPPORTED'
             # unknown type → non-fatal E_UNSUPPORTED warning
             ws.send_text(json.dumps({'type': 'warp_drive', 'v': 1}))
-            msg = _recv_until(ws, lambda m: m.get('type') == 'error')
+            msg, _ = _recv_until(ws, lambda m: m.get('type') == 'error')
             assert msg['code'] == 'E_UNSUPPORTED'
 
 

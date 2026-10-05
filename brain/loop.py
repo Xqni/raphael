@@ -21,6 +21,9 @@ from .jobs import store
 from .jobs.engine import JobEngine, get_engine
 from .mode import get_mode
 
+# deterministic intents must be registered before any job runs (no LLM)
+fastpath.register_builtin_intents()
+
 _TOOL_CALL_RE = re.compile(r'\{[^{}]*"tool"[^{}]*\}', re.S)
 
 

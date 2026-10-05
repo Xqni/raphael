@@ -365,7 +365,11 @@ class WsHub:
             await self._send(s, {'type': 'error', 'v': 1, 'code': 'E_UNSUPPORTED',
                                  'detail': f'no handler for {mtype}'})
             return
-        await handler(s, msg)
+        try:
+            await handler(s, msg)
+        except Exception as e:  # noqa: BLE001 — handler bugs must not kill the session
+            await self._send(s, {'type': 'error', 'v': 1, 'code': 'E_INTERNAL',
+                                 'detail': type(e).__name__})
 
     async def _handle_auth(self, s: Session, msg: Dict[str, Any]):
         if msg.get('v') != 1:
