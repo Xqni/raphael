@@ -504,10 +504,16 @@ def restart_brain(cfg, log, procs=None):
         # really is uvicorn (security fix: broad pkill -f false-positives).
         log.info("brain process mode: recycling via pidfile + respawn")
         wsl_run(cfg, "sh", "-c",
-                'p=$(cat /tmp/raphael-brain.pid 2>/dev/null); '
+                'p=$(cat /tmp/raphael-brain.pid 2>/dev/null); killed=""; '
                 'if [ -n "$p" ] && [ -r /proc/$p/cmdline ] && '
-                'grep -qa "uvicorn brain.app" /proc/$p/cmdline; then kill $p; fi; '
-                'rm -f /tmp/raphael-brain.pid',
+                'grep -qa "uvicorn brain.app" /proc/$p/cmdline; then '
+                'kill $p; killed=1; fi; '
+                'if [ -z "$killed" ]; then '
+                'for q in $(pgrep -f "uvicorn brain.app" 2>/dev/null); do '
+                'head=$(tr "\\0" " " < /proc/$q/cmdline 2>/dev/null | cut -d" " -f1); '
+                'case "$head" in brain/.venv/bin/python*) kill $q; killed=1;; esac; '
+                'done; fi; '
+                'rm -f /tmp/raphael-brain.pid; [ -n "$killed" ]',
                 timeout=10)
         time.sleep(1.5)
         if procs is not None:

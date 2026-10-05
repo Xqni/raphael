@@ -13,6 +13,7 @@ Endpoints:
 Lifespan wires the agent loop (fastpath → router seam → tools → narrate) to the
 WS hub and marks interrupted jobs at startup (PROTOCOL §5).
 """
+import os
 from contextlib import asynccontextmanager
 from typing import Any, Dict, List, Optional
 
@@ -41,6 +42,14 @@ async def lifespan(app: FastAPI):
     start_loop(hub=hub)            # wires runner, starts workers, marks interrupted
     await hub.start()
     get_mode()                     # load persisted mode flags
+    # Authoritative pidfile for supervisor's process-mode recycle: written by
+    # the RUNNING uvicorn itself (the launch-time shell `echo $$` drifted by
+    # one process layer; supervisor verifies the cmdline before any kill).
+    try:
+        with open('/tmp/raphael-brain.pid', 'w') as _pf:
+            _pf.write(str(os.getpid()))
+    except OSError:
+        pass
     try:
         yield
     finally:
