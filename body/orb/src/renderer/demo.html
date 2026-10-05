@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8" />
+<title>Raphael Orb</title>
+<style>
+body,html{margin:0;padding:0;height:100%;width:100%;background:#222; color:#fff; font-family:sans-serif;}
+#controls{position:absolute;top:10px;left:10px;background:rgba(0,0,0,0.5);padding:10px;border-radius:5px;}
+#controls label{display:block;margin-bottom:5px;}
+#fps{position:absolute;bottom:5px;right:5px;background:rgba(0,0,0,0.5);padding:2px 5px;border-radius:3px;}
+</style>
+</head>
+<body>
+<div id="controls">
+<label>State: <select id="stateSelect"></select></label>
+<label>Size: <input type="range" id="sizeSlider" min="160" max="600" value="320"/></label>
+<label>Amplitude: <input type="range" id="ampSlider" min="0" max="1" step="0.01" value="0"/></label>
+<label>Background: <select id="bgSelect"><option value="dark">Dark</option><option value="light">Light</option><option value="busy">Busy</option></select></label>
+</div>
+<canvas id="webgl"></canvas>
+<div id="fps">FPS: <span id="fpsVal">0</span></div>
+<script type="importmap">
+  {
+    "imports": {
+      "three": "../../node_modules/three/build/three.module.js"
+    }
+  }
+</script>
+<script type="module" src="renderer.js"></script>
+<script>
+window.__orbDemo = {
+  setState: (s)=>{const el=document.getElementById('stateSelect'); el.value=s; el.dispatchEvent(new Event('change'));},
+  setSize: (sz)=>{document.getElementById('sizeSlider').value=sz; window.orbDemoSize = sz;},
+  setAmp: (a)=>{document.getElementById('ampSlider').value=a; window.orbDemoAmp = a;},
+  setBg: (b)=>{const el=document.getElementById('bgSelect'); el.value=b; el.dispatchEvent(new Event('change'));},
+  getState:()=>document.getElementById('stateSelect').value,
+};
+const bgSelect = document.getElementById('bgSelect');
+const BG_STYLES = {dark:'#222222', light:'#e9e9ef', busy:'repeating-conic-gradient(#7a7a7a 0% 25%, #b8b8b8 0% 50%) 0 0 / 48px 48px'};
+function applyBg(v){ document.body.style.background = (v==='busy') ? BG_STYLES.busy : (BG_STYLES[v]||BG_STYLES.dark); }
+bgSelect.addEventListener('change', (e)=>applyBg(e.target.value));
+applyBg(bgSelect.value);
+</script>
+
+</body>
+</html>

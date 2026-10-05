@@ -68,7 +68,11 @@ function createWindow() {
   const demoMode = process.argv.includes('--demo') || process.env.RAPHAEL_ORB_DEMO === '1';
   // Object form: Electron drops a raw string query like '?demo=1' silently.
   const opts = demoMode ? { query: { demo: '1' } } : {};
-  win.loadFile(path.join(__dirname, '..', 'renderer', 'index.html'), opts);
+  const page = demoMode ? 'demo.html' : 'index.html';
+  win.loadFile(path.join(__dirname, '..', 'renderer', page), opts);
+  // Screenshots are taken externally via DevTools Page.captureScreenshot
+  // (see docs/ORB_REBUILD_TASK.md appendix) — never auto-capture or auto-close
+  // the app itself; `npm run orb:demo` must stay interactive.
 
   win.on('close', (e) => {
     if (!isQuitting) {

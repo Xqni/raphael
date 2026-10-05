@@ -6,3 +6,15 @@ contextBridge.exposeInMainWorld('raphael', {
   onSpeak: (cb) => ipcRenderer.on('speak', (_e, ev) => cb(ev)),
   sendOrbInput: (msg) => ipcRenderer.send('orb-input', msg),
 });
+
+// Expose configuration values to renderer
+const Config = require('./config');
+const cfg = new Config();
+contextBridge.exposeInMainWorld('orbConfig', {
+  sizePx: cfg.sizePx,
+  opacity: cfg.opacity,
+  fpsCap: cfg.fpsCap,
+  quality: cfg.quality || 'auto',
+  backingDiscAlpha: cfg.backing_disc_alpha || 0.0,
+  reducedMotion: cfg.reduced_motion || false,
+});

@@ -1,14 +1,24 @@
 import * as THREE from 'three';
+import { vertexShader } from './shaders/vertex.glsl.js';
+import { fragmentShader } from './shaders/fragment.glsl.js';
+
+// Configuration injected via preload
+const cfg = window.orbConfig || { sizePx:180, opacity:0.95, fpsCap:60, quality:'auto', backingDiscAlpha:0.0, reducedMotion:false };
+let sizePx = cfg.sizePx;
+let fpsCap = cfg.fpsCap;
+let quality = cfg.quality;
+let backingDiscAlpha = cfg.backing_disc_alpha || cfg.backingDiscAlpha || 0.0;
+let lastFrame = 0;
+let frameCount = 0;
+let lastFpsUpdate = performance.now();
+const fpsEl = document.getElementById('fps'); // null on production page (index.html)
+let frameInterval = 1000 / fpsCap;
+
 
 const canvas = document.getElementById('webgl');
 const subtitleEl = document.getElementById('subtitle');
 const params = new URLSearchParams(window.location.search);
 const DEMO = params.get('demo') === '1';
-
-const sizePx = 180;
-const fpsCap = 60;
-let lastFrame = 0;
-const frameInterval = 1000 / fpsCap;
 
 let orbState = {
   orbState: 'starting',
@@ -37,6 +47,29 @@ let morphActive = false;
 let morphStart = 0;
 let morphFrom = null;
 let morphTo = null;
+
+// Damping utility
+function damp(current, target, tau, dt) {
+  const alpha = 1 - Math.exp(-dt / tau);
+  return current + (target - current) * alpha;
+}
+
+// Layer weight targets per state
+const STATE_LAYER_TARGETS = {
+  idle: { coreScale:1, haloOpacity:0.25, latticeOpacity:0.35 },
+  listening: { coreScale:1.1, haloOpacity:0.3, latticeOpacity:0.4 },
+  thinking: { coreScale:1.2, haloOpacity:0.35, latticeOpacity:0.45 },
+  acting: { coreScale:1.3, haloOpacity:0.4, latticeOpacity:0.5 },
+  speaking: { coreScale:1.2, haloOpacity:0.35, latticeOpacity:0.45 },
+  error: { coreScale:0.9, haloOpacity:0.2, latticeOpacity:0.3 },
+  reconnecting: { coreScale:1, haloOpacity:0.2, latticeOpacity:0.3 },
+  offline: { coreScale:0.8, haloOpacity:0.1, latticeOpacity:0.2 },
+  private_overlay: { coreScale:0.9, haloOpacity:0.2, latticeOpacity:0.3 },
+  confirm: { coreScale:1, haloOpacity:0.3, latticeOpacity:0.4 },
+  starting: { coreScale:1, haloOpacity:0.25, latticeOpacity:0.35 },
+};
+let layerWeights = { coreScale:1, haloOpacity:0.25, latticeOpacity:0.35 };
+
 
 // Scene
 let renderer, scene, camera, clock;
@@ -95,10 +128,14 @@ function easeInOutCubic(x) {
 }
 
 function initScene() {
-  renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
-  renderer.setPixelRatio(window.devicePixelRatio);
-  renderer.setSize(sizePx, sizePx);
+  renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, premultipliedAlpha: true });
+  // Quality tier handling
+  if (quality === 'low') renderer.setPixelRatio(0.5);
+  else if (quality === 'medium') renderer.setPixelRatio(1);
+  else if (quality === 'high') renderer.setPixelRatio(2);
+  else renderer.setPixelRatio(window.devicePixelRatio); // auto
   renderer.setClearColor(0x000000, 0);
+  renderer.setSize(sizePx, sizePx);
 
   scene = new THREE.Scene();
   camera = new THREE.PerspectiveCamera(45, 1, 0.1, 100);
@@ -109,8 +146,13 @@ function initScene() {
   group = new THREE.Group();
   scene.add(group);
 
-  const coreGeo = new THREE.SphereGeometry(0.8, 32, 32);
-  const coreMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+  const coreGeo = new THREE.PlaneGeometry(2, 2);
+  const coreMat = new THREE.ShaderMaterial({
+    vertexShader,
+    fragmentShader,
+    uniforms: { color: { value: new THREE.Color(0xffffff) } },
+    transparent: true,
+  });
   core = new THREE.Mesh(coreGeo, coreMat);
   group.add(core);
 
@@ -118,6 +160,13 @@ function initScene() {
   const haloMat = new THREE.MeshBasicMaterial({ color: 0xffda7a, side: THREE.DoubleSide, transparent: true, opacity: 0.25 });
   halo = new THREE.Mesh(haloGeo, haloMat);
   group.add(halo);
+if (backingDiscAlpha > 0) {
+  const discGeo = new THREE.CircleGeometry(1.3, 32);
+  const discMat = new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: backingDiscAlpha });
+  const disc = new THREE.Mesh(discGeo, discMat);
+  disc.position.z = -0.01;
+  group.add(disc);
+}
 
   for (let i = 0; i < 2; i++) {
     const geo = new THREE.RingGeometry(1.2 + i * 0.15, 1.25 + i * 0.15, 64, 1);
@@ -250,8 +299,16 @@ function animate(now) {
   const breathBase = 2 * pitchNorm;
   const breath = 1 + 0.08 * Math.sin(t * breathBase);
   const pulse = 1 + speakAmp * 0.25;
-  core.scale.setScalar(breath * pulse);
+  // Damping weights based on current orb state
+  const target = STATE_LAYER_TARGETS[orbState.orbState] || STATE_LAYER_TARGETS.idle;
+  const dt = now - lastFrame;
+  layerWeights.coreScale = damp(layerWeights.coreScale, target.coreScale, MORPH_DURATION, dt);
+  layerWeights.haloOpacity = damp(layerWeights.haloOpacity, target.haloOpacity, MORPH_DURATION, dt);
+  layerWeights.latticeOpacity = damp(layerWeights.latticeOpacity, target.latticeOpacity, MORPH_DURATION, dt);
+  core.scale.setScalar(breath * pulse * layerWeights.coreScale);
   halo.scale.setScalar(breath * (1 + speakAmp * 0.15));
+  halo.material.opacity = 0.25 * layerWeights.haloOpacity;
+  lattice.material.opacity = 0.35 * layerWeights.latticeOpacity;
   rays.rotation.z += 0.01;
   rings[0].rotation.z += 0.008;
   rings[1].rotation.z -= 0.006;
@@ -259,15 +316,42 @@ function animate(now) {
   group.rotation.y += 0.003;
 
   const stateTint = getStateTint(orbState.orbState);
-  core.material.color.setHex(stateTint);
+  core.material.uniforms.color.value.setHex(stateTint); // ShaderMaterial: color lives in uniforms, not .color
 
+  // Apply demo controls if present
+  if (window.orbDemoSize && sizePx !== window.orbDemoSize) {
+    sizePx = window.orbDemoSize;
+    renderer.setSize(sizePx, sizePx);
+  }
+  if (window.orbDemoAmp !== undefined) {
+    speakAmp = parseFloat(window.orbDemoAmp);
+  }
+
+  // Adjust frame interval based on state (active vs idle)
+  const activeStates = ['listening','thinking','acting','speaking','error','private_overlay','reconnecting','offline','starting','confirm'];
+  const isActive = activeStates.includes(orbState.orbState);
+  const targetFps = isActive ? fpsCap : Math.max(30, Math.round(fpsCap/2));
+  frameInterval = 1000 / targetFps;
+  // Pause rendering when window is hidden
+  if (document.hidden) return;
   if (now - lastFrame < frameInterval) return;
   lastFrame = now;
   updateMorph(now);
   renderer.render(scene, camera);
+
+  // FPS counter
+  frameCount++;
+  const nowFps = performance.now();
+  if (nowFps - lastFpsUpdate >= 1000) {
+    const fps = Math.round((frameCount * 1000) / (nowFps - lastFpsUpdate));
+    if (fpsEl) fpsEl.textContent = `FPS: ${fps}`;
+    frameCount = 0;
+    lastFpsUpdate = nowFps;
+  }
 }
 
 function updateSubtitle(text) {
+  if (!subtitleEl) return; // demo page has no subtitle element
   const isPrivate = orbState.private || orbState.mode === 'private' || orbState.orbState === 'private_overlay';
   if (isPrivate || !text) {
     subtitleEl.classList.remove('show');
@@ -283,6 +367,25 @@ function updateSubtitle(text) {
     subtitleEl.classList.add('hide');
   }, 1200);
 }
+
+// --- Demo harness wiring (these elements exist only on demo.html) ---
+const demoStateSel = document.getElementById('stateSelect');
+if (demoStateSel) {
+  for (const key of Object.keys(STATE_LAYER_TARGETS)) {
+    const opt = document.createElement('option');
+    opt.value = key;
+    opt.textContent = key;
+    demoStateSel.appendChild(opt);
+  }
+  demoStateSel.addEventListener('change', () => {
+    orbState.orbState = demoStateSel.value;
+    updateSubtitle(demoStateSel.value);
+  });
+}
+const demoSizeSlider = document.getElementById('sizeSlider');
+if (demoSizeSlider) demoSizeSlider.addEventListener('input', (e) => { window.orbDemoSize = parseInt(e.target.value, 10); });
+const demoAmpSlider = document.getElementById('ampSlider');
+if (demoAmpSlider) demoAmpSlider.addEventListener('input', (e) => { window.orbDemoAmp = parseFloat(e.target.value); });
 
 window.addEventListener('load', initScene);
 

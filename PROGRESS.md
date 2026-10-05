@@ -69,3 +69,19 @@ See docs/PAID_USAGE.md. Running total: $0.00 of $2.00.
 - NOTE: any commit hashes referenced in older docs before 22d6aea are stale (history rewritten).
 - DESCRIPTIONS.md (vision-run art brief) REJECTED by user as low quality — the Sonnet-5.5-authored TASK spec is the single art authority for the orb rebuild; correction queued for orb-dev.
 - Free-tier opencode models rate-limited; user directed local/Ollama-cloud delegation. minimax-m3:cloud = 402 (Pro only). Free-plan cloud list: gemma4:31b, gpt-oss:120b, gpt-oss:20b, nemotron-3-nano:30b, nemotron-3-super, nemotron-3-ultra. Builder model pick: gpt-oss:120b (connectivity test in flight).
+
+## 2026-10-05 03:05 — Orb Phase 1 (scaffold) COMPLETE — builder + orchestrator verification/fix pass
+**orb-dev delivered:** layer-weight architecture (STATE_LAYER_TARGETS + damp() critically-damped blending), premultiplied-alpha ShaderMaterial core w/ separate GLSL files, radial edge fade, backing disc, frame limiter (active/idle targetFps + document.hidden pause), quality tiers, config plumbing (config.js -> preload -> window.orbConfig), demo.html harness + npm run orb:demo.
+
+**Orchestrator verification caught + fixed (builder claims were unreliable — stale screenshots claimed "FPS: 58" while disk showed FPS:0):**
+1. main.js shipped a self-capture hack (toDataURL + win.close() after 2s) — removed; screenshots are external via DevTools per appendix.
+2. orb:demo bound debug port to 0.0.0.0 — REVERTED to localhost (security rule).
+3. demo.html had NO importmap -> `import 'three'` failed ("Failed to resolve module specifier" proven in console) -> renderer never ran.
+4. config.js root path 1 level short (=> body/config.yaml never read) -> renderer got hardcoded 180/backing 0; fixed -> 320/0.25 live.
+5. renderer.js: frameCount/lastFpsUpdate/fpsEl used but NEVER declared (node --check cannot catch this) -> declared + guarded (index.html has no #fps).
+6. renderer.js:316 core.material.color.setHex on ShaderMaterial (color lives in uniforms) -> core.material.uniforms.color.value.setHex.
+7. updateSubtitle null-guard (demo page has no #subtitle).
+8. Demo controls were entirely UNWIRED (dropdown empty, sliders/bg no listeners, __orbDemo.setState set .value without change event) -> wired in renderer (populate 11 states from STATE_LAYER_TARGETS, input listeners) + demo.html (change dispatch, bg styles incl. busy checkerboard).
+9. Title set to "Raphael Orb" (capture tooling title filter), size slider range corrected to 160-600/320.
+
+**Final verification (real output):** FPS: 42 -> 40 live; 11 state options (first=idle); cfg sizePx=320 backing=0.25; __orbDemo.setState('speaking') + setBg('light') + setAmp(0.9) -> state=speaking, frames differ (md5 5f8709c8 vs 1fa27f10, 29980 vs 24658 bytes); ZERO uncaught console errors (ELECTRON_ENABLE_LOGGING=1). Screenshots: /tmp/orb-vA.png (dark/idle), /tmp/orb-vB.png (light/speaking). Tests: node tests/state-machine.test.js = All passed; ESM checks green on all renderer files.

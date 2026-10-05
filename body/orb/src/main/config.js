@@ -18,7 +18,7 @@ class Config {
 
   loadFromRootConfig() {
     try {
-      const root = path.join(__dirname, '..', '..', '..');
+      const root = path.join(__dirname, '..', '..', '..', '..');
       const cfgPath = path.join(root, 'config.yaml');
       if (fs.existsSync(cfgPath)) {
         const txt = fs.readFileSync(cfgPath, 'utf8');
@@ -26,6 +26,9 @@ class Config {
         this.sizePx = this.extractInt(txt, /size_px:\s*(\d+)/, this.sizePx);
         this.opacity = this.extractFloat(txt, /opacity:\s*([0-9.]+)/, this.opacity);
         this.fpsCap = this.extractInt(txt, /fps_cap:\s*(\d+)/, this.fpsCap);
+        this.quality = this.extractString(txt, /quality:\s*(auto|low|medium|high)/, 'auto');
+        this.backing_disc_alpha = this.extractFloat(txt, /backing_disc_alpha:\s*([0-9.]+)/, 0.0);
+        this.reduced_motion = this.extractBool(txt, /reduced_motion:\s*(true|false)/, false);
         const port = this.extractInt(txt, /port:\s*(\d+)/, 8765);
         this.wsUrl = this.wsUrl || `ws://127.0.0.1:${port}/ws`;
       }
@@ -41,6 +44,14 @@ class Config {
   extractFloat(txt, re, def) {
     const m = txt.match(re);
     return m ? parseFloat(m[1]) : def;
+  }
+  extractBool(txt, re, def) {
+    const m = txt.match(re);
+    return m ? (m[1] === 'true') : def;
+  }
+  extractString(txt, re, def) {
+    const m = txt.match(re);
+    return m ? m[1] : def;
   }
 }
 
