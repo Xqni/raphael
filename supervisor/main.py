@@ -39,6 +39,15 @@ import urllib.request
 from datetime import datetime
 from pathlib import Path
 
+# pythonw.exe host (scheduled task) has no console: sys.stdout/sys.stderr
+# are None and print()/callback error reporting would crash. Route to devnull.
+for _stream in ("stdout", "stderr"):
+    if getattr(sys, _stream, None) is None:
+        try:
+            setattr(sys, _stream, open(os.devnull, "w", encoding="utf-8"))
+        except OSError:
+            pass
+
 # --------------------------------------------------------------------------
 # Contract constants (docs/PROTOCOL.md — port/header names are NOT negotiable)
 # --------------------------------------------------------------------------
@@ -385,8 +394,14 @@ def run_cmd(argv, timeout=30, env=None):
     if env:
         merged.update(env)
     try:
+        kwargs = {}
+        if IS_WINDOWS:
+            # CREATE_NO_WINDOW: the pythonw task host has no console for
+            # children to inherit — Windows Terminal would otherwise open a
+            # visible TAB for every wsl.exe probe.
+            kwargs["creationflags"] = 0x08000000
         proc = subprocess.run(list(argv), capture_output=True,
-                              timeout=timeout, env=merged)
+                              timeout=timeout, env=merged, **kwargs)
     except subprocess.TimeoutExpired:
         return 124, "timeout after %ds: %s" % (timeout, argv[0])
     except FileNotFoundError:
@@ -411,7 +426,10 @@ def wsl_argv(cfg, *cmd, sudo=False):
     paths = cfg["paths"]
     argv = [find_wsl(), "-d", str(paths["distro"]),
             "-u", str(paths["wsl_user"]), "--"]
-    if sudo or paths.get("wsl_sudo"):
+    # paths.wsl_sudo is a *systemctl* policy: applying it to every wsl
+    # command would root-spawn the orb/keepalive too (electron as root =
+    # broken display). Callers needing root pass sudo=True explicitly.
+    if sudo:
         argv += ["sudo", "-n"]
     argv += [str(c) for c in cmd]
     return argv
@@ -440,8 +458,29 @@ def _needs_sudo(text):
         "permission denied", "are you root", "must be root"))
 
 
+def unit_load_state(cfg, unit, timeout=15):
+    """`systemctl show -p LoadState <unit>` — unprivileged (no polkit).
+
+    Polkit demands auth BEFORE reporting a missing unit, so this root-free
+    query is the only way to tell "not installed yet" from "denied".
+    """
+    rc, out = wsl_run(cfg, "systemctl", "show", "-p", "LoadState", unit,
+                      timeout=timeout)
+    if rc != 0:
+        return "unknown"
+    for ln in out.splitlines():
+        if ln.startswith("LoadState="):
+            return ln.split("=", 1)[1].strip() or "unknown"
+    return "unknown"
+
+
 def systemctl_action(cfg, log, verb, unit, timeout=60):
-    rc, out = wsl_run(cfg, "systemctl", verb, unit, timeout=timeout)
+    if unit_load_state(cfg, unit) == "not-found":
+        log.info("unit '%s' not installed yet (Wave 2) — systemctl %s "
+                 "deferred until the unit appears" % (unit, verb))
+        return False
+    rc, out = wsl_run(cfg, "systemctl", verb, unit, timeout=timeout,
+                      sudo=bool(cfg["paths"].get("wsl_sudo")))
     if rc == 0:
         log.info("systemctl %s %s: OK" % (verb, unit))
         return True
@@ -459,7 +498,8 @@ def systemctl_action(cfg, log, verb, unit, timeout=60):
 def restart_brain(cfg, log):
     unit = str(cfg["paths"]["brain_unit"])
     log.info("restarting brain via wsl.exe: %s"
-             % " ".join(wsl_argv(cfg, "systemctl", "restart", unit)))
+             % " ".join(wsl_argv(cfg, "systemctl", "restart", unit,
+                                 sudo=bool(cfg["paths"].get("wsl_sudo")))))
     return systemctl_action(cfg, log, "restart", unit)
 
 
@@ -559,14 +599,24 @@ def _spawn(inner, cwd, log, label, log_file):
     try:
         out = open(log_file, "ab", buffering=0)
         if IS_WINDOWS:
-            flags = (getattr(subprocess, "DETACHED_PROCESS", 0x00000008)
-                     | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0x00000200))
-            if cwd_str.startswith("\\\\"):
-                # pushd maps the UNC path to a temp drive -> child can run
+            # CREATE_NO_WINDOW — NOT DETACHED_PROCESS: Win11's default
+            # terminal (Windows Terminal) opens a VISIBLE TAB for every
+            # console-less process (DETACHED made cmd/wsl.exe request a
+            # console and WT hosted it -> the "4 mystery tabs"). Hidden
+            # console instead: no window, no tab, no flash.
+            flags = 0x08000000
+            if as_list is not None:
+                # argv children are self-contained (absolute script path, or
+                # wsl-side `cd` inside the command): never cwd them through
+                # pushd — its temp drive letter made wsl.exe print
+                # "Failed to translate 'Z:\home\...'".
+                target = as_list
+                kwargs = {"shell": False,
+                          "cwd": None if cwd_str.startswith("\\\\") else cwd_str}
+            elif cwd_str.startswith("\\\\"):
+                # string child + UNC cwd: pushd maps the UNC to a temp drive
                 target = 'pushd "%s" && %s' % (cwd_str, inner_str)
                 kwargs = {"shell": True, "cwd": None}
-            elif as_list is not None:
-                target, kwargs = as_list, {"shell": False, "cwd": cwd_str}
             else:
                 target = ["cmd.exe", "/c", inner_str]
                 kwargs = {"shell": False, "cwd": cwd_str}
@@ -590,8 +640,27 @@ def _spawn(inner, cwd, log, label, log_file):
             out.close()
 
 
+def _wsl_path(unc):
+    """\\wsl.localhost\\<distro>\\home\\... (or \\wsl$\\...) -> /home/...
+
+    Returns None when `unc` is not a WSL UNC path.
+    """
+    s = str(unc).replace("\\", "/")
+    low = s.lower()
+    for pfx in ("//wsl.localhost/", "//wsl$/"):
+        if low.startswith(pfx):
+            rest = s[len(pfx):]
+            return "/" + rest.split("/", 1)[1] if "/" in rest else "/"
+    return None
+
+
 def launch_orb(cfg, log):
-    """Phase 1a: Electron orb FIRST so the UI shows 'starting' immediately."""
+    """Phase 1a: Electron orb FIRST so the UI shows 'starting' immediately.
+
+    The orb runs INSIDE WSL (start script = Linux-only `VAR=val electron`
+    syntax + the WSLg window). Windows-side `npm start` used to die with no
+    output, so the orb only ever appeared when a dev instance was up.
+    """
     orb_dir = _resolve(cfg["paths"].get("orb_dir") or "body/orb")
     if not (orb_dir / "package.json").is_file():
         log.warn("orb not ready — %s/package.json missing (owned by orb-dev); "
@@ -605,7 +674,14 @@ def launch_orb(cfg, log):
     except (OSError, ValueError) as exc:
         log.warn("orb package.json unreadable (%s) — falling back to "
                  "npx electron ." % exc)
-    inner = "npm start" if start_script else "npx electron ."
+    wsl_cmd = "npm start" if start_script else "npx electron ."
+    wsl_dir = _wsl_path(orb_dir)
+    if wsl_dir is None:
+        log.warn("orb_dir %s is not a WSL UNC path — cannot launch the orb "
+                 "inside WSL; skipping" % orb_dir)
+        return None
+    inner = wsl_argv(cfg, "sh", "-lc",
+                     "cd %s && exec %s" % (shlex.quote(wsl_dir), wsl_cmd))
     return _spawn(inner, orb_dir, log, "orb", LOG_DIR / "orb.log")
 
 
@@ -800,6 +876,24 @@ def _power_thread(hooks, log):
         from ctypes import wintypes
         user32 = ctypes.WinDLL("user32", use_last_error=True)
         k32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        # Pointer-sized Win32 args: WITHOUT argtypes ctypes falls back to
+        # 32-bit c_int, so every pointer-valued wParam/lParam raised
+        # "OverflowError: int too long to convert" inside wndproc (seen
+        # repeatedly in the live smoke).
+        user32.DefWindowProcW.argtypes = [wintypes.HWND, wintypes.UINT,
+                                          wintypes.WPARAM, wintypes.LPARAM]
+        user32.DefWindowProcW.restype = ctypes.c_ssize_t
+        k32.GetModuleHandleW.argtypes = [wintypes.LPCWSTR]
+        k32.GetModuleHandleW.restype = wintypes.HMODULE
+        user32.CreateWindowExW.argtypes = [
+            wintypes.DWORD, wintypes.LPCWSTR, wintypes.LPCWSTR,
+            wintypes.DWORD, ctypes.c_int, ctypes.c_int, ctypes.c_int,
+            ctypes.c_int, wintypes.HWND, wintypes.HMENU, wintypes.HINSTANCE,
+            ctypes.c_void_p]
+        user32.CreateWindowExW.restype = wintypes.HWND
+        user32.DestroyWindow.argtypes = [wintypes.HWND]
+        user32.UnregisterClassW.argtypes = [wintypes.LPCWSTR,
+                                            wintypes.HINSTANCE]
         WM_POWERBROADCAST = 0x0218
         PBT_APMSUSPEND = 0x0004
         PBT_APMRESUMECRITICAL = 0x0006

@@ -60,7 +60,15 @@ if (-not $PythonExe) {
     Say "BLOCKED: python.exe not on PATH (and -PythonExe not supplied). Install Python 3.10+ yourself or pass -PythonExe; nothing is auto-installed." "ERROR"
     exit 2
 }
-Say "python: $PythonExe"
+# pythonw.exe = no console subsystem: the logon task must NEVER open a
+# terminal window/tab (python.exe = visible console + stderr spam).
+$pythonw = Join-Path (Split-Path -Parent $PythonExe) "pythonw.exe"
+if (Test-Path $pythonw) {
+    $PythonExe = $pythonw
+    Say "python: $PythonExe (pythonw host -- console-less, no terminal window)"
+} else {
+    Say "python: $PythonExe (WARN: pythonw.exe missing -- task will show a console)" "WARN"
+}
 Say "entry : $supervisorPy"
 
 # Working directory: Task Scheduler refuses UNC working dirs; python resolves
