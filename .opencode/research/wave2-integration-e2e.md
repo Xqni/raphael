@@ -30,3 +30,13 @@
 14. PROGRESS entry + TODO updates (Wave 2 core = integrated).
 15. Remaining dispatches: body phase 3 (audio real), voice phase 2 (wake/PTT), test-engineer extension for brain/ws, docs-writer README refresh.
 16. USER report when awake: relay admin one-liner option (TODO §3b), hotkey bindings added, everything green.
+
+## Wave-2 core: PASSED 2026-10-05 09:40 (evidence in PROGRESS)
+- brain tests 30/30 + voice 20/20 (orchestrator re-runs), process-mode healthy ~6s, watchdog x2, relay 401/200, UI+body ws round-trips, control frames persisted+restored, relay5s-timeout bug killed (25s survival both legs), body stable.
+
+## Phase-3 verification (when brain-dev + body-dev notifications arrive)
+17. Re-run: brain tests (30+new), voice tests (20), tests/ suite (10).
+18. Mic lane E2E: body PTT simulation → audio_start + kind=1 binary (seq BE) → brain transcribe (monkeypatched or real whisper) → loop command → speak frames to ui session.
+19. Act E2E: GUI job → act_req → body → act_res → job_event done; plus no-body-session → job fails with clean error event.
+20. Kill-body test: supervisor relaunches body (body watchdog), single-instance rc=0.
+21. Final: PROGRESS milestone + docs-writer README refresh + USER WAKE REPORT (relay firewall one-liner TODO §3b, hotkeys ctrl+alt+p / ctrl+alt+shift+p / kill ctrl+alt+shift+k, raphael_reference.wav missing — voice needs it, all-wave-2 status).
