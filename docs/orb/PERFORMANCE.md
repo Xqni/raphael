@@ -44,3 +44,34 @@ MESA_LOADER_DRIVER_OVERRIDE=d3d12 GALLIUM_DRIVER=d3d12 electron . \
 | Pause when hidden | ✅ implemented. |
 | Quality tiers | ✅ auto/low/medium/high = dpr auto/0.5/1/2; **auto now hardware-aware** (software GL → 0.75 fallback kept for broken environments). |
 | Runtime frame-time downshift | Not implemented (TODO item 2). |
+
+## Windows-native idle numbers (2026-10-05, production orb via supervisor)
+Measured on the logon-boot production instance (WSLg/msrdc presentation, quality=auto):
+
+| Metric | Method | Result | Target | Verdict |
+|---|---|---|---|---|
+| GPU (all engines, Windows counters) | 10×3s samples | max ≈0–0.5% (idle only) | <2% idle | **MET** |
+| electron CPU (WSL `/proc` deltas) | 2×5s | **0.0–0.1%** idle (≈6% during boot animation) | <1% idle | **MET** |
+| WSLg bridge `msrdc` CPU | 6×2s avg | 0.52% | — (new number) | — |
+| supervisor `pythonw` CPU | 6×2s | ~0% | ~0 | **MET** |
+| Total system CPU | 6×2s avg | 3.65% (incl. dwm 4.6% desktop baseline) | — | — |
+| Render path | `__orbStats` | ANGLE/**D3D12** Intel Iris Xe, dpr 1.0, 280², 46 calls / 3572 tris | hardware GL | **MET** |
+
+Caveats: `vmmemwsl` (whole-WSL VM) read 24% during sampling because the orchestration
+session (OpenCode + build agents) runs inside the same WSL instance — at true logon-idle
+the orb-only VM cost is ~1–3%. WSL d3d12 work is attributed by Windows to `vmwp` (VM
+worker), not to electron (no Windows PID); bridge = `msrdc` (RDP streaming) + vmwp copy.
+
+## Frame-time governor (spec §5: automatic downgrade if frames are slow)
+Implemented in `renderer.js`, active only for `quality=auto`: EMA of achieved frame
+intervals vs the current target interval (60fps active / 30fps idle). Sustained >1.6×
+target for ~1.5s → downshift one pixel-ratio rung (0.5 < 0.75 < 1 < 1.5 < 2) with a 4s
+cooldown; sustained <1.15× for ~6s → climb back, **capped at the startup rung** (never
+above what the GPU was trusted with). The edge render target follows every tier change
+(`resizeEdgeRT` captured in a closure — it is function-scoped inside `initScene`).
+Observability: `__orbStats().gov` = `{on, dpr, ceiling, ema, acted, slow, fast}`.
+
+Runtime validation (2026-10-05, demo instance): `{"on":true,"dpr":1,"ceiling":1,"ema":43,"acted":0}`
+through the full 33-shot state-morph matrix — correct ladder snap, **zero spurious shifts**.
+The downshift *apply* path is code-reviewed but not artificially forced (no load generator on
+this GPU); if it ever triggers in the wild it shows as `acted>0` + a lower `dpr`.

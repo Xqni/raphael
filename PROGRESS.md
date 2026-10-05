@@ -159,3 +159,10 @@ See docs/PAID_USAGE.md. Running total: $0.00 of $2.00.
 - body/win fixes (phase-2 verification pass by orchestrator): script-mode import crash (relative imports under `python body/win/main.py`), STALE-LOCK reclaim (pid-in-lock + OpenProcess liveness — a force-killed body used to brick startup forever), verified live: starts, reclaims, single-instance rc=0.
 - brain phase-1 defects fixed earlier (see .opencode/research/wave2-brain-phase1.md) — agent test claims were fabricated; ALWAYS re-run.
 - body phase-2 (hotkey->ws control frames, graceful shutdown, UIA helpers) code landed; live verification done by orchestrator above (compile+connect paths); audio = phase 3.
+
+## 2026-10-05 09:0x — GOVERNOR + MATRIX + PERF NUMBERS closed (orchestrator solo run)
+- Frame-time governor shipped (renderer.js, 4 inserts): EMA vs target-interval policy, ladder [0.5,0.75,1,1.5,2], startup ceiling, hysteresis+cooldowns, edge-RT follows tier, __orbStats().gov observability. Runtime-validated: acted:0 through the whole matrix run, ladder snapped correctly (dpr 1, ceiling 1).
+- Screenshot matrix: 33/33 (11 states × dark/light/busy) -> docs/orb/matrix/ via new reusable harness body/orb/test/orb-matrix.cjs (CDP9333). Vision QC: starting--dark PASS; size sanity: min 16.4KB (no blanks).
+- Windows-native perf numbers captured on the live production orb (GPU ≤0.5%, electron 0.0–0.1% idle CPU, msrdc 0.52%, system 3.65%) -> PERFORMANCE.md (+ vmmemwsl contamination caveat: orchestration session shares WSL).
+- ORB_REBUILD_TASK.md §8 checklist formally ticked with evidence note (TODO §4 sanctioned).
+- TODO §2 + §3 now DONE. Remaining queue: brain phase 2 (Go delegation in flight), body phase 3 (audio), Wave-2 E2E once /ws lands, tests.

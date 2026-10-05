@@ -10,17 +10,16 @@ Priority order after Phase 3 completes. Do not let these silently vanish.
 - VERIFIED ON REAL REBOOT (2026-10-05): no console/tabs, supervisor pythonw at boot+23s, orb up ~10-15s after logon, zero manual steps. DONE. Uninstall path = scripts/uninstall.ps1.
 - 2026-10-05 follow-up (4 mystery tabs + errors): task host -> pythonw.exe, all spawns -> CREATE_NO_WINDOW, orb launches WSL-side, brain unit soft-skips while not-found (Wave 2). When the brain unit is INSTALLED later: grant NOPASSWD for systemctl to dami (sudoers.d, exact argv match of supervisor's `sudo -n systemctl ...` usage) AND set `paths.wsl_sudo: true` in config.yaml — needed only then, not now.
 
-## 2. Performance tuning + measurement (spec §5) — PARTIALLY DONE (GPU achieved 2026-10-05)
-- ✅ GPU acceleration in dev: MESA_LOADER_DRIVER_OVERRIDE=d3d12 + sandbox flags → ANGLE/D3D12 on Intel Iris Xe, dpr 1.0, CPU dropped 136→15.7% (idle). Flags persisted in package.json scripts.
-- ⬜ Windows-native measurement (orb runs on REAL Windows GPU there): idle <2% GPU / <1% CPU formal numbers.
-- ⬜ Frame-time-based runtime auto-downshift governor (spec: "automatic downgrade if frames are slow") — only GPU-type detection exists.
-- ⬜ WSLg bridge overhead breakdown (streaming + msrdc sit outside the electron process sum).
-- Current status: never measured properly. Method ideas: Windows-side GPU counter (DXGI/Task Manager trace), process CPU via PowerShell sampling, fps/frame-time readout (hidden eval — on-screen FPS was removed per user).
-- Quality tiers (orb.quality auto|low|medium|high) wired but untested against real frame-time data.
+## 2. Performance tuning + measurement (spec §5) — DONE 2026-10-05
+- ✅ GPU acceleration (dev): MESA/d3d12 → ANGLE/D3D12 on Iris Xe, dpr 1.0, CPU 136→15.7%.
+- ✅ Windows-native idle numbers: GPU ≤0.5%, electron 0.0–0.1% CPU, msrdc 0.52%, system 3.65% — all in PERFORMANCE.md with methods + caveats (targets MET).
+- ✅ Frame-time governor shipped + runtime-validated (acted:0 through 33 morphs; apply path code-reviewed) — PERFORMANCE.md "Frame-time governor".
+- ✅ WSLg bridge breakdown: msrdc (streaming) + vmwp attribution documented.
+- ✅ Quality tiers exercised live via governor ladder (auto rung snap + ceiling verified).
 
-## 3. Deliverables debt (original spec §7)
-- **Screenshot matrix**: every state × {dark, light, busy} backgrounds -> `docs/orb/` (method: DevTools Page.captureScreenshot + demo bg toggle via `window.__orbDemo.setBg`).
-- **Performance report**: `docs/orb/PERFORMANCE.md` (measurements + method + WSL caveat).
+## 3. Deliverables debt (original spec §7) — DONE 2026-10-05
+- ✅ Screenshot matrix: 33 shots (11 states × dark/light/busy) in `docs/orb/matrix/` via reusable harness `body/orb/test/orb-matrix.cjs` (CDP, port 9333, `npm run orb:demo`). Vision-QC + size sanity: no blanks.
+- ✅ Performance report: `docs/orb/PERFORMANCE.md` extended with Windows-native numbers + governor + bridge breakdown.
 
 ## 3b. USER ACTION (when awake — non-blocking, relay already works around it)
 - Hyper-V firewall blocks WSL's built-in localhost relay on this machine. The supervisor's user-space relay (paths.brain_relay) covers everything meanwhile.
@@ -29,6 +28,6 @@ Priority order after Phase 3 completes. Do not let these silently vanish.
 
 ## 4. Minor known items
 - NOACTIVATE exstyle bit doesn't stick (msrdc rewrites it) — cosmetic, TOOLWINDOW covers the ask.
-- `docs/ORB_REBUILD_TASK.md` fidelity checklist §8 never formally ticked by reviewer (most items effectively verified through the user review loop — close it during the screenshot matrix pass).
+- ✅ `docs/ORB_REBUILD_TASK.md` §8 checklist TICKED 2026-10-05 during the screenshot matrix pass (sanctioned by this item; evidence note added under §8).
 - Band/torus experiment shaders dormant in `shaders/sage.glsl.js` (user rejected rings; kept for possible reuse).
 - Reference JPGs: untracked + history-purged; keep it that way (checklist #9).

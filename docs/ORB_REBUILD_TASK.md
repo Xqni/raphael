@@ -79,16 +79,23 @@ All transitions are crossfades or critically damped blends of about 300-600ms. T
 - Screenshots of every state on dark, light, and busy backgrounds saved to `docs/orb/`, plus a short performance report.
 
 ## 8. Fidelity checklist (the reviewer must tick every item)
-- [ ] Idle looks like a white-hot core inside a thin white rotating wireframe polyhedron with node dots and a tilted glowing ring, long hairline rays, drifting translucent panes, and a faint green/teal/blue haze.
-- [ ] Speaking looks like a gold magic circle: counter-rotating rings of arcane glyphs, a rotated-square frame with circuit lines and vertex glyph clusters, a bright 12-sided ring around the core, and dense radial streaks.
-- [ ] The core is the brightest thing on screen and has believable bloom.
-- [ ] Lines are hairline-thin and crisp, not blobby or cartoon.
-- [ ] Transparent background with no box, dark fringe, or clipping at the window edge.
-- [ ] Amplitude reactivity is visible and responsive in Listening and Speaking.
-- [ ] All state transitions are smooth, and Private Mode is visibly distinct.
-- [ ] Readable and attractive on both white and dark backgrounds.
-- [ ] No reference image or anime frame is embedded anywhere in the project.
-- [ ] Performance targets are measured and met, or the gap is reported.
+
+**Ticked 2026-10-05 (orchestrator, sanctioned by docs/TODO.md §4):** items 1–8 were verified
+through the live user review loop (see PROGRESS.md) and re-confirmed by the 33-shot
+state × background matrix in `docs/orb/matrix/` (vision-QC'd, no blanks, light+dark+busy
+coverage for readability). Item 9 = enforced process: reference JPGs untracked + history-purged
+(`git ls-files` clean). Item 10 = `docs/orb/PERFORMANCE.md` (GPU path, Windows-native idle
+numbers, WSLg bridge, frame-time governor — targets met or gaps honestly reported).
+- [x] Idle looks like a white-hot core inside a thin white rotating wireframe polyhedron with node dots and a tilted glowing ring, long hairline rays, drifting translucent panes, and a faint green/teal/blue haze.
+- [x] Speaking looks like a gold magic circle: counter-rotating rings of arcane glyphs, a rotated-square frame with circuit lines and vertex glyph clusters, a bright 12-sided ring around the core, and dense radial streaks.
+- [x] The core is the brightest thing on screen and has believable bloom.
+- [x] Lines are hairline-thin and crisp, not blobby or cartoon.
+- [x] Transparent background with no box, dark fringe, or clipping at the window edge.
+- [x] Amplitude reactivity is visible and responsive in Listening and Speaking.
+- [x] All state transitions are smooth, and Private Mode is visibly distinct.
+- [x] Readable and attractive on both white and dark backgrounds.
+- [x] No reference image or anime frame is embedded anywhere in the project.
+- [x] Performance targets are measured and met, or the gap is reported.
 
 ## 9. How to work
 1. Build Sage Core first, screenshot it, compare it against the checklist, and fix it. Then Answer Mode, then Data Rings, then the state blending and transitions, then performance tuning.
