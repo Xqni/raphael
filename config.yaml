@@ -1,0 +1,82 @@
+# Raphael runtime configuration (committed — NO secrets here; secrets live in .env)
+# Schema documented in docs/ARCHITECTURE.md §6. Flat keys; nested by indentation.
+
+providers:
+  chain: [zen_free, go, ollama]          # ordered failover
+  allow_go_runtime: false                # user directive: off by default (bills Zen balance past Go limits)
+  allow_paid_runtime: false              # paid Zen models never used by Raphael's runtime unless enabled
+  allow_free_models_for_personal_data: false   # personal/sensitive-flagged → local model only
+  zen_base_url: https://opencode.ai/zen/v1
+  go_base_url: https://opencode.ai/zen/go/v1
+  discovery_interval_s: 3600             # re-query /v1/models periodically; vanishing model = re-select, not error
+  max_calls_per_minute: 12               # cap so concurrent jobs don't hammer the free tier
+  benchmark_ranking_path: brain/router/benchmark_ranking.json
+
+local_model:
+  # User-confirmed exclusions: 'slut' permanently excluded (no tool calling / vision).
+  candidates: [qwen3.5:4b, qwen3.5:9b, qwen3:1.7b, huihui_ai/qwen3-vl-abliterated:4b-instruct]
+  text: auto                             # picked by `raphael benchmark`; `raphael set-local-model <name>` overrides
+  vision: auto                           # screenshots → local only, ever
+  keep_alive: 5m                         # resident text/router model
+  vision_keep_alive: 0                   # vision unloads after use (8GB VRAM budget)
+  max_concurrency: 1                     # VRAM: single local inference at a time
+  ollama_url: http://127.0.0.1:11434
+
+voice:
+  stt_model: small                       # faster-whisper size (Phase 0 budget)
+  stt_device: auto
+  tts_voice: assets/raphael_reference.wav   # falls back to default voice + spoken notice if missing
+  tts_sample_rate: 24000
+  wake_word: raphael
+  ptt_hotkey: "ctrl+alt+space"
+  ack_cache: assets/acks/
+
+jobs:
+  max_concurrent: 8
+  gui_steps_cap: 25                      # computer-use loop step limit
+  local_concurrency: 1
+  confirm_timeout_s: 30                  # timeout → ABORT, never auto-approve
+
+safety:
+  confirm_actions:                       # enforced in code (brain/confirm.py), per job
+    - delete_files
+    - send_message
+    - send_email
+    - purchase
+    - enter_password
+    - system_settings_change
+    - install_software
+    - make_public_repo
+  failsafe_corner: true                  # pyautogui mouse-to-corner
+  kill_switch_hotkey: "ctrl+alt+shift+k"
+  pause_persist: true
+
+privacy:
+  watch_mode: false                      # proactive screen sampling OFF by default
+  debug_capture: false                   # no screenshot/sensitive logging unless enabled
+  blocklist_apps: [1Password, KeePass, Bitwarden, Banking]   # matched foreground → local models only
+  redact: [api_key, token, password, card, email, phone]
+
+github:
+  default_visibility: private
+  auto_public: false                     # true = Raphael may create public repos without asking
+
+voice_personality:
+  style: calm, precise, analytical, devoted   # Great Sage flavor; short spoken replies
+  greeting: "Raphael online."
+  greeting_recovered: "Raphael online. Recovered from an unexpected shutdown — interrupted tasks are listed."
+
+runtime_opencode:
+  auto_permit: true                      # Raphael grants her workers permissions (addendum §8)
+  config_dir: ~/.raphael/runtime-opencode
+
+supervisor:
+  distro: Ubuntu-26.04
+  wsl_user: dami
+  brain_unit: raphael-brain
+  health_interval_s: 5
+  ws_url: ws://127.0.0.1:8765/ws
+
+server:
+  host: 0.0.0.0                         # WSL NAT localhostForwarding requires it; token auth mandatory (PROTOCOL §1)
+  port: 8765
