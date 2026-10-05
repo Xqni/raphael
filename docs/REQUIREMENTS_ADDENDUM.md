@@ -84,6 +84,22 @@ Constraints: audits are laptop-side (free — no pod spend, money gates unchange
 
 **Sequencing:** read-only audit loop unlocks after the Wave 2 foundation stabilizes (you can't self-edit a building mid-construction); auto-patch tier unlocks when `tests/` exists as the standing suite; core-rewrite tier is permanently behind approval. Prior art: Darwin Gödel Machine / AlphaEvolve patterns (sandboxed evaluation + version archive) — we adopt the pattern, not their autonomy level, layered on Raphael's existing autonomy contract.
 
+## 14. Capability-growth directive (user, 2026-10-05): "She can add tools, skills, other needed things for her upgrades or evolution — like Ciel."
+
+Fixing herself (§13) extends to **adding new capabilities**. Per-type authority; every addition carries provenance (why, when, how-tested) and is revocable exactly like a patch:
+
+| Addition | Mechanism | Tier (§13) |
+|---|---|---|
+| **Skills** — procedures, recipes, research packs | `.opencode/skills/<name>/SKILL.md` via the existing draft + confidence gate; provenance in frontmatter | 2 — auto with gates |
+| **Specialist subagents** | `.opencode/agent/<name>.md` from approved templates; must inherit deny-by-default permissions, a step budget from the standard ladder, subagent depth ≤ config cap | 2 — template conformance + reviewer |
+| **MCP tool servers** | `opencode.json` `mcp` block — local/read-only = 2; anything with network-write, credentials, or spend = 3 | 2 or 3 |
+| **Brain tools** (tool registry, new act capabilities) | registered entries with declared I/O + scope; new `act_req` allow-list entries = 2 if file/app/url-class; shell-class = 3 (no arbitrary shell — PROTOCOL stands) | 2 or 3 |
+| **Persona profiles** (incl. Ciel) | config switch per §10 — the crown stays user-placed: Ciel = user-triggered, never self-granted | 3 |
+
+**Self-escalation boundary:** she may add *capabilities* but never *authority* — money gates, permission floors, secret handling, one-GPU rule, and step budgets are not hers to raise. Every self-added capability enters with the same deny-by-default floor as any subagent (no secrets in prompts, no system installs, no user files without approval). Revocation = delete/disable the entry, same as `git revert` for code.
+
+**Sequencing:** the runtime mechanism lands with Wave 2 (brain tool registry + skill confidence gate wired); until then, skills/agents are orchestrator-written as they are today.
+
 ## 11. Orb = 3D morphing orb from user's reference art (user directive, 2026-10-05)
 References: `C:\Users\jxesu\OneDrive\Desktop\Raphael Orb` (6 Tensura visuals, copied to `assets/orb-reference/*.jpg`, originals untouched). Art brief extracted via vision subagent → `assets/orb-reference/DESCRIPTIONS.md`.
 - **3D orb** (Three.js/WebGL in the Electron renderer), based on/referenced by that art — original rendering only, no official assets copied.
