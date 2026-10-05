@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-  Raphael — Startup-folder fallback (used when Task Scheduler registration
+  Raphael -- Startup-folder fallback (used when Task Scheduler registration
   is unavailable). Drops a "Raphael Supervisor.lnk" into shell:startup.
 
 .DESCRIPTION
@@ -25,7 +25,7 @@ function Say([string]$msg, [string]$level = "INFO") {
 }
 function Dry([string]$msg) { Write-Host ("[DRYRUN] " + $msg) }
 
-$repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+$repoRoot = Split-Path -Parent $PSScriptRoot
 $supervisorPy = Join-Path $repoRoot "supervisor\main.py"
 if (-not (Test-Path $supervisorPy)) {
     Say "BLOCKED: supervisor\main.py not found at $supervisorPy" "ERROR"
@@ -36,7 +36,7 @@ if (-not $PythonExe) {
     if ($found) { $PythonExe = $found.Source }
 }
 if (-not $PythonExe) {
-    Say "BLOCKED: python.exe not on PATH and -PythonExe not given — nothing auto-installed." "ERROR"
+    Say "BLOCKED: python.exe not on PATH and -PythonExe not given -- nothing auto-installed." "ERROR"
     exit 2
 }
 
@@ -50,7 +50,7 @@ Say "startup dir : $startupDir"
 Say "shortcut    : $lnkPath"
 Say "target      : $PythonExe `"$supervisorPy`""
 Say "working dir : $workDir  (WindowStyle=7 minimized)"
-if (Test-Path $lnkPath) { Say "existing entry found — will overwrite (idempotent)" "WARN" }
+if (Test-Path $lnkPath) { Say "existing entry found -- will overwrite (idempotent)" "WARN" }
 
 if ($dry) {
     Dry "WScript.Shell.CreateShortcut(`"$lnkPath`")"
@@ -59,7 +59,7 @@ if ($dry) {
     Dry "  WorkingDirectory= $workDir"
     Dry "  WindowStyle     = 7 (minimized)"
     Dry "  .Save()"
-    Dry "fallback if COM unavailable — write `"$cmdPath`" containing:"
+    Dry "fallback if COM unavailable -- write `"$cmdPath`" containing:"
     Dry '  @echo off'
     Dry "  start `"`" /min `"$PythonExe`" `"$supervisorPy`""
     Dry "no changes made in dry-run mode."
@@ -78,7 +78,7 @@ try {
     $sc.Save()
     $madeLnk = Test-Path $lnkPath
 } catch {
-    Say "shortcut creation failed ($($_.Exception.Message)) — falling back to .cmd" "WARN"
+    Say "shortcut creation failed ($($_.Exception.Message)) -- falling back to .cmd" "WARN"
 }
 
 if (-not $madeLnk) {

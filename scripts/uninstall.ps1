@@ -1,13 +1,13 @@
 <#
 .SYNOPSIS
-  Raphael — uninstall: removes the Task Scheduler task, the Startup-folder
+  Raphael -- uninstall: removes the Task Scheduler task, the Startup-folder
   entry, and stops Raphael processes (supervisor / body / orb / keepalive).
 
 .DESCRIPTION
   Prints every action it takes ("REMOVED:", "STOPPED:", "NOT FOUND:").
   -DryRun / -WhatIf prints the exact commands and changes nothing.
   Only processes whose CommandLine matches Raphael-owned patterns are
-  stopped — nothing else on the machine is touched.
+  stopped -- nothing else on the machine is touched.
 
 .EXAMPLE
   powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts\uninstall.ps1 -DryRun
@@ -27,7 +27,7 @@ function Say([string]$msg, [string]$level = "INFO") {
 }
 function Dry([string]$msg) { Write-Host ("[DRYRUN] " + $msg) }
 
-$repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+$repoRoot = Split-Path -Parent $PSScriptRoot
 $startupDir = [Environment]::GetFolderPath("Startup")
 
 Write-Host "=== Raphael uninstall plan ($([string]$(if ($dry) { 'DRY RUN' } else { 'LIVE' }))) ==="
@@ -73,7 +73,7 @@ $patterns = @(
     'while :; do sleep 3600'            # supervisor's WSL keep-alive
 )
 if ($KeepProcesses) {
-    Say "KeepProcesses set — skipping process termination"
+    Say "KeepProcesses set -- skipping process termination"
 } else {
     $targets = @()
     $all = Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
@@ -103,7 +103,7 @@ if ($KeepProcesses) {
 }
 
 # --- 4. note --------------------------------------------------------------
-Say "uninstall complete — repo files, config.yaml, logs/ and tokens are left in place."
+Say "uninstall complete -- repo files, config.yaml, logs/ and tokens are left in place."
 Say "re-create the logon entry later with: scripts\setup.ps1  (task) or scripts\setup-startup.ps1 (Startup folder)"
 Say "tokens removed only manually: %APPDATA%\Raphael\token and ~/.raphael/token"
 exit 0

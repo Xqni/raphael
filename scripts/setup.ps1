@@ -1,13 +1,13 @@
 <#
 .SYNOPSIS
-  Raphael — Task Scheduler registration (logon task "Raphael").
+  Raphael -- Task Scheduler registration (logon task "Raphael").
 
 .DESCRIPTION
   Idempotent (safe to re-run = repair): detects an existing "Raphael" task,
   removes and re-registers it with the exact required settings.
 
   WRITES THE schtasks / Register-ScheduledTask COMMANDS BUT ACTS ONLY WHEN
-  RUN WITHOUT -DryRun. The build agents themselves never execute schtasks —
+  RUN WITHOUT -DryRun. The build agents themselves never execute schtasks --
   registration is performed by the orchestrator/user running this script.
 
   Battery note (researched against learn.microsoft.com Task Scheduler schema,
@@ -44,7 +44,7 @@ function Dry([string]$msg) {
 }
 
 # --- resolve repo + entry point ------------------------------------------
-$repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+$repoRoot = Split-Path -Parent $PSScriptRoot
 $supervisorPy = Join-Path $repoRoot "supervisor\main.py"
 if (-not (Test-Path $supervisorPy)) {
     Say "BLOCKED: supervisor\main.py not found at $supervisorPy" "ERROR"
@@ -67,7 +67,7 @@ Say "entry : $supervisorPy"
 # everything from __file__ anyway, so fall back to the profile dir on UNC.
 $workDir = $repoRoot
 if ($repoRoot.StartsWith("\\")) {
-    Say "repo path is UNC ($repoRoot) — task WorkingDirectory will be $env:USERPROFILE (cmd.exe cannot use UNC cwd)" "WARN"
+    Say "repo path is UNC ($repoRoot) -- task WorkingDirectory will be $env:USERPROFILE (cmd.exe cannot use UNC cwd)" "WARN"
     $workDir = $env:USERPROFILE
 }
 
@@ -94,14 +94,15 @@ $batteryFlags = ($settings.CimInstanceProperties |
 $existing = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
 
 # --- print the plan -------------------------------------------------------
-$schtasksCmd = 'schtasks /Create /TN "{0}" /TR \"{1}\" /SC ONLOGON /RU "{2}" /RL LIMITED /F' -f `
-    $TaskName, $actionLine, $user
+$actionLineEsc = $actionLine -replace '"', '\"'
+$schtasksCmd = 'schtasks /Create /TN "{0}" /TR "{1}" /SC ONLOGON /RU "{2}" /RL LIMITED /F' -f `
+    $TaskName, $actionLineEsc, $user
 Say "planned task: Name=$TaskName User=$user Trigger=AtLogOn LogonType=Interactive"
 Say "settings    : $batteryFlags (battery-stop disabled) | RestartInterval=PT1M RestartCount=10 | StartWhenAvailable=True | MultipleInstances=IgnoreNew | ExecutionTimeLimit=PT0S (no 72h auto-kill)"
 if ($existing) {
-    Say "existing task: '$TaskName' State=$($existing.State) — will unregister + re-register (idempotent)" "WARN"
+    Say "existing task: '$TaskName' State=$($existing.State) -- will unregister + re-register (idempotent)" "WARN"
 } else {
-    Say "existing task: none — will register fresh"
+    Say "existing task: none -- will register fresh"
 }
 Write-Host ""
 Dry "schtasks equivalent (printed only; schtasks cannot express restart/battery/multi-instance settings):"
@@ -126,7 +127,7 @@ if ($existing) {
 }
 Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger $trigger `
     -Settings $settings -Principal $principal `
-    -Description "Raphael supervisor — logon bring-up + health watchdog (supervisor/main.py)" `
+    -Description "Raphael supervisor -- logon bring-up + health watchdog (supervisor/main.py)" `
     -Force | Out-Null
 
 $verify = Get-ScheduledTask -TaskName $TaskName

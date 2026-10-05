@@ -1,11 +1,11 @@
 <#
 .SYNOPSIS
-  Raphael — read-only environment verification (supervisor side).
+  Raphael -- read-only environment verification (supervisor side).
 
 .DESCRIPTION
   Checks python, supervisor entry point, config, wsl.exe, the Task Scheduler
   task, the Startup-folder fallback and the token FILE PATH (never reads or
-  prints the token value). Touches nothing — safe to run any time.
+  prints the token value). Touches nothing -- safe to run any time.
 
   Exit codes: 0 = all PASS/WARN, 1 = at least one FAIL.
 
@@ -28,8 +28,8 @@ function Bump([string]$status) {
     else { $script:pass++ }
 }
 
-$repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
-Write-Host "Raphael supervisor verify — repo=$repoRoot"
+$repoRoot = Split-Path -Parent $PSScriptRoot
+Write-Host "Raphael supervisor verify -- repo=$repoRoot"
 
 # python
 $py = Get-Command python.exe -ErrorAction SilentlyContinue
@@ -38,7 +38,7 @@ if ($py) {
     Row "PASS" "python.exe" "$($py.Source) ($($ver.Trim()))"
     Bump "PASS"
 } else {
-    Row "FAIL" "python.exe" "not on PATH — install Python 3.10+ (BLOCKED: nothing auto-installed)"
+    Row "FAIL" "python.exe" "not on PATH -- install Python 3.10+ (BLOCKED: nothing auto-installed)"
     Bump "FAIL"
 }
 
@@ -55,7 +55,7 @@ $cfg = Join-Path $repoRoot "config.yaml"
 if (Test-Path $cfg) {
     Row "PASS" "config.yaml" $cfg; Bump "PASS"
 } else {
-    Row "WARN" "config.yaml" "absent — supervisor falls back to built-in defaults"; Bump "WARN"
+    Row "WARN" "config.yaml" "absent -- supervisor falls back to built-in defaults"; Bump "WARN"
 }
 
 # scripts present
@@ -73,7 +73,7 @@ $wsl = Get-Command wsl.exe -ErrorAction SilentlyContinue
 if ($wsl) {
     Row "PASS" "wsl.exe" $wsl.Source; Bump "PASS"
 } else {
-    Row "FAIL" "wsl.exe" "not on PATH — WSL bring-up cannot run"; Bump "FAIL"
+    Row "FAIL" "wsl.exe" "not on PATH -- WSL bring-up cannot run"; Bump "FAIL"
 }
 
 # scheduled task
@@ -82,7 +82,7 @@ if ($task) {
     Row "PASS" "task '$TaskName'" "State=$($task.State) Trigger=$($task.Triggers[0].CimClass.CimClassName)"
     Bump "PASS"
 } else {
-    Row "WARN" "task '$TaskName'" "not registered yet — run scripts\setup.ps1 (orchestrator/user registers)"; Bump "WARN"
+    Row "WARN" "task '$TaskName'" "not registered yet -- run scripts\setup.ps1 (orchestrator/user registers)"; Bump "WARN"
 }
 
 # startup fallback
@@ -92,16 +92,16 @@ $hasCmd = Test-Path (Join-Path $startupDir "Raphael Supervisor.cmd")
 if ($hasLnk -or $hasCmd) {
     Row "PASS" "startup entry" "$startupDir (lnk=$hasLnk cmd=$hasCmd)"; Bump "PASS"
 } else {
-    Row "WARN" "startup entry" "absent (optional fallback — scripts\setup-startup.ps1)"; Bump "WARN"
+    Row "WARN" "startup entry" "absent (optional fallback -- scripts\setup-startup.ps1)"; Bump "WARN"
 }
 
-# token FILE PATH only — content is never read or printed
+# token FILE PATH only -- content is never read or printed
 if ($env:APPDATA) {
     $tok = Join-Path (Join-Path $env:APPDATA "Raphael") "token"
     if (Test-Path $tok) {
         Row "PASS" "token file (path)" "$tok exists (value not read)"; Bump "PASS"
     } else {
-        Row "WARN" "token file (path)" "$tok missing — run scripts/token-gen.sh in WSL"; Bump "WARN"
+        Row "WARN" "token file (path)" "$tok missing -- run scripts/token-gen.sh in WSL"; Bump "WARN"
     }
 } else {
     Row "WARN" "token file (path)" "%APPDATA% unset"; Bump "WARN"
