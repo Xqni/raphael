@@ -243,3 +243,9 @@ See docs/PAID_USAGE.md. Running total: $0.00 of $2.00.
 - CLOCK: model legitimately has no clock -> now (a) 9 fastpath clock/date intents (instant, deterministic: "It's 2:46 PM on Monday, October 5, 2026" verified live) + (b) current local date/time injected into the router SYSTEM context for free-form phrasings.
 - SNEAKY pre-existing bug found by the unit: wake transcripts are punctuation-normalized but the status intent keyword had an apostrophe ("what's running" never matched voice) -> added apostrophe-less variants.
 - KNOWN (next polish): fish TTS gen = 13.4s/phrase (10.4 tok/s, GPU 1.95GB) -> ask-to-audio ≈15-20s. Acceleration options: fish --compile/torch.compile, speed_factor, or pre-buffer design. Time-check answers feel this most.
+
+## 2026-10-05 ~15:1x — USER-ORDERED TEMPORARY SHUTDOWN (RAM for Premiere Pro)
+- Cause: user edits video in Premiere (RAM-hungry) on16GB until the ordered32GB stick arrives (~Oct 21-Nov 2).
+- Actions: Disable-ScheduledTask 'Raphael' (verified State=Disabled), pythonw x0, WSL side killed (orb electron, brain uvicorn, fish TTS, wsl-relay helper, keepalive) + ollama (user request; noted: chat replies + comics vision-QC depend on it — revived on restart). SURVIVORS untouched: opencode serve (this session!), WSL VM, system services.
+- RAM: free2.9 -> 3.3GB+ visible (vmmem3.5 -> 3.1); remaining ~2.5GB locked in vmmem can only be freed by wsl --shutdown (would end this session — offered, not done).
+- Docs/TODO.md §0 = the shutdown record + exact revival commands. Re-enable ONLY on user confirmation post-RAM-swap.

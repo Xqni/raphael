@@ -2,6 +2,14 @@
 
 Priority order after Phase 3 completes. Do not let these silently vanish.
 
+## 0. ⏸️ RAPHAEL TEMPORARILY SHUT DOWN (user, 2026-10-05 evening) — RAM for Premiere Pro video editing
+- Task "Raphael" is **Disabled** (not deleted), all her processes killed (supervisor/body/orb/brain/fish/relay/keepalive + ollama per user). Free RAM ~2.9 -> ~3.3+ GB; WSL kept alive ONLY for OpenCode (this session) + the comics vision stack needs ollama again later.
+- DO NOT re-enable before the user confirms the RAM upgrade is installed.
+- REVIVAL (one command set, I run it when user says go):
+    Enable-ScheduledTask -TaskName 'Raphael'; Start-ScheduledTask -TaskName 'Raphael'
+    (ollama auto-restarts at its next boot OR: Start-Process ollama; fish TTS pre-warms at brain startup automatically; body/orb/brain relaunch via the task.)
+- After RAM install: also bump .wslconfig memory10GB ->12GB.
+
 ## 1. Boot auto-start (logon registration) — DONE 2026-10-05 (user: "move ahead")
 - Token generated (file-only; WSL+Windows hash-verified; token-gen.sh fixed: value now travels via STDIN — WSL->Win32 interop passes NO arbitrary env vars).
 - Task "Raphael" REGISTERED (AtLogOn, State=Ready, restart-on-failure 1m x10, battery-safe, no 72h kill).
