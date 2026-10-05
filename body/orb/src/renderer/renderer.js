@@ -387,7 +387,10 @@ function getStateTint(s) {
 
 function animate(now) {
   requestAnimationFrame(animate);
-  if (DEMO && !manualState) {
+  if (DEMO && !manualState && window.__orbDemoTimeline === true) {
+    // Auto-timeline is OPT-IN now (default off): the natural boot story owns
+    // the opening — starting plays the generation sequence, eases into idle.
+    // Scripts can enable the old showcase via window.__orbDemoTimeline = true.
     runDemo(now);
   }
   const t = clock.getElapsedTime();
@@ -539,6 +542,17 @@ if (window.raphael && window.raphael.onGlide) {
 }
 
 window.addEventListener('load', initScene);
+
+// NATURAL BOOT STORY (user request): the orb starts in 'starting', plays the
+// full staged generation (outer cage -> inner cage -> sun grows -> finishing
+// spin, sagecore genT), then eases into idle BY ITSELF — no external state
+// changes. S.starting === S.idle values, so the hand-off is pop-free.
+setTimeout(() => {
+  if (orbState.orbState === 'starting') {
+    orbState.orbState = 'idle';
+    updateSubtitle('idle');
+  }
+}, 5400); // after the finishing spin window (ends at genT 4600ms)
 
 if (window.raphael) {
   window.raphael.onOrbState((s) => {
