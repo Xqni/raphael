@@ -80,8 +80,32 @@ ipcMain.on('orb-visual-state', (_e, s) => {
 // gentle settle (user: the quad ease "felt like it stopped without easing").
 function easeInOut2(x) { const t = Math.min(Math.max(x, 0), 1); return t * t * t * (t * (t * 6 - 15) + 10); }
 
+// --- PINNED DOCK (user): top-right of the second monitor; falls back to the
+// laptop/primary top-right when the second monitor disconnects (display
+// events re-dock). Roam stays available via config orb.roam: true.
+function dockTarget(w, h) {
+  // Prefer the RIGHTMOST display: that's the user's second monitor (the
+  // historically accepted top-right spot at ~x3536); when it disconnects the
+  // laptop becomes rightmost -> automatic fallback to laptop top-right.
+  const displays = screen.getAllDisplays().slice().sort((a, b) => a.bounds.x - b.bounds.x);
+  const target = displays[displays.length - 1];
+  const m = 24;
+  return {
+    x: Math.round(target.bounds.x + target.bounds.width - w - m),
+    y: Math.round(target.bounds.y + m),
+  };
+}
+function dockTopRight() {
+  if (!win || win.isDestroyed()) return;
+  const b = win.getBounds();
+  const t = dockTarget(b.width, b.height);
+  lastProgMoveAt = Date.now();
+  win.setPosition(t.x, t.y);
+  savePosition(t.x, t.y);
+}
+
 function scheduleRoam(delayMs) {
-  if (!config || config.roam === false) return;
+  if (!config || config.roam === false) return; // pinned mode: no roam cycle
   clearTimeout(roamTimer);
   const d = (delayMs !== undefined)
     ? delayMs
@@ -219,7 +243,7 @@ function glideTo(from, to, ctrl, durMs, lagPx) {
       }
       scheduleRoam();
     }
-  }, 16); // 60 Hz — smooth steps instead of 33ms chops
+  }, 8); // 120Hz updates — smoother glide (host samples finer steps)
 }
 
 function noteExternalMove() {
@@ -235,7 +259,7 @@ function noteExternalMove() {
 }
 
 function createWindow() {
-  const pos = loadPosition();
+  const pos = config.roam === true ? loadPosition() : dockTarget(config.sizePx, config.sizePx);
   win = new BrowserWindow({
     x: pos.x,
     y: pos.y,
@@ -271,6 +295,9 @@ function createWindow() {
   if (typeof win.setVisibleOnAllWorkspaces === 'function') {
     win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
   }
+  // Fully click-through: the orb never eats input (user: no clicks at all;
+  // dropdown UI removed — tests drive state via window.__orbDemo instead).
+  win.setIgnoreMouseEvents(true);
   // WSLg: Electron's alwaysOnTop never reaches the host HWND — apply the
   // PowerToys mechanism (HWND_TOPMOST via scripts/topmost.ps1) on the Windows
   // side, re-asserted periodically. No-op on native Windows (alwaysOnTop works).
@@ -294,8 +321,12 @@ function createWindow() {
     });
     reassertTopmost = assertTopmost;
   }
-  // Start the roam cycle (first hop a few seconds after launch; config roam:false disables).
-  if (config.roam !== false) scheduleRoam(5000);
+  // PINNED DOCK (user): start docked top-right; re-dock when monitors change
+  // (second monitor preferred, laptop/primary fallback). Roam = opt-in only.
+  setTimeout(dockTopRight, 700);
+  screen.on('display-added', () => setTimeout(dockTopRight, 800));
+  screen.on('display-removed', () => setTimeout(dockTopRight, 800));
+  if (config.roam === true) scheduleRoam(5000);
   // Screenshots are taken externally via DevTools Page.captureScreenshot
   // (see docs/ORB_REBUILD_TASK.md appendix) — never auto-capture or auto-close
   // the app itself; `npm run orb:demo` must stay interactive.

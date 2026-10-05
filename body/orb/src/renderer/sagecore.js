@@ -9,7 +9,7 @@ import { nebulaVert, nebulaFrag } from './shaders/nebula.glsl.js';
 import {
   speedVert, speedFrag, polyVert, polyFrag,
   nodeVert, nodeFrag, ringVert, ringFrag,
-  sparkVert, sparkFrag,
+  sparkVert, sparkFrag, bandFrag,
 } from './shaders/sage.glsl.js';
 
 const TAU = 400; // blend time constant (ms) — inside the spec's 300-600ms window
@@ -17,17 +17,17 @@ const TAU = 400; // blend time constant (ms) — inside the spec's 300-600ms win
 // Per-state visual targets for the Sage layers.
 // nebula, speed(lines), poly, node, ring, spark, spin(rad/ms-ish), bright(core)
 const S = {
-  idle:            { nebula: 0.55, speed: 0.85, poly: 1.00, node: 1.00, ring: 0.75, spark: 0.70, spin: 0.00013, bright: 1.00 },
-  listening:       { nebula: 0.80, speed: 1.35, poly: 1.10, node: 1.60, ring: 1.20, spark: 1.00, spin: 0.00017, bright: 1.45 },
-  thinking:        { nebula: 0.65, speed: 1.00, poly: 1.60, node: 1.80, ring: 0.95, spark: 1.20, spin: 0.00040, bright: 1.15 },
-  acting:          { nebula: 0.50, speed: 1.05, poly: 1.25, node: 1.35, ring: 0.90, spark: 0.80, spin: 0.00014, bright: 1.10 },
-  speaking:        { nebula: 0.60, speed: 1.20, poly: 1.00, node: 1.20, ring: 1.00, spark: 0.90, spin: 0.00016, bright: 1.05 },
-  confirm:         { nebula: 0.40, speed: 0.75, poly: 0.95, node: 1.10, ring: 0.70, spark: 0.50, spin: 0.00013, bright: 1.15 },
-  error:           { nebula: 0.35, speed: 0.50, poly: 0.80, node: 0.80, ring: 0.50, spark: 0.30, spin: 0.00012, bright: 1.45 },
-  starting:        { nebula: 0.55, speed: 0.85, poly: 1.00, node: 1.00, ring: 0.75, spark: 0.70, spin: 0.00013, bright: 1.00 },
-  reconnecting:    { nebula: 0.30, speed: 0.50, poly: 0.70, node: 0.80, ring: 0.50, spark: 0.35, spin: 0.00008, bright: 0.75 },
-  offline:         { nebula: 0.12, speed: 0.00, poly: 0.40, node: 0.40, ring: 0.20, spark: 0.10, spin: 0.000006, bright: 0.45 },
-  private_overlay: { nebula: 0.50, speed: 0.85, poly: 1.00, node: 1.00, ring: 0.75, spark: 0.60, spin: 0.00013, bright: 1.00 },
+  idle:            { nebula: 0.55, speed: 0.85, poly: 1.00, node: 1.00, ring: 0.75, spark: 0.70, spin: 0.00013, bright: 1.00, bands: 0.85, sBand: 0.00 },
+  listening:       { nebula: 0.80, speed: 1.35, poly: 1.10, node: 1.60, ring: 1.20, spark: 1.00, spin: 0.00017, bright: 1.45, bands: 0.95, sBand: 0.00 },
+  thinking:        { nebula: 0.65, speed: 1.00, poly: 1.60, node: 1.80, ring: 0.95, spark: 1.20, spin: 0.00040, bright: 1.15, bands: 0.90, sBand: 0.00 },
+  acting:          { nebula: 0.50, speed: 1.05, poly: 1.25, node: 1.35, ring: 0.90, spark: 0.80, spin: 0.00014, bright: 1.10, bands: 0.90, sBand: 0.15 },
+  speaking:        { nebula: 0.60, speed: 1.20, poly: 1.00, node: 1.20, ring: 1.00, spark: 0.90, spin: 0.00016, bright: 1.05, bands: 1.00, sBand: 1.00 },
+  confirm:         { nebula: 0.40, speed: 0.75, poly: 0.95, node: 1.10, ring: 0.70, spark: 0.50, spin: 0.00013, bright: 1.15, bands: 0.70, sBand: 0.00 },
+  error:           { nebula: 0.35, speed: 0.50, poly: 0.80, node: 0.80, ring: 0.50, spark: 0.30, spin: 0.00012, bright: 1.45, bands: 0.60, sBand: 0.00 },
+  starting:        { nebula: 0.55, speed: 0.85, poly: 1.00, node: 1.00, ring: 0.75, spark: 0.70, spin: 0.00013, bright: 1.00, bands: 0.70, sBand: 0.00 },
+  reconnecting:    { nebula: 0.30, speed: 0.50, poly: 0.70, node: 0.80, ring: 0.50, spark: 0.35, spin: 0.00008, bright: 0.75, bands: 0.50, sBand: 0.00 },
+  offline:         { nebula: 0.12, speed: 0.00, poly: 0.40, node: 0.40, ring: 0.20, spark: 0.10, spin: 0.000006, bright: 0.45, bands: 0.15, sBand: 0.00 },
+  private_overlay: { nebula: 0.50, speed: 0.85, poly: 1.00, node: 1.00, ring: 0.75, spark: 0.60, spin: 0.00013, bright: 1.00, bands: 0.85, sBand: 0.00 },
 };
 const KEYS = Object.keys(S.idle);
 const FALLBACK = S.idle;
@@ -269,6 +269,47 @@ export function initSageCore(THREE, group, scene) {
   L.ringBackMat = ringBackMat;
   L.ringFrontMat = ringFrontMat;
 
+  // --- Thick white revolving BANDS (user ref: bands of thick white rings
+  // covering the sun and revolving around it). Each band = ring mesh on a
+  // pivot group; the pivot's Y-spin makes the tilted ring precess around the
+  // sun (visible revolution). Inner band's projection crosses the sun's face.
+  // Plus one extra-thick band that only blooms in while SPEAKING.
+  const mkBand = (r0, r1, tx, ty, op) => {
+    // gaussian glow-band: geometry spans band + glow margin; the shader's
+    // soft shoulders give the white outer glow (user: bands glow like the sun)
+    const halfW = (r1 - r0) * 0.5;
+    const G = halfW * 1.6 + 0.03;
+    const mat = new THREE.ShaderMaterial({
+      vertexShader: ringVert,
+      fragmentShader: bandFrag,
+      uniforms: {
+        uR0: { value: r0 },
+        uR1: { value: r1 },
+        uAlpha: { value: op },
+        uTint: { value: new THREE.Color(0xffffff) },
+      },
+      side: THREE.DoubleSide,
+      transparent: true,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+    });
+    const geo = new THREE.RingGeometry(Math.max(0.06, r0 - G), r1 + G, 96);
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.rotation.set(tx, ty, 0);
+    const pivot = new THREE.Group();
+    pivot.add(mesh);
+    group.add(pivot);
+    return { pivot, mesh, mat, baseOp: op };
+  };
+  L.bands = [
+    mkBand(0.72, 0.90, 1.15, 0.0, 0.68),  // crosses the sun's face (steep tilt)
+    mkBand(1.02, 1.16, 0.35, 0.25, 0.55),
+    mkBand(1.22, 1.34, 0.15, -0.10, 0.46), // pulled in: projection never reaches the window edge
+  ];
+  L.bandDirs = [0.00055, -0.00038, 0.00026]; // precession speeds (rad/ms), mixed dirs
+  L.speakBand = mkBand(0.60, 0.82, 1.25, 0.0, 0.0); // extra thick — speaking only
+  L.speakBandDir = -0.00075;
+
   // Private Mode: thin teal outer ring (spec §3) — only lit in private_overlay
   L.privateMat = new THREE.ShaderMaterial({
     vertexShader: ringVert, fragmentShader: ringFrag,
@@ -415,6 +456,21 @@ export function updateSageCore(L, ctx) {
   L.ringFront.scale.setScalar(ringScale);
   L.ringBack.rotation.z += 0.0004 * dt * L.dir.ringB;
   L.ringFront.rotation.z += 0.0003 * dt * L.dir.ringF;
+  // Thick white bands: precession around the sun (pivot Y-spin) + damped
+  // state weights (bands always on, sBand blooms only while speaking).
+  if (L.bands) {
+    for (let i = 0; i < L.bands.length; i++) {
+      const B = L.bands[i];
+      B.pivot.rotation.y += L.bandDirs[i] * dt;
+      B.mat.uniforms.uAlpha.value = B.baseOp * w.bands;
+      B.pivot.position.set(-gx * 1.3, -gy * 1.3, 0); // glide lag like rings
+    }
+  }
+  if (L.speakBand) {
+    L.speakBand.pivot.rotation.y += L.speakBandDir * dt;
+    L.speakBand.mat.uniforms.uAlpha.value = w.sBand * 0.9 * (1 + L.ampS * 0.35); // speech pulse
+    L.speakBand.pivot.position.set(-gx * 1.3, -gy * 1.3, 0);
+  }
   // Private teal ring fades in only for private_overlay
   L.privateW = damp(L.privateW, state === 'private_overlay' ? 1 : 0, TAU, dt);
   L.privateMat.uniforms.uTime.value = t;

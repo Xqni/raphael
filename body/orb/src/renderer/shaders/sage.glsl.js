@@ -141,3 +141,28 @@ export const sparkVert = `
     gl_PointSize = uSize * (3.0 / max(-mv.z, 0.1));
   }
 `;
+
+// Thick white REVOLVING BAND (user ref): SOLID crisp white ring body (like
+// the sun's solid ball) + a separate corona-style glow falling off outward —
+// NOT fogged (user: no gaussian mush). Pairs with ringVert's vPos.
+export const bandFrag = `
+  precision mediump float;
+  varying vec2 vPos;
+  uniform float uR0;
+  uniform float uR1;
+  uniform float uAlpha;
+  uniform vec3 uTint;
+  void main() {
+    float d = length(vPos);
+    // solid ring body: near-hard edges (0.005 feather = AA only)
+    float body = smoothstep(uR0 - 0.005, uR0 + 0.005, d)
+               * (1.0 - smoothstep(uR1 - 0.005, uR1 + 0.005, d));
+    // corona glow: bright at the band edge, exponential falloff OUTWARD
+    // (and a matching inner halo) — the sun's glow, but for the ring
+    float db = max(0.0, max(uR0 - d, d - uR1));
+    float sg = max((uR1 - uR0) * 0.55, 0.02);
+    float glow = exp(-db / sg) * 0.5;
+    float a = clamp(body + glow * (1.0 - body), 0.0, 1.0) * uAlpha;
+    gl_FragColor = vec4(uTint * a, a); // premultiplied, additive
+  }
+`;

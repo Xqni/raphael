@@ -70,7 +70,7 @@ orb:
   quality: auto                        # auto|low|medium|high — auto tiers (rebuild spec §5)
   backing_disc_alpha: 0.25             # soft legibility disc alpha; 0 disables (spec §4)
   reduced_motion: false                # accessibility: damp/limit motion (spec §6)
-  roam: true                           # autonomous gentle movement across the current monitor
+  roam: false                          # PINNED mode (user): dock top-right instead of roaming; roam = explicit opt-in
   rest_motion: revolve                   # at rest = slow spin/revolve + breathing
   speak_pulse: [amplitude, pitch]        # pulsate per word/pitch during TTS
   morph_duration_ms: 600
