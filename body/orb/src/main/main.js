@@ -76,7 +76,9 @@ ipcMain.on('orb-visual-state', (_e, s) => {
   if (typeof s === 'string') lastVisualState = s;
 });
 
-function easeInOut2(x) { return x < 0.5 ? 2 * x * x : 1 - Math.pow(-2 * x + 2, 2) / 2; }
+// Quintic smootherstep: zero velocity at BOTH ends — soft launch AND a long
+// gentle settle (user: the quad ease "felt like it stopped without easing").
+function easeInOut2(x) { const t = Math.min(Math.max(x, 0), 1); return t * t * t * (t * (t * 6 - 15) + 10); }
 
 function scheduleRoam(delayMs) {
   if (!config || config.roam === false) return;
@@ -154,8 +156,9 @@ function glideTo(from, to, ctrl, durMs, lagPx) {
   if (roamAnim) clearInterval(roamAnim);
   roamAnim = setInterval(() => {
     // mid-glide: the WSLg host can be recreated while crossing displays
-    // (shadow returns) — re-assert the region/topmost every ~700ms in-flight
-    if (reassertTopmost && ++assertTick >= 44) { assertTick = 0; reassertTopmost(); }
+    // (shadow returns) — re-assert every ~290ms in-flight (was 700ms = the
+    // user-visible ~1s shadow window between moves)
+    if (reassertTopmost && ++assertTick >= 18) { assertTick = 0; reassertTopmost(); }
     const p = Math.min(1, (Date.now() - t0) / durMs);
     const e = easeInOut2(p);
     const inv = 1 - e;
@@ -209,9 +212,10 @@ function glideTo(from, to, ctrl, durMs, lagPx) {
       // and the shadow briefly returns) — re-assert immediately AND a few
       // times after landing to catch delayed host recreation.
       if (reassertTopmost) {
-        setTimeout(reassertTopmost, 300);
-        setTimeout(reassertTopmost, 1500);
-        setTimeout(reassertTopmost, 4000);
+        setTimeout(reassertTopmost, 150);
+        setTimeout(reassertTopmost, 700);
+        setTimeout(reassertTopmost, 2000);
+        setTimeout(reassertTopmost, 5000);
       }
       scheduleRoam();
     }
