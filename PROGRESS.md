@@ -184,3 +184,9 @@ See docs/PAID_USAGE.md. Running total: $0.00 of $2.00.
 - MEDIUM fixed: wsl-relay binds the WSL NAT IP (hostname -I) instead of 0.0.0.0 (fallback kept); both relay legs got a 64-connection semaphore.
 - LOW fixed: brain recycle now uses /tmp/raphael-brain.pid + /proc cmdline verification (broad `pkill -f` could match dev shells — it HAD matched mine earlier today); control-frame requeue capped at 3 tries.
 - tests 10/10 re-run green after all changes; control E2E re-run green (3 frames).
+
+## 2026-10-05 09:4x — WAVE-2 E2E CORE PASSED + relay root-cause killed
+- Full chain green: supervisor process-mode spawns brain (healthy in ~6s vs 90s unit-poll), two-stage relay 401/200 from Windows, UI ws round-trip (auth_ok->ping->orb_state), control frames accepted+persisted by REAL brain (private/paused -> orb_state private_overlay; restored via REST /control JSON -> idle/normal), voice 20/20 + brain 30/30 tests (both re-run by orchestrator).
+- WATCHDOG PROVEN twice: pidfile (written by uvicorn lifespan — shell-echo had drifted a process layer) kill -> "recycling via pidfile + respawn" -> healthy in ~25s. Supervisor kill = pidfile first, argv0-verified pgrep fallback (broad pkill could hit dev shells).
+- RELAY ROOT CAUSE (body's all-day "no close frame" chaos): create_connection(timeout=5) leaves a5s RECV timeout on the relayed socket -> teardown after ~5s of silence (server pings are10s apart). Fixed with settimeout(None) on BOTH legs. Verified: helper leg + full Windows chain now SURVIVE 25s (was dropping at6-9s). Helper now binds the NAT IP (security patch live).
+- Voice phase 1 committed (fish server on :8777, whisper 464MB + fish 1.4GB downloaded overnight). Open: assets/raphael_reference.wav (user-provided), ws mic-lane wiring (brain-dev), act_req/act_res seam.

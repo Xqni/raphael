@@ -896,6 +896,9 @@ def start_brain_relay(cfg, log, listen_port=8765, backend_port=8766):
                 break
             try:
                 backend = socket.create_connection((ip, backend_port), timeout=5)
+                backend.settimeout(None)  # connect timeout must NOT stick (see
+                # scripts/wsl-relay.py header comment — it killed WS streams
+                # after ~5s of silence between server pings)
                 break
             except OSError:
                 state["ip"] = None  # distro restarted -> IP changed, rediscover

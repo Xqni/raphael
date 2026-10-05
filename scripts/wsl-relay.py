@@ -47,6 +47,11 @@ def pipe(src, dst):
 def handle(client):
     try:
         backend = socket.create_connection(("127.0.0.1", DIAL_PORT), timeout=5)
+        # CRITICAL: the connect timeout PERSISTS as the socket's recv timeout
+        # — a relayed WS stream is silent for ~10s between server pings, so
+        # recv() would time out and tear the connection down ("no close frame
+        # received or sent" drops at ~5-9s). Reset to blocking after connect.
+        backend.settimeout(None)
     except OSError:
         try:
             client.close()
