@@ -1,6 +1,16 @@
 const path = require('path');
 const fs = require('fs');
 const { app, BrowserWindow, Tray, Menu, ipcMain, nativeImage, screen } = require('electron');
+
+// Capture ANY uncaught main-process error to a file (so errors from launches
+// outside the orchestrator's logs are still diagnosable).
+process.on('uncaughtException', (err) => {
+  try {
+    const line = new Date().toISOString() + ' ' + (err && err.stack ? err.stack : String(err)) + '\n';
+    fs.appendFileSync(path.join(app.getPath('userData'), 'main-errors.log'), line);
+  } catch (e) { /* logging must never throw */ }
+  console.error('UNCAUGHT_MAIN', err);
+});
 const Config = require('./config');
 const StatusWS = require('./ws-status');
 
@@ -54,6 +64,7 @@ const ROAM = {
   userHoldMs: 30000,  // pause after manual drag
 };
 const ROAM_CALM = new Set(['idle', 'listening', 'thinking']);
+let reassertTopmost = null; // assigned in createWindow (WSL host re-assert)
 let roamTimer = null;
 let roamAnim = null;
 let roaming = false;
@@ -97,18 +108,20 @@ function startRoam() {
   }
   const b = win.getBounds();
   const corners = displayCorners(b.width, b.height);
+  if (!corners.length) { scheduleRoam(); return; }
   const distOf = (p) => Math.hypot(p.x - b.x, p.y - b.y);
   const pool = corners.filter((p) => distOf(p) >= 400);
-  const target = (pool.length ? pool : corners)[Math.floor(Math.random() * (pool.length || corners.length))];
+  const target = (pool.length ? pool : corners)[Math.floor(Math.random() * (pool.length ? pool.length : corners.length))];
+  if (!target) { scheduleRoam(); return; }
   const dist = distOf(target);
-  if (!target || dist < ROAM.minDistance) { scheduleRoam(); return; }
+  if (dist < ROAM.minDistance) { scheduleRoam(); return; }
 
   // Distance physics (user spec): short = SLOW glide; long = faster + MORE
   // motion blur and particle lag. d01 in 0..1 over 3000px.
   const d01 = Math.min(1, dist / 3000);
   const speed = 75 + d01 * 85;                       // 75..160 px/s
   const dur = Math.min(7000, Math.max(1000, (dist / speed) * 1000));
-  const lagPx = 6 + d01 * 18;                        // max lag 6..24px
+  const lagPx = 10 + d01 * 30;                       // max lag 10..40px (motion blur bump)
 
   // orbital ARC: quadratic bezier bowed perpendicular to the chord (solar feel)
   const mx = (b.x + target.x) / 2;
@@ -123,8 +136,20 @@ function startRoam() {
 }
 
 function glideTo(from, to, ctrl, durMs, lagPx) {
+  // Finite-argument validation: Electron's setPosition throws
+  // "TypeError: error processing argument at index 1, conversion failure"
+  // when handed NaN (seen on cross-display hops where bounds go transiently
+  // degenerate). Bad frames are skipped; persistent badness aborts cleanly.
+  const bad = (v) => !Number.isFinite(v);
+  if (bad(from.x) || bad(from.y) || bad(to.x) || bad(to.y) ||
+      bad(ctrl.x) || bad(ctrl.y) || bad(durMs) || bad(lagPx)) {
+    console.error('GLIDE_ABORT non-finite input', JSON.stringify({ from, to, ctrl, durMs, lagPx }));
+    scheduleRoam();
+    return;
+  }
   roaming = true;
   const t0 = Date.now();
+  let badFrames = 0;
   if (roamAnim) clearInterval(roamAnim);
   roamAnim = setInterval(() => {
     const p = Math.min(1, (Date.now() - t0) / durMs);
@@ -132,6 +157,19 @@ function glideTo(from, to, ctrl, durMs, lagPx) {
     const inv = 1 - e;
     const x = inv * inv * from.x + 2 * inv * e * ctrl.x + e * e * to.x;
     const y = inv * inv * from.y + 2 * inv * e * ctrl.y + e * e * to.y;
+    if (bad(x) || bad(y)) {
+      badFrames++;
+      if (badFrames > 5) { // persistently broken: stop instead of spamming errors
+        console.error('GLIDE_ABORT non-finite frame', JSON.stringify({ x, y, p, e }));
+        clearInterval(roamAnim);
+        roamAnim = null;
+        roaming = false;
+        if (win && !win.isDestroyed() && win.webContents) win.webContents.send('orb-glide', { on: false });
+        scheduleRoam();
+      }
+      return;
+    }
+    badFrames = 0;
     // velocity direction (bezier derivative) for the renderer's lag/blur
     let vx = 2 * inv * (ctrl.x - from.x) + 2 * e * (to.x - ctrl.x);
     let vy = 2 * inv * (ctrl.y - from.y) + 2 * e * (to.y - ctrl.y);
@@ -139,16 +177,19 @@ function glideTo(from, to, ctrl, durMs, lagPx) {
     vx /= vl; vy /= vl;
     const bell = Math.sin(Math.PI * e); // intensity eases in AND out
     lastProgMoveAt = Date.now();
-    win.setPosition(Math.round(x), Math.round(y));
-    if (win.webContents) {
+    if (win && !win.isDestroyed()) win.setPosition(Math.round(x), Math.round(y));
+    if (win && !win.isDestroyed() && win.webContents) {
       win.webContents.send('orb-glide', { on: true, vx, vy, px: lagPx * bell });
     }
     if (p >= 1) {
       clearInterval(roamAnim);
       roamAnim = null;
       roaming = false;
-      if (win.webContents) win.webContents.send('orb-glide', { on: false });
+      if (win && !win.isDestroyed() && win.webContents) win.webContents.send('orb-glide', { on: false });
       savePosition(to.x, to.y);
+      // cross-display hops recreate the WSLg host window (region/topmost drop
+      // and the shadow briefly returns) — re-assert immediately on landing.
+      if (reassertTopmost) setTimeout(reassertTopmost, 300);
       scheduleRoam();
     }
   }, 16); // 60 Hz — smooth steps instead of 33ms chops
@@ -218,8 +259,9 @@ function createWindow() {
     };
     win.webContents.once('did-finish-load', () => {
       setTimeout(assertTopmost, 800);
-      setInterval(assertTopmost, 30000);
+      setInterval(assertTopmost, 10000); // cross-display hops recreate the host (shadow/region drop)
     });
+    reassertTopmost = assertTopmost;
   }
   // Start the roam cycle (first hop a few seconds after launch; config roam:false disables).
   if (config.roam !== false) scheduleRoam(5000);

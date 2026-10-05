@@ -371,7 +371,7 @@ export function updateSageCore(L, ctx) {
   // 3) speed lines — listening: rays lengthen (ripple handled by shimmer)
   L.speedMat.uniforms.uTime.value = t;
   L.speedMat.uniforms.uAlpha.value = w.speed;
-  L.speedMat.uniforms.uLength.value = 1 + listening * L.ampS * 0.55 + gb * 0.9; // rays stretch while gliding (motion streak)
+  L.speedMat.uniforms.uLength.value = 1 + listening * L.ampS * 0.55 + gb * 1.4; // rays stretch harder while gliding (blur bump)
 
   // 4) polyhedron + nodes — slow spin, edge pulses; listening: nodes brighten
   L.polyMat.uniforms.uTime.value = t;

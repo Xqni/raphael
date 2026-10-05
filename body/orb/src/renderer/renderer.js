@@ -368,7 +368,7 @@ function animate(now) {
   GLX = damp(GLX, glideTX, gFast, dt);
   GLY = damp(GLY, glideTY, gFast, dt);
   GLB = damp(GLB, glideTB, gFast, dt);
-  core.scale.setScalar(ballScale * (1 + GLB * 0.35)); // blur: bloom swells while gliding
+  core.scale.setScalar(ballScale * (1 + GLB * 0.5));  // blur bump: bloom swells harder while gliding
   core.position.set(-GLX * 0.85, -GLY * 0.85, 0);     // the sun LEADS; everything else trails
   halo.scale.setScalar(breath * (1 + speakAmp * 0.15));
   halo.material.opacity = 0.25 * layerWeights.haloOpacity;
