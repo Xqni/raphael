@@ -26,8 +26,15 @@ from pywinauto import Application, mouse, keyboard
 _input_lock = threading.Lock()
 
 async def acquire_input_lock(timeout: float = 5.0) -> bool:
+    # threading.Lock.acquire wants (blocking, timeout:int) — passing the float
+    # timeout POSITIONALLY landed in `blocking` and blew up with
+    # "'float' object cannot be interpreted as an integer" (found by e2e_phase3).
+    if timeout <= 0:
+        return _input_lock.acquire(blocking=False)
+    import math
+    secs = int(math.ceil(timeout))
     loop = asyncio.get_running_loop()
-    return await loop.run_in_executor(None, _input_lock.acquire, timeout)
+    return await loop.run_in_executor(None, _input_lock.acquire, True, secs)
 
 def release_input_lock():
     if _input_lock.locked():

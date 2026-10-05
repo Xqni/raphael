@@ -26,6 +26,10 @@ Priority order after Phase 3 completes. Do not let these silently vanish.
 - Optional one-liner (elevated PowerShell), then set `paths.brain_relay: false` in config.yaml and restart the Raphael task:
   Set-NetFirewallHyperVVMSetting -Name '{40E0AC32-46A5-438A-A0B2-2B479E8F2E90}' -DefaultInboundAction Allow
 
+## 3c. Supervisor: _ExternalBody staleness (found live 2026-10-05)
+- After a single-instance rc=0 handoff procs['body'] becomes _ExternalBody whose poll() hardcodes None — if that external body later DIES the supervisor never notices (observed: old body crashed on binary TTS, no respawn until a task restart).
+- Fix direction: periodic re-verify of external bodies, or treat externals as unmanaged-with-notice.
+
 ## 4. Minor known items
 - NOACTIVATE exstyle bit doesn't stick (msrdc rewrites it) — cosmetic, TOOLWINDOW covers the ask.
 - ✅ `docs/ORB_REBUILD_TASK.md` §8 checklist TICKED 2026-10-05 during the screenshot matrix pass (sanctioned by this item; evidence note added under §8).

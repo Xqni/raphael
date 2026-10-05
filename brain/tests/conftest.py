@@ -1,3 +1,9 @@
+import os
+
+# starlette TestClient cannot decode binary frames (UTF-8) — opt tests
+# OUT of binary TTS; production keeps it ON (see brain/loop.py).
+os.environ.setdefault("RAPHAEL_DISABLE_BINARY_TTS", "1")
+
 """Shared test isolation: point the memory DB at a TEMP file and disable the
 router so tests never touch brain/memory/memory.db or the network.
 (RAPHAEL_TOKEN_PATH stays a per-module fixture — see tests/test_health.py.)

@@ -34,7 +34,8 @@
 ## Wave-2 core: PASSED 2026-10-05 09:40 (evidence in PROGRESS)
 - brain tests 30/30 + voice 20/20 (orchestrator re-runs), process-mode healthy ~6s, watchdog x2, relay 401/200, UI+body ws round-trips, control frames persisted+restored, relay5s-timeout bug killed (25s survival both legs), body stable.
 
-## Phase-3 verification (when brain-dev + body-dev notifications arrive)
+## Phase-3 verification: PASSED 2026-10-05 (e2e_wave2.py rc=0; see PROGRESS)
+- §17 all suites green (30/20/10 + e2e_phase3), §18 speak+binary live (15 chunks BE-verified), §19 act live (real body screenshot -> b64), §20 body respawn path exercised via task restarts. Remaining: §21 wake report + docs-writer.
 17. Re-run: brain tests (30+new), voice tests (20), tests/ suite (10).
 18. Mic lane E2E: body PTT simulation → audio_start + kind=1 binary (seq BE) → brain transcribe (monkeypatched or real whisper) → loop command → speak frames to ui session.
 19. Act E2E: GUI job → act_req → body → act_res → job_event done; plus no-body-session → job fails with clean error event.

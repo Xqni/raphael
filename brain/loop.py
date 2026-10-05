@@ -20,9 +20,20 @@ from . import fastpath, llm, tools as tool_reg
 from .jobs import store
 from .jobs.engine import JobEngine, get_engine
 from .mode import get_mode
+from .ws import get_hub
+from brain.voice import (get_voice, transcribe, speak, speak_frame,
+                         speak_payload, encode_binary_frame,
+                         stt_final_frame, error_frame, VoiceSTTError,
+                         WakeGate)
 
 # deterministic intents must be registered before any job runs (no LLM)
 fastpath.register_builtin_intents()
+
+# Binary TTS to the body is PRODUCTION DEFAULT ON. The only reason to turn it
+# off is starlette's TestClient (UTF-8 decode of binary frames) — tests set
+# RAPHAEL_DISABLE_BINARY_TTS=1; never ship a build with it hardcoded off.
+import os as _os
+_NO_BINARY_TTS = _os.environ.get('RAPHAEL_DISABLE_BINARY_TTS') == '1'
 
 _TOOL_CALL_RE = re.compile(r'\{[^{}]*"tool"[^{}]*\}', re.S)
 
@@ -50,6 +61,7 @@ def build_runner(hub=None):
         jid = job['job']
         text = (job.get('text') or job.get('task') or '').strip()
         engine = get_engine()
+        voice = get_voice()
 
         def emit(status, stage=None, progress=None, t=None, tool=None,
                  error_code=None):
@@ -60,7 +72,41 @@ def build_runner(hub=None):
         def narrate(t: str, state: Optional[str] = None):
             if hub is None:
                 return
-            hub.narrate(jid, t, state=state)
+            
+            # Integration: Use Voice Stack for narration
+            # Sync broadcast for subtitles so they hit the wire before the job 'done' event
+            hub.broadcast({'type': 'subtitle', 'v': 1, 'job': jid,
+                            'text': str(t)[:200], 'fade_ms': 4000}, roles={'ui', 'cli'})
+            
+            # Spoken narration is still async as it's a stream
+            asyncio.create_task(_async_narrate_voice(jid, t, state))
+
+        async def _async_narrate_voice(job_id, text, state):
+            # Spoken narration to Body
+            cancel = voice.interrupts.register(job_id)
+            try:
+                async for ev in voice.speak(text, job=job_id, cancel=cancel):
+                    # PROTOCOL §4: speak = body-only (ui cannot receive it;
+                    # §8's "renderer pulses from amplitude" contradicts §4 —
+                    # escalated to protocol-architect; do not force ui here).
+                    hub.broadcast(speak_frame(ev), roles={'body'})
+                    if ev['event'] == 'chunk' and not _NO_BINARY_TTS:
+                        # binary kind=2 audio -> body (default ON; tests opt OUT
+                        # via RAPHAEL_DISABLE_BINARY_TTS=1 in brain/tests/conftest
+                        # because starlette TestClient decodes frames as UTF-8).
+                        payload = speak_payload(ev)
+                        frame = encode_binary_frame(2, ev['seq'], payload)
+                        hub.broadcast_binary(frame, roles={'body'})
+                    if ev.get('notice'):
+                        hub.broadcast({'type':'subtitle','v':1,'job':job_id,
+                                       'text': ev['notice'], 'fade_ms':6000}, roles={'ui', 'cli'})
+            except Exception as e:
+                print(f"Narration error for {job_id}: {e}")
+            finally:
+                voice.interrupts.done(job_id)
+            
+            if state:
+                hub.refresh_orb_state()
 
         try:
             # ---- 1. confirm gate (BEFORE any tool dispatch, per-job) -------
@@ -132,13 +178,20 @@ def build_runner(hub=None):
                     emit('failed', stage='done', progress=1.0,
                          t='Provider unavailable', error_code=llm_res.code)
                     return
-                narrate(llm_res.text)
                 tool_name, tool_args = _extract_tool_call(llm_res.text)
-                store.transition(rowid, 'done', stage='done', progress=1.0,
-                                 result=llm_res.text)
-                emit('done', stage='done', progress=1.0,
-                     t=(llm_res.text or 'Task complete')[:160])
-                return
+                if tool_name:
+                    # The plan asked for a tool — FALL THROUGH to section 4
+                    # (the old code marked the job done here and threw the
+                    # extracted call away, making tools unreachable from LLM
+                    # plans). Section 4 narrates the tool's own summary.
+                    narrate('On it.')
+                else:
+                    narrate(llm_res.text)
+                    store.transition(rowid, 'done', stage='done', progress=1.0,
+                                     result=llm_res.text)
+                    emit('done', stage='done', progress=1.0,
+                         t=(llm_res.text or 'Task complete')[:160])
+                    return
 
             # ---- 4. tools (input-lock arbitration handled in engine) -------
             fn = tool_reg.get(tool_name) if tool_name else None
@@ -158,8 +211,34 @@ def build_runner(hub=None):
             emit('running', stage='tool', progress=0.6,
                  t=f'Running {tool_name}', tool=tool_name)
             try:
-                out = await asyncio.to_thread(lambda: fn(**tool_args))
-            except Exception as e:  # noqa: BLE001 — job failure, not loop failure
+                # Integration: Act Pipeline (PROTOCOL §7)
+                # If the tool is GUI-class (requires body), send act_req instead of local exec
+                if meta.get('category') == 'gui':
+                    # send act_req to body session
+                    body_sess = hub.get_body_session()
+                    if body_sess is None:
+                        raise RuntimeError("No body session connected")
+                    
+                    # act_req shape per PROTOCOL §7 (hub.broadcast is SYNC
+                    # — awaiting it raised "NoneType can't be used in await"
+                    # and killed every act job in the live E2E).
+                    # Register the waiter BEFORE sending — bodies answer in
+                    # milliseconds (register-after-send loses the race), and
+                    # hub.broadcast is SYNC (awaiting it = "NoneType" crash).
+                    fut = engine.expect_act(jid)
+                    hub.broadcast({
+                        'type': 'act_req', 'v': 1, 'job': jid,
+                        'action': tool_name, 'args': tool_args,
+                        'lock': needs_lock, 'timeout_ms': 30000
+                    }, roles={'body'})
+                    res = await engine.await_act_res(fut, jid, timeout=30.0)
+                    if not res['ok']:
+                        raise RuntimeError(f"Body action failed: {res.get('error')}")
+                    out = res.get('result')
+                else:
+                    # Local execution (WSL side)
+                    out = await asyncio.to_thread(lambda: fn(**tool_args))
+            except Exception as e:  # noqa: BLE001 - job failure, not loop failure
                 store.transition(rowid, 'failed', stage='done', progress=1.0,
                                  error_code='E_INTERNAL', result=str(e)[:300])
                 emit('failed', stage='done', progress=1.0,

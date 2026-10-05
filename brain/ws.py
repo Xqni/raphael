@@ -224,16 +224,10 @@ class WsHub:
 
     # ---- narration (loop.py entry point) -----------------------------------
     def narrate(self, job: str, text: str, state: Optional[str] = None):
-        """narrate = push events to role=ui (subtitle + orb_state); speak goes
-        to role=body only (PROTOCOL §4 capability table)."""
+        """Legacy narrate: only used if loop.py isn't handling speak.
+        Now loop.py calls voice.speak directly via _async_narrate."""
         self.broadcast({'type': 'subtitle', 'v': 1, 'job': job,
                         'text': str(text)[:200], 'fade_ms': 4000})
-        self.broadcast({'type': 'speak', 'v': 1, 'job': job, 'seq': 0,
-                        'event': 'start', 'sample_rate': 24000,
-                        'text': str(text), 'cached': False}, roles={'body'})
-        self.broadcast({'type': 'speak', 'v': 1, 'job': job, 'seq': 0,
-                        'event': 'end', 'sample_rate': 24000, 'cached': False},
-                       roles={'body'})
         if state:
             self.refresh_orb_state()
 
@@ -262,6 +256,47 @@ class WsHub:
         if mode.private:
             frame['private'] = True
         self.broadcast(frame, roles={'ui'})
+
+    def get_body_session(self) -> Optional[Session]:
+        """Returns the first authenticated session with role=body."""
+        for s in self._sessions.values():
+            if s.authed and s.role == 'body':
+                return s
+        return None
+
+    async def _send_binary(self, s: Session, data: bytes):
+        try:
+            await s.ws.send_bytes(data)
+        except Exception:  # noqa: BLE001
+            pass
+
+    def send_binary(self, s: Session, data: bytes):
+        """Schedules a binary send to a specific session (sync-safe)."""
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            return
+        loop.create_task(self._send_binary(s, data))
+
+    def broadcast_binary(self, data: bytes, roles: Optional[Set[str]] = None,
+                         exclude_sid: Optional[str] = None):
+        """Fan out binary data to authed sessions (sync-safe)."""
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            return
+        
+        async def _run():
+            for sess in list(self._sessions.values()):
+                if not sess.authed:
+                    continue
+                if exclude_sid and sess.sid == exclude_sid:
+                    continue
+                if roles and sess.role not in roles:
+                    continue
+                await self._send_binary(sess, data)
+        
+        loop.create_task(_run())
 
     # ---- dispatch ----------------------------------------------------------
     async def _handle_text(self, s: Session, raw: str):
@@ -505,19 +540,80 @@ class WsHub:
         await self._send(s, {'type': 'ack', 'v': 1, 'kind': msg.get('kind')})
 
     async def _on_act_res(self, s: Session, msg: Dict[str, Any]):
-        # PROTOCOL §5: late act_res from a cancelled session → logged + ignored
-        rowid = store.parse_job_ref(msg.get('job'))
+        """Body -> Brain: act_req result (PROTOCOL §7).
+
+        Was DUPLICATED (a second def shadowed the delivering one — class-body
+        later-def-wins — every act_res got journaled-and-ignored and the loop
+        timed out with E_ACT_TIMEOUT in the live E2E). Single merged handler:
+        deliver to the waiting job FIRST, journal with a delivered flag, ack.
+        """
+        ref = msg.get('job')
+        if not isinstance(ref, str) or not ref:
+            await self._send(s, {'type': 'error', 'v': 1, 'code': 'E_BAD_MSG',
+                                 'detail': 'act_res.job required'})
+            return
+        res = {'ok': bool(msg.get('ok')),
+               'result': msg.get('result'),
+               'error': msg.get('error')}
+        delivered = False
+        if self.engine is not None:
+            delivered = self.engine.deliver_act_res(ref, res)
+        rowid = store.parse_job_ref(ref)
         if rowid is not None:
-            store._log_event(rowid, {'event': 'act_res', 'ok': msg.get('ok'),
+            store._log_event(rowid, {'event': 'act_res',
+                                     'delivered': delivered,
+                                     'ok': msg.get('ok'),
                                      'result': str(msg.get('result'))[:200] if msg.get('result') is not None else None,
                                      'error': msg.get('error')})
-        await self._send(s, {'type': 'ack', 'v': 1, 'job': msg.get('job')})
+        await self._send(s, {'type': 'ack', 'v': 1, 'job': ref})
 
     async def _on_audio_start(self, s: Session, msg: Dict[str, Any]):
-        # mic lane (voice-dev): binary frames follow; accepted + counted only
+        # mic lane (voice-dev): binary frames follow
+        reason = msg.get('reason') if msg.get('reason') in ('ptt', 'wake') else 'wake'
+        s.audio_reason = reason
+        
+        # Barge-in check: if Raphael is speaking, interrupt immediately
+        from brain.voice import get_voice
+        voice = get_voice()
+        if voice.interrupts.any_active():
+            voice.interrupts.interrupt()
+            
+        # Clear buffer for new utterance
+        s.audio_buf = bytearray()
+        
         await self._send(s, {'type': 'ack', 'v': 1, 'audio': 'start'})
 
     async def _on_audio_end(self, s: Session, msg: Dict[str, Any]):
+        if not hasattr(s, 'audio_buf') or not s.audio_buf:
+            await self._send(s, {'type': 'ack', 'v': 1, 'audio': 'end'})
+            return
+            
+        buf = bytes(s.audio_buf)
+        s.audio_buf = bytearray()
+        reason = getattr(s, 'audio_reason', 'wake')
+        
+        from brain.voice import get_voice, stt_final_frame, error_frame, VoiceSTTError
+        voice = get_voice()
+        
+        try:
+            # ARCHITECTURE §4: no blocking calls on the loop
+            res = await asyncio.to_thread(voice.transcribe_result, buf)
+            
+            # 1. Broadcast transcript to Body and UI
+            self.broadcast(stt_final_frame(res.text, res.lang, res.rtf), roles={'body', 'ui'})
+            
+            # 2. WakeGate handling
+            match = voice.wake.gate(res.text, reason=reason)
+            if match.kind != 'none':
+                # submit transcript with wake word stripped
+                if self.engine is not None:
+                    await self.engine.submit(text=match.command, priority='user_facing', source='voice', session=s.sid)
+                    
+        except VoiceSTTError as e:
+            self.broadcast(error_frame(e.code, e.detail), roles={'body', 'ui'})
+        except Exception as e:
+            self.broadcast(error_frame('E_INTERNAL', str(e)), roles={'body', 'ui'})
+            
         await self._send(s, {'type': 'ack', 'v': 1, 'audio': 'end'})
 
 

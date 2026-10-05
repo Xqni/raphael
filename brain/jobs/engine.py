@@ -29,6 +29,10 @@ class JobEngine:
         # restart, test portals), so the queue is (re)created per loop.
         self._queue: Optional["asyncio.PriorityQueue"] = None
         self._queue_loop: Optional[asyncio.AbstractEventLoop] = None
+        # act pipeline (PROTOCOL §7): loop registers a waiter before sending
+        # act_req, hub delivers the body's act_res into it (register-BEFORE-
+        # send avoids the reply race — bodies answer in milliseconds).
+        self._act_waiters: Dict[str, "asyncio.Future"] = {}
         self._tasks: Dict[int, asyncio.Task] = {}
         self._workers: List[asyncio.Task] = []
         self._submit_seq = 0
@@ -76,6 +80,31 @@ class JobEngine:
     def paused(self) -> bool:
         return self._pause_event is not None and not self._pause_event.is_set()
 
+    # ---- act pipeline (PROTOCOL §7) -----------------------------------
+    def expect_act(self, ref: str) -> "asyncio.Future":
+        """Register interest in an act_res for `ref` (job id string)."""
+        fut = asyncio.get_running_loop().create_future()
+        self._act_waiters[str(ref)] = fut
+        return fut
+
+    async def await_act_res(self, fut, ref: str, timeout: float = 30.0):
+        """Wait for the body's act_res; timeout -> structured failure."""
+        try:
+            return await asyncio.wait_for(fut, timeout)
+        except asyncio.TimeoutError:
+            return {'ok': False, 'error': 'E_ACT_TIMEOUT'}
+        except asyncio.CancelledError:
+            raise
+        finally:
+            self._act_waiters.pop(str(ref), None)
+
+    def deliver_act_res(self, ref: str, res: Dict[str, Any]) -> bool:
+        fut = self._act_waiters.get(str(ref))
+        if fut is None or fut.done():
+            return False  # late or unknown (timeout already fired — §5 policy)
+        fut.set_result(res)
+        return True
+
     async def shutdown(self):
         self._running = False
         # cancel workers first (they clean up their current job task on the
@@ -89,6 +118,10 @@ class JobEngine:
             await asyncio.gather(*pending, return_exceptions=True)
         self._tasks.clear()
         self._workers.clear()
+        for fut in list(self._act_waiters.values()):
+            if not fut.done():
+                fut.cancel()
+        self._act_waiters.clear()
         self.lock.force_release()
         # graceful stop: nothing is left non-terminal — queued/running
         # leftovers journal as `cancelled` (next start would call them

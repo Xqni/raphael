@@ -93,6 +93,24 @@ def register_builtin_intents():
         ctx.mode.set('private_off')
         return IntentResult(text='Private mode off.')
 
+    def _open(text, ctx):
+        arg = text[5:].strip()  # after 'open '
+        if not arg:
+            return None
+        if ' ' not in arg and '.' in arg:
+            url = arg if '://' in arg else 'https://' + arg
+            return IntentResult(text=f'Opening {arg}…',
+                                tool='launch_url', tool_args={'url': url})
+        return IntentResult(text=f'Opening {arg}…',
+                            tool='open_app', tool_args={'name': arg})
+
+    def _screenshot(text, ctx):
+        return IntentResult(text='Taking a screenshot…', tool='screenshot',
+                            tool_args={'max_px': 1280})
+
+    register_intent('open ', _open)
+    register_intent('screenshot', _screenshot)
+    register_intent('take a screenshot', _screenshot)
     register_intent("what's running", _status)
     register_intent('whats running', _status)
     register_intent('status', _status)
