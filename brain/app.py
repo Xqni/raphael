@@ -159,4 +159,4 @@ async def control(body: ControlIn, auth: bool = Depends(token_auth)) -> Dict[str
 async def status(auth: bool = Depends(token_auth)) -> Dict[str, Any]:
     engine = get_engine()
     return {'ok': True, 'server_v': SERVER_V, 'mode': get_mode().label(),
-            **engine.stats()}
+            'sessions': get_hub().session_counts(), **engine.stats()}

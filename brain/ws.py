@@ -208,6 +208,15 @@ class WsHub:
         except Exception:  # noqa: BLE001
             pass
 
+    def session_counts(self) -> Dict[str, int]:
+        """Authed sessions per role (surfaced on GET /status — observability
+        gap found while verifying who was actually connected)."""
+        counts: Dict[str, int] = {}
+        for s in self._sessions.values():
+            if s.authed and s.role:
+                counts[s.role] = counts.get(s.role, 0) + 1
+        return counts
+
     def broadcast(self, frame: Dict[str, Any], roles: Optional[Set[str]] = None,
                   exclude_sid: Optional[str] = None):
         """Fan out a control frame to authed sessions (sync-safe: schedules a task)."""

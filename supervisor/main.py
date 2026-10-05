@@ -703,7 +703,11 @@ def launch_orb(cfg, log):
         log.warn("orb_dir %s is not a WSL UNC path — cannot launch the orb "
                  "inside WSL; skipping" % orb_dir)
         return None
+    # RAPHAEL_ORB_TOKEN: the orb refuses to connect without it (config.js
+    # token=null -> silent offline ALL DAY in production). The $(cat ...) is
+    # expanded INSIDE the inner shell — the token never appears in any argv.
     inner = wsl_argv(cfg, "sh", "-lc",
+                     "export RAPHAEL_ORB_TOKEN=$(cat ~/.raphael/token 2>/dev/null); "
                      "cd %s && exec %s" % (shlex.quote(wsl_dir), wsl_cmd))
     return _spawn(inner, orb_dir, log, "orb", LOG_DIR / "orb.log")
 

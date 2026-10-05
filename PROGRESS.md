@@ -215,3 +215,8 @@ See docs/PAID_USAGE.md. Running total: $0.00 of $2.00.
 - fish server: TTSEngine auto-spawns on demand (_start_once -> _spawn) → boot-resilient ✓.
 - TODO §3c FIXED + synthetic-tested: external-body liveness now verified via the body's lock-file PID (dead/alive/no-lock all correct).
 - Router stub confirmed (core.py:297 fake text) → TODO §3d; voice leftovers → §3e.
+
+## 2026-10-05 12:3x — LAST GAP CLOSED: orb was WS-dark all day (no token env)
+- /status session observability added (get_hub().session_counts) -> revealed {'body':1} only: THE ORB HAD NEVER CONNECTED IN PRODUCTION. Root cause: config.js token = RAPHAEL_ORB_TOKEN env only and launch_orb passed no env; ws-status.connect() with token=null sets offline and RETURNS WITHOUT SILENTLY RETRYING (no error lines anywhere — invisible all day).
+- Fix: supervisor launch_orb exports RAPHAEL_ORB_TOKEN=$(cat ~/.raphael/token) INSIDE the inner shell (never in argv), restart -> **SESSIONS {'body':1,'ui':1}** — orb+body both authed, mode normal.
+- Final state: ALL sessions connected (orb amplitude pulse per the §4/§8 amendment is now actually reachable), tabs=0, suites green, fish auto-spawn confirmed, tree clean. User's later test = PTT with every link in the chain live.
