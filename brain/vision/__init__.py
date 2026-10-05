@@ -1,0 +1,1 @@
+# Vision tool namespace – actual implementation delegated to body/vision module
