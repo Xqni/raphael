@@ -86,10 +86,11 @@ def build_runner(hub=None):
             cancel = voice.interrupts.register(job_id)
             try:
                 async for ev in voice.speak(text, job=job_id, cancel=cancel):
-                    # PROTOCOL §4: speak = body-only (ui cannot receive it;
-                    # §8's "renderer pulses from amplitude" contradicts §4 —
-                    # escalated to protocol-architect; do not force ui here).
-                    hub.broadcast(speak_frame(ev), roles={'body'})
+                    # PROTOCOL §4 as AMENDED 2026-10-05 (protocol-architect,
+                    # Option A): speak JSON -> body AND ui (amplitude drives
+                    # the orb's speaking pulse per §8); binary audio stays
+                    # body-only (below).
+                    hub.broadcast(speak_frame(ev), roles={'body', 'ui'})
                     if ev['event'] == 'chunk' and not _NO_BINARY_TTS:
                         # binary kind=2 audio -> body (default ON; tests opt OUT
                         # via RAPHAEL_DISABLE_BINARY_TTS=1 in brain/tests/conftest

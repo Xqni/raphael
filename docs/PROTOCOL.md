@@ -53,7 +53,7 @@ Every JSON frame: `{"type": str, "v": 1, ...fields}`. Optional correlation: `"jo
 | `ack` | all | `job`, `text_id?` | request accepted (used for instant cached ack) |
 | `job_event` | all | see §5 | job lifecycle/progress |
 | `act_req` | body | `job`, `action`, `args`, `lock: bool`, `timeout_ms` | perform a Body action (§7). `lock:true` requires holding the input lock. |
-| `speak` | body | `job`, `seq`, `event: start\|chunk\|end`, `sample_rate: 24000`, `text?`, `amplitude?` (0–1 per chunk), `cached: bool` | TTS stream for playback; `chunk` payloads are binary frames (§6) |
+| `speak` | body, ui | `job`, `seq`, `event: start\|chunk\|end`, `sample_rate: 24000`, `text?`, `amplitude?` (0–1 per chunk), `cached: bool` | TTS stream for playback; `chunk` payloads are binary frames (§6) |
 | `stt_final` | body, ui | `job?`, `text`, `lang`, `rtf` | final transcript of an utterance |
 | `orb_state` | ui | `state`, `jobs_active`, `mode: normal\|private\|paused`, `subtitle?`, `provider?`, `model?` | authoritative orb display state (§8) |
 | `subtitle` | ui | `job?`, `text`, `fade_ms` | fading subtitle/status line |
@@ -67,7 +67,8 @@ Every JSON frame: `{"type": str, "v": 1, ...fields}`. Optional correlation: `"jo
 |---|---|---|---|
 | send `command` | ✓ | ✓ | ✓ |
 | receive `act_req` (act on PC) | **✓ only** | ✗ | ✗ |
-| receive `speak` (play audio) | **✓ only** | ✗ | ✗ |
+| receive `speak` JSON | ✓ | ✓ | ✗ |
+| receive `speak` binary audio | **✓ only** | ✗ | ✗ |
 | receive `stt_final` / `orb_state` / `subtitle` | ✓ | **✓** | ✓ |
 | `orb_input`, `confirm_resp`, `control` | `confirm_resp`,`control` | ✓ | **✓ all** |
 | mic `audio_start/end` | **✓ only** | ✗ | ✗ |
