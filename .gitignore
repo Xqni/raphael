@@ -30,3 +30,7 @@ run/
 # OS
 .DS_Store
 Thumbs.db
+
+# Router runtime artifacts
+usage.jsonl
+benchmark_ranking.json

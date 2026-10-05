@@ -57,6 +57,21 @@ The "Jarvis-style" phrasing in the original brief is superseded: Raphael's perso
 - **Devotion without emotion:** shown through perfect recall (memory/self-written skills) and proactive protection (kill switch, failsafes, warnings) — never through small talk.
 - Implemented in: Brain LLM system prompt, TTS canned phrase set, AND fast-path acks (so non-LLM commands still sound like Raphael).
 
+## 12. Laya = System 1 decision engine (user directive 2026-10-05: "make decisions faster / more options")
+
+Source: `github.com/NandhaKishorM/laya` (Apache-2.0) — open local replacement for Jev; typed decisions (`choice`/`score`/`noul`) in one forward pass with calibrated confidence + abstention. Research + full benchmark: `.opencode/research/laya-decision-engine.md`; skill: `.opencode/skills/laya/SKILL.md`.
+
+**Measured on this machine (2026-10-05, English checkpoint, 4-question schema):**
+- GPU RTX 4060 (torch 2.14.0+cu126): singles **44.7 ms** mean, batch **21 ms/utt**; VRAM torch 1.7 GB / peak 2.5 GB; first-load warmup 10.5 s → preload at Brain boot.
+- CPU fp32: ~935 ms singles / 815 ms/utt batched → **CPU = fallback only**.
+- INT8 ONNX banned for confidence-bearing use (upstream-measured accuracy drift); fp32 ONNX ≈ 1.1× CPU.
+- torch pinned **+cu126** — driver is CUDA 12.7; cu130 wheels fail cuda init.
+
+**Positioning — phased:**
+- **Phase 1 (now, zero-shot): ADVISORY only.** Feeds `task_kind`→orb `shape_hint`, urgency scoring, fast-path pre-check *hints*. Misfires are real (zero-shot: destructive `delete` scored confirm 0.09; research/timer → `out_of_scope`; checkpoint ships invalid temperatures ⇒ confidence uncalibrated). Wrong answer must be cosmetic — authoritative path still decides.
+- **Phase 2 (after fine-tune on Raphael labels + `laya` recalibration): may gate.** Voice-confirm parsing, `act_req` confirm probability with `min_confidence` abstention = fail-closed → ask user, needs-llm routing. Fine-tune via upstream Kaggle notebook (free GPU) on traffic-derived labels.
+- **Tier order:** `fastpath.py` rules → Laya (advisory→gating) → LLM System 2 chain. Runs in `brain/.venv` (shared torch with voice phase). GPU residency vs Ollama + fish-speech on the 8 GB card = brain-dev scheduling concern (config `device: cpu` fallback exists but loses the latency win).
+
 ## 11. Orb = 3D morphing orb from user's reference art (user directive, 2026-10-05)
 References: `C:\Users\jxesu\OneDrive\Desktop\Raphael Orb` (6 Tensura visuals, copied to `assets/orb-reference/*.jpg`, originals untouched). Art brief extracted via vision subagent → `assets/orb-reference/DESCRIPTIONS.md`.
 - **3D orb** (Three.js/WebGL in the Electron renderer), based on/referenced by that art — original rendering only, no official assets copied.

@@ -1,0 +1,18 @@
+{
+  "name": "raphael-orb",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Raphael desktop orb (Electron + Three.js) — UI role client",
+  "main": "src/main/main.js",
+  "scripts": {
+    "start": "electron .",
+    "start:demo": "electron . --demo",
+    "lint": "echo 'lint not configured'",
+    "test:sm": "node tests/state-machine.test.js"
+  },
+  "dependencies": {
+    "electron": "30.5.1",
+    "three": "0.170.0"
+  },
+  "devDependencies": {}
+}
