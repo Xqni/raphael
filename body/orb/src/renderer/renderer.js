@@ -2,9 +2,10 @@ import * as THREE from 'three';
 import { vertexShader, sphereVert } from './shaders/vertex.glsl.js';
 import { fragmentShader, glowShader } from './shaders/fragment.glsl.js';
 import { initSageCore, updateSageCore } from './sagecore.js';
+import { initAnswerMode, updateAnswerMode } from './answermode.js';
 
 // Configuration injected via preload
-const cfg = window.orbConfig || { sizePx:180, opacity:0.95, fpsCap:60, quality:'auto', backingDiscAlpha:0.0, reducedMotion:false };
+const cfg = window.orbConfig || { sizePx:280, contentPx:200, opacity:0.95, fpsCap:60, quality:'auto', backingDiscAlpha:0.0, reducedMotion:false };
 let sizePx = cfg.sizePx;
 let fpsCap = cfg.fpsCap;
 let quality = cfg.quality;
@@ -88,6 +89,7 @@ let layerWeights = { coreScale:1, haloOpacity:0.25, latticeOpacity:0.35 };
 // Scene
 let renderer, scene, camera, clock;
 let group, core, lattice, halo, rings = [], rays, starsMesh, sage, glowGhosts = [];
+let AM = null; // Answer Mode (gold magic-circle) module handle
 let edgeRT = null, maskScene = null, maskCam = null, maskMat = null;
 
 // Geometry targets for morph
@@ -166,17 +168,22 @@ function initScene() {
   maskScene = new THREE.Scene();
   maskCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
   maskMat = new THREE.ShaderMaterial({
-    uniforms: { tScene: { value: edgeRT.texture } },
+    uniforms: { tScene: { value: edgeRT.texture }, uCA: { value: 0 } },
     vertexShader: 'varying vec2 vUv; void main() { vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }',
     fragmentShader: [
       'precision mediump float;',
       'varying vec2 vUv;',
       'uniform sampler2D tScene;',
+      'uniform float uCA;',
       'void main() {',
       '  vec4 c = texture2D(tScene, vUv);',
-      '  float m = smoothstep(0.0, 0.08, vUv.x) * smoothstep(1.0, 0.92, vUv.x)',
-      '          * smoothstep(0.0, 0.08, vUv.y) * smoothstep(1.0, 0.92, vUv.y);',
-      '  gl_FragColor = vec4(c.rgb * m, c.a * m);', // premultiplied out
+      // chromatic aberration at the outer edge while Answer Mode is active
+      '  vec2 rc = vUv - 0.5;',
+      '  vec2 off = rc * 0.010 * uCA * smoothstep(0.35, 0.75, length(rc));',
+      '  vec3 col = vec3(texture2D(tScene, vUv + off).r, c.g, texture2D(tScene, vUv - off).b);',
+      '  float m = smoothstep(0.0, 0.06, vUv.x) * smoothstep(1.0, 0.94, vUv.x)',
+      '          * smoothstep(0.0, 0.06, vUv.y) * smoothstep(1.0, 0.94, vUv.y);',
+      '  gl_FragColor = vec4(col * m, c.a * m);', // premultiplied out
       '}',
     ].join('\n'),
     depthTest: false,
@@ -193,7 +200,12 @@ function initScene() {
 
   scene = new THREE.Scene();
   camera = new THREE.PerspectiveCamera(45, 1, 0.1, 100);
-  camera.position.z = 4;
+  // Box vs content decoupled (user): window = size_px (280), Raphael renders
+  // at content_px (200) by zooming OUT — structured content then sits deep
+  // inside the edge-safe zone; rays can never touch the mask (cut-proof).
+  const contentPx = cfg.contentPx || 200;
+  const halfW = 1.5 * (sizePx / contentPx); // structured max world radius ~1.5
+  camera.position.z = halfW / Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
 
   clock = new THREE.Clock();
 
@@ -290,6 +302,7 @@ if (backingDiscAlpha > 0) {
   scene.add(starsMesh);
 
   sage = initSageCore(THREE, group, scene); // Sage Core layers (spec §2.1)
+  AM = initAnswerMode(THREE, group);        // Answer Mode gold look (spec §2.2)
   // User review fix: hide Phase-1 gold leftovers (halo/gold rings/orange ray
   // ring read as "a big flat golden 2D circle"). Sage Core supplies the glow
   // (core) + the white tilted orbit ring; later phases re-show what they need.
@@ -381,7 +394,7 @@ function getStateTint(s) {
   if (s === 'private_overlay' || orbState.private || orbState.mode === 'private') return 0x9aa5b1;
   if (s === 'reconnecting' || s === 'offline') return 0x58c4f2; // starting stays idle-white (user: copy idle base)
   if (s === 'acting') return 0xffd700;
-  if (s === 'speaking') return 0xfff9d2;
+  if (s === 'speaking') return 0xffe9c0; // gold-white core (Answer Mode, spec §2.2)
   return 0xffffff;
 }
 
@@ -435,6 +448,8 @@ function animate(now) {
   halo.material.opacity = 0.25 * layerWeights.haloOpacity;
   lattice.material.opacity = 0.35 * layerWeights.latticeOpacity;
   updateSageCore(sage, { t, dt, state: orbState.orbState, amp: speakAmp, coreU: core.material.uniforms, ballScale, core, tint: getStateTint(orbState.orbState), glide: { x: GLX, y: GLY, blur: GLB } });
+  if (AM) updateAnswerMode(AM, { t, dt, state: orbState.orbState, amp: speakAmp, glide: { x: GLX, y: GLY } });
+  if (AM && maskMat) maskMat.uniforms.uCA.value = AM.wFull; // chromatic aberration at outer edge (Answer Mode)
   rays.rotation.z += 0.01;
   rings[0].rotation.z += 0.008;
   rings[1].rotation.z -= 0.006;

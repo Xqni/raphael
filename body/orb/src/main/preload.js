@@ -14,6 +14,7 @@ const Config = require('./config');
 const cfg = new Config();
 contextBridge.exposeInMainWorld('orbConfig', {
   sizePx: cfg.sizePx,
+  contentPx: cfg.content_px,
   opacity: cfg.opacity,
   fpsCap: cfg.fpsCap,
   quality: cfg.quality || 'auto',

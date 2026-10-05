@@ -143,7 +143,7 @@ export function initSageCore(THREE, group, scene) {
     const dx = Math.cos(th) * ringR;
     const dz = Math.sin(th) * ringR;
     const r0 = 0.54 + h01(i + 5) * 0.16;               // start just off the ball
-    const len = Math.min(0.30 + h01(i + 9) * 0.55, 1.45 - r0);
+    const len = Math.min(0.30 + h01(i + 9) * 0.55, 1.32 - r0); // tips inside mask-safe zone (user: rays cut)
     rp[i * 6 + 0] = dx * r0;      rp[i * 6 + 1] = dy * r0;      rp[i * 6 + 2] = dz * r0;
     rp[i * 6 + 3] = dx * (r0 + len); rp[i * 6 + 4] = dy * (r0 + len); rp[i * 6 + 5] = dz * (r0 + len);
     rs[i * 2] = rs[i * 2 + 1] = h01(i + 21);
@@ -277,7 +277,7 @@ export function initSageCore(THREE, group, scene) {
     side: THREE.DoubleSide, transparent: true, depthWrite: false,
     blending: THREE.AdditiveBlending,
   });
-  L.privateRing = new THREE.Mesh(new THREE.RingGeometry(1.4, 1.425, 96), L.privateMat);
+  L.privateRing = new THREE.Mesh(new THREE.RingGeometry(1.28, 1.305, 96), L.privateMat);
   L.privateRing.rotation.set(0.12, 0.06, 0);
   group.add(L.privateRing);
   L.privateW = 0;

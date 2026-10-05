@@ -24,6 +24,7 @@ class Config {
         const txt = fs.readFileSync(cfgPath, 'utf8');
         // minimal parse of orb: and server: if present
         this.sizePx = this.extractInt(txt, /size_px:\s*(\d+)/, this.sizePx);
+        this.content_px = this.extractInt(txt, /content_px:\s*(\d+)/, 200);
         this.opacity = this.extractFloat(txt, /opacity:\s*([0-9.]+)/, this.opacity);
         this.fpsCap = this.extractInt(txt, /fps_cap:\s*(\d+)/, this.fpsCap);
         this.quality = this.extractString(txt, /quality:\s*(auto|low|medium|high)/, 'auto');
