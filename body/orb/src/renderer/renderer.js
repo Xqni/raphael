@@ -327,7 +327,7 @@ function getStateTint(s) {
 
 function animate(now) {
   requestAnimationFrame(animate);
-  if (DEMO) {
+  if (DEMO && !manualState) {
     runDemo(now);
   }
   const t = clock.getElapsedTime();
@@ -408,6 +408,7 @@ function updateSubtitle(text) {
 }
 
 // --- Demo harness wiring (these elements exist only on demo.html) ---
+let manualState = false; // first manual selection disables the auto timeline
 const demoStateSel = document.getElementById('stateSelect');
 if (demoStateSel) {
   for (const key of Object.keys(STATE_LAYER_TARGETS)) {
@@ -417,10 +418,12 @@ if (demoStateSel) {
     demoStateSel.appendChild(opt);
   }
   demoStateSel.addEventListener('change', () => {
+    manualState = true; // USER owns the state now — runDemo must stop overriding it
     orbState.orbState = demoStateSel.value;
     updateSubtitle(demoStateSel.value);
   });
 }
+window.__orbDebug = { get state() { return orbState.orbState; } }; // LIVE render state (not the dropdown)
 const demoSizeSlider = document.getElementById('sizeSlider');
 if (demoSizeSlider) demoSizeSlider.addEventListener('input', (e) => { window.orbDemoSize = parseInt(e.target.value, 10); });
 const demoAmpSlider = document.getElementById('ampSlider');

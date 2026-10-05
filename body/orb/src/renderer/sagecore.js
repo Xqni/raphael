@@ -336,6 +336,11 @@ export function updateSageCore(L, ctx) {
   L.polyMat.uniforms.uTime.value = t;
   L.polyMat.uniforms.uAlpha.value = w.poly * 0.9;
   L.polyMat.uniforms.uPulse.value = w.poly;
+  // Outer cage follows the breathing to keep the gap ~constant (user), but is
+  // CAPPED so neither layer ever grows too big (max radius ~1.32 world units).
+  const outerS = Math.min(1.12, 1 + 0.45 * ((ctx.ballScale || 1) - 1));
+  L.poly.scale.setScalar(outerS);
+  if (L.nodes) L.nodes.scale.setScalar(outerS);
   L.poly.rotation.y += w.spin * dt * L.dir.polyY;
   L.poly.rotation.x += w.spin * dt * 0.5 * L.dir.polyX;
   if (L.cage) {
