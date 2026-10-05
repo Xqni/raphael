@@ -1,6 +1,6 @@
 # Raphael
 
-Raphael is a local-first, voice-operated AI desktop orchestrator. He lives as a **3D Electron Orb** on your Windows desktop, powered by a **Brain** in WSL2 and a **Body** on Windows.
+Raphael is a local-first, voice-operated AI desktop orchestrator. She lives as a **3D Electron Orb** on your Windows desktop, powered by a **Brain** in WSL2 and a **Body** on Windows.
 
 ## 🌌 System Overview
 
