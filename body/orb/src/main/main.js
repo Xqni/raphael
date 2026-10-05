@@ -436,9 +436,12 @@ function startStatusWS() {
 }
 
 app.whenReady().then(async () => {
-  // single-instance mutex
+  // single-instance mutex — ONLY ONE Raphael in the whole system (user rule):
+  // a second launch (manual npm run orb:demo, supervisor restart race, etc.)
+  // detects the held lock and quits immediately.
   const gotLock = app.requestSingleInstanceLock();
   if (!gotLock) {
+    console.log('SINGLE_INSTANCE: another Raphael orb is already running — this launch quits');
     app.quit();
     return;
   }
