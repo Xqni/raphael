@@ -85,3 +85,12 @@ See docs/PAID_USAGE.md. Running total: $0.00 of $2.00.
 9. Title set to "Raphael Orb" (capture tooling title filter), size slider range corrected to 160-600/320.
 
 **Final verification (real output):** FPS: 42 -> 40 live; 11 state options (first=idle); cfg sizePx=320 backing=0.25; __orbDemo.setState('speaking') + setBg('light') + setAmp(0.9) -> state=speaking, frames differ (md5 5f8709c8 vs 1fa27f10, 29980 vs 24658 bytes); ZERO uncaught console errors (ELECTRON_ENABLE_LOGGING=1). Screenshots: /tmp/orb-vA.png (dark/idle), /tmp/orb-vB.png (light/speaking). Tests: node tests/state-machine.test.js = All passed; ESM checks green on all renderer files.
+
+## 2026-10-05 03:5x — Orb Phase 2 (Sage Core) BUILT + 4 user review rounds (orchestrator-built after delegate stalls)
+**Why direct:** cloud delegate stalled 4x (refusal / 9-bug partial / mid-edit death / narrating-death at step budget). Orchestrator built Phase 2 directly; every edit verified first-try.
+
+**Built:** `sagecore.js` (nebula fbm haze, 30 data panes w/ canvas textures drawn once, radial speed lines, icosahedron polyhedron+node dots+spokes+edge pulses, split orbit rings, sparkle dust, per-state damped weight table + 30/150ms amp smoothing) + shaders (nebula/sage/fragment sphere+glow) + integration (STATE lattice hidden in sage states, premultiplied additive, unit fade).
+
+**User review rounds (all live-verified):** 1) removed Phase-1 gold leftovers ("flat golden circle") + soft radial-gradient backing disc + tamer speaking; 2) position file -> top-right of 2nd monitor (3504,16) + demo bg default transparent; 3) core = real SphereGeometry w/ normal-based anime shading + polyhedron cage at 0.56 scale + depth-tested glow billboard; 4) soft limb alpha dissolve + rim haze band; speed lines rebuilt on fibonacci sphere (rays in EVERY direction, depth-tested behind ball); randomized per-object spin directions on BOTH axes (nodes locked to lattice; group random y-dir + bounded x sway).
+**Always-on-top:** WSLg hosts windows via msrdc titled "Raphael Orb (Ubuntu-26.04)" — `scripts/topmost.ps1` (EnumWindows prefix match -> SetWindowPos HWND_TOPMOST + DWM NCRENDERING disable) verified `topmost=True`; main.js re-asserts every 30s (WSL-only). **User confirms: staying on top now works.**
+**Evidence:** ESM checks green ×6, state-machine tests All passed, FPS ~42, zero uncaught console errors (ELECTRON_ENABLE_LOGGING), screenshots /tmp/orb-fix-*.png /tmp/orb-v4.png (116KB), window xwininfo +3504+16.

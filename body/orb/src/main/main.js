@@ -70,6 +70,30 @@ function createWindow() {
   const opts = demoMode ? { query: { demo: '1' } } : {};
   const page = demoMode ? 'demo.html' : 'index.html';
   win.loadFile(path.join(__dirname, '..', 'renderer', page), opts);
+  // Sit ON TOP of every other app (user review). 'screen-saver' level is the
+  // strongest z-order; full effect on Windows native — WSLg may cap stacking.
+  win.setAlwaysOnTop(true, 'screen-saver');
+  if (typeof win.setVisibleOnAllWorkspaces === 'function') {
+    win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+  }
+  // WSLg: Electron's alwaysOnTop never reaches the host HWND — apply the
+  // PowerToys mechanism (HWND_TOPMOST via scripts/topmost.ps1) on the Windows
+  // side, re-asserted periodically. No-op on native Windows (alwaysOnTop works).
+  if (process.env.WSL_DISTRO_NAME) {
+    const { execFile } = require('child_process');
+    const wslRoot = path.join(__dirname, '..', '..', '..', '..');
+    const psWin = '\\\\wsl.localhost\\' + process.env.WSL_DISTRO_NAME +
+      wslRoot.replace(/\//g, '\\') + '\\scripts\\topmost.ps1';
+    const assertTopmost = () => {
+      execFile('powershell.exe',
+        ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', psWin],
+        { windowsHide: true }, () => {});
+    };
+    win.webContents.once('did-finish-load', () => {
+      setTimeout(assertTopmost, 800);
+      setInterval(assertTopmost, 30000);
+    });
+  }
   // Screenshots are taken externally via DevTools Page.captureScreenshot
   // (see docs/ORB_REBUILD_TASK.md appendix) — never auto-capture or auto-close
   // the app itself; `npm run orb:demo` must stay interactive.
