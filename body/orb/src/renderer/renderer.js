@@ -93,6 +93,7 @@ let group, core, lattice, halo, rings = [], rays, starsMesh, sage, glowGhosts = 
 let AM = null; // Answer Mode (gold magic-circle) module handle
 let DR = null; // Data Rings (prismatic thinking overlay) module handle
 let edgeRT = null, maskScene = null, maskCam = null, maskMat = null;
+const sceneStats = { calls: 0, tris: 0 }; // cached AFTER the scene pass (mask pass resets renderer.info)
 
 // Geometry targets for morph
 const BASE_VERTEX_COUNT = 60;
@@ -152,7 +153,16 @@ function initScene() {
   if (quality === 'low') renderer.setPixelRatio(0.5);
   else if (quality === 'medium') renderer.setPixelRatio(1);
   else if (quality === 'high') renderer.setPixelRatio(2);
-  else renderer.setPixelRatio(window.devicePixelRatio); // auto
+  else {
+    let d = window.devicePixelRatio;
+    try { // auto: software GL (SwiftShader/llvmpipe) -> cut pixels (spec §5: tiers by GPU type)
+      const gl = renderer.getContext();
+      const dbg = gl.getExtension('WEBGL_debug_renderer_info');
+      const rname = String(dbg ? gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER) || '');
+      if (/swiftshader|llvmpipe|softpipe|software/i.test(rname)) d = 0.75;
+    } catch (e) { /* keep dPR */ }
+    renderer.setPixelRatio(d); // auto
+  }
   renderer.setClearColor(0x000000, 0);
   renderer.setSize(sizePx, sizePx);
 
@@ -490,10 +500,14 @@ function animate(now) {
   if (edgeRT) {
     renderer.setRenderTarget(edgeRT);
     renderer.render(scene, camera);
+    sceneStats.calls = renderer.info.render.calls;
+    sceneStats.tris = renderer.info.render.triangles;
     renderer.setRenderTarget(null);
     renderer.render(maskScene, maskCam);
   } else {
     renderer.render(scene, camera);
+    sceneStats.calls = renderer.info.render.calls;
+    sceneStats.tris = renderer.info.render.triangles;
   }
 
   // FPS counter
@@ -542,11 +556,14 @@ if (demoStateSel) {
   });
 }
 window.__orbDebug = { get state() { return orbState.orbState; } }; // LIVE render state (not the dropdown)
-window.__orbStats = () => { // Phase-7 perf probe: true RENDERED frames + draw budget
+window.__orbStats = () => { // Phase-7 perf probe: true RENDERED frames + scene draw budget
   const r = renderer;
   if (!r) return { frame: -1 };
   const i = r.info.render;
-  return { frame: i.frame, calls: i.calls, tris: i.triangles, dpr: r.getPixelRatio(), w: canvas.width, h: canvas.height };
+  // NOTE: frame increments per render() call and we render TWICE per animation
+  // frame (scene->RT, mask->canvas): real FPS = delta(frame) / (2 * seconds).
+  return { frame: i.frame, calls: sceneStats.calls, tris: sceneStats.tris,
+           dpr: r.getPixelRatio(), w: canvas.width, h: canvas.height };
 };
 const demoSizeSlider = document.getElementById('sizeSlider');
 if (demoSizeSlider) demoSizeSlider.addEventListener('input', (e) => { window.orbDemoSize = parseInt(e.target.value, 10); });
