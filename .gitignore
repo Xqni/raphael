@@ -34,3 +34,7 @@ Thumbs.db
 # Router runtime artifacts
 usage.jsonl
 benchmark_ranking.json
+
+# Anime reference images - study only, NEVER commit (copyright, fan-homage project)
+assets/reference/
+assets/orb-reference/
