@@ -166,3 +166,13 @@ See docs/PAID_USAGE.md. Running total: $0.00 of $2.00.
 - Windows-native perf numbers captured on the live production orb (GPU ≤0.5%, electron 0.0–0.1% idle CPU, msrdc 0.52%, system 3.65%) -> PERFORMANCE.md (+ vmmemwsl contamination caveat: orchestration session shares WSL).
 - ORB_REBUILD_TASK.md §8 checklist formally ticked with evidence note (TODO §4 sanctioned).
 - TODO §2 + §3 now DONE. Remaining queue: brain phase 2 (Go delegation in flight), body phase 3 (audio), Wave-2 E2E once /ws lands, tests.
+
+## 2026-10-05 09:2x — Body control path wired + E2E verified
+- hotkeys.py rewritten: PROTOCOL §3 envelope (type/v:1/action/persist), kill_gui momentary + pause/resume + private_on/off toggles (persist:true per ARCHITECTURE §89/l131), PTT explicitly reserved for voice phase 3, THREAD-SAFE posting (keyboard fires on its own thread — run_coroutine_threadsafe, not create_task), atexit unhook.
+- config.yaml: safety.pause_hotkey (ctrl+alt+p) + safety.private_hotkey (ctrl+alt+shift+p) added (kill = ctrl+alt+shift+k, PTT = ctrl+alt+space pre-existing).
+- ws_client: pong envelope v:1, drain-task leak fixed (cancel per connection), re-queue on send failure, hotkeys registered exactly once with the running loop before connect.
+- E2E REAL OUTPUT (body -> win-relay -> wsl helper -> fake-brain): 3 control frames sent:
+  {"type":"control","v":1,"action":"kill_gui","persist":false}
+  {"type":"control","v":1,"action":"pause","persist":true}
+  {"type":"control","v":1,"action":"private_on","persist":true}
+- Harness committed: body/win/e2e_control.py (exit-0 PASS pattern like fake-brain).

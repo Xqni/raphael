@@ -67,10 +67,12 @@ class JobEngine:
 
     async def shutdown(self):
         self._running = False
-        for t in list(self._tasks.values()):
-            t.cancel()
+        # cancel workers first (they clean up their current job task on the
+        # way out), then any remaining job tasks — nothing is left orphaned
         for w in self._workers:
             w.cancel()
+        for t in list(self._tasks.values()):
+            t.cancel()
         pending = list(self._tasks.values()) + list(self._workers)
         if pending:
             await asyncio.gather(*pending, return_exceptions=True)
@@ -105,7 +107,7 @@ class JobEngine:
 
     # ---- workers -----------------------------------------------------------
     async def _worker_loop(self, idx: int):
-        while self._running or not self._queue.empty():
+        while self._running:
             if self._pause_event is not None:
                 await self._pause_event.wait()
             try:

@@ -61,18 +61,24 @@ async def handle_message(msg: str, ws):
         return  # ignore malformed frames
     msg_type = data.get('type')
     if msg_type == 'ping':
-        await ws.send(json.dumps({"type": "pong"}))
+        await ws.send(json.dumps({"type": "pong", "v": 1}))  # envelope per PROTOCOL §3
     # Additional handling (auth_ok, orb_state, etc.) can be added later.
 
 async def client_once():
     async with websockets.connect(CONFIG_URL) as ws:
-        # Start control queue drain task
+        # Drain must die WITH the connection (else tasks pile up across
+        # reconnects, all holding a reference to a closed ws).
         control_task = asyncio.create_task(_drain_control_queue(ws))
-
-        await asyncio.wait_for(send_auth(ws), timeout=5)
-        # Basic loop – receive and react.
-        async for message in ws:
-            await handle_message(message, ws)
+        try:
+            await asyncio.wait_for(send_auth(ws), timeout=5)
+            async for message in ws:
+                await handle_message(message, ws)
+        finally:
+            control_task.cancel()
+            try:
+                await control_task
+            except (asyncio.CancelledError, Exception):
+                pass
 
 
 async def _drain_control_queue(ws):
@@ -81,15 +87,43 @@ async def _drain_control_queue(ws):
         item = await hotkeys._control_queue.get()
         try:
             await ws.send(json.dumps(item))
+            print(f"[body-win] control -> {json.dumps(item)}", flush=True)
         except Exception as e:
             print(f"[body-win] Failed to send control frame: {e}", flush=True)
-            # Put back? drop.
+            # Re-queue once (bounded: queue is hotkey-rate, never a flood).
+            try:
+                hotkeys._control_queue.put_nowait(item)
+            except asyncio.QueueFull:
+                pass
+
+def _load_config() -> dict:
+    """repo config.yaml (script-relative) — hotkey bindings; {} if absent."""
+    try:
+        import subprocess as _sp
+        try:
+            import yaml  # noqa
+        except ImportError:
+            _sp.check_call([sys.executable, '-m', 'pip', 'install', '--quiet', 'PyYAML'])
+            import yaml  # noqa
+        cfg_path = pathlib.Path(__file__).resolve().parents[2] / 'config.yaml'
+        return yaml.safe_load(cfg_path.read_text()) or {}
+    except Exception as e:
+        print(f'[body-win] config load failed ({e}) — hotkeys use defaults only', flush=True)
+        return {}
+
 
 async def start_client():
     """Run the client with reconnection logic.
 
     The function never returns unless the process is terminating.
     """
+    # Hotkeys need the running loop (keyboard fires on its own thread) and
+    # must be registered exactly once, before any connection.
+    hotkeys.set_loop(asyncio.get_running_loop())
+    try:
+        hotkeys.register_hotkeys(_load_config())
+    except Exception as e:
+        print(f'[body-win] hotkey registration failed: {e}', flush=True)
     backoff = 5
     max_backoff = 30
     while True:

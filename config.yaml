@@ -50,6 +50,8 @@ safety:
   failsafe_corner: true                  # pyautogui mouse-to-corner
   kill_switch_hotkey: "ctrl+alt+shift+k"
   pause_persist: true
+  pause_hotkey: "ctrl+alt+p"                 # control: pause/resume toggle (persisted)
+  private_hotkey: "ctrl+alt+shift+p"         # control: private_on/off toggle (persisted)
 
 privacy:
   watch_mode: false                      # proactive screen sampling OFF by default

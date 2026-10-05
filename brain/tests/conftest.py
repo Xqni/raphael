@@ -1,0 +1,24 @@
+"""Shared test isolation: point the memory DB at a TEMP file and disable the
+router so tests never touch brain/memory/memory.db or the network.
+(RAPHAEL_TOKEN_PATH stays a per-module fixture — see tests/test_health.py.)
+"""
+import os
+import tempfile
+
+_fd, _db = tempfile.mkstemp(prefix='raphael-test-db-')
+os.close(_fd)
+os.environ['RAPHAEL_DB_PATH'] = _db
+os.environ.setdefault('RAPHAEL_DISABLE_ROUTER', '1')
+os.environ.setdefault('RAPHAEL_CONFIRM_TIMEOUT_S', '2')
+
+import pytest  # noqa: E402
+
+
+@pytest.fixture(scope='session', autouse=True)
+def _cleanup_db():
+    yield
+    for p in (_db, _db + '-wal', _db + '-shm'):
+        try:
+            os.remove(p)
+        except OSError:
+            pass

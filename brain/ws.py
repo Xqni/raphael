@@ -246,12 +246,12 @@ class WsHub:
         if st.get('jobs_pending_confirm'):
             state = 'confirm'
         elif st.get('paused'):
-            state = 'paused' if 'paused' in _ORB_STATES else 'idle'
+            state = 'idle'          # paused is a MODE overlay, not an orb state
         elif st.get('jobs_active'):
             state = 'thinking'
         else:
             state = 'idle'
-        if mode.private and state in ('idle', 'paused'):
+        if mode.private and state in ('idle',):
             state = 'private_overlay'
         frame = {
             'type': 'orb_state', 'v': 1, 'state': state,
@@ -497,9 +497,7 @@ class WsHub:
         await self._send(s, {'type': 'job_get', 'v': 1, 'job': job})
 
     async def _on_orb_input(self, s: Session, msg: Dict[str, Any]):
-        # orb interaction — logged; deeper menu wiring is orb-dev's client side
-        store._log_event(None, {'event': 'orb_input', 'kind': msg.get('kind'),
-                                'value': msg.get('value')}) if False else None
+        # orb interaction — acknowledged; deeper menu wiring is orb-dev's client side
         await self._send(s, {'type': 'ack', 'v': 1, 'kind': msg.get('kind')})
 
     async def _on_act_res(self, s: Session, msg: Dict[str, Any]):
