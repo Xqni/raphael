@@ -563,8 +563,15 @@ window.__orbStats = () => { // Phase-7 perf probe: true RENDERED frames + scene 
   // NOTE: frame increments per render() call and we render TWICE per animation
   // frame (scene->RT, mask->canvas): real FPS = delta(frame) / (2 * seconds).
   return { frame: i.frame, calls: sceneStats.calls, tris: sceneStats.tris,
-           dpr: r.getPixelRatio(), w: canvas.width, h: canvas.height };
+           dpr: r.getPixelRatio(), w: canvas.width, h: canvas.height, gl: glName() };
 };
+function glName() {
+  try {
+    const gl = renderer.getContext();
+    const dbg = gl.getExtension('WEBGL_debug_renderer_info');
+    return String(dbg ? gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER) || '');
+  } catch (e) { return 'unknown'; }
+}
 const demoSizeSlider = document.getElementById('sizeSlider');
 if (demoSizeSlider) demoSizeSlider.addEventListener('input', (e) => { window.orbDemoSize = parseInt(e.target.value, 10); });
 const demoAmpSlider = document.getElementById('ampSlider');

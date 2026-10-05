@@ -5,10 +5,10 @@
   "description": "Raphael desktop orb (Electron + Three.js) — UI role client",
   "main": "src/main/main.js",
   "scripts": {
-    "start": "electron .",
-    "start:demo": "electron . --demo",
+    "start": "MESA_LOADER_DRIVER_OVERRIDE=d3d12 GALLIUM_DRIVER=d3d12 electron . --no-sandbox --disable-gpu-sandbox --ignore-gpu-blocklist",
+    "start:demo": "MESA_LOADER_DRIVER_OVERRIDE=d3d12 GALLIUM_DRIVER=d3d12 electron . --demo --no-sandbox --disable-gpu-sandbox --ignore-gpu-blocklist",
     "lint": "echo 'lint not configured'",
-    "orb:demo": "electron . --demo --remote-debugging-port=9333"
+    "orb:demo": "MESA_LOADER_DRIVER_OVERRIDE=d3d12 GALLIUM_DRIVER=d3d12 electron . --demo --remote-debugging-port=9333 --no-sandbox --disable-gpu-sandbox --ignore-gpu-blocklist"
   },
   "dependencies": {
     "electron": "30.5.1",
