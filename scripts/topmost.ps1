@@ -30,6 +30,8 @@ public class Win32Top {
   public static extern IntPtr SetWindowLongPtr(IntPtr hWnd, int nIndex, IntPtr dwNewLong);
   [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr hWnd, out RC lpRect);
   [DllImport("user32.dll")] public static extern int SetWindowRgn(IntPtr hWnd, IntPtr hRgn, bool bRedraw);
+  [DllImport("user32.dll")] public static extern int GetWindowRgn(IntPtr hWnd, IntPtr hRgn);
+  [DllImport("dwmapi.dll")] public static extern int DwmGetWindowAttribute(IntPtr hwnd, int attr, out int pv, int cb);
   [DllImport("gdi32.dll")] public static extern IntPtr CreateRectRgn(int l, int t, int r, int b);
   [DllImport("gdi32.dll")] public static extern bool DeleteObject(IntPtr hObject);
   [DllImport("dwmapi.dll")]
@@ -104,4 +106,12 @@ if ([Win32Top]::GetWindowRect($found, [ref]$rc)) {
 $ex = [Win32Top]::GetWindowLongPtr($found, -20).ToInt64()
 $topmost = (($ex -band 0x8) -ne 0)
 Write-Output ("hwnd={0} topmost={1} exstyle=0x{2:X}" -f $found, $topmost, $ex)
+# Region readback: GetWindowRgn returns 0=NO REGION (SetWindowRgn failed),
+# 1=NULLREGION, 2=SIMPLIFYREGION, 3=COMPLEXREGION (region applied).
+$probe = [Win32Top]::CreateRectRgn(0, 0, 0, 0)
+$regCode = [Win32Top]::GetWindowRgn($found, $probe)
+[void][Win32Top]::DeleteObject($probe)
+$bdBack = 0
+[void][Win32Top]::DwmGetWindowAttribute($found, 38, [ref]$bdBack, 4)
+Write-Output ("regionCode={0} (0=FAILED, 1..3=applied) backdropType={1} (1=NONE)" -f $regCode, $bdBack)
 if (-not $topmost) { exit 2 }
