@@ -11,17 +11,19 @@ import io
 import pathlib
 import sys
 
-def _ensure_pkg(name: str):
+def _ensure_pkg(pkg: str, import_name: str = None, pin: str = ''):
+    """Import-or-install, PINNED (security: unpinned runtime pip = supply chain)."""
     try:
-        __import__(name)
+        __import__(import_name or pkg)
     except ImportError:
-        import subprocess
-        subprocess.check_call([sys.executable, '-m', 'pip', 'install', '--quiet', name])
-        __import__(name)
+        import subprocess, sys
+        subprocess.check_call([sys.executable, '-m', 'pip', 'install', '--quiet',
+                               ('%s==%s' % (pkg, pin)) if pin else pkg])
+        __import__(import_name or pkg)
 
 # Ensure required third‑party packages.
-_ensure_pkg('mss')
-_ensure_pkg('PIL')
+_ensure_pkg('mss', pin='10.2.0')
+_ensure_pkg('Pillow', 'PIL', '12.3.0')
 
 import mss
 from PIL import Image
@@ -35,7 +37,7 @@ def capture_screenshot(max_px: int = 1280, quality: int = 70) -> bytes:
     Returns:
         JPEG image as bytes.
     """
-    with mss.mss() as sct:
+    with mss.MSS() as sct:
         monitor = sct.monitors[1]  # primary monitor
         raw = sct.grab(monitor)
         img = Image.frombytes('RGB', (raw.width, raw.height), raw.rgb)

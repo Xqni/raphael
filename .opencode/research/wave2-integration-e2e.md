@@ -22,7 +22,7 @@
 10. Orb: goes from `offline` to `idle` (no Brain = offline visuals) -> NOW with brain up the orb should reach `idle` bright state. User's eyes final-gate.
 
 ## Watchdog proof
-11. `wsl -d Ubuntu-26.04 -u dami -- pkill -f "uvicorn brain.app"` -> within backoff (5-300s, attempt window) supervisor logs `brain process mode: recycling via pkill + respawn` + `brain healthy` again.
+11. `wsl -d Ubuntu-26.04 -u dami -- sh -c "kill $(cat /tmp/raphael-brain.pid)"` (pidfile kill, NOT broad pkill) -> supervisor logs `recycling via pidfile + respawn` + `brain healthy` again.
 12. Kill orb electron -> supervisor relaunches (procs["orb"]) -> single-instance handoff clean.
 13. Body: kill body python -> supervisor relaunch (body watchdog) -> rc0 single-instance if duplicate.
 

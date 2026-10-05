@@ -500,11 +500,15 @@ def systemctl_action(cfg, log, verb, unit, timeout=60):
 
 def restart_brain(cfg, log, procs=None):
     if brain_run_mode(cfg) == "process":
-        # Root-less recycle: pkill as the wsl_user (own process only — no
-        # sudo), then respawn. pkill never matches itself; pattern targets
-        # the uvicorn command line from launch_brain().
-        log.info("brain process mode: recycling via pkill + respawn")
-        wsl_run(cfg, "pkill", "-f", "uvicorn brain.app", timeout=10)
+        # Root-less recycle by pidfile, AFTER verifying the target's cmdline
+        # really is uvicorn (security fix: broad pkill -f false-positives).
+        log.info("brain process mode: recycling via pidfile + respawn")
+        wsl_run(cfg, "sh", "-c",
+                'p=$(cat /tmp/raphael-brain.pid 2>/dev/null); '
+                'if [ -n "$p" ] && [ -r /proc/$p/cmdline ] && '
+                'grep -qa "uvicorn brain.app" /proc/$p/cmdline; then kill $p; fi; '
+                'rm -f /tmp/raphael-brain.pid',
+                timeout=10)
         time.sleep(1.5)
         if procs is not None:
             procs["brain"] = launch_brain(cfg, log)
@@ -757,9 +761,13 @@ def launch_brain(cfg, log):
         log.warn("brain process mode: repo is not a WSL UNC path — cannot launch")
         return None
     port = int(cfg["paths"].get("brain_port") or 8765)
+    # $$ survives exec -> pidfile names uvicorn exactly (recycle by pid +
+    # cmdline check instead of broad `pkill -f`, which can match unrelated
+    # processes whose argv merely contains the string — e.g. dev shells).
     inner = wsl_argv(
         cfg, "sh", "-lc",
-        "cd %s && exec brain/.venv/bin/python -m uvicorn brain.app:app "
+        "echo $$ > /tmp/raphael-brain.pid; cd %s && exec "
+        "brain/.venv/bin/python -m uvicorn brain.app:app "
         "--host 127.0.0.1 --port %d" % (shlex.quote(repo_wsl), port))
     log.info("brain process: launching uvicorn (127.0.0.1:%d) under wsl" % port)
     return _spawn(inner, REPO_ROOT, log, "brain", LOG_DIR / "brain.log")
@@ -906,6 +914,8 @@ def start_brain_relay(cfg, log, listen_port=8765, backend_port=8766):
             except OSError:
                 pass
 
+    slots = threading.BoundedSemaphore(64)  # security: bounded splice threads
+
     def accept_loop():
         try:
             srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -923,8 +933,18 @@ def start_brain_relay(cfg, log, listen_port=8765, backend_port=8766):
                 client, _addr = srv.accept()
             except OSError:
                 return
-            threading.Thread(target=handle, args=(client,),
-                             daemon=True).start()
+            if not slots.acquire(blocking=False):
+                try:
+                    client.close()
+                except OSError:
+                    pass
+                continue  # security: cap reached, shed load
+            def _serve(c=client):
+                try:
+                    handle(c)
+                finally:
+                    slots.release()
+            threading.Thread(target=_serve, daemon=True).start()
 
     # WSL helper leg: binds 0.0.0.0:8766 inside the VM (NAT-only), dials the
     # Brain's loopback. Detached+hidden; outlives supervisor restarts (a

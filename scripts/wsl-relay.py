@@ -62,16 +62,48 @@ def handle(client):
             pass
 
 
+MAX_CONN = 64  # security: bounded concurrent splices (local-only flood guard)
+_slots = threading.BoundedSemaphore(MAX_CONN)
+
+
+def _nat_ip():
+    """First IPv4 of this WSL VM (security: bind the NAT address, not all)."""
+    try:
+        import subprocess
+        out = subprocess.run(["hostname", "-I"], capture_output=True,
+                             text=True, timeout=5).stdout
+        for tok in out.split():
+            if tok.count(".") == 3:
+                return tok
+    except Exception:
+        pass
+    return None
+
+
+def _serve(client):
+    try:
+        handle(client)
+    finally:
+        _slots.release()
+
+
 def main():
     srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    srv.bind(("0.0.0.0", LISTEN_PORT))  # NAT interface only (see header)
+    ip = _nat_ip()
+    srv.bind((ip or "0.0.0.0", LISTEN_PORT))  # security: NAT addr, not all-ifaces
     srv.listen(128)
-    print("[wsl-relay] 0.0.0.0:%d -> 127.0.0.1:%d" % (LISTEN_PORT, DIAL_PORT),
-          flush=True)
+    print("[wsl-relay] %s:%d -> 127.0.0.1:%d" % (ip or "0.0.0.0", LISTEN_PORT,
+                                                 DIAL_PORT), flush=True)
     while True:
         client, _addr = srv.accept()
-        threading.Thread(target=handle, args=(client,), daemon=True).start()
+        if not _slots.acquire(blocking=False):
+            try:
+                client.close()
+            except OSError:
+                pass
+            continue  # security: connection cap reached, shed load
+        threading.Thread(target=_serve, args=(client,), daemon=True).start()
 
 
 if __name__ == "__main__":

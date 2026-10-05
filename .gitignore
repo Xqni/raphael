@@ -38,3 +38,8 @@ benchmark_ranking.json
 # Anime reference images - study only, NEVER commit (copyright, fan-homage project)
 assets/reference/
 assets/orb-reference/
+
+# Wave-2 heavy artifacts (voice stack — weights/envs never in git)
+brain/voice/.venv-fish/
+brain/voice/models/
+screenshot_test.jpg

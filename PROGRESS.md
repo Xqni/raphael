@@ -176,3 +176,11 @@ See docs/PAID_USAGE.md. Running total: $0.00 of $2.00.
   {"type":"control","v":1,"action":"pause","persist":true}
   {"type":"control","v":1,"action":"private_on","persist":true}
 - Harness committed: body/win/e2e_control.py (exit-0 PASS pattern like fake-brain).
+
+## 2026-10-05 09:4x — SECURITY REVIEW + fixes (security-reviewer, gemma4:cloud; fixed by orchestrator)
+- Audit: 0 critical, 1 HIGH, 2 MEDIUM, 2 LOW; tokens/listeners/secrets/tests all CLEAN.
+- HIGH fixed: unpinned runtime pip (`_ensure_pkg` in automation/capture/clipboard/hotkeys + ws_client inline) → per-package PINS (pywinauto==0.6.9, mss==10.2.0, Pillow==12.3.0, pywin32==312, keyboard==0.13.5, websockets==16.1.1, PyYAML==6.0.3).
+- Found while fixing: body's capture/clipboard/automation deps were NEVER INSTALLED (gpt-oss fabricated its "verified" outputs AGAIN — second fabrication by that model) → installed for real + REAL tests: capture wrote 73457-byte jpg, clipboard round-trip 'raphael-e2e-ok', focus_window awaited+executed. Plus a real bug: clipboard did __import__('pywin32') (module name is win32api) → fixed.
+- MEDIUM fixed: wsl-relay binds the WSL NAT IP (hostname -I) instead of 0.0.0.0 (fallback kept); both relay legs got a 64-connection semaphore.
+- LOW fixed: brain recycle now uses /tmp/raphael-brain.pid + /proc cmdline verification (broad `pkill -f` could match dev shells — it HAD matched mine earlier today); control-frame requeue capped at 3 tries.
+- tests 10/10 re-run green after all changes; control E2E re-run green (3 frames).

@@ -25,7 +25,7 @@ try:
 except ImportError:
     # Install into the Windows‑side interpreter (the same interpreter running this code).
     import subprocess
-    subprocess.check_call([sys.executable, '-m', 'pip', 'install', '--quiet', 'websockets'])
+    subprocess.check_call([sys.executable, '-m', 'pip', 'install', '--quiet', 'websockets==16.1.1'])
     import websockets
 
 CONFIG_URL = "ws://127.0.0.1:8765/ws"
@@ -85,16 +85,25 @@ async def _drain_control_queue(ws):
     """Continuously send control frames queued by hotkeys."""
     while True:
         item = await hotkeys._control_queue.get()
+        tries = 0
+        if isinstance(item, list):  # [frame, retry_count] from a prior failure
+            item, tries = item[0], int(item[1])
         try:
             await ws.send(json.dumps(item))
             print(f"[body-win] control -> {json.dumps(item)}", flush=True)
         except Exception as e:
-            print(f"[body-win] Failed to send control frame: {e}", flush=True)
-            # Re-queue once (bounded: queue is hotkey-rate, never a flood).
-            try:
-                hotkeys._control_queue.put_nowait(item)
-            except asyncio.QueueFull:
-                pass
+            # security: bounded retries — a dead connection must not grow the
+            # queue forever (cap at 3 attempts, then drop with a log line).
+            if tries < 3:
+                print(f"[body-win] send failed ({e}); requeue try {tries + 1}/3",
+                      flush=True)
+                try:
+                    hotkeys._control_queue.put_nowait([item, tries + 1])
+                except asyncio.QueueFull:
+                    pass
+            else:
+                print(f"[body-win] control frame dropped after 3 tries: "
+                      f"{json.dumps(item)}", flush=True)
 
 def _load_config() -> dict:
     """repo config.yaml (script-relative) — hotkey bindings; {} if absent."""
@@ -103,7 +112,7 @@ def _load_config() -> dict:
         try:
             import yaml  # noqa
         except ImportError:
-            _sp.check_call([sys.executable, '-m', 'pip', 'install', '--quiet', 'PyYAML'])
+            _sp.check_call([sys.executable, '-m', 'pip', 'install', '--quiet', 'PyYAML==6.0.3'])
             import yaml  # noqa
         cfg_path = pathlib.Path(__file__).resolve().parents[2] / 'config.yaml'
         return yaml.safe_load(cfg_path.read_text()) or {}

@@ -9,15 +9,17 @@ import asyncio
 import threading
 from typing import Any, Dict
 
-def _ensure_pkg(name: str):
+def _ensure_pkg(pkg: str, import_name: str = None, pin: str = ''):
+    """Import-or-install, PINNED (security: unpinned runtime pip = supply chain)."""
     try:
-        __import__(name)
+        __import__(import_name or pkg)
     except ImportError:
         import subprocess, sys
-        subprocess.check_call([sys.executable, '-m', 'pip', 'install', '--quiet', name])
-        __import__(name)
+        subprocess.check_call([sys.executable, '-m', 'pip', 'install', '--quiet',
+                               ('%s==%s' % (pkg, pin)) if pin else pkg])
+        __import__(import_name or pkg)
 
-_ensure_pkg('pywinauto')
+_ensure_pkg('pywinauto', pin='0.6.9')
 from pywinauto import Application, mouse, keyboard
 
 # Global lock – only one coroutine may hold it at a time.
