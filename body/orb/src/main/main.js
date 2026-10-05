@@ -76,6 +76,19 @@ function scheduleRoam(delayMs) {
   roamTimer = setTimeout(startRoam, d);
 }
 
+// All displays' corner spots (user: corners only — she may even cross to the
+// laptop screen; 4 corners per display, window-size aware).
+function displayCorners(w, h) {
+  const pts = [];
+  const m = ROAM.margin;
+  for (const d of screen.getAllDisplays()) {
+    const xs = [d.bounds.x + m, d.bounds.x + d.bounds.width - w - m];
+    const ys = [d.bounds.y + m, d.bounds.y + d.bounds.height - h - m];
+    for (const x of xs) for (const y of ys) pts.push({ x: Math.round(x), y: Math.round(y) });
+  }
+  return pts;
+}
+
 function startRoam() {
   if (!win || win.isDestroyed() || config.roam === false) return;
   if (!ROAM_CALM.has(lastVisualState) || Date.now() < holdUntil) {
@@ -83,38 +96,62 @@ function startRoam() {
     return;
   }
   const b = win.getBounds();
-  const disp = screen.getDisplayMatching(b);
-  const m = ROAM.margin;
-  const minX = disp.bounds.x + m;
-  const maxX = disp.bounds.x + disp.bounds.width - b.width - m;
-  const minY = disp.bounds.y + m;
-  const maxY = disp.bounds.y + disp.bounds.height - b.height - m;
-  if (maxX <= minX || maxY <= minY) { scheduleRoam(); return; }
-  const tx = Math.round(minX + Math.random() * (maxX - minX));
-  const ty = Math.round(minY + Math.random() * (maxY - minY));
-  const dist = Math.hypot(tx - b.x, ty - b.y);
-  if (dist < ROAM.minDistance) { scheduleRoam(); return; }
-  const dur = Math.min(5000, Math.max(900, (dist / ROAM.speed) * 1000));
-  glideTo(b.x, b.y, tx, ty, dur);
+  const corners = displayCorners(b.width, b.height);
+  const distOf = (p) => Math.hypot(p.x - b.x, p.y - b.y);
+  const pool = corners.filter((p) => distOf(p) >= 400);
+  const target = (pool.length ? pool : corners)[Math.floor(Math.random() * (pool.length || corners.length))];
+  const dist = distOf(target);
+  if (!target || dist < ROAM.minDistance) { scheduleRoam(); return; }
+
+  // Distance physics (user spec): short = SLOW glide; long = faster + MORE
+  // motion blur and particle lag. d01 in 0..1 over 3000px.
+  const d01 = Math.min(1, dist / 3000);
+  const speed = 75 + d01 * 85;                       // 75..160 px/s
+  const dur = Math.min(7000, Math.max(1000, (dist / speed) * 1000));
+  const lagPx = 6 + d01 * 18;                        // max lag 6..24px
+
+  // orbital ARC: quadratic bezier bowed perpendicular to the chord (solar feel)
+  const mx = (b.x + target.x) / 2;
+  const my = (b.y + target.y) / 2;
+  let nx = -(target.y - b.y);
+  let ny = (target.x - b.x);
+  const nl = Math.hypot(nx, ny) || 1;
+  const bow = (Math.random() - 0.5) * 0.24 * dist;
+  const ctrl = { x: mx + (nx / nl) * bow, y: my + (ny / nl) * bow };
+
+  glideTo(b, target, ctrl, dur, lagPx);
 }
 
-function glideTo(x0, y0, x1, y1, durMs) {
+function glideTo(from, to, ctrl, durMs, lagPx) {
   roaming = true;
   const t0 = Date.now();
   if (roamAnim) clearInterval(roamAnim);
   roamAnim = setInterval(() => {
     const p = Math.min(1, (Date.now() - t0) / durMs);
     const e = easeInOut2(p);
+    const inv = 1 - e;
+    const x = inv * inv * from.x + 2 * inv * e * ctrl.x + e * e * to.x;
+    const y = inv * inv * from.y + 2 * inv * e * ctrl.y + e * e * to.y;
+    // velocity direction (bezier derivative) for the renderer's lag/blur
+    let vx = 2 * inv * (ctrl.x - from.x) + 2 * e * (to.x - ctrl.x);
+    let vy = 2 * inv * (ctrl.y - from.y) + 2 * e * (to.y - ctrl.y);
+    const vl = Math.hypot(vx, vy) || 1;
+    vx /= vl; vy /= vl;
+    const bell = Math.sin(Math.PI * e); // intensity eases in AND out
     lastProgMoveAt = Date.now();
-    win.setPosition(Math.round(x0 + (x1 - x0) * e), Math.round(y0 + (y1 - y0) * e));
+    win.setPosition(Math.round(x), Math.round(y));
+    if (win.webContents) {
+      win.webContents.send('orb-glide', { on: true, vx, vy, px: lagPx * bell });
+    }
     if (p >= 1) {
       clearInterval(roamAnim);
       roamAnim = null;
       roaming = false;
-      savePosition(x1, y1); // persist the resting spot only
+      if (win.webContents) win.webContents.send('orb-glide', { on: false });
+      savePosition(to.x, to.y);
       scheduleRoam();
     }
-  }, 33);
+  }, 16); // 60 Hz — smooth steps instead of 33ms chops
 }
 
 function noteExternalMove() {
@@ -123,6 +160,7 @@ function noteExternalMove() {
     clearInterval(roamAnim);
     roamAnim = null;
     roaming = false;
+    if (win && win.webContents) win.webContents.send('orb-glide', { on: false });
   }
   holdUntil = Date.now() + ROAM.userHoldMs;
   scheduleRoam(ROAM.userHoldMs + 2000);

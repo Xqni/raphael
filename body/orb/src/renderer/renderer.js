@@ -13,6 +13,9 @@ let lastFrame = 0;
 let frameCount = 0;
 let lastFpsUpdate = performance.now();
 const fpsEl = document.getElementById('fps'); // null on production page (index.html)
+// Glide lag state — main sends velocity during roam glides (solar inertia)
+let glideTX = 0, glideTY = 0, glideTB = 0;
+let GLX = 0, GLY = 0, GLB = 0;
 let frameInterval = 1000 / fpsCap;
 
 
@@ -139,7 +142,7 @@ function easeInOutCubic(x) {
 }
 
 function initScene() {
-  renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, premultipliedAlpha: true });
+  renderer = new THREE.WebGLRenderer({ canvas, antialias: false, alpha: true, premultipliedAlpha: true }); // AA off: fill-rate cost (software GL in WSLg; lines are shader-thin anyway)
   // Quality tier handling
   if (quality === 'low') renderer.setPixelRatio(0.5);
   else if (quality === 'medium') renderer.setPixelRatio(1);
@@ -360,11 +363,17 @@ function animate(now) {
   layerWeights.haloOpacity = damp(layerWeights.haloOpacity, target.haloOpacity, MORPH_DURATION, dt);
   layerWeights.latticeOpacity = damp(layerWeights.latticeOpacity, target.latticeOpacity, MORPH_DURATION, dt);
   const ballScale = breath * pulse * layerWeights.coreScale;
-  core.scale.setScalar(ballScale);
+  // glide inertia: fast attack / slow release toward main's velocity feed
+  const gFast = (Math.abs(glideTX) > Math.abs(GLX) || Math.abs(glideTY) > Math.abs(GLY)) ? 90 : 420;
+  GLX = damp(GLX, glideTX, gFast, dt);
+  GLY = damp(GLY, glideTY, gFast, dt);
+  GLB = damp(GLB, glideTB, gFast, dt);
+  core.scale.setScalar(ballScale * (1 + GLB * 0.35)); // blur: bloom swells while gliding
+  core.position.set(-GLX * 0.85, -GLY * 0.85, 0);     // the sun LEADS; everything else trails
   halo.scale.setScalar(breath * (1 + speakAmp * 0.15));
   halo.material.opacity = 0.25 * layerWeights.haloOpacity;
   lattice.material.opacity = 0.35 * layerWeights.latticeOpacity;
-  updateSageCore(sage, { t, dt, state: orbState.orbState, amp: speakAmp, coreU: core.material.uniforms, ballScale, core, tint: getStateTint(orbState.orbState) });
+  updateSageCore(sage, { t, dt, state: orbState.orbState, amp: speakAmp, coreU: core.material.uniforms, ballScale, core, tint: getStateTint(orbState.orbState), glide: { x: GLX, y: GLY, blur: GLB } });
   rays.rotation.z += 0.01;
   rings[0].rotation.z += 0.008;
   rings[1].rotation.z -= 0.006;
@@ -387,7 +396,7 @@ function animate(now) {
   // Adjust frame interval based on state (active vs idle)
   const activeStates = ['listening','thinking','acting','speaking','error','private_overlay','reconnecting','offline','starting','confirm'];
   const isActive = activeStates.includes(orbState.orbState);
-  const targetFps = isActive ? fpsCap : Math.max(30, Math.round(fpsCap/2));
+  const targetFps = fpsCap; // user: push FPS higher — 60 target in ALL states (hidden-window pause kept)
   frameInterval = 1000 / targetFps;
   // Pause rendering when window is hidden
   if (document.hidden) return;
@@ -446,6 +455,20 @@ const demoSizeSlider = document.getElementById('sizeSlider');
 if (demoSizeSlider) demoSizeSlider.addEventListener('input', (e) => { window.orbDemoSize = parseInt(e.target.value, 10); });
 const demoAmpSlider = document.getElementById('ampSlider');
 if (demoAmpSlider) demoAmpSlider.addEventListener('input', (e) => { window.orbDemoAmp = parseFloat(e.target.value); });
+
+// Velocity feed from main during roam glides: unit dir + bell-scaled px lag
+if (window.raphael && window.raphael.onGlide) {
+  window.raphael.onGlide((g) => {
+    if (g && g.on) {
+      const wpp = 3.32 / Math.max(cfg.sizePx || 280, 100); // world units per screen px (view half-height 1.66)
+      glideTX = (g.vx || 0) * (g.px || 0) * wpp;
+      glideTY = (g.vy || 0) * (g.px || 0) * wpp;
+      glideTB = Math.min(1, (g.px || 0) / 24);
+    } else {
+      glideTX = 0; glideTY = 0; glideTB = 0;
+    }
+  });
+}
 
 window.addEventListener('load', initScene);
 

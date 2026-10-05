@@ -6,6 +6,7 @@ contextBridge.exposeInMainWorld('raphael', {
   onSpeak: (cb) => ipcRenderer.on('speak', (_e, ev) => cb(ev)),
   sendOrbInput: (msg) => ipcRenderer.send('orb-input', msg),
   sendOrbState: (s) => ipcRenderer.send('orb-visual-state', s), // main tracks it (roam gating)
+  onGlide: (cb) => ipcRenderer.on('orb-glide', (_e, g) => cb(g)), // velocity feed for lag/blur
 });
 
 // Expose configuration values to renderer
