@@ -30,43 +30,50 @@ function mulberry32(a) {
 // --- rune atlas: INVENTED angular script (seeded strokes + quarter arcs on a
 // grid). Drawn ONCE. 24 cells x 3 rows, 64px cells.
 function makeGlyphAtlas(THREE) {
-  const COLS = 24, ROWS = 3, CELL = 64;
+  const COLS = 40, ROWS = 3, CELL = 48;
   const c = document.createElement('canvas');
   c.width = COLS * CELL;
   c.height = ROWS * CELL;
   const g = c.getContext('2d');
   g.clearRect(0, 0, c.width, c.height);
   g.strokeStyle = 'rgba(255,255,255,1)';
-  g.lineWidth = 6;
+  g.lineWidth = 5;
   g.lineCap = 'square';
   g.lineJoin = 'miter';
   const rnd = mulberry32(0x52415048); // "RAPH"
   for (let row = 0; row < ROWS; row++) {
     for (let col = 0; col < COLS; col++) {
-      const ox = col * CELL + 12, oy = row * CELL + 12;
-      const step = (CELL - 24) / 2; // 2x2 grid inside the cell
-      const P = (ix, iy) => [ox + ix * step, oy + iy * step];
+      // WIDE-SHORT drawing box (52x24) — glyphs must lie along the ring
+      // (user: runes were "standing up"; a wide long-axis reads laid-down)
+      // re-proportioned for 40 cells/ring: box ~26x32 matches the visible
+      // glyph aspect on the tube (arc ~8.5px wide x tube-height ~13px)
+      const ox = col * CELL + 11, oy = row * CELL + 8;
+      const stepX = (CELL - 22) / 2;   // 13
+      const stepY = (CELL - 16) / 2;   // 16
+      const P = (ix, iy) => [ox + ix * stepX, oy + iy * stepY];
       const strokes = 2 + Math.floor(rnd() * 3);
       for (let s = 0; s < strokes; s++) {
         if (rnd() < 0.42) {
-          // quarter arc (arcane curve)
-          const cx = Math.floor(rnd() * 3), cy = Math.floor(rnd() * 3);
+          // quarter arc (arcane curve), stretched across the width
+          const cx = Math.floor(rnd() * 3), cy = Math.floor(rnd() * 2);
           const a0 = Math.floor(rnd() * 4) * (Math.PI / 2);
           const dir = rnd() < 0.5 ? 1 : -1;
           g.beginPath();
-          g.arc(ox + cx * (step / 2), oy + cy * (step / 2), step * 0.75, a0, a0 + dir * Math.PI / 2);
+          g.ellipse(ox + cx * (stepX / 2), oy + cy * stepY, stepX * 0.4, stepY * 0.8, 0, a0, a0 + dir * Math.PI / 2);
           g.stroke();
         } else {
-          // straight segment between two grid points
-          let ax = Math.floor(rnd() * 3), ay = Math.floor(rnd() * 3);
-          let bx = Math.floor(rnd() * 3), by = Math.floor(rnd() * 3);
+          // straight segment, HORIZONTAL-biased (long axis along the ring)
+          let ax = Math.floor(rnd() * 3), ay = Math.floor(rnd() * 2);
+          let bx, by;
+          if (rnd() < 0.68) { by = ay; bx = (ax + 1 + Math.floor(rnd() * 2)) % 3; }
+          else { bx = ax; by = Math.floor(rnd() * 2); }
           if (ax === bx && ay === by) bx = (bx + 1) % 3;
           const a = P(ax, ay), b = P(bx, by);
           g.beginPath(); g.moveTo(a[0], a[1]); g.lineTo(b[0], b[1]); g.stroke();
         }
       }
-      if (rnd() < 0.3) { // accent tick
-        const a = P(0, 0), b = P(0, 2);
+      if (rnd() < 0.35) { // HORIZONTAL accent tick (not vertical!)
+        const a = P(0, 0), b = P(2, 0);
         g.beginPath(); g.moveTo(a[0], a[1]); g.lineTo(b[0], b[1]); g.stroke();
       }
     }
@@ -148,41 +155,37 @@ export function initAnswerMode(THREE, group) {
 
   const atlas = makeGlyphAtlas(THREE);
 
-  // --- 1) GLYPH RINGS x3 (counter-rotating via mesh rotation; atlas mapped in
-  // shader). Radii kept INSIDE the edge-mask safe zone (world r < ~1.39 =
-  // where the 8% window-edge fade begins) — user: rings/text were cut.
+  // --- 1) GLYPH RINGS x3 — TILTED BANDS on precessing pivots (user: flat
+  // coplanar rings looked weird; bands must WRAP the sun/cage in 3D — tilt
+  // makes them pass in front of AND behind the core, depth-tested).
+  // Radii inside the edge-mask safe zone (world r < ~1.39).
   const ringDefs = [
-    { r0: 0.70, r1: 0.88, row: 0, op: 0.85, dir: 0.00042 },
-    { r0: 0.94, r1: 1.12, row: 1, op: 0.70, dir: -0.00031 },
-    { r0: 1.16, r1: 1.30, row: 2, op: 0.55, dir: 0.00024 },
+    { r: 0.79, tube: 0.085, row: 0, op: 0.85, dir: 0.00042, tx: 1.05, ty: 0.0 }, // wraps across the sun's face
+    { r: 1.03, tube: 0.085, row: 1, op: 0.70, dir: -0.00031, tx: 0.50, ty: 0.30 },
+    { r: 1.23, tube: 0.07, row: 2, op: 0.55, dir: 0.00024, tx: 0.85, ty: -0.25 },
   ];
   AM.rings = [];
   for (const d of ringDefs) {
-    const glow = new THREE.Mesh(
-      new THREE.RingGeometry(Math.max(0.08, d.r0 - 0.055), d.r1 + 0.055, 96),
-      new THREE.ShaderMaterial({
-        vertexShader: ringVert, fragmentShader: bandFrag,
-        uniforms: {
-          uR0: { value: d.r0 }, uR1: { value: d.r1 },
-          uAlpha: { value: 0 }, uTint: { value: new THREE.Color(0xffb000) },
-        },
-        side: THREE.DoubleSide, transparent: true, depthWrite: false,
-        blending: THREE.AdditiveBlending,
-      }));
     const glyphMat = new THREE.ShaderMaterial({
       vertexShader: glyphVert, fragmentShader: glyphFrag,
       uniforms: {
-        uAtlas: { value: atlas }, uR0: { value: d.r0 }, uR1: { value: d.r1 },
+        uAtlas: { value: atlas },
         uAlpha: { value: 0 }, uTint: { value: new THREE.Color(0xffe08a) },
-        uCellX: { value: 24 }, uRow: { value: d.row }, uRows: { value: 3 },
+        uCellX: { value: 40 }, uRow: { value: d.row }, uRows: { value: 3 },
       },
       transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
     });
-    const glyph = new THREE.Mesh(new THREE.RingGeometry(d.r0, d.r1, 128), glyphMat);
-    const gg = new THREE.Group();
-    gg.add(glow); gg.add(glyph);
-    AM.root.add(gg);
-    AM.rings.push({ g: gg, glowMat: glow.material, glyphMat, dir: d.dir, base: d.op });
+    // the RING itself: a real torus tube the runes WRAP around — the tube is
+    // TRANSPARENT (user: only the glyphs visible); glow comes from the shader's
+    // stroke halo, not from any solid annulus.
+    const glyph = new THREE.Mesh(new THREE.TorusGeometry(d.r, d.tube, 24, 128), glyphMat);
+    const band = new THREE.Group();      // the tilted band plane
+    band.rotation.set(d.tx, d.ty, 0);
+    band.add(glyph);
+    const pivot = new THREE.Group();     // precession axis (orbital motion)
+    pivot.add(band);
+    AM.root.add(pivot);
+    AM.rings.push({ pivot, band, glyphMat, dir: d.dir, base: d.op });
   }
 
   // --- 2) DIAMOND FRAME: 3 nested diamonds + mirrored right-angle circuit
@@ -403,9 +406,9 @@ export function updateAnswerMode(AM, ctx) {
   for (let i = 0; i < AM.rings.length; i++) {
     const R = AM.rings[i];
     const a = (i === 0) ? F + Q * 0.4 : F;
-    R.g.rotation.z += R.dir * (0.35 + 0.65 * F) * dt;
-    R.glowMat.uniforms.uAlpha.value = a * R.base * 0.5;
-    R.glyphMat.uniforms.uAlpha.value = a * 0.95;
+    R.pivot.rotation.y += R.dir * 0.55 * dt;                // orbital precession = band WRAPS the sphere
+    R.band.rotation.z += R.dir * (0.35 + 0.65 * F) * dt;    // glyphs travel along the tilted band
+    R.glyphMat.uniforms.uAlpha.value = a * 1.1; // glyphs only (glow = shader stroke-halo)
   }
 
   // diamond frame + center squares: full in speaking, quiet signature in acting

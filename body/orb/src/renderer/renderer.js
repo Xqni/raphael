@@ -542,6 +542,12 @@ if (demoStateSel) {
   });
 }
 window.__orbDebug = { get state() { return orbState.orbState; } }; // LIVE render state (not the dropdown)
+window.__orbStats = () => { // Phase-7 perf probe: true RENDERED frames + draw budget
+  const r = renderer;
+  if (!r) return { frame: -1 };
+  const i = r.info.render;
+  return { frame: i.frame, calls: i.calls, tris: i.triangles, dpr: r.getPixelRatio(), w: canvas.width, h: canvas.height };
+};
 const demoSizeSlider = document.getElementById('sizeSlider');
 if (demoSizeSlider) demoSizeSlider.addEventListener('input', (e) => { window.orbDemoSize = parseInt(e.target.value, 10); });
 const demoAmpSlider = document.getElementById('ampSlider');
