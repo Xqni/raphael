@@ -52,6 +52,8 @@ export const polyFrag = `
   uniform float uDrop;        // reconnecting: fraction of edges missing
   float h(float n) { return fract(sin(n) * 43758.5453); }
   void main() {
+    // reconnecting (spec §3): some wireframe edges go missing (flicker)
+    if (uDrop > 0.001 && h(vEdgeId * 3.1) < uDrop) discard;
     // depth-based brightness (near = brighter) — subtle, still graphic
     float depthB = clamp(1.35 - (vDepth - 2.4) * 0.45, 0.35, 1.0);
     // light traveling along the edge

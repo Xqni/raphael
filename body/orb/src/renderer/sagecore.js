@@ -197,7 +197,7 @@ export function initSageCore(THREE, group, scene) {
   polyGeo.setAttribute('aSpoke', new THREE.BufferAttribute(aSp, 1));
   L.polyMat = new THREE.ShaderMaterial({
     vertexShader: polyVert, fragmentShader: polyFrag,
-    uniforms: { uTime: { value: 0 }, uAlpha: { value: 1 }, uPulse: { value: 1 }, uTint: { value: new THREE.Color(0xffffff) } },
+    uniforms: { uTime: { value: 0 }, uAlpha: { value: 1 }, uPulse: { value: 1 }, uTint: { value: new THREE.Color(0xffffff) }, uDrop: { value: 0 } },
     transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
   });
   L.poly = new THREE.LineSegments(polyGeo, L.polyMat);
@@ -377,6 +377,11 @@ export function updateSageCore(L, ctx) {
   L.polyMat.uniforms.uTime.value = t;
   L.polyMat.uniforms.uAlpha.value = w.poly * (0.9 + errOn * 0.7); // error: crank the WHITE line glow
   L.polyMat.uniforms.uPulse.value = w.poly * (1 + errOn * 1.2);   // hotter traveling light pulses
+  // reconnecting (spec §3): flickering fraction of wireframe edges goes missing
+  const dropTgt = state === 'reconnecting'
+    ? 0.3 + 0.18 * (0.5 + 0.5 * Math.sin(t * 7.3))
+    : 0;
+  L.polyMat.uniforms.uDrop.value = damp(L.polyMat.uniforms.uDrop.value || 0, dropTgt, TAU, dt);
   // state tint damped onto the cages + node dots (error = red cages/nodes)
   if (ctx.tint !== undefined) {
     L.tintTgt.setHex(state === 'error' ? 0xffffff : ctx.tint); // error: WHITE cages (red sun behind for contrast)

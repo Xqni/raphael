@@ -395,7 +395,8 @@ function getStateTint(s) {
   if (s === 'error') return 0xff0000;
   if (s === 'confirm') return 0xffa500;
   if (s === 'private_overlay' || orbState.private || orbState.mode === 'private') return 0x9aa5b1;
-  if (s === 'reconnecting' || s === 'offline') return 0x58c4f2; // starting stays idle-white (user: copy idle base)
+  if (s === 'reconnecting') return 0x58c4f2;
+  if (s === 'offline') return 0x9aa5b1; // desaturated grey (spec §3: Paused/Offline) // starting stays idle-white (user: copy idle base)
   if (s === 'acting') return 0xffd700;
   if (s === 'speaking') return 0xffe9c0; // gold-white core (Answer Mode, spec §2.2)
   return 0xffffff;
