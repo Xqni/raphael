@@ -62,3 +62,10 @@ See docs/PAID_USAGE.md. Running total: $0.00 of $2.00.
 - REJECTED #3: `cmd.exe /c "npm start"` stays — it is the reliable Windows path for npm.cmd (CreateProcess cannot exec .cmd directly); fixed literal, shell=False = no injection surface. Their list-form suggestion risks npm.cmd resolution failures.
 - REJECTED #8: UNC+list case — the UNC branch (main.py:564-567) is checked BEFORE as_list and builds inner_str via subprocess.list2cmdline (555-556): lists already handled. Misread.
 - NOTED #6: body rc==0 mapped to external (main.py:678) — verified quote; accepted as designed (restart-loop risk outweighs the edge case).
+
+## 2026-10-05 02:40 — Reference-image history purge (checklist #9 fully closed)
+- All 6 anime reference JPGs removed from git HISTORY (filter-branch in fresh clone + force push): 183278c -> 22d6aea, jpg blobs 12 -> 0 verified on remote and local.
+- Study copies remain disk-only under assets/orb-reference/ + assets/reference/orb/ (both dirs gitignored).
+- NOTE: any commit hashes referenced in older docs before 22d6aea are stale (history rewritten).
+- DESCRIPTIONS.md (vision-run art brief) REJECTED by user as low quality — the Sonnet-5.5-authored TASK spec is the single art authority for the orb rebuild; correction queued for orb-dev.
+- Free-tier opencode models rate-limited; user directed local/Ollama-cloud delegation. minimax-m3:cloud = 402 (Pro only). Free-plan cloud list: gemma4:31b, gpt-oss:120b, gpt-oss:20b, nemotron-3-nano:30b, nemotron-3-super, nemotron-3-ultra. Builder model pick: gpt-oss:120b (connectivity test in flight).
