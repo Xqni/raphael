@@ -346,6 +346,8 @@ function animate(now) {
   // state-shape morph: each state morphs the cyan lattice to its signature shape
   if (orbState.orbState !== lastShapeState) {
     lastShapeState = orbState.orbState;
+    // echo the visual state to main (roam gating + future features)
+    try { if (window.raphael && window.raphael.sendOrbState) window.raphael.sendOrbState(orbState.orbState); } catch (e) { /* no preload */ }
     const want = STATE_SHAPE[orbState.orbState] || orbState.shapeHint || 'circle';
     if (want !== orbState.shapeHint) {
       orbState.shapeHint = want;

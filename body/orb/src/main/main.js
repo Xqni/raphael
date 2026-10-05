@@ -1,6 +1,6 @@
 const path = require('path');
 const fs = require('fs');
-const { app, BrowserWindow, Tray, Menu, ipcMain, nativeImage } = require('electron');
+const { app, BrowserWindow, Tray, Menu, ipcMain, nativeImage, screen } = require('electron');
 const Config = require('./config');
 const StatusWS = require('./ws-status');
 
@@ -37,6 +37,95 @@ function savePosition(x, y) {
   } catch (e) {
     // ignore
   }
+}
+
+// ---------------------------------------------------------------------------
+// ROAM: autonomous gentle movement across the current monitor (user feature).
+// Every 8-20s pick a random target within the display bounds and glide there
+// with ease-in-out. Only in calm states; paused 30s after a user drag; never
+// persists mid-glide positions to the position memory.
+// ---------------------------------------------------------------------------
+const ROAM = {
+  minPauseMs: 8000,
+  maxPauseMs: 20000,
+  margin: 24,
+  speed: 90,          // px/s
+  minDistance: 60,    // skip near-identical targets
+  userHoldMs: 30000,  // pause after manual drag
+};
+const ROAM_CALM = new Set(['idle', 'listening', 'thinking']);
+let roamTimer = null;
+let roamAnim = null;
+let roaming = false;
+let lastProgMoveAt = 0;
+let holdUntil = 0;
+let lastVisualState = 'idle'; // assume calm until the renderer echoes its state
+
+ipcMain.on('orb-visual-state', (_e, s) => {
+  if (typeof s === 'string') lastVisualState = s;
+});
+
+function easeInOut2(x) { return x < 0.5 ? 2 * x * x : 1 - Math.pow(-2 * x + 2, 2) / 2; }
+
+function scheduleRoam(delayMs) {
+  if (!config || config.roam === false) return;
+  clearTimeout(roamTimer);
+  const d = (delayMs !== undefined)
+    ? delayMs
+    : ROAM.minPauseMs + Math.random() * (ROAM.maxPauseMs - ROAM.minPauseMs);
+  roamTimer = setTimeout(startRoam, d);
+}
+
+function startRoam() {
+  if (!win || win.isDestroyed() || config.roam === false) return;
+  if (!ROAM_CALM.has(lastVisualState) || Date.now() < holdUntil) {
+    scheduleRoam();
+    return;
+  }
+  const b = win.getBounds();
+  const disp = screen.getDisplayMatching(b);
+  const m = ROAM.margin;
+  const minX = disp.bounds.x + m;
+  const maxX = disp.bounds.x + disp.bounds.width - b.width - m;
+  const minY = disp.bounds.y + m;
+  const maxY = disp.bounds.y + disp.bounds.height - b.height - m;
+  if (maxX <= minX || maxY <= minY) { scheduleRoam(); return; }
+  const tx = Math.round(minX + Math.random() * (maxX - minX));
+  const ty = Math.round(minY + Math.random() * (maxY - minY));
+  const dist = Math.hypot(tx - b.x, ty - b.y);
+  if (dist < ROAM.minDistance) { scheduleRoam(); return; }
+  const dur = Math.min(5000, Math.max(900, (dist / ROAM.speed) * 1000));
+  glideTo(b.x, b.y, tx, ty, dur);
+}
+
+function glideTo(x0, y0, x1, y1, durMs) {
+  roaming = true;
+  const t0 = Date.now();
+  if (roamAnim) clearInterval(roamAnim);
+  roamAnim = setInterval(() => {
+    const p = Math.min(1, (Date.now() - t0) / durMs);
+    const e = easeInOut2(p);
+    lastProgMoveAt = Date.now();
+    win.setPosition(Math.round(x0 + (x1 - x0) * e), Math.round(y0 + (y1 - y0) * e));
+    if (p >= 1) {
+      clearInterval(roamAnim);
+      roamAnim = null;
+      roaming = false;
+      savePosition(x1, y1); // persist the resting spot only
+      scheduleRoam();
+    }
+  }, 33);
+}
+
+function noteExternalMove() {
+  // Called from the 'moved' handler when the movement was NOT ours.
+  if (roaming) { // user grabbed mid-glide: abort the glide
+    clearInterval(roamAnim);
+    roamAnim = null;
+    roaming = false;
+  }
+  holdUntil = Date.now() + ROAM.userHoldMs;
+  scheduleRoam(ROAM.userHoldMs + 2000);
 }
 
 function createWindow() {
@@ -94,6 +183,8 @@ function createWindow() {
       setInterval(assertTopmost, 30000);
     });
   }
+  // Start the roam cycle (first hop a few seconds after launch; config roam:false disables).
+  if (config.roam !== false) scheduleRoam(5000);
   // Screenshots are taken externally via DevTools Page.captureScreenshot
   // (see docs/ORB_REBUILD_TASK.md appendix) — never auto-capture or auto-close
   // the app itself; `npm run orb:demo` must stay interactive.
@@ -106,10 +197,15 @@ function createWindow() {
   });
 
   win.on('moved', () => {
-    if (!win.isDestroyed()) {
-      const b = win.getBounds();
-      savePosition(b.x, b.y);
+    if (win.isDestroyed()) return;
+    if (roaming) {
+      // moves arriving well after our last programmatic set = user grabbed it
+      if (Date.now() - lastProgMoveAt > 250) noteExternalMove();
+      return; // never persist mid-glide positions
     }
+    const b = win.getBounds();
+    savePosition(b.x, b.y);
+    if (Date.now() - lastProgMoveAt > 250) noteExternalMove(); // user dragged: hold roaming
   });
 }
 

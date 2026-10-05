@@ -5,6 +5,7 @@ contextBridge.exposeInMainWorld('raphael', {
   onSubtitle: (cb) => ipcRenderer.on('subtitle', (_e, t) => cb(t)),
   onSpeak: (cb) => ipcRenderer.on('speak', (_e, ev) => cb(ev)),
   sendOrbInput: (msg) => ipcRenderer.send('orb-input', msg),
+  sendOrbState: (s) => ipcRenderer.send('orb-visual-state', s), // main tracks it (roam gating)
 });
 
 // Expose configuration values to renderer

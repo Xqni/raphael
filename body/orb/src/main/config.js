@@ -29,6 +29,7 @@ class Config {
         this.quality = this.extractString(txt, /quality:\s*(auto|low|medium|high)/, 'auto');
         this.backing_disc_alpha = this.extractFloat(txt, /backing_disc_alpha:\s*([0-9.]+)/, 0.0);
         this.reduced_motion = this.extractBool(txt, /reduced_motion:\s*(true|false)/, false);
+        this.roam = this.extractBool(txt, /roam:\s*(true|false)/, true);
         const port = this.extractInt(txt, /port:\s*(\d+)/, 8765);
         this.wsUrl = this.wsUrl || `ws://127.0.0.1:${port}/ws`;
       }

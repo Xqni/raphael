@@ -1,10 +1,12 @@
-# Raphael orb — Windows-side always-on-top (PowerToys mechanism, no keybinding).
-# WSLg hosts each Linux window in a real Windows HWND via msrdc with title
-# "<X title> (<distro>)", e.g. "Raphael Orb (Ubuntu-26.04)". We EnumWindows for
-# a visible window whose title STARTS WITH the given prefix, set HWND_TOPMOST,
-# and best-effort disable the DWM drop shadow. Idempotent; safe to re-run
-# (main.js re-asserts periodically in case the host re-orders z-stacking).
-# Usage: powershell.exe -NoProfile -ExecutionPolicy Bypass -File topmost.ps1 [-Title "Raphael Orb"]
+# Raphael orb — Windows-side always-on-top + shadow suppression (PowerToys
+# mechanism, no keybinding). Handles ALL windows titled "Raphael Orb*":
+#   - HWND_TOPMOST on each
+#   - strips CAPTION|THICKFRAME|BORDER|DLGFRAME styles (DWM shadow/round anchors)
+#   - DWM: no NC rendering, no rounded corners, no backdrop
+#   - INNER region: WSLg/Weston bakes a ~32px shadow margin INSIDE the surface
+#     (host 344x344 for a 280 app) — clipping to the inner content rect removes
+#     those baked pixels, which no DWM API can touch.
+# Idempotent; main.js re-runs this every 30s.
 param([string]$Title = "Raphael Orb")
 
 Add-Type @"
@@ -31,7 +33,6 @@ public class Win32Top {
   [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr hWnd, out RC lpRect);
   [DllImport("user32.dll")] public static extern int SetWindowRgn(IntPtr hWnd, IntPtr hRgn, bool bRedraw);
   [DllImport("user32.dll")] public static extern int GetWindowRgn(IntPtr hWnd, IntPtr hRgn);
-  [DllImport("dwmapi.dll")] public static extern int DwmGetWindowAttribute(IntPtr hwnd, int attr, out int pv, int cb);
   [DllImport("gdi32.dll")] public static extern IntPtr CreateRectRgn(int l, int t, int r, int b);
   [DllImport("gdi32.dll")] public static extern bool DeleteObject(IntPtr hObject);
   [DllImport("dwmapi.dll")]
@@ -39,79 +40,68 @@ public class Win32Top {
 }
 "@
 
-$found = [IntPtr]::Zero
+# Collect ALL visible windows whose title starts with the prefix
+$wins = @()
 $enum = [Win32Top+EnumProc]{
   param([IntPtr]$h, [IntPtr]$l)
   if ([Win32Top]::IsWindowVisible($h)) {
     $sb = New-Object System.Text.StringBuilder 512
     [void][Win32Top]::GetWindowText($h, $sb, 512)
     if ($sb.ToString().StartsWith($Title, [StringComparison]::OrdinalIgnoreCase)) {
-      $script:found = $h
-      return $false   # stop enumeration
+      $script:wins += $h
     }
   }
   return $true
 }
 [void][Win32Top]::EnumWindows($enum, [IntPtr]::Zero)
 
-if ($found -eq [IntPtr]::Zero) {
+if ($wins.Count -eq 0) {
   Write-Output "NOT_FOUND prefix='$Title'"
   exit 1
 }
 
-# HWND_TOPMOST = -1 ; SWP_NOSIZE(0x1) | SWP_NOMOVE(0x2) | SWP_NOACTIVATE(0x10) | SWP_SHOWWINDOW(0x40) | SWP_FRAMECHANGED(0x20)
-[void][Win32Top]::SetWindowPos($found, [IntPtr](-1), 0, 0, 0, 0,
-  0x0001 -bor 0x0002 -bor 0x0010 -bor 0x0040 -bor 0x0020)
-
-# Best-effort drop-shadow removal: DWMWA_NCRENDERING_POLICY(2) = DWMNCRP_DISABLED(1)
-$ncr = 1
-[void][Win32Top]::DwmSetWindowAttribute($found, 2, [ref]$ncr, 4)
-
-# The DWM shadow + rounded corners hang off the CAPTION/THICKFRAME styles —
-# strip them (borderless overlay should have neither) and force a frame refresh.
-$GWL_STYLE = -16
 $mask = 0x00C00000 -bor 0x00040000 -bor 0x00800000 -bor 0x00010000  # CAPTION|THICKFRAME|BORDER|DLGFRAME
-$style = [Win32Top]::GetWindowLongPtr($found, $GWL_STYLE).ToInt64()
-$newStyle = $style -band (-bnot [int64]$mask)
-if ($newStyle -ne $style) {
-  [void][Win32Top]::SetWindowLongPtr($found, $GWL_STYLE, [IntPtr]$newStyle)
-}
-# Win11: DWMWA_WINDOW_CORNER_PREFERENCE(33) = DWMWCP_DONOTROUND(1)
-$noRound = 1
-[void][Win32Top]::DwmSetWindowAttribute($found, 33, [ref]$noRound, 4)
-# DWMWA_SYSTEMBACKDROP_TYPE(38) = DWMSBT_NONE(1) — no accent/transient backdrop
-$bd = 1
-[void][Win32Top]::DwmSetWindowAttribute($found, 38, [ref]$bd, 4)
-# DEFINITIVE shadow kill: give the window a region exactly matching its size.
-# DWM does not draw drop shadows outside a window region.
-$rc = New-Object RC
-if ([Win32Top]::GetWindowRect($found, [ref]$rc)) {
-  $w = $rc.Right - $rc.Left
-  $h = $rc.Bottom - $rc.Top
-  if ($w -gt 0 -and $h -gt 0) {
-    $rgn = [Win32Top]::CreateRectRgn(0, 0, $w, $h)
-    if ($rgn -ne [IntPtr]::Zero) {
-      # on success the system owns the region; delete only on failure
-      if ([Win32Top]::SetWindowRgn($found, $rgn, $true) -eq 0) {
-        [void][Win32Top]::DeleteObject($rgn)
+$report = @()
+foreach ($found in $wins) {
+  # topmost (SWP_NOSIZE|NOMOVE|NOACTIVATE|SHOWWINDOW|FRAMECHANGED)
+  [void][Win32Top]::SetWindowPos($found, [IntPtr](-1), 0, 0, 0, 0,
+    0x0001 -bor 0x0002 -bor 0x0010 -bor 0x0040 -bor 0x0020)
+
+  # DWM: no NC rendering (shadow), no rounded corners, no backdrop
+  $ncr = 1
+  [void][Win32Top]::DwmSetWindowAttribute($found, 2, [ref]$ncr, 4)
+  $noRound = 1
+  [void][Win32Top]::DwmSetWindowAttribute($found, 33, [ref]$noRound, 4)
+  $bd = 1
+  [void][Win32Top]::DwmSetWindowAttribute($found, 38, [ref]$bd, 4)
+
+  # strip caption styles
+  $style = [Win32Top]::GetWindowLongPtr($found, -16).ToInt64()
+  $newStyle = $style -band (-bnot [int64]$mask)
+  if ($newStyle -ne $style) {
+    [void][Win32Top]::SetWindowLongPtr($found, -16, [IntPtr]$newStyle)
+  }
+
+  # INNER region: clip away the compositor-baked shadow margin.
+  # margin = (min(w,h) - 280) / 2 when the window is square and only modestly
+  # larger than the 280px app; otherwise no region (never clip real content).
+  $rc = New-Object RC
+  $regApplied = "skipped"
+  if ([Win32Top]::GetWindowRect($found, [ref]$rc)) {
+    $w = $rc.Right - $rc.Left
+    $h = $rc.Bottom - $rc.Top
+    if ($w -eq $h -and $w -gt 280 -and $w -le 440) {
+      $m = [int](($w - 280) / 2)
+      $rgn = [Win32Top]::CreateRectRgn($m, $m, $w - $m, $h - $m)
+      if ($rgn -ne [IntPtr]::Zero) {
+        if ([Win32Top]::SetWindowRgn($found, $rgn, $true) -ne 0) { $regApplied = "inner(${m}px)" }
+        else { [void][Win32Top]::DeleteObject($rgn); $regApplied = "FAILED" }
       }
+    } else {
+      $regApplied = "n/a(${w}x${h})"
     }
   }
+  $ex = [Win32Top]::GetWindowLongPtr($found, -20).ToInt64()
+  $report += ("hwnd={0} topmost={1} region={2}" -f $found, ((($ex -band 0x8) -ne 0)), $regApplied)
 }
-# Force DWM to re-apply the stripped styles immediately (SWP_FRAMECHANGED=0x20)
-[void][Win32Top]::SetWindowPos($found, [IntPtr](-1), 0, 0, 0, 0,
-  0x0001 -bor 0x0002 -bor 0x0010 -bor 0x0040 -bor 0x0020)
-
-# Verify: GWL_EXSTYLE(-20), WS_EX_TOPMOST = 0x8
-$ex = [Win32Top]::GetWindowLongPtr($found, -20).ToInt64()
-$topmost = (($ex -band 0x8) -ne 0)
-Write-Output ("hwnd={0} topmost={1} exstyle=0x{2:X}" -f $found, $topmost, $ex)
-# Region readback: GetWindowRgn returns 0=NO REGION (SetWindowRgn failed),
-# 1=NULLREGION, 2=SIMPLIFYREGION, 3=COMPLEXREGION (region applied).
-$probe = [Win32Top]::CreateRectRgn(0, 0, 0, 0)
-$regCode = [Win32Top]::GetWindowRgn($found, $probe)
-[void][Win32Top]::DeleteObject($probe)
-$bdBack = 0
-[void][Win32Top]::DwmGetWindowAttribute($found, 38, [ref]$bdBack, 4)
-Write-Output ("regionCode={0} (0=FAILED, 1..3=applied) backdropType={1} (1=NONE)" -f $regCode, $bdBack)
-if (-not $topmost) { exit 2 }
+Write-Output ($report -join " | ")
