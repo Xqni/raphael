@@ -20,6 +20,16 @@ let glideTX = 0, glideTY = 0, glideTB = 0;
 let GLX = 0, GLY = 0, GLB = 0;
 let frameInterval = 1000 / fpsCap;
 
+// --- Frame-time governor (spec §5: "automatic downgrade if frames are slow").
+// Only meaningful for quality:'auto' — explicit low/medium/high stay forced.
+// Policy: EMA of achieved frame intervals vs the current target interval;
+// ~1.5s sustained slow -> downshift pixel-ratio one rung (4s cooldown);
+// ~6s sustained headroom -> climb back, never above the startup rung.
+const GOV_LADDER = [0.5, 0.75, 1, 1.5, 2]; // pixel-ratio rungs
+const GOV = { on: quality === 'auto', idx: 0, ceiling: 0, ema: 0,
+              slow: 0, fast: 0, nextAt: 0, seen: 0, lastAt: 0, acted: 0 };
+let govApply = null; // bound inside initScene (closure over resizeEdgeRT)
+
 
 const canvas = document.getElementById('webgl');
 const subtitleEl = document.getElementById('subtitle');
@@ -209,6 +219,21 @@ function initScene() {
                                Math.max(2, Math.round(h * renderer.getPixelRatio())));
   }
   resizeEdgeRT(sizePx, sizePx);
+
+  // Governor binding: snap the ladder to the STARTUP ratio (never climb above
+  // what the GPU was trusted with) and capture resizeEdgeRT in a closure —
+  // it is function-scoped here, not visible from animate().
+  if (GOV.on) {
+    const startRatio = renderer.getPixelRatio();
+    GOV.ceiling = GOV_LADDER.reduce((best, v, i) =>
+      Math.abs(v - startRatio) < Math.abs(GOV_LADDER[best] - startRatio) ? i : best, 0);
+    GOV.idx = GOV.ceiling;
+    govApply = () => {
+      renderer.setPixelRatio(GOV_LADDER[GOV.idx]);
+      renderer.setSize(sizePx, sizePx);
+      resizeEdgeRT(sizePx, sizePx); // edge RT bakes dpr — must follow the tier
+    };
+  }
 
   scene = new THREE.Scene();
   camera = new THREE.PerspectiveCamera(45, 1, 0.1, 100);
@@ -510,6 +535,29 @@ function animate(now) {
     sceneStats.tris = renderer.info.render.triangles;
   }
 
+  // --- frame-time governor: measure achieved intervals, drift the tier ---
+  if (GOV.on && !document.hidden) {
+    const d = GOV.lastAt ? (now - GOV.lastAt) : 0;
+    GOV.lastAt = now;
+    GOV.seen++;
+    if (GOV.seen > 180 && d > 0 && d < 500) { // skip shader-compile warmup + hitches
+      GOV.ema = GOV.ema ? GOV.ema + 0.08 * (d - GOV.ema) : d;
+      if (GOV.ema > frameInterval * 1.6) { GOV.slow++; GOV.fast = 0; }
+      else if (GOV.ema < frameInterval * 1.15) { GOV.fast++; GOV.slow = Math.max(0, GOV.slow - 1); }
+      else { GOV.slow = Math.max(0, GOV.slow - 1); GOV.fast = Math.max(0, GOV.fast - 1); }
+      const t = performance.now();
+      if (GOV.slow >= 90 && t >= GOV.nextAt && GOV.idx > 0) {
+        GOV.idx--; if (govApply) govApply(); GOV.acted++;
+        GOV.nextAt = t + 4000; GOV.slow = 0;
+        console.log('[gov] downshift dpr=' + GOV_LADDER[GOV.idx] + ' ema=' + GOV.ema.toFixed(1));
+      } else if (GOV.fast >= 360 && t >= GOV.nextAt && GOV.idx < GOV.ceiling) {
+        GOV.idx++; if (govApply) govApply(); GOV.acted++;
+        GOV.nextAt = t + 8000; GOV.fast = 0;
+        console.log('[gov] upshift dpr=' + GOV_LADDER[GOV.idx] + ' ema=' + GOV.ema.toFixed(1));
+      }
+    }
+  } else { GOV.lastAt = now; GOV.seen = 0; GOV.ema = 0; GOV.slow = 0; GOV.fast = 0; }
+
   // FPS counter
   frameCount++;
   const nowFps = performance.now();
@@ -563,7 +611,10 @@ window.__orbStats = () => { // Phase-7 perf probe: true RENDERED frames + scene 
   // NOTE: frame increments per render() call and we render TWICE per animation
   // frame (scene->RT, mask->canvas): real FPS = delta(frame) / (2 * seconds).
   return { frame: i.frame, calls: sceneStats.calls, tris: sceneStats.tris,
-           dpr: r.getPixelRatio(), w: canvas.width, h: canvas.height, gl: glName() };
+           dpr: r.getPixelRatio(), w: canvas.width, h: canvas.height, gl: glName(),
+           gov: { on: GOV.on, dpr: GOV_LADDER[GOV.idx],
+                  ceiling: GOV_LADDER[GOV.ceiling], ema: Math.round(GOV.ema),
+                  acted: GOV.acted, slow: GOV.slow, fast: GOV.fast } };
 };
 function glName() {
   try {

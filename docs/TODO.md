@@ -22,6 +22,11 @@ Priority order after Phase 3 completes. Do not let these silently vanish.
 - **Screenshot matrix**: every state × {dark, light, busy} backgrounds -> `docs/orb/` (method: DevTools Page.captureScreenshot + demo bg toggle via `window.__orbDemo.setBg`).
 - **Performance report**: `docs/orb/PERFORMANCE.md` (measurements + method + WSL caveat).
 
+## 3b. USER ACTION (when awake — non-blocking, relay already works around it)
+- Hyper-V firewall blocks WSL's built-in localhost relay on this machine. The supervisor's user-space relay (paths.brain_relay) covers everything meanwhile.
+- Optional one-liner (elevated PowerShell), then set `paths.brain_relay: false` in config.yaml and restart the Raphael task:
+  Set-NetFirewallHyperVVMSetting -Name '{40E0AC32-46A5-438A-A0B2-2B479E8F2E90}' -DefaultInboundAction Allow
+
 ## 4. Minor known items
 - NOACTIVATE exstyle bit doesn't stick (msrdc rewrites it) — cosmetic, TOOLWINDOW covers the ask.
 - `docs/ORB_REBUILD_TASK.md` fidelity checklist §8 never formally ticked by reviewer (most items effectively verified through the user review loop — close it during the screenshot matrix pass).

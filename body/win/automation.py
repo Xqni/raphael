@@ -51,9 +51,18 @@ async def launch_app(executable_path: str, args: str = ""):
         None, Application().start, f'"{executable_path}" {args}'
     )
 
-# Registry of UIA operations; the Brain will send structured ops like
-# {"action": "click", "element": {...}, "args": {...}}
-# For now we implement a very small subset.
+
+async def focus_window(title: str):
+    """Bring a window with given title to foreground."""
+    await asyncio.get_running_loop().run_in_executor(None, lambda: Application().connect(title=title).top_window().set_focus())
+
+async def minimize_window(title: str):
+    """Minimize a window with given title."""
+    await asyncio.get_running_loop().run_in_executor(None, lambda: Application().connect(title=title).top_window().minimize())
+
+async def close_window(title: str):
+    """Close a window with given title."""
+    await asyncio.get_running_loop().run_in_executor(None, lambda: Application().connect(title=title).top_window().close())
 async def perform_uia(op: str, target: Dict[str, Any], args: Dict[str, Any]):
     if op == "click":
         # Expect target to contain screen coordinates.

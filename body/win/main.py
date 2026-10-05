@@ -13,15 +13,46 @@ import pathlib
 # Simple cross‑process lock using a lock file.
 LOCK_PATH = pathlib.Path(os.getenv('TMP', '/tmp')) / 'raphael_body.lock'
 
-def obtain_lock() -> bool:
-    try:
-        # O_EXCL|O_CREAT ensures failure if file exists.
-        fd = os.open(str(LOCK_PATH), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
-        )
-        os.close(fd)
+def _pid_alive(pid: int) -> bool:
+    """True if the lock owner process still exists (Windows)."""
+    if os.name != 'nt':
+        try:
+            os.kill(pid, 0)
+            return True
+        except OSError:
+            return False
+    import ctypes
+    PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+    kernel32 = ctypes.windll.kernel32
+    handle = kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+    if handle:
+        kernel32.CloseHandle(handle)
         return True
-    except FileExistsError:
-        return False
+    return False
+
+
+def obtain_lock() -> bool:
+    for _attempt in range(2):
+        try:
+            # O_EXCL|O_CREAT ensures failure if file exists.
+            fd = os.open(str(LOCK_PATH), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+            os.write(fd, str(os.getpid()).encode('ascii'))
+            os.close(fd)
+            return True
+        except FileExistsError:
+            # Stale lock: a force-killed body never ran atexit — if the owner
+            # is dead, reclaim instead of staying "already running" forever.
+            try:
+                owner = int((LOCK_PATH.read_text() or '').strip() or 0)
+            except (OSError, ValueError):
+                owner = 0
+            if owner and _pid_alive(owner):
+                return False
+            try:
+                LOCK_PATH.unlink()
+            except OSError:
+                return False
+    return False
 
 def release_lock():
     try:
@@ -30,7 +61,12 @@ def release_lock():
         pass
 
 async def run_body():
-    from .ws_client import start_client
+    try:
+        from .ws_client import start_client
+    except ImportError:
+        # Script mode (supervisor runs `python body/win/main.py`) has no
+        # package context — fall back to an absolute import via sys.path[0].
+        from ws_client import start_client
     await start_client()
 
 def main() -> int:

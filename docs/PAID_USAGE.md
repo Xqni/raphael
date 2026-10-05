@@ -15,3 +15,8 @@ Rules: paid Zen models + Go models beyond the Go limits both draw on the same **
   FALLBACK when Ollama free-plan cloud (gpt-oss:120b-cloud etc.) rate-limits or underperforms.
 - Rules: cheapest-first (opencode-go/mimo-v2.5 default; qwen3.7-plus only for hard debugging),
   log every Go call here with model + estimated cost, $2.00 paid-pool cap still governs.
+
+## 2026-10-05 — Wave 2 brain phase 2 (orchestrator-managed, user asleep, "manage everything")
+- Task: brain /ws + loop + confirm build. Free models failed 3x on this task (gpt-oss:120b-cloud tool-hallucination x2 + fabricated test output; mimo-v2.6-flash-free rate-limited) → escalation rule 0→1 applied.
+- Dispatch: brain-dev phase 2 on `opencode-go/mimo-v2.5` (Tier-1 default), background.
+- Precedent: earlier free dispatches (gpt-oss:120b-cloud) built body-win phase 1+2 and brain phase 1 at $0.

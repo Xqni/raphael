@@ -9,6 +9,11 @@ Responsibilities:
 """
 import asyncio
 import json
+import asyncio
+try:
+    from . import hotkeys
+except ImportError:
+    import hotkeys  # script mode (supervisor runs `python body/win/main.py`)
 import os
 import random
 import pathlib
@@ -61,11 +66,24 @@ async def handle_message(msg: str, ws):
 
 async def client_once():
     async with websockets.connect(CONFIG_URL) as ws:
-        # Send auth within 5 s as required.
+        # Start control queue drain task
+        control_task = asyncio.create_task(_drain_control_queue(ws))
+
         await asyncio.wait_for(send_auth(ws), timeout=5)
         # Basic loop – receive and react.
         async for message in ws:
             await handle_message(message, ws)
+
+
+async def _drain_control_queue(ws):
+    """Continuously send control frames queued by hotkeys."""
+    while True:
+        item = await hotkeys._control_queue.get()
+        try:
+            await ws.send(json.dumps(item))
+        except Exception as e:
+            print(f"[body-win] Failed to send control frame: {e}", flush=True)
+            # Put back? drop.
 
 async def start_client():
     """Run the client with reconnection logic.
@@ -77,19 +95,21 @@ async def start_client():
     while True:
         try:
             await client_once()
+        except asyncio.CancelledError:
+            print('[body-win] Shutdown requested, exiting client loop.', flush=True)
+            break
         except (OSError, websockets.exceptions.WebSocketException) as e:
             print(f"[body-win] Connection error: {e}; retrying in {backoff}s", flush=True)
         except asyncio.TimeoutError as e:
             print(f"[body-win] Timeout during handshake: {e}; retrying in {backoff}s", flush=True)
         except FileNotFoundError as e:
             print(f"[body-win] {e}; cannot proceed without token.", flush=True)
-            # Exit cleanly – supervisor will restart later after token appears.
             return
-        # exponential back‑off with jitter
         jitter = random.uniform(-0.2, 0.2) * backoff
         wait = max(1, backoff + jitter)
         await asyncio.sleep(wait)
         backoff = min(max_backoff, backoff * 2)
+
 
 # Entry point for debugging (not used by main.py which calls start_client)
 if __name__ == "__main__":

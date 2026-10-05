@@ -76,6 +76,7 @@ DEFAULT_CONFIG = {
         "token_win": "",            # default: %APPDATA%\Raphael\token
         "wsl_sudo": False,          # true -> 'sudo -n systemctl ...' over wsl.exe
         "wsl_keepalive": True,      # hold a lightweight wsl.exe to keep the VM up
+        "brain_relay": True,        # win 127.0.0.1:8765 -> wsl-ip:8765 splice
     },
     "supervisor": {
         "health_url": HEALTH_URL,
@@ -779,6 +780,126 @@ def start_keepalive(cfg, log):
                   LOG_DIR / "wsl-keepalive.log")
 
 
+def _wsl_ip(cfg):
+    """First IPv4 of the WSL distro (hostname -I), or None."""
+    rc, out = wsl_run(cfg, "hostname", "-I", timeout=15)
+    if rc != 0:
+        return None
+    for tok in out.replace(",", " ").split():
+        if tok.count(".") == 3 and all(part.isdigit() for part in tok.split(".")):
+            return tok
+    return None
+
+
+def start_brain_relay(cfg, log, listen_port=8765, backend_port=8766):
+    """User-space TCP splice: Windows 127.0.0.1:8765 -> <wsl-ip>:8765.
+
+    The built-in Windows->WSL localhost relay is blocked by the Hyper-V
+    firewall on this machine (verified 2026-10-05: win->127.0.0.1:8765 =
+    refused while win->172.x.x.x:8765 connects; NIC shows as "vEthernet
+    (WSL (Hyper-V firewall))"). The admin fix is a one-liner
+    (Set-NetFirewallHyperVVMSetting ... -DefaultInboundAction Allow) but
+    needs elevation; this relay keeps every client on the PROTOCOL's
+    localhost-only address with zero privileges. Remove when the firewall
+    setting is applied (config: paths.brain_relay: false).
+    """
+    if not IS_WINDOWS or not cfg["paths"].get("brain_relay", True):
+        return None
+    import socket
+    import threading
+
+    state = {"ip": None, "warned_at": 0.0}
+
+    def discover():
+        ip = _wsl_ip(cfg)
+        if ip:
+            state["ip"] = ip
+            log.info("brain relay: backend wsl %s:%d (helper leg)" % (ip, backend_port))
+        return ip
+
+    def pipe(src, dst):
+        try:
+            while True:
+                data = src.recv(65536)
+                if not data:
+                    break
+                dst.sendall(data)
+        except OSError:
+            pass
+        finally:
+            try:
+                dst.shutdown(socket.SHUT_WR)
+            except OSError:
+                pass
+
+    def handle(client):
+        backend = None
+        for _attempt in (0, 1):
+            ip = state["ip"] or discover()
+            if not ip:
+                break
+            try:
+                backend = socket.create_connection((ip, backend_port), timeout=5)
+                break
+            except OSError:
+                state["ip"] = None  # distro restarted -> IP changed, rediscover
+        if backend is None:
+            try:
+                client.close()
+            except OSError:
+                pass
+            now = time.time()
+            if now - state["warned_at"] > 60:
+                state["warned_at"] = now
+                log.warn("brain relay: backend wsl:%d unreachable (helper or "
+                         "brain not up yet?) — client disconnected; retrying"
+                         % backend_port)
+            return
+        threading.Thread(target=pipe, args=(client, backend),
+                         daemon=True).start()
+        pipe(backend, client)
+        for sock in (client, backend):
+            try:
+                sock.close()
+            except OSError:
+                pass
+
+    def accept_loop():
+        try:
+            srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            srv.bind(("127.0.0.1", listen_port))
+            srv.listen(64)
+        except OSError as exc:
+            log.warn("brain relay: cannot bind 127.0.0.1:%d (%s) — relay off"
+                     % (listen_port, exc))
+            return
+        log.info("brain relay: listening 127.0.0.1:%d -> wsl:%d (localhost "
+                 "contract preserved)" % (listen_port, listen_port))
+        while True:
+            try:
+                client, _addr = srv.accept()
+            except OSError:
+                return
+            threading.Thread(target=handle, args=(client,),
+                             daemon=True).start()
+
+    # WSL helper leg: binds 0.0.0.0:8766 inside the VM (NAT-only), dials the
+    # Brain's loopback. Detached+hidden; outlives supervisor restarts (a
+    # duplicate spawn just exits on bind-conflict, logged to wsl-relay.log).
+    helper_unc = REPO_ROOT / "scripts" / "wsl-relay.py"
+    helper_wsl = _wsl_path(helper_unc)
+    if helper_wsl:
+        _spawn(wsl_argv(cfg, "python3", helper_wsl, str(backend_port),
+                        str(listen_port)),
+               helper_unc, log, "wsl-relay", LOG_DIR / "wsl-relay.log")
+    else:
+        log.warn("brain relay: cannot derive wsl path for scripts/wsl-relay.py")
+
+    threading.Thread(target=accept_loop, daemon=True).start()
+    return "relay"
+
+
 def bring_up_wsl(cfg, log):
     S = cfg["supervisor"]
     paths = cfg["paths"]
@@ -1472,6 +1593,7 @@ def main(argv=None):
             log.info("phase 2: WSL bring-up")
             procs["keepalive"] = start_keepalive(cfg, log)
             bring_up_wsl(cfg, log)
+            procs["relay"] = start_brain_relay(cfg, log)
         else:
             log.warn("non-Windows runner — phases 1/2 (orb/body/WSL "
                      "bring-up) skipped; health loop only")

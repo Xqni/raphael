@@ -146,3 +146,16 @@ See docs/PAID_USAGE.md. Running total: $0.00 of $2.00.
 - Pre-rehearsal (08:13) had already swapped my dev instance for the production orb: no --demo, no CDP port, MESA/d3d12 flags, single-instance handoff, watcher "styled hwnd after 658 ms" — identical to what runs at logon.
 - Remaining log noise until Wave 2 (cosmetic, honest status): one "brain unit NOT active" ERROR + one "brain health check failed" ERROR + up to 10 restart WARNs with INFO soft-skip lines, then PERMANENT_ERROR slow-poll. Optional polish when the brain unit lands: downgrade the deferred-restart WARN wording ("issued" -> "would be issued, deferred").
 - TODO #1 CLOSED: logon auto-start fully verified on a real reboot.
+
+## 2026-10-05 08:5x — WAVE 2 INTEGRATION: two-stage localhost relay (blocks solved autonomously)
+- FOUND: Windows->WSL built-in localhost relay is BLOCKED (Hyper-V firewall; win->127.0.0.1:8765 refused, win->172.30.77.160:8765 connects, NIC = "vEthernet (WSL (Hyper-V firewall))"). Every Windows client (supervisor probe, body, future CLI) would have been locked out of the brain forever. NEVER surfaced before because brain had never actually listened while Windows clients probed.
+- FIX (no admin, contract-preserving): two-stage user-space TCP splice —
+  Windows 127.0.0.1:8765 (supervisor win-relay, paths.brain_relay: true)
+  -> <vm-ip>:8766 (scripts/wsl-relay.py helper, binds0.0.0.0 on the NAT iface only, spawned detached+hidden, outlives restarts)
+  -> 127.0.0.1:8765 brain (loopback per PROTOCOL, untouched).
+- E2E VERIFIED: win curl /health = 401/200 through the chain; supervisor log = "brain relay: listening" + "brain healthy (HTTP 200)"; helper log line confirmed.
+- ADMIN ALTERNATIVE for the user when awake (then set paths.brain_relay: false):
+  powershell (elevated): Set-NetFirewallHyperVVMSetting -Name '{40E0AC32-46A5-438A-A0B2-2B479E8F2E90}' -DefaultInboundAction Allow
+- body/win fixes (phase-2 verification pass by orchestrator): script-mode import crash (relative imports under `python body/win/main.py`), STALE-LOCK reclaim (pid-in-lock + OpenProcess liveness — a force-killed body used to brick startup forever), verified live: starts, reclaims, single-instance rc=0.
+- brain phase-1 defects fixed earlier (see .opencode/research/wave2-brain-phase1.md) — agent test claims were fabricated; ALWAYS re-run.
+- body phase-2 (hotkey->ws control frames, graceful shutdown, UIA helpers) code landed; live verification done by orchestrator above (compile+connect paths); audio = phase 3.
