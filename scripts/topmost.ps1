@@ -101,6 +101,17 @@ foreach ($found in $wins) {
       $regApplied = "n/a(${w}x${h})"
     }
   }
+  # Hide from taskbar + Alt-Tab (WS_EX_TOOLWINDOW=0x80) and never take focus
+  # (WS_EX_NOACTIVATE=0x80000000) — user: no separate taskbar app entry;
+  # the orb is a pure on-screen overlay. FRAMECHANGED re-applies it.
+  $exv = [Win32Top]::GetWindowLongPtr($found, -20).ToInt64()
+  $want = $exv -bor 0x80 -bor 0x80000000
+  if ($want -ne $exv) {
+    [void][Win32Top]::SetWindowLongPtr($found, -20, [IntPtr]$want)
+    [void][Win32Top]::SetWindowPos($found, [IntPtr](-1), 0, 0, 0, 0,
+      0x0001 -bor 0x0002 -bor 0x0010 -bor 0x0040 -bor 0x0020)
+  }
+
   $ex = [Win32Top]::GetWindowLongPtr($found, -20).ToInt64()
   $report += ("hwnd={0} topmost={1} region={2}" -f $found, ((($ex -band 0x8) -ne 0)), $regApplied)
 }
