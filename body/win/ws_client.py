@@ -201,20 +201,34 @@ async def start_client():
 
     mic_streamer = await audio_in.start_mic_stream(on_mic_frame, on_mic_start, on_mic_end)
     
-    # PTT Wiring
+    # PTT wiring (fixed: the old code compared a single-key event name against
+    # the chord string 'ctrl+alt+space' — never matched — AND called
+    # get_running_loop() inside the keyboard library's thread, which always
+    # raises. Chord hold handled by add_hotkey + trigger_on_release; the loop
+    # is captured HERE, on the asyncio side.)
     cfg = _load_config()
     ptt_hk = (cfg.get('voice', {}) or {}).get('ptt_hotkey')
     if ptt_hk:
         import keyboard
-        # Use keyboard.on_press/on_release for proper PTT hold behavior
-        def on_press(e):
-            if e.name == ptt_hk: # Simplified; assumes ptt_hk is a single key name
-                asyncio.run_coroutine_threadsafe(mic_streamer.start_capture('ptt'), asyncio.get_running_loop())
-        def on_release(e):
-            if e.name == ptt_hk:
-                asyncio.run_coroutine_threadsafe(mic_streamer.stop_capture(), asyncio.get_running_loop())
-        keyboard.on_press(on_press)
-        keyboard.on_release(on_release)
+        loop = asyncio.get_running_loop()
+
+        def _ptt_press():
+            try:
+                asyncio.run_coroutine_threadsafe(
+                    mic_streamer.start_capture('ptt'), loop)
+            except Exception as e:
+                print(f"[body-win] PTT press failed: {e}", flush=True)
+
+        def _ptt_release():
+            try:
+                asyncio.run_coroutine_threadsafe(
+                    mic_streamer.stop_capture(), loop)
+            except Exception as e:
+                print(f"[body-win] PTT release failed: {e}", flush=True)
+
+        keyboard.add_hotkey(ptt_hk, _ptt_press)
+        keyboard.add_hotkey(ptt_hk, _ptt_release, trigger_on_release=True)
+        print(f"[body-win] PTT '{ptt_hk}' armed — hold to talk", flush=True)
         
     backoff = 5
     max_backoff = 30

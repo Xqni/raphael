@@ -65,8 +65,12 @@ MAX_STRIKES = 3                     # repeated malformed frames -> close
 
 
 class Session:
+    # audio_buf/audio_reason were added by the mic lane WITHOUT extending
+    # __slots__ -> every audio_start died with AttributeError (found by the
+    # synthetic mic-lane E2E).
     __slots__ = ('sid', 'ws', 'ip', 'role', 'client', 'client_v', 'authed',
-                 'missed', 'rate', 'created', 'jobs', 'strikes', 'bin_rate')
+                 'missed', 'rate', 'created', 'jobs', 'strikes', 'bin_rate',
+                 'audio_buf', 'audio_reason')
 
     def __init__(self, ws: WebSocket, ip: str):
         self.sid = uuid.uuid4().hex[:12]
@@ -82,6 +86,8 @@ class Session:
         self.created = time.time()
         self.jobs: Set[int] = set()
         self.strikes = 0
+        self.audio_buf = bytearray()
+        self.audio_reason = 'wake'
 
 
 class WsHub:
@@ -346,8 +352,12 @@ class WsHub:
             return
         kind = data[4]
         if kind == 1 and s.role == 'body':
-            # mic PCM chunk — STT lane belongs to voice-dev; accepted + logged
-            pass
+            # mic PCM chunk -> accumulate for the STT lane. (Was a bare `pass`
+            # stub — the buffer never filled and audio_end always saw it
+            # empty, so nothing was ever transcribed; found by the synthetic
+            # mic-lane E2E.) 10 MB safety cap (~10 min of 16k mono s16le).
+            if len(s.audio_buf) < 10 * 1024 * 1024:
+                s.audio_buf += data[9:]
         elif kind == 2:
             pass  # TTS chunk (brain→body) — not produced yet
         else:
@@ -403,6 +413,9 @@ class WsHub:
         try:
             await handler(s, msg)
         except Exception as e:  # noqa: BLE001 — handler bugs must not kill the session
+            import traceback
+            print(f"[ws] handler '{mtype}' failed: {type(e).__name__}: {e}\n"
+                  + traceback.format_exc(), flush=True)
             await self._send(s, {'type': 'error', 'v': 1, 'code': 'E_INTERNAL',
                                  'detail': type(e).__name__})
 

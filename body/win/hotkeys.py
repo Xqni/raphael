@@ -88,8 +88,10 @@ def register_hotkeys(config: dict) -> None:
 
     ptt = (config.get('voice', {}) or {}).get('ptt_hotkey')
     if ptt:
-        print(f"[hotkeys] PTT '{ptt}' reserved for voice phase 3 "
-              f"(mic streaming; no control frame)", flush=True)
+        # PTT is wired where the mic lives (ws_client.start_client ->
+        # audio_in.MicStreamer), not as a control frame — see its
+        # "hold to talk" log line. This is only a visibility note.
+        print(f"[hotkeys] PTT '{ptt}' wired via ws_client (mic lane)", flush=True)
 
     import atexit
     atexit.register(unregister_hotkeys)
