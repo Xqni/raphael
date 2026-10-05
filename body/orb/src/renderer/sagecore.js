@@ -17,17 +17,17 @@ const TAU = 400; // blend time constant (ms) — inside the spec's 300-600ms win
 // Per-state visual targets for the Sage layers.
 // nebula, speed(lines), poly, node, ring, spark, spin(rad/ms-ish), bright(core)
 const S = {
-  idle:            { nebula: 0.55, speed: 0.85, poly: 1.00, node: 1.00, ring: 0.75, spark: 0.70, spin: 0.00005, bright: 1.00 },
-  listening:       { nebula: 0.80, speed: 1.35, poly: 1.10, node: 1.60, ring: 1.20, spark: 1.00, spin: 0.00007, bright: 1.45 },
+  idle:            { nebula: 0.55, speed: 0.85, poly: 1.00, node: 1.00, ring: 0.75, spark: 0.70, spin: 0.00013, bright: 1.00 },
+  listening:       { nebula: 0.80, speed: 1.35, poly: 1.10, node: 1.60, ring: 1.20, spark: 1.00, spin: 0.00017, bright: 1.45 },
   thinking:        { nebula: 0.65, speed: 1.00, poly: 1.60, node: 1.80, ring: 0.95, spark: 1.20, spin: 0.00040, bright: 1.15 },
-  acting:          { nebula: 0.50, speed: 1.05, poly: 1.25, node: 1.35, ring: 0.90, spark: 0.80, spin: 0.00012, bright: 1.10 },
-  speaking:        { nebula: 0.60, speed: 1.20, poly: 1.00, node: 1.20, ring: 1.00, spark: 0.90, spin: 0.00007, bright: 1.05 },
-  confirm:         { nebula: 0.40, speed: 0.75, poly: 0.95, node: 1.10, ring: 0.70, spark: 0.50, spin: 0.00006, bright: 1.15 },
-  error:           { nebula: 0.35, speed: 0.50, poly: 0.80, node: 0.80, ring: 0.50, spark: 0.30, spin: 0.00003, bright: 1.45 },
-  starting:        { nebula: 0.55, speed: 0.85, poly: 1.00, node: 1.00, ring: 0.75, spark: 0.70, spin: 0.00005, bright: 1.00 },
-  reconnecting:    { nebula: 0.30, speed: 0.50, poly: 0.70, node: 0.80, ring: 0.50, spark: 0.35, spin: 0.00002, bright: 0.75 },
-  offline:         { nebula: 0.12, speed: 0.00, poly: 0.40, node: 0.40, ring: 0.20, spark: 0.10, spin: 0.000005, bright: 0.45 },
-  private_overlay: { nebula: 0.50, speed: 0.85, poly: 1.00, node: 1.00, ring: 0.75, spark: 0.60, spin: 0.00005, bright: 1.00 },
+  acting:          { nebula: 0.50, speed: 1.05, poly: 1.25, node: 1.35, ring: 0.90, spark: 0.80, spin: 0.00014, bright: 1.10 },
+  speaking:        { nebula: 0.60, speed: 1.20, poly: 1.00, node: 1.20, ring: 1.00, spark: 0.90, spin: 0.00016, bright: 1.05 },
+  confirm:         { nebula: 0.40, speed: 0.75, poly: 0.95, node: 1.10, ring: 0.70, spark: 0.50, spin: 0.00013, bright: 1.15 },
+  error:           { nebula: 0.35, speed: 0.50, poly: 0.80, node: 0.80, ring: 0.50, spark: 0.30, spin: 0.00012, bright: 1.45 },
+  starting:        { nebula: 0.55, speed: 0.85, poly: 1.00, node: 1.00, ring: 0.75, spark: 0.70, spin: 0.00013, bright: 1.00 },
+  reconnecting:    { nebula: 0.30, speed: 0.50, poly: 0.70, node: 0.80, ring: 0.50, spark: 0.35, spin: 0.00008, bright: 0.75 },
+  offline:         { nebula: 0.12, speed: 0.00, poly: 0.40, node: 0.40, ring: 0.20, spark: 0.10, spin: 0.000006, bright: 0.45 },
+  private_overlay: { nebula: 0.50, speed: 0.85, poly: 1.00, node: 1.00, ring: 0.75, spark: 0.60, spin: 0.00013, bright: 1.00 },
 };
 const KEYS = Object.keys(S.idle);
 const FALLBACK = S.idle;
@@ -341,8 +341,12 @@ export function updateSageCore(L, ctx) {
   const genOuter = ease3(gt / 1400);
   const genInner = ease3((gt - 900) / 1200);
   const genSun = ease3((gt - 1700) / 900);
-  const spinProg = Math.min(Math.max((gt - 2300) / 1400, 0), 1);
-  const genSpin = (gt > 2300 && gt < 3700) ? Math.sin(Math.PI * spinProg) * 9 : 0; // absolute speed boost: VISIBLE finishing spin
+  const spinProg = Math.min(Math.max((gt - 2300) / 2300, 0), 1);
+  const sinP = Math.sin(Math.PI * spinProg);
+  // sin^2 envelope: zero slope at BOTH ends -> the finishing spin eases cleanly
+  // into the idle spin instead of cutting off (user: it looked abrupt).
+  const genSpin = (gt > 2300 && gt < 4600) ? sinP * sinP * 9 : 0;
+  const errOn = state === 'error' ? 1 : 0; // error: white cages, CRANKED glow // absolute speed boost: VISIBLE finishing spin
 
   // 1) nebula
   L.nebulaMat.uniforms.uTime.value = t;
@@ -356,11 +360,11 @@ export function updateSageCore(L, ctx) {
 
   // 4) polyhedron + nodes — slow spin, edge pulses; listening: nodes brighten
   L.polyMat.uniforms.uTime.value = t;
-  L.polyMat.uniforms.uAlpha.value = w.poly * 0.9;
-  L.polyMat.uniforms.uPulse.value = w.poly;
+  L.polyMat.uniforms.uAlpha.value = w.poly * (0.9 + errOn * 0.7); // error: crank the WHITE line glow
+  L.polyMat.uniforms.uPulse.value = w.poly * (1 + errOn * 1.2);   // hotter traveling light pulses
   // state tint damped onto the cages + node dots (error = red cages/nodes)
   if (ctx.tint !== undefined) {
-    L.tintTgt.setHex(ctx.tint);
+    L.tintTgt.setHex(state === 'error' ? 0xffffff : ctx.tint); // error: WHITE cages (red sun behind for contrast)
     L.tintCur.lerp(L.tintTgt, 1 - Math.exp(-dt / TAU));
     L.polyMat.uniforms.uTint.value.copy(L.tintCur);
     L.nodeMat.uniforms.uTint.value.copy(L.tintCur);
@@ -382,6 +386,7 @@ export function updateSageCore(L, ctx) {
   L.nodeMat.uniforms.uTime.value = t;
   L.nodeMat.uniforms.uAlpha.value = w.node;
   L.nodeMat.uniforms.uBoost.value = 1 + listening * L.ampS * 0.8;
+  L.nodeMat.uniforms.uSize.value = 7.5 + errOn * 5; // error: bigger glowing white dots
   L.nodes.rotation.y = L.poly.rotation.y; // node dots track the lattice exactly
   L.nodes.rotation.x = L.poly.rotation.x;
 
