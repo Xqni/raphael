@@ -1,4 +1,3 @@
-// Pure state machine (unit-testable) as specified
 class StateMachine {
   constructor(initial = {}) {
     this.state = {
@@ -15,6 +14,7 @@ class StateMachine {
       crossfadeActive: false,
       crossfadeStart: 0,
       crossfadeDuration: 300,
+      lastSpeakSeq: -1,
     };
   }
 
@@ -35,15 +35,18 @@ class StateMachine {
 
   onSpeak(ev) {
     if (!ev) return this.state;
+    if (ev.seq !== undefined && ev.seq <= this.state.lastSpeakSeq) return this.state;
+    if (ev.seq !== undefined) this.state.lastSpeakSeq = ev.seq;
+    if (ev.event === 'end') {
+      this.state.speakAmp = 0;
+      this.state.speakPitch = null;
+      if (this.state.orbState === 'speaking') this.transitionTo('idle');
+      return this.state;
+    }
     this.transitionTo('speaking');
     if (ev.event === 'start' || ev.event === 'chunk') {
       this.state.speakAmp = ev.amplitude !== undefined ? ev.amplitude : this.state.speakAmp;
       this.state.speakPitch = ev.pitch_hz !== undefined ? ev.pitch_hz : this.state.speakPitch;
-    }
-    if (ev.event === 'end') {
-      this.state.speakAmp = 0;
-      this.state.speakPitch = null;
-      this.transitionTo('idle');
     }
     return this.state;
   }

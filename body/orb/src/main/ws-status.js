@@ -1,6 +1,20 @@
 const EventEmitter = require('events');
 const { WebSocket } = require('ws');
 
+const ORB_STATES = new Set([
+  'starting',
+  'reconnecting',
+  'offline',
+  'idle',
+  'listening',
+  'thinking',
+  'acting',
+  'speaking',
+  'confirm',
+  'error',
+  'private_overlay',
+]);
+
 class StatusWS extends EventEmitter {
   constructor(config) {
     super();
@@ -13,6 +27,7 @@ class StatusWS extends EventEmitter {
     this.heartbeatTimer = null;
     this.reconnectTimer = null;
     this.authSent = false;
+    this.fatalAuth = false;
     this.seq = 0;
     this.state = {
       orbState: 'starting',
@@ -31,6 +46,11 @@ class StatusWS extends EventEmitter {
   }
 
   connect() {
+    if (!this.config.token) {
+      this.state.orbState = 'offline';
+      this.emit('state', this.state);
+      return;
+    }
     this.clearTimers();
     try {
       this.ws = new WebSocket(this.config.wsUrl);
@@ -47,6 +67,7 @@ class StatusWS extends EventEmitter {
       this.emit('state', this.state);
     });
     this.ws.on('message', (data, isBinary) => {
+      this.pongMiss = 0;
       if (isBinary) return;
       let msg;
       try {
@@ -64,7 +85,13 @@ class StatusWS extends EventEmitter {
       this.ws = null;
       this.authSent = false;
       this.clearTimers();
-      this.updateOrbState(this.state.private ? 'reconnecting' : 'reconnecting');
+      if (this.fatalAuth) {
+        this.state.orbState = 'offline';
+        this.emit('state', this.state);
+        return;
+      }
+      this.updateOrbState('reconnecting');
+      this.emit('state', this.state);
       this.scheduleReconnect();
     });
     this.ws.on('error', () => {
@@ -74,26 +101,37 @@ class StatusWS extends EventEmitter {
 
   handle(msg) {
     switch (msg.type) {
+      case 'ping':
+        if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+          this.ws.send(JSON.stringify({ type: 'pong' }));
+        }
+        break;
       case 'auth_ok':
         this.session = msg.session;
         this.backoff = this.config.reconnectInitial;
+        this.fatalAuth = false;
         this.updateOrbState('idle');
         this.emit('state', this.state);
         break;
       case 'auth_fail':
+        this.fatalAuth = true;
         this.updateOrbState('offline');
         this.emit('state', this.state);
         this.ws && this.ws.close();
         break;
       case 'orb_state':
-        this.state.orbState = msg.state || this.state.orbState;
+        if (msg.state && ORB_STATES.has(msg.state)) {
+          this.state.orbState = msg.state;
+        }
         this.state.jobsActive = msg.jobs_active || 0;
         this.state.mode = msg.mode || 'normal';
-        this.state.private = this.state.mode === 'private' || !!msg.private;
+        this.state.private = this.state.mode === 'private' || msg.state === 'private_overlay' || !!msg.private;
         this.state.paused = this.state.mode === 'paused';
         this.state.subtitle = msg.subtitle || null;
-        this.state.shapeHint = msg.shape_hint || 'circle';
-        this.state.taskKind = msg.task_kind || 'none';
+        if (msg.shape_hint && ['circle','triangle','square','pentagon','hexagon','octagram'].includes(msg.shape_hint)) {
+          this.state.shapeHint = msg.shape_hint;
+        }
+        if (msg.task_kind) this.state.taskKind = msg.task_kind;
         this.updateOrbState(this.state.orbState);
         this.emit('state', this.state);
         break;
@@ -134,22 +172,12 @@ class StatusWS extends EventEmitter {
 
   sendOrbInput(msg) {
     if (!this.ws || !this.connected) return;
-    this.ws.send(
-      JSON.stringify({
-        type: 'orb_input',
-        ...msg,
-      })
-    );
+    this.ws.send(JSON.stringify({ type: 'orb_input', ...msg }));
   }
 
   sendControl(msg) {
     if (!this.ws || !this.connected) return;
-    this.ws.send(
-      JSON.stringify({
-        type: 'control',
-        ...msg,
-      })
-    );
+    this.ws.send(JSON.stringify({ type: 'control', ...msg }));
   }
 
   getOrbState() {
@@ -157,11 +185,7 @@ class StatusWS extends EventEmitter {
   }
 
   updateOrbState(s) {
-    // degraded states map as per §8
-    if (s === 'starting') this.state.orbState = 'starting';
-    else if (s === 'reconnecting') this.state.orbState = 'reconnecting';
-    else if (s === 'offline') this.state.orbState = 'offline';
-    else this.state.orbState = s;
+    if (s && ORB_STATES.has(s)) this.state.orbState = s;
   }
 
   clearTimers() {
@@ -175,7 +199,6 @@ class StatusWS extends EventEmitter {
     this.clearTimers();
     this.heartbeatTimer = setInterval(() => {
       if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
-      // server pings every 10s; client just needs to stay alive
       this.pongMiss += 1;
       if (this.pongMiss >= 3) {
         this.ws.close();
@@ -185,8 +208,11 @@ class StatusWS extends EventEmitter {
   }
 
   scheduleReconnect() {
-    const jitter = Math.floor(Math.random() * (this.backoff * 0.4));
-    const d = Math.min(this.backoff + (Math.random() > 0.5 ? jitter : -jitter), this.config.reconnectMax);
+    const base = this.backoff;
+    const jitter = (Math.random() * 2 - 1) * base * 0.2;
+    let d = base + jitter;
+    if (d < 100) d = 100;
+    if (d > this.config.reconnectMax) d = this.config.reconnectMax;
     this.reconnectTimer = setTimeout(() => {
       this.backoff = Math.min(this.backoff * 1.5, this.config.reconnectMax);
       this.connect();

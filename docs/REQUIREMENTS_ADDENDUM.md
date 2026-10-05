@@ -114,6 +114,16 @@ Fixing herself (§13) extends to **adding new capabilities**. Per-type authority
 
 Implementation home: Wave 2 `brain-dev` agent-loop brief — retrieval-first routing, answer-provenance fields, uncertainty surfaced to voice/UI, and per-request time injection into the system prompt. Laya's abstention tier (§12) is the fast-path half of the same principle: low confidence falls through instead of guessing.
 
+## 16. Uncensored content, hardened security (user, 2026-10-05): "She should be uncensored but heavily guarded towards security."
+
+Two independent axes — one permissive, one strict; neither softens the other.
+
+**(a) Content — uncensored.** Raphael does not moralize, lecture, or refuse legal content on policy grounds: she is the user's private assistant serving his projects (incl. the NSFW comic pipeline — the project-wide law lines from `comics-plan.md` stand regardless: fictional adults only, no real-person LoRA, nothing illegal). Persona (§10) carries no prudish disclaimer. Implementation: local Ollama models (abliterated family — already the vision-stack choice) are the content-free path; cloud tiers (Zen/Groq free) carry provider-side moderation Raphael cannot disable — when a blocked upstream refuses, she reports the block transparently and falls through to local, never pretends. `allow_free_models_for_personal_data` remains the routing switch for personal-data requests.
+
+**(b) Security — heavily guarded, default posture.** Everything strict stays strict regardless of (a), and is already designed in: localhost-only listener + token handshake for every role; `act_req` structured allow-list + fixed PowerShell script registry (no free-form shell over the wire, PROTOCOL L103/L134); §9 voice confirmation for risky actions; §13/§14 three-tier authority (shell-class, spend, network-write = user approval); money gates ($2.00 pool, `PAID_USAGE.md`); secrets hygiene (keys never in logs/prompts/chat, `.env` 600); deny-by-default subagents with step budgets; one-GPU rule; input-lock never stolen; private mode suppresses subtitles.
+
+**The line, stated once:** *uncensored governs what she will say or help with; guarded governs what can touch the machine, the money, and the credentials — and the guarded side never relaxes.*
+
 ## 11. Orb = 3D morphing orb from user's reference art (user directive, 2026-10-05)
 References: `C:\Users\jxesu\OneDrive\Desktop\Raphael Orb` (6 Tensura visuals, copied to `assets/orb-reference/*.jpg`, originals untouched). Art brief extracted via vision subagent → `assets/orb-reference/DESCRIPTIONS.md`.
 - **3D orb** (Three.js/WebGL in the Electron renderer), based on/referenced by that art — original rendering only, no official assets copied.
