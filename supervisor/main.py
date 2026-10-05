@@ -810,6 +810,11 @@ def _power_thread(hooks, log):
             ctypes.c_ssize_t, wintypes.HWND, wintypes.UINT,
             wintypes.WPARAM, wintypes.LPARAM)
 
+        # ctypes.wintypes has no HCURSOR on Python 3.10 (power-hook crash found
+        # by the live logon smoke) — HCURSOR is a plain handle (void pointer).
+        if not hasattr(wintypes, "HCURSOR"):
+            wintypes.HCURSOR = ctypes.c_void_p
+
         class WNDCLASSW(ctypes.Structure):
             _fields_ = [
                 ("style", wintypes.UINT), ("lpfnWndProc", WNDPROC),

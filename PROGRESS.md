@@ -122,3 +122,10 @@ See docs/PAID_USAGE.md. Running total: $0.00 of $2.00.
 - **Phase 5 transitions (6d90fc4)**: two real spec gaps closed — reconnecting edge-dropout (uDrop uniform, hash-gated discard, flickering fraction, damped; vision: 15-20 edges visibly missing) + offline desaturated GREY tint (was blue; vision-confirmed). Note: staged generation supersedes spec's "edge-by-edge progress" build (user directive); paused maps to offline/paused-flag visuals.
 - **Phase 6 IPC/amplitude (test/fake-brain.cjs)**: full E2E over the REAL chain — fake Brain WS on 8765: auth handshake shape captured {type:auth,v:1,token,role,ui,client:orb,client_v}, orb_state -> thinking/speaking rendered live, 36 speak amplitude bursts @33ms through the 30/150ms smoother, server-close -> reconnecting (edge-drop live), heartbeat pong. 0 uncaught. Production token gate verified (no RAPHAEL_ORB_TOKEN -> offline, no connect = by design). Boot story (starting->idle 5.4s) + auto-timeline opt-in verified not fighting IPC.
 - Remaining: Phase 7 performance measurement+tuning, docs/orb screenshot matrix (states x dark/light/busy), docs/orb/PERFORMANCE.md — see docs/TODO.md.
+
+## 2026-10-05 07:2x — LOGON AUTO-START checkpoint complete (orchestrator actions)
+- token-gen run: WSL 64hex chmod600 + Windows copy; **token-gen.sh fixed**: WSL->Win32 interop passes NO arbitrary env vars ($env:TOKEN always empty) -> value now transfers via STDIN pipe; hashes verified identical (trimmed).
+- scripts/setup.ps1: dry-run reviewed (AtLogOn, battery-safe, restart1m x10, IgnoreNew, no 72h kill, UNC cwd handled) -> REAL registration done: Task "Raphael" State=Ready.
+- LIVE SMOKE (Start-ScheduledTask): supervisor -> mutex -> config UNC load -> orb launched (npm start, GPU flags) -> body-missing tolerated -> WSL bring-up + keepalive -> brain/ollama polling. Phase-2 tolerance all working in production shape.
+- Supervisor bug found by smoke (previously review-missed): ctypes.wintypes.HCURSOR AttributeError on py3.10 power hook -> fixed via ctypes.c_void_p alias; restart verified: power hook healthy, 0 errors.
+- Supervisor now RUNNING as live watchdog (orb auto-restart + brain polling).

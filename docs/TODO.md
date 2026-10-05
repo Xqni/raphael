@@ -2,11 +2,12 @@
 
 Priority order after Phase 3 completes. Do not let these silently vanish.
 
-## 1. Boot auto-start (logon registration)
-- Raphael should "start on her own" at Windows logon.
-- Mechanism exists: `scripts/setup.ps1` Task Scheduler registration (+ `setup-startup.ps1` Startup-folder fallback) — NEVER executed yet (dry-run only).
-- Gate: user approval required (registers a real logon task). Include `scripts/uninstall.ps1` in the same session.
-- Verify after: orb alive after a fresh reboot without manual launch; single-instance + watcher + dock all come up.
+## 1. Boot auto-start (logon registration) — DONE 2026-10-05 (user: "move ahead")
+- Token generated (file-only; WSL+Windows hash-verified; token-gen.sh fixed: value now travels via STDIN — WSL->Win32 interop passes NO arbitrary env vars).
+- Task "Raphael" REGISTERED (AtLogOn, State=Ready, restart-on-failure 1m x10, battery-safe, no 72h kill).
+- LIVE SMOKE PASSED: Start-ScheduledTask -> supervisor -> "orb launched cmd=npm start" -> WSL bring-up + keepalive -> body/brain gracefully tolerated while missing.
+- Bug found ONLY by the live smoke (review missed it): ctypes.wintypes.HCURSOR doesn't exist on py3.10 -> power hook crash -> FIXED (ctypes.c_void_p), restart verified clean.
+- REMAINING: confirm on an actual reboot (next Windows logon) that the chain comes up with zero manual steps; uninstall path = scripts/uninstall.ps1.
 
 ## 2. Performance tuning + measurement (spec §5) — PARTIALLY DONE (GPU achieved 2026-10-05)
 - ✅ GPU acceleration in dev: MESA_LOADER_DRIVER_OVERRIDE=d3d12 + sandbox flags → ANGLE/D3D12 on Intel Iris Xe, dpr 1.0, CPU dropped 136→15.7% (idle). Flags persisted in package.json scripts.

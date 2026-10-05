@@ -129,8 +129,10 @@ if [ -n "$WIN_TOKEN" ]; then
         || cmd.exe /c 'if not exist "%APPDATA%\Raphael" mkdir "%APPDATA%\Raphael"' >/dev/null 2>&1 \
         || true
 
-    TOKEN="$TOKEN" powershell.exe -NoProfile -Command \
-        "Set-Content -LiteralPath (Join-Path \$env:APPDATA 'Raphael\token') -Value \$env:TOKEN -NoNewline" \
+    # value via STDIN (WSL->Win32 interop does NOT pass arbitrary env vars —
+    # $env:TOKEN was always empty; argv would expose the secret on the cmdline)
+    printf '%s' "$TOKEN" | powershell.exe -NoProfile -Command \
+        "\$v = [Console]::In.ReadToEnd().Trim(); Set-Content -LiteralPath (Join-Path \$env:APPDATA 'Raphael\token') -Value \$v -NoNewline" \
         >/dev/null 2>&1 \
         || say "warning: Windows token write failed — copy $WSL_TOKEN to %APPDATA%\Raphael\token manually"
     say "wrote Windows token: $WIN_TOKEN (via PowerShell Set-Content -NoNewline; value not shown)"
