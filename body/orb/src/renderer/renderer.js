@@ -40,7 +40,7 @@ let morphTo = null;
 
 // Scene
 let renderer, scene, camera, clock;
-let group, core, lattice, rings = [], rays, starsMesh;
+let group, core, lattice, halo, rings = [], rays, starsMesh;
 
 // Geometry targets for morph
 const BASE_VERTEX_COUNT = 60;
@@ -185,7 +185,7 @@ function updateMorph(now) {
   }
 }
 
-function demoSeq = [
+const demoSeq = [
   { t: 0, state: 'idle' },
   { t: 1000, state: 'listening' },
   { t: 2000, state: 'thinking' },

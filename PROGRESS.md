@@ -42,3 +42,23 @@ Model tier used per step: T0 = no LLM, T1 = mimo-v2.6-flash-free, T2 = strongest
 
 ## Paid-pool spend log
 See docs/PAID_USAGE.md. Running total: $0.00 of $2.00.
+
+## 2026-10-05 02:15 — Orb demo: 3 renderer root-causes fixed; WSLg presentation broken; supervisor review verdict
+
+**Demo smoke saga (caught in order, each evidence-backed):**
+1. `ws` missing from package.json -> Electron main crashed at ws-status.js:2 -> added ws@8.22.0.
+2. index.html had NO importmap -> bare `import 'three'` failed silently -> importmap added (three -> ../../node_modules/three/build/three.module.js).
+3. renderer.js:188 `function demoSeq = [` typo -> SyntaxError killed the module -> `const demoSeq = [`; plus `halo` never declared (line 43) -> ReferenceError -> added to the Scene declaration list.
+4. main.js `loadFile(..., {query:'?demo=1'})` STRING form silently dropped (live check: location.search='') -> object form `{query:{demo:'1'}}`; demo timeline verified live: subtitle cycles speaking->idle->acting.
+5. Verification method: DevTools Page.captureScreenshot (X11 root grabs are blind to GL surfaces under WSLg). Morph PASS: vision confirmed octagram star vs square lattice clearly different, gold acting tint, subtitles correct.
+
+**WSLg presentation = BROKEN (dev-env only):** window IsViewable in X tree + renderer frames exist, but PowerShell CopyFromScreen of the USER'S REAL DESKTOP during two demo runs = normal desktop (browser + editor), NO orb, no window artifact. viz_main_impl GPU-process crashes = WSLg never presents the surface. User confirmed independently ("never saw those on my windows screen"). Real deployment = Windows-native Electron (supervisor npm start) — must be retested there.
+
+**User verdict on orb look:** placeholder-grade (blue sphere + rings). User is generating a proper Raphael/Ciel-level design prompt; re-skin of the Three.js scene pending their design.
+
+**Supervisor review (approve-with-fixes, 17 findings) — orchestrator verdict:**
+- ACCEPTED #2: token-gen.sh Windows write -> PowerShell `Set-Content -NoNewline` (byte-clean, no CRLF), value passed via ENV not argv (was sitting on the cmd.exe command line). bash -n + dry-run verified.
+- REJECTED #1 (their CRITICAL): `release_mutex` = CloseHandle (supervisor/main.py:342-349). Closing a CreateMutex handle on the duplicate path is CORRECT Win32 handle hygiene; reviewer confused CloseHandle with ReleaseMutex. Their fix would LEAK one handle per duplicate launch.
+- REJECTED #3: `cmd.exe /c "npm start"` stays — it is the reliable Windows path for npm.cmd (CreateProcess cannot exec .cmd directly); fixed literal, shell=False = no injection surface. Their list-form suggestion risks npm.cmd resolution failures.
+- REJECTED #8: UNC+list case — the UNC branch (main.py:564-567) is checked BEFORE as_list and builds inner_str via subprocess.list2cmdline (555-556): lists already handled. Misread.
+- NOTED #6: body rc==0 mapped to external (main.py:678) — verified quote; accepted as designed (restart-loop risk outweighs the edge case).

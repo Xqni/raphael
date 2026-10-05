@@ -66,8 +66,9 @@ function createWindow() {
   win.setAlwaysOnTop(true, 'screen-saver');
 
   const demoMode = process.argv.includes('--demo') || process.env.RAPHAEL_ORB_DEMO === '1';
-  const query = demoMode ? '?demo=1' : '';
-  win.loadFile(path.join(__dirname, '..', 'renderer', 'index.html'), { query: query });
+  // Object form: Electron drops a raw string query like '?demo=1' silently.
+  const opts = demoMode ? { query: { demo: '1' } } : {};
+  win.loadFile(path.join(__dirname, '..', 'renderer', 'index.html'), opts);
 
   win.on('close', (e) => {
     if (!isQuitting) {

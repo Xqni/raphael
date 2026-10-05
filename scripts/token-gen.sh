@@ -2,7 +2,7 @@
 # Raphael — token generation for BOTH sides of the Brain<->Body link.
 #
 #   WSL copy   : ~/.raphael/token              (chmod 600)
-#   Windows    : %APPDATA%\Raphael\token       (cmd.exe /c echo …, user-only ACL)
+#   Windows    : %APPDATA%\Raphael\token       (PowerShell Set-Content -NoNewline, user-only ACL)
 #
 # Idempotent: an existing token is REUSED (kept in sync across both locations)
 # unless --force is passed. The token VALUE is never printed — paths only.
@@ -22,7 +22,7 @@ Usage: token-gen.sh [--force] [--dry-run]
 
 Token locations (docs/PROTOCOL.md §2):
   WSL    ~/.raphael/token           chmod 600
-  Windows %APPDATA%\Raphael\token   user-only ACL, written via `cmd.exe /c echo`
+  Windows %APPDATA%\Raphael\token   user-only ACL, written via PowerShell Set-Content -NoNewline
 EOF
 }
 
@@ -85,7 +85,7 @@ if [ "$DRY" -eq 1 ]; then
     say "[dry-run] would run: umask 077; printf '%s\n' <token> > $WSL_TOKEN && chmod 600 $WSL_TOKEN"
     if [ -n "$WIN_TOKEN" ]; then
         say "[dry-run] would run: powershell.exe -NoProfile -Command \"New-Item -ItemType Directory -Force -Path (Join-Path \$env:APPDATA 'Raphael') | Out-Null\""
-        say "[dry-run] would run: cmd.exe /c \"echo <token>>%APPDATA%\Raphael\token\""
+        say "[dry-run] would run: powershell.exe -NoProfile -Command \"Set-Content -NoNewline (Join-Path \$env:APPDATA 'Raphael\token')\" (value via env, not argv)"
         say "[dry-run] would run: cmd.exe /c \"icacls %APPDATA%\Raphael\token /grant:r %USERDOMAIN%\%USERNAME%:(R,W)\""
         say "[dry-run] would run: cmd.exe /c \"icacls %APPDATA%\Raphael\token /inheritance:r\""
     fi
@@ -120,16 +120,20 @@ say "WSL token mode: $(stat -c '%a' "$WSL_TOKEN") (path only; value not shown)"
 
 # ----------------------------------------------------------- Windows copy --
 if [ -n "$WIN_TOKEN" ]; then
-    # Directory creation (the token WRITE itself must be `cmd.exe /c echo`).
+    # Directory creation + token write. The write uses PowerShell with
+    # -NoNewline so the Windows copy is byte-for-byte clean (no trailing
+    # CRLF); the value travels in the environment, never on a command line.
     powershell.exe -NoProfile -Command \
         "New-Item -ItemType Directory -Force -Path (Join-Path \$env:APPDATA 'Raphael') | Out-Null" \
         >/dev/null 2>&1 \
         || cmd.exe /c 'if not exist "%APPDATA%\Raphael" mkdir "%APPDATA%\Raphael"' >/dev/null 2>&1 \
         || true
 
-    WIN_CMD="echo ${TOKEN}>\"${WIN_DIR}\\token\""
-    cmd.exe /c "$WIN_CMD" >/dev/null
-    say "wrote Windows token: $WIN_TOKEN (via cmd.exe /c echo; value not shown)"
+    TOKEN="$TOKEN" powershell.exe -NoProfile -Command \
+        "Set-Content -LiteralPath (Join-Path \$env:APPDATA 'Raphael\token') -Value \$env:TOKEN -NoNewline" \
+        >/dev/null 2>&1 \
+        || say "warning: Windows token write failed — copy $WSL_TOKEN to %APPDATA%\Raphael\token manually"
+    say "wrote Windows token: $WIN_TOKEN (via PowerShell Set-Content -NoNewline; value not shown)"
 
     # User-only ACL: grant first, then drop inherited ACEs (fail-safe order).
     cmd.exe /c "icacls \"${WIN_DIR}\\token\" /grant:r \"%USERDOMAIN%\\%USERNAME%:(R,W)\"" >/dev/null 2>&1 \
