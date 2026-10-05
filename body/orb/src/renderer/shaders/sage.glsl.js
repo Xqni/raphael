@@ -166,3 +166,36 @@ export const bandFrag = `
     gl_FragColor = vec4(uTint * a, a); // premultiplied, additive
   }
 `;
+
+// 3D RING (TorusGeometry) shaded like the sun: normal-based lit body +
+// shine highlight + rim — real geometry, so it reads as a 3D ring, not a
+// flat disc (user: "3d rings that shine like the SUN in the center").
+export const bandVert3D = `
+  varying vec3 vN;
+  varying vec3 vV;
+  void main() {
+    vN = normalize(normalMatrix * normal);
+    vec4 mv = modelViewMatrix * vec4(position, 1.0);
+    vV = normalize(-mv.xyz);
+    gl_Position = projectionMatrix * mv;
+  }
+`;
+export const torusFrag = `
+  precision mediump float;
+  varying vec3 vN;
+  varying vec3 vV;
+  uniform float uAlpha;
+  void main() {
+    vec3 N = normalize(vN);
+    vec3 V = normalize(vV);
+    float facing = clamp(dot(N, V), 0.0, 1.0);
+    vec3 L = normalize(vec3(-0.45, 0.55, 0.72));  // same fixed light as the sun
+    float diff = clamp(dot(N, L), 0.0, 1.0);
+    float body = 0.38 + 0.78 * pow(diff, 1.25);   // lit tube (sun-style)
+    float hot  = pow(diff, 6.0) * 0.6;            // white-hot shine streak
+    float rim  = pow(1.0 - facing, 2.6) * 0.5;    // glowing rim = dimension
+    float a = clamp(body + hot + rim, 0.0, 1.2) * uAlpha;
+    a = min(a, 1.0);
+    gl_FragColor = vec4(vec3(1.0) * a, a);        // white, premultiplied
+  }
+`;

@@ -9,7 +9,7 @@ import { nebulaVert, nebulaFrag } from './shaders/nebula.glsl.js';
 import {
   speedVert, speedFrag, polyVert, polyFrag,
   nodeVert, nodeFrag, ringVert, ringFrag,
-  sparkVert, sparkFrag, bandFrag,
+  sparkVert, sparkFrag, bandFrag, bandVert3D, torusFrag,
 } from './shaders/sage.glsl.js';
 
 const TAU = 400; // blend time constant (ms) — inside the spec's 300-600ms window
@@ -275,17 +275,18 @@ export function initSageCore(THREE, group, scene) {
   // sun (visible revolution). Inner band's projection crosses the sun's face.
   // Plus one extra-thick band that only blooms in while SPEAKING.
   const mkBand = (r0, r1, tx, ty, op) => {
-    // gaussian glow-band: geometry spans band + glow margin; the shader's
-    // soft shoulders give the white outer glow (user: bands glow like the sun)
+    const mid = (r0 + r1) / 2;
     const halfW = (r1 - r0) * 0.5;
     const G = halfW * 1.6 + 0.03;
-    const mat = new THREE.ShaderMaterial({
+    // flat corona glow underlay (body sits beneath the torus; only the outer
+    // glow shows — the sun-style halo for the ring)
+    const glowMat = new THREE.ShaderMaterial({
       vertexShader: ringVert,
       fragmentShader: bandFrag,
       uniforms: {
         uR0: { value: r0 },
         uR1: { value: r1 },
-        uAlpha: { value: op },
+        uAlpha: { value: op * 0.8 },
         uTint: { value: new THREE.Color(0xffffff) },
       },
       side: THREE.DoubleSide,
@@ -293,13 +294,26 @@ export function initSageCore(THREE, group, scene) {
       depthWrite: false,
       blending: THREE.AdditiveBlending,
     });
-    const geo = new THREE.RingGeometry(Math.max(0.06, r0 - G), r1 + G, 96);
-    const mesh = new THREE.Mesh(geo, mat);
-    mesh.rotation.set(tx, ty, 0);
+    const glowMesh = new THREE.Mesh(
+      new THREE.RingGeometry(Math.max(0.06, r0 - G), r1 + G, 96), glowMat);
+    // the 3D RING: real torus with sun-style normal shading (NOT a flat disc)
+    const tMat = new THREE.ShaderMaterial({
+      vertexShader: bandVert3D,
+      fragmentShader: torusFrag,
+      uniforms: { uAlpha: { value: op } },
+      transparent: true,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+    });
+    const torus = new THREE.Mesh(new THREE.TorusGeometry(mid, halfW, 24, 96), tMat);
+    const inner = new THREE.Group();
+    inner.add(glowMesh);
+    inner.add(torus);
+    inner.rotation.set(tx, ty, 0);
     const pivot = new THREE.Group();
-    pivot.add(mesh);
+    pivot.add(inner);
     group.add(pivot);
-    return { pivot, mesh, mat, baseOp: op };
+    return { pivot, mesh: glowMesh, mat: glowMat, tMat, baseOp: op };
   };
   L.bands = [
     mkBand(0.72, 0.90, 1.15, 0.0, 0.68),  // crosses the sun's face (steep tilt)
@@ -462,13 +476,16 @@ export function updateSageCore(L, ctx) {
     for (let i = 0; i < L.bands.length; i++) {
       const B = L.bands[i];
       B.pivot.rotation.y += L.bandDirs[i] * dt;
-      B.mat.uniforms.uAlpha.value = B.baseOp * w.bands;
+      B.mat.uniforms.uAlpha.value = B.baseOp * w.bands * 0.8;   // corona
+      B.tMat.uniforms.uAlpha.value = B.baseOp * w.bands;        // 3D torus body
       B.pivot.position.set(-gx * 1.3, -gy * 1.3, 0); // glide lag like rings
     }
   }
   if (L.speakBand) {
     L.speakBand.pivot.rotation.y += L.speakBandDir * dt;
-    L.speakBand.mat.uniforms.uAlpha.value = w.sBand * 0.9 * (1 + L.ampS * 0.35); // speech pulse
+    const sa = w.sBand * 0.9 * (1 + L.ampS * 0.35); // speech pulse
+    L.speakBand.mat.uniforms.uAlpha.value = sa * 0.8;
+    L.speakBand.tMat.uniforms.uAlpha.value = sa;
     L.speakBand.pivot.position.set(-gx * 1.3, -gy * 1.3, 0);
   }
   // Private teal ring fades in only for private_overlay
