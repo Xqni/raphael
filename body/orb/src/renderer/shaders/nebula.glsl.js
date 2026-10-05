@@ -36,7 +36,7 @@ export const nebulaFrag = `
   void main() {
     vec2 p = (vUv - 0.5) * 2.0;              // unit space -1..1
     float r = length(p);
-    float t = uTime * 0.03;                  // slow drift
+    float t = uTime * 0.05;                  // animated drift (user: make sure it moves)
     float n  = fbm(p * 1.6 + vec2(t, -t * 0.7));
     float n2 = fbm(p * 2.3 - vec2(t * 0.6, t));
     vec3 col = mix(cLime, cTeal, smoothstep(0.35, 0.65, n));

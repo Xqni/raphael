@@ -29,7 +29,7 @@ export const fragmentShader = `
 
     vec3 base = vec3(1.0);
     base = mix(base, vec3(1.0, 0.94, 0.84), (1.0 - facing) * 0.3 + (1.0 - diff) * 0.18);
-    base = mix(base, color, 0.6 * (1.0 - facing * facing)); // state tint where alpha still LIVES (was at the dead limb)
+    base = mix(base, color, 0.85 + 0.15 * (1.0 - facing * facing)); // state color dominates the WHOLE sun (error = red core; white states unaffected)
     float a = clamp((envelope * form + hot) * uBright * (1.0 + uAmp * 0.25), 0.0, 1.0);
     gl_FragColor = vec4(base * a, a);                // premultiplied; edge dissolves to zero
   }
@@ -54,7 +54,7 @@ export const glowShader = `
     float a = (corona + star) * uBright * (1.0 + uAmp * 0.3);
     a = clamp(a, 0.0, 1.0);
     float edge = smoothstep(1.28, 0.9, r);         // unit fade before plane edge
-    vec3 tinted = mix(vec3(1.0), color, 0.35);
+    vec3 tinted = mix(vec3(1.0), color, 0.8); // corona carries the state color (error = red GLOW)
     gl_FragColor = vec4(tinted * a * edge, a * edge); // premultiplied additive
   }
 `;

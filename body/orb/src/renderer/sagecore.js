@@ -23,8 +23,8 @@ const S = {
   acting:          { nebula: 0.50, speed: 1.05, poly: 1.25, node: 1.35, ring: 0.90, spark: 0.80, spin: 0.00012, bright: 1.10 },
   speaking:        { nebula: 0.60, speed: 1.20, poly: 1.00, node: 1.20, ring: 1.00, spark: 0.90, spin: 0.00007, bright: 1.05 },
   confirm:         { nebula: 0.40, speed: 0.75, poly: 0.95, node: 1.10, ring: 0.70, spark: 0.50, spin: 0.00006, bright: 1.15 },
-  error:           { nebula: 0.35, speed: 0.50, poly: 0.80, node: 0.80, ring: 0.50, spark: 0.30, spin: 0.00003, bright: 1.10 },
-  starting:        { nebula: 0.30, speed: 0.40, poly: 0.60, node: 0.70, ring: 0.40, spark: 0.30, spin: 0.00002, bright: 0.70 },
+  error:           { nebula: 0.35, speed: 0.50, poly: 0.80, node: 0.80, ring: 0.50, spark: 0.30, spin: 0.00003, bright: 1.45 },
+  starting:        { nebula: 0.55, speed: 0.85, poly: 1.00, node: 1.00, ring: 0.75, spark: 0.70, spin: 0.00005, bright: 1.00 },
   reconnecting:    { nebula: 0.30, speed: 0.50, poly: 0.70, node: 0.80, ring: 0.50, spark: 0.35, spin: 0.00002, bright: 0.75 },
   offline:         { nebula: 0.12, speed: 0.00, poly: 0.40, node: 0.40, ring: 0.20, spark: 0.10, spin: 0.000005, bright: 0.45 },
   private_overlay: { nebula: 0.50, speed: 0.85, poly: 1.00, node: 1.00, ring: 0.75, spark: 0.60, spin: 0.00005, bright: 1.00 },
@@ -94,6 +94,7 @@ export function initSageCore(THREE, group, scene) {
     transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
   });
   const nebula = new THREE.Mesh(new THREE.PlaneGeometry(4.8, 4.8), L.nebulaMat);
+  L.nebula = nebula;
   nebula.position.z = -0.9;
   scene.add(nebula);
 
@@ -196,7 +197,7 @@ export function initSageCore(THREE, group, scene) {
   polyGeo.setAttribute('aSpoke', new THREE.BufferAttribute(aSp, 1));
   L.polyMat = new THREE.ShaderMaterial({
     vertexShader: polyVert, fragmentShader: polyFrag,
-    uniforms: { uTime: { value: 0 }, uAlpha: { value: 1 }, uPulse: { value: 1 } },
+    uniforms: { uTime: { value: 0 }, uAlpha: { value: 1 }, uPulse: { value: 1 }, uTint: { value: new THREE.Color(0xffffff) } },
     transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
   });
   L.poly = new THREE.LineSegments(polyGeo, L.polyMat);
@@ -235,6 +236,7 @@ export function initSageCore(THREE, group, scene) {
     uniforms: {
       uTime: { value: 0 }, uAlpha: { value: 1 },
       uBoost: { value: 1 }, uSize: { value: 7.5 },
+      uTint: { value: new THREE.Color(0xffffff) },
     },
     transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
   });
@@ -279,6 +281,10 @@ export function initSageCore(THREE, group, scene) {
   L.privateRing.rotation.set(0.12, 0.06, 0);
   group.add(L.privateRing);
   L.privateW = 0;
+  L.genT = 0;          // boot generation sequence plays on load (state starts 'starting')
+  L.prevState = 'starting';
+  L.tintCur = new THREE.Color(0xffffff); // damped state tint for cages/nodes
+  L.tintTgt = new THREE.Color(0xffffff);
 
   // 7) Sparkle dust (spec §2.1.7)
   const N_SPARK = 40;
@@ -323,9 +329,25 @@ export function updateSageCore(L, ctx) {
   const w = L.w;
   const listening = state === 'listening' ? 1 : 0;
 
+  // --- STARTING generation sequence (user spec): outer cage grows from zero
+  // (random spin) -> inner cage -> sun ignites -> quick finishing spin ---
+  if (state !== L.prevState) {
+    if (state === 'starting') L.genT = 0;
+    L.prevState = state;
+  }
+  if (L.genT >= 0 && state === 'starting') L.genT = Math.min(L.genT + dt, 4000);
+  const gt = (state === 'starting' && L.genT >= 0) ? L.genT : 99999;
+  const ease3 = (x) => 1 - Math.pow(1 - Math.min(Math.max(x, 0), 1), 3);
+  const genOuter = ease3(gt / 1400);
+  const genInner = ease3((gt - 900) / 1200);
+  const genSun = ease3((gt - 1700) / 900);
+  const spinProg = Math.min(Math.max((gt - 2300) / 1400, 0), 1);
+  const genSpin = (gt > 2300 && gt < 3700) ? Math.sin(Math.PI * spinProg) * 9 : 0; // absolute speed boost: VISIBLE finishing spin
+
   // 1) nebula
   L.nebulaMat.uniforms.uTime.value = t;
   L.nebulaMat.uniforms.uOpacity.value = w.nebula;
+  L.nebula.rotation.z += 0.00015 * dt; // slow swirl so the haze is visibly alive
 
   // 3) speed lines — listening: rays lengthen (ripple handled by shimmer)
   L.speedMat.uniforms.uTime.value = t;
@@ -336,17 +358,24 @@ export function updateSageCore(L, ctx) {
   L.polyMat.uniforms.uTime.value = t;
   L.polyMat.uniforms.uAlpha.value = w.poly * 0.9;
   L.polyMat.uniforms.uPulse.value = w.poly;
+  // state tint damped onto the cages + node dots (error = red cages/nodes)
+  if (ctx.tint !== undefined) {
+    L.tintTgt.setHex(ctx.tint);
+    L.tintCur.lerp(L.tintTgt, 1 - Math.exp(-dt / TAU));
+    L.polyMat.uniforms.uTint.value.copy(L.tintCur);
+    L.nodeMat.uniforms.uTint.value.copy(L.tintCur);
+  }
   // Outer cage follows the breathing to keep the gap ~constant (user), but is
   // CAPPED so neither layer ever grows too big (max radius ~1.32 world units).
   const outerS = Math.min(1.12, 1 + 0.45 * ((ctx.ballScale || 1) - 1));
-  L.poly.scale.setScalar(outerS);
-  if (L.nodes) L.nodes.scale.setScalar(outerS);
-  L.poly.rotation.y += w.spin * dt * L.dir.polyY;
-  L.poly.rotation.x += w.spin * dt * 0.5 * L.dir.polyX;
+  L.poly.scale.setScalar(outerS * genOuter);
+  if (L.nodes) L.nodes.scale.setScalar(outerS * genOuter);
+  L.poly.rotation.y += w.spin * dt * L.dir.polyY + genSpin * dt * 0.0012 * L.dir.polyY;
+  L.poly.rotation.x += w.spin * dt * 0.5 * L.dir.polyX + genSpin * dt * 0.0007 * L.dir.polyX;
   if (L.cage) {
-    L.cage.rotation.y += w.spin * dt * L.dir.cageY * 1.7;
-    L.cage.rotation.x += w.spin * dt * 0.7 * L.dir.cageX;
-    if (ctx.ballScale) L.cage.scale.setScalar(0.56 * ctx.ballScale); // cage breathes WITH the ball
+    L.cage.rotation.y += w.spin * dt * L.dir.cageY * 1.7 + genSpin * dt * 0.0016 * L.dir.cageY;
+    L.cage.rotation.x += w.spin * dt * 0.7 * L.dir.cageX + genSpin * dt * 0.0009 * L.dir.cageX;
+    if (ctx.ballScale) L.cage.scale.setScalar(0.56 * ctx.ballScale * genInner); // breathes WITH the ball + gen reveal
   }
   L.speed.rotation.y += w.spin * dt * 0.4 * L.dir.speedY;
   L.speed.rotation.x += w.spin * dt * 0.25 * L.dir.speedX;
@@ -396,7 +425,10 @@ export function updateSageCore(L, ctx) {
   }
   const cu = ctx.coreU;
   if (cu && cu.uBright && cu.uAmp) {
-    cu.uBright.value = damp(cu.uBright.value, w.bright * fx, TAU, dt);
+    cu.uBright.value = damp(cu.uBright.value, w.bright * fx * Math.max(genSun, 0.001), TAU, dt);
     cu.uAmp.value = L.ampS;
+    if (ctx.core && genSun < 1) {
+      ctx.core.scale.setScalar((ctx.ballScale || 1) * (0.01 + 0.99 * genSun)); // sun GROWS from zero (stage 3)
+    }
   }
 }

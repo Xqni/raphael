@@ -48,6 +48,7 @@ export const polyFrag = `
   uniform float uTime;
   uniform float uAlpha;
   uniform float uPulse;       // edge light-pulse intensity
+  uniform vec3 uTint;         // state color (error = RED cages)
   float h(float n) { return fract(sin(n) * 43758.5453); }
   void main() {
     // depth-based brightness (near = brighter) — subtle, still graphic
@@ -57,7 +58,7 @@ export const polyFrag = `
     float pulse = exp(-pow((vEdgeT - pp) * 7.0, 2.0)) * uPulse;
     float spokeDim = mix(1.0, 0.55, vSpoke);
     float b = depthB * (0.55 + pulse) * uAlpha * spokeDim;
-    gl_FragColor = vec4(vec3(1.0) * b, b);   // white lines, uniform hairline
+    gl_FragColor = vec4(uTint * b, b);        // state-tinted lines (uniform hairline)
   }
 `;
 
@@ -68,6 +69,7 @@ export const nodeFrag = `
   uniform float uTime;
   uniform float uAlpha;
   uniform float uBoost;       // listening: node brightness reacts to amplitude
+  uniform vec3 uTint;         // state color (error = RED nodes)
   float h(float n) { return fract(sin(n) * 43758.5453); }
   void main() {
     vec2 d = gl_PointCoord - 0.5;
@@ -75,7 +77,7 @@ export const nodeFrag = `
     float depthB = clamp(1.35 - (vDepth - 2.4) * 0.45, 0.4, 1.0);
     float tw = 0.85 + 0.15 * sin(uTime * 2.0 + vDepth * 9.0);
     float b = disc * depthB * tw * uAlpha * uBoost;
-    gl_FragColor = vec4(vec3(1.0) * b, b);
+    gl_FragColor = vec4(uTint * b, b);
   }
 `;
 export const nodeVert = `

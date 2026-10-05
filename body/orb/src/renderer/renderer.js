@@ -56,22 +56,29 @@ function damp(current, target, tau, dt) {
   return current + (target - current) * alpha;
 }
 
-// Layer weight targets per state. latticeOpacity = 0 for Sage-Core states:
-// the white polyhedron IS the wireframe now (cyan morph lattice reserved for
-// acting/thinking phases).
+// Layer weight targets per state. latticeOpacity = the CYAN morph lattice,
+// which now carries each state's signature SHAPE (user: "morph the states").
 const STATE_LAYER_TARGETS = {
-  idle: { coreScale:1, haloOpacity:0.25, latticeOpacity:0 },
-  listening: { coreScale:1.1, haloOpacity:0.3, latticeOpacity:0 },
-  thinking: { coreScale:1.2, haloOpacity:0.35, latticeOpacity:0.45 },
-  acting: { coreScale:1.3, haloOpacity:0.4, latticeOpacity:0.5 },
-  speaking: { coreScale:1.2, haloOpacity:0.35, latticeOpacity:0.45 },
-  error: { coreScale:0.9, haloOpacity:0.2, latticeOpacity:0 },
-  reconnecting: { coreScale:1, haloOpacity:0.2, latticeOpacity:0 },
-  offline: { coreScale:0.8, haloOpacity:0.1, latticeOpacity:0 },
-  private_overlay: { coreScale:0.9, haloOpacity:0.2, latticeOpacity:0 },
-  confirm: { coreScale:1, haloOpacity:0.3, latticeOpacity:0 },
-  starting: { coreScale:1, haloOpacity:0.25, latticeOpacity:0 },
+  idle: { coreScale:1, haloOpacity:0.25, latticeOpacity:0.22 },
+  listening: { coreScale:1.1, haloOpacity:0.3, latticeOpacity:0.5 },
+  thinking: { coreScale:1.2, haloOpacity:0.35, latticeOpacity:0.5 },
+  acting: { coreScale:1.3, haloOpacity:0.4, latticeOpacity:0.55 },
+  speaking: { coreScale:1.2, haloOpacity:0.35, latticeOpacity:0.5 },
+  error: { coreScale:0.9, haloOpacity:0.2, latticeOpacity:0.55 },
+  reconnecting: { coreScale:1, haloOpacity:0.2, latticeOpacity:0.3 },
+  offline: { coreScale:0.8, haloOpacity:0.1, latticeOpacity:0.1 },
+  private_overlay: { coreScale:0.9, haloOpacity:0.2, latticeOpacity:0.35 },
+  confirm: { coreScale:1, haloOpacity:0.3, latticeOpacity:0.5 },
+  starting: { coreScale:1, haloOpacity:0.25, latticeOpacity:0.3 },
 };
+// State -> morph shape (600ms vertex morph, existing machinery). 'acting' is
+// owned by the task-kind map (config orb.shape_map / shapeHint, spec §3).
+const STATE_SHAPE = {
+  idle: 'circle', listening: 'pentagon', thinking: 'octagram', acting: null,
+  speaking: 'hexagon', error: 'triangle', confirm: 'square', starting: 'circle',
+  reconnecting: 'circle', offline: 'circle', private_overlay: 'circle',
+};
+let lastShapeState = null;
 let layerWeights = { coreScale:1, haloOpacity:0.25, latticeOpacity:0.35 };
 
 
@@ -319,7 +326,7 @@ function getStateTint(s) {
   if (s === 'error') return 0xff0000;
   if (s === 'confirm') return 0xffa500;
   if (s === 'private_overlay' || orbState.private || orbState.mode === 'private') return 0x9aa5b1;
-  if (s === 'reconnecting' || s === 'offline' || s === 'starting') return 0x58c4f2;
+  if (s === 'reconnecting' || s === 'offline') return 0x58c4f2; // starting stays idle-white (user: copy idle base)
   if (s === 'acting') return 0xffd700;
   if (s === 'speaking') return 0xfff9d2;
   return 0xffffff;
@@ -336,6 +343,15 @@ function animate(now) {
   const breath = 1 + 0.08 * Math.sin(t * breathBase);
   const pulse = 1 + speakAmp * 0.25;
   // Damping weights based on current orb state
+  // state-shape morph: each state morphs the cyan lattice to its signature shape
+  if (orbState.orbState !== lastShapeState) {
+    lastShapeState = orbState.orbState;
+    const want = STATE_SHAPE[orbState.orbState] || orbState.shapeHint || 'circle';
+    if (want !== orbState.shapeHint) {
+      orbState.shapeHint = want;
+      startMorphTo(want);
+    }
+  }
   const target = STATE_LAYER_TARGETS[orbState.orbState] || STATE_LAYER_TARGETS.idle;
   const dt = now - lastFrame;
   layerWeights.coreScale = damp(layerWeights.coreScale, target.coreScale, MORPH_DURATION, dt);
@@ -346,7 +362,7 @@ function animate(now) {
   halo.scale.setScalar(breath * (1 + speakAmp * 0.15));
   halo.material.opacity = 0.25 * layerWeights.haloOpacity;
   lattice.material.opacity = 0.35 * layerWeights.latticeOpacity;
-  updateSageCore(sage, { t, dt, state: orbState.orbState, amp: speakAmp, coreU: core.material.uniforms, ballScale });
+  updateSageCore(sage, { t, dt, state: orbState.orbState, amp: speakAmp, coreU: core.material.uniforms, ballScale, core, tint: getStateTint(orbState.orbState) });
   rays.rotation.z += 0.01;
   rings[0].rotation.z += 0.008;
   rings[1].rotation.z -= 0.006;
