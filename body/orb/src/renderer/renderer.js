@@ -3,6 +3,7 @@ import { vertexShader, sphereVert } from './shaders/vertex.glsl.js';
 import { fragmentShader, glowShader } from './shaders/fragment.glsl.js';
 import { initSageCore, updateSageCore } from './sagecore.js';
 import { initAnswerMode, updateAnswerMode } from './answermode.js';
+import { initDataRings, updateDataRings } from './datarings.js';
 
 // Configuration injected via preload
 const cfg = window.orbConfig || { sizePx:280, contentPx:200, opacity:0.95, fpsCap:60, quality:'auto', backingDiscAlpha:0.0, reducedMotion:false };
@@ -90,6 +91,7 @@ let layerWeights = { coreScale:1, haloOpacity:0.25, latticeOpacity:0.35 };
 let renderer, scene, camera, clock;
 let group, core, lattice, halo, rings = [], rays, starsMesh, sage, glowGhosts = [];
 let AM = null; // Answer Mode (gold magic-circle) module handle
+let DR = null; // Data Rings (prismatic thinking overlay) module handle
 let edgeRT = null, maskScene = null, maskCam = null, maskMat = null;
 
 // Geometry targets for morph
@@ -303,6 +305,7 @@ if (backingDiscAlpha > 0) {
 
   sage = initSageCore(THREE, group, scene); // Sage Core layers (spec §2.1)
   AM = initAnswerMode(THREE, group);        // Answer Mode gold look (spec §2.2)
+  DR = initDataRings(THREE, group);         // Data Rings thinking overlay (spec §2.3)
   // User review fix: hide Phase-1 gold leftovers (halo/gold rings/orange ray
   // ring read as "a big flat golden 2D circle"). Sage Core supplies the glow
   // (core) + the white tilted orbit ring; later phases re-show what they need.
@@ -449,6 +452,7 @@ function animate(now) {
   lattice.material.opacity = 0.35 * layerWeights.latticeOpacity;
   updateSageCore(sage, { t, dt, state: orbState.orbState, amp: speakAmp, coreU: core.material.uniforms, ballScale, core, tint: getStateTint(orbState.orbState), glide: { x: GLX, y: GLY, blur: GLB } });
   if (AM) updateAnswerMode(AM, { t, dt, state: orbState.orbState, amp: speakAmp, glide: { x: GLX, y: GLY } });
+  if (DR) updateDataRings(DR, { t, dt, state: orbState.orbState, amp: speakAmp, glide: { x: GLX, y: GLY } });
   if (AM && maskMat) maskMat.uniforms.uCA.value = AM.wFull; // chromatic aberration at outer edge (Answer Mode)
   rays.rotation.z += 0.01;
   rings[0].rotation.z += 0.008;

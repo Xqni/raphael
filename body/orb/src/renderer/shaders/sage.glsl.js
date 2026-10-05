@@ -49,6 +49,7 @@ export const polyFrag = `
   uniform float uAlpha;
   uniform float uPulse;       // edge light-pulse intensity
   uniform vec3 uTint;         // state color (error = RED cages)
+  uniform float uDrop;        // reconnecting: fraction of edges missing
   float h(float n) { return fract(sin(n) * 43758.5453); }
   void main() {
     // depth-based brightness (near = brighter) — subtle, still graphic
