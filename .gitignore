@@ -1,0 +1,32 @@
+# Secrets — never commit
+.env
+
+# Python
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+*.egg-info/
+
+# Node / Electron
+node_modules/
+dist/
+out/
+.vite/
+
+# Logs & runtime state
+logs/
+*.log
+run/
+*.pid
+
+# Databases (runtime data — memory/journal survive separately on user disk)
+*.sqlite
+*.sqlite3
+*.db
+
+# OS
+.DS_Store
+Thumbs.db

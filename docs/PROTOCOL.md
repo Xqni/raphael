@@ -1,0 +1,131 @@
+# PROTOCOL.md — Raphael Brain ↔ Body/Orb/CLI contract (v1)
+
+Status: **authoritative** — every builder works against this file. Orchestrator-owned (edits only by orchestrator / `protocol-architect` with approval). Last updated: 2026-10-05.
+
+## 1. Transport
+
+| Item | Value |
+|---|---|
+| Server | Brain (FastAPI + uvicorn) in WSL2, single port **8765** serving HTTP REST + WebSocket (`/ws`) |
+| Bind | `0.0.0.0:8765` in WSL (required so Windows reaches it via WSL2 NAT `localhostForwarding` as `ws://127.0.0.1:8765` — Windows' localhost redirects into the WSL vNIC; LAN→WSL inbound is not forwarded by NAT, and the token is still required). In mirrored networking mode, bind `127.0.0.1` instead. Mode detected at startup (`wslinfo --networking-mode`). |
+| WSL IP churn | Never hardcode the WSL IP (changes every restart). Windows side always uses `127.0.0.1:8765`. WSL-internal clients (CLI, Body spawned in WSL) use `127.0.0.1:8765` directly. |
+| CLI REST | Same port: `GET /health`, `GET /jobs`, `POST /jobs/{id}/cancel`, `POST /control`, `GET /status` — all require token. |
+| Heartbeat | WS protocol-level ping every 10 s; peer considered dead after 3 missed pongs (10 s → close + reconnect with backoff). HTTP `/health` for supervisor probes. |
+| Limits | Max message 8 MiB; max 40 msgs/s per connection (except binary audio frames: 125/s); server closes on violation with `E_RATE_LIMIT`. |
+
+## 2. Authentication
+
+- Token: 32-byte random hex, generated once by `scripts/setup.sh` → stored WSL: `~/.raphael/token` (0600), Windows: `%APPDATA%\Raphael\token` (user-only ACL). Never in logs, prompts, orb UI, or git.
+- **Handshake:** client connects WS, then MUST send within 5 s:
+  ```json
+  {"type":"auth","v":1,"token":"<hex>","role":"body|ui|cli","client":"body-win|orb|raphael-cli","client_v":"1.0"}
+  ```
+  Server replies `{"type":"auth_ok","v":1,"session":"<sid>","server_v":"..."}` or `{"type":"auth_fail","code":"E_AUTH"}` then closes.
+- Constant-time token compare (`hmac.compare_digest`). ≥5 failed auths/IP in 60 s → refuse new handshakes 5 min (`E_AUTH_RATE`).
+- Protocol major version mismatch (`v` ≠ 1) → `E_PROTO`, close. Role determines capabilities (§4); server enforces, never trusts the client's claim beyond the handshake.
+- REST: `Authorization: Bearer <token>` header (or `X-Raphael-Token`). Same token, same rate limiting.
+
+## 3. Message envelope (JSON control frames)
+
+Every JSON frame: `{"type": str, "v": 1, ...fields}`. Optional correlation: `"job"`, `"seq"` (per-connection monotonic int), `"ts"` (ms epoch). Unknown `type` → `E_UNSUPPORTED` (non-fatal warning frame).
+
+**Client → Brain (all roles unless noted):**
+
+| type | role | fields | meaning |
+|---|---|---|---|
+| `auth` | all | §2 | handshake |
+| `command` | cli, ui | `text`, `source: text\|voice\|orb`, `job_id?` (pre-allocated ack) | new user request → becomes a Job |
+| `audio_start` | body | `sample_rate: 16000`, `channels: 1`, `encoding: pcm_s16le`, `reason: ptt\|wake` | mic utterance begins (binary frames follow) |
+| `audio_end` | body | — | utterance ends → Brain runs VAD-final + STT |
+| `confirm_resp` | ui, cli, body | `job`, `answer: yes\|no\|free_text` | answer to a `needs_confirm` (from speech STT or text) |
+| `job_list` / `job_get` | all | `job?` | request job snapshot(s) |
+| `cancel` | all | `job: id\|all`, `scope: gui\|full` | cancel job(s); `gui` releases input lock only |
+| `control` | cli, ui, body | `action: pause\|resume\|private_on\|private_off\|kill_gui\|watch_on\|watch_off`, `persist: bool` | global controls (kill = halt GUI-driving jobs now; pause persists across restarts) |
+| `act_res` | body | `job`, `ok`, `result?`, `error?` | response to an `act_req` |
+| `orb_input` | ui | `kind: click\|dblclick\|menu\|submit_text`, `value?` | orb interaction (menu item names are a fixed enum) |
+| `state_req` | ui, cli | — | request full state snapshot (orb state, jobs, mode flags) |
+
+**Brain → Client:**
+
+| type | roles | fields | meaning |
+|---|---|---|---|
+| `auth_ok` / `auth_fail` | all | §2 | handshake result |
+| `ack` | all | `job`, `text_id?` | request accepted (used for instant cached ack) |
+| `job_event` | all | see §5 | job lifecycle/progress |
+| `act_req` | body | `job`, `action`, `args`, `lock: bool`, `timeout_ms` | perform a Body action (§7). `lock:true` requires holding the input lock. |
+| `speak` | body | `job`, `seq`, `event: start\|chunk\|end`, `sample_rate: 24000`, `text?`, `amplitude?` (0–1 per chunk), `cached: bool` | TTS stream for playback; `chunk` payloads are binary frames (§6) |
+| `stt_final` | body, ui | `job?`, `text`, `lang`, `rtf` | final transcript of an utterance |
+| `orb_state` | ui | `state`, `jobs_active`, `mode: normal\|private\|paused`, `subtitle?`, `provider?`, `model?` | authoritative orb display state (§8) |
+| `subtitle` | ui | `job?`, `text`, `fade_ms` | fading subtitle/status line |
+| `needs_confirm` | all | `job`, `question`, `actions[]`, `expires_at` | voice/screen confirmation request (§9) |
+| `error` | all | `code` (§10), `job?`, `detail?` | error (detail never contains secrets/raw screen content) |
+| `pong` | all | — | heartbeat reply |
+
+## 4. Role capabilities
+
+| capability | body | ui | cli |
+|---|---|---|---|
+| send `command` | ✓ | ✓ | ✓ |
+| receive `act_req` (act on PC) | **✓ only** | ✗ | ✗ |
+| receive `speak` (play audio) | **✓ only** | ✗ | ✗ |
+| receive `stt_final` / `orb_state` / `subtitle` | ✓ | **✓** | ✓ |
+| `orb_input`, `confirm_resp`, `control` | `confirm_resp`,`control` | ✓ | **✓ all** |
+| mic `audio_start/end` | **✓ only** | ✗ | ✗ |
+
+Server drops the frame with `E_UNSUPPORTED` if a role exceeds its capabilities.
+
+## 5. Jobs
+
+```json
+{"type":"job_event","job":"j_20261005_001","seq":12,"ts":1770000000000,
+ "status":"queued|running|awaiting_confirm|done|failed|cancelled|interrupted",
+ "stage":"routing|llm|tool|tts|done", "text":"≤160 chars human summary",
+ "progress":0.0-1.0, "priority":"user_facing|normal|background", "tool":"open_url"}
+```
+- State machine: `queued → running → (awaiting_confirm → running) → done|failed|cancelled|interrupted`. Terminal states are immutable; `interrupted` = crashed/restarted mid-run → **reported at startup, never auto-resumed** (brief §6).
+- `seq` is per-job monotonic; clients drop stale out-of-order events.
+- Completion announcements: Brain emits `job_event(done)` with short `text` ("Task complete: YouTube search") and queues it behind any ongoing speech (never interrupts mid-sentence).
+
+## 6. Binary frames (WS binary messages)
+
+All binary frames: `[4-byte magic "RAPH"][u8 kind][u32 seq][payload]`.
+
+| kind | direction | payload |
+|---|---|---|
+| 1 | body→brain | raw PCM `s16le`, 16 kHz, mono (mic utterance chunk, ≤50 ms each) |
+| 2 | brain→body | raw PCM `s16le`, 24 kHz, mono (TTS chunk, ≤500 ms each; preceded by `speak` JSON with same `seq`) |
+
+Text transcription of audio always travels as JSON (`stt_final`); binary audio is never persisted unless debug capture is enabled (default off).
+
+## 7. Body action API (`act_req`)
+
+`action` enum (allow-list; server never sends free-form shell strings — structured args only):
+`launch_url{url}`, `search_youtube{query}`, `open_app{name}`, `open_path{path}`, `powershell{script_id, args}` (script_id must exist in a fixed registry — NOT arbitrary strings), `screenshot{max_px:1280, quality:70}`, `uia{op, element, args}` (structured UI Automation ops), `input{keys|mouse, dx, dy}`, `window{op}`, `clipboard{op}`, `media{op}`, `volume{level}`, `brightness{level}`, `notify{text}`.
+- `lock:true` actions (anything touching mouse/keyboard/foreground): Body **queues** the request if another job holds the input lock → `act_res{ok:false, error:"E_LOCK_BUSY", queued:true}`; Brain handles queuing at job level anyway (input lock is Brain-arbitrated; Body is last-line enforcement).
+- Every executed action is logged locally `logs/actions.log` with `job`, `action`, args-summary (no secrets), result.
+- Mouse failsafe (pyautogui corner) applies to `input` actions.
+- **Screenshots never leave the machine** (they go to Brain's local vision model only).
+
+## 8. Orb states
+
+`starting | reconnecting | offline | idle | listening | thinking | acting | speaking | confirm | error | private_overlay`. `orb_state` always carries base `state`; private/paused are `mode` (rendered as tint/ring overlay so cloud-availability is always visible). `jobs_active` → orbiting dots (cap display at 9). Orb renders its own smooth transitions from these discrete events.
+
+## 9. Confirmation flow (voice-first, brief §7 + addendum §7)
+
+1. Brain's confirmation module (code-enforced, per-job, before tool dispatch) emits `needs_confirm{job, question, actions[], expires_at}` → orb shows amber + speaks the question.
+2. User replies by speech (Body mic → `stt_final`) or text/orb menu. Free text goes through a small intent check (yes/no/modify).
+3. `confirm_resp` resolves the job: yes → job continues with a scoped grant recorded in the job record; no → job `cancelled` with spoken "Aborted."; timeout (default 30 s, configurable) → **abort** (never auto-approve).
+4. Concurrent jobs each carry their own pending confirmation; confirming one never grants another.
+
+## 10. Error codes
+
+`E_AUTH`, `E_AUTH_RATE`, `E_PROTO`, `E_BAD_MSG`, `E_UNSUPPORTED`, `E_RATE_LIMIT`, `E_LOCK_BUSY`, `E_TIMEOUT` (action/step timeout), `E_CONFIRM_TIMEOUT`, `E_CANCELLED`, `E_PROVIDER_429` (rate limit), `E_PROVIDER_5XX`, `E_PROVIDER_AUTH`, `E_LOCAL_OOM` (GPU/RAM), `E_LOCAL_DOWN` (ollama dead), `E_OFFLINE` (no network, local fallback unavailable), `E_INTERNAL`.
+Recoverable vs fatal is defined per-callsite; clients surface `error.detail` as subtitle text only when `code` ∈ {E_LOCK_BUSY, E_TIMEOUT, E_CONFIRM_TIMEOUT, E_PROVIDER_429, E_LOCAL_OOM, E_LOCAL_DOWN, E_OFFLINE} (brief communication rules).
+
+## 11. Security invariants (protocol level)
+
+- Everything is localhost-only; **no other listeners** exist (security-reviewer checks this).
+- Token never appears in any frame after `auth`, in logs, or on the orb.
+- `powershell` actions use a fixed script registry (no arbitrary command strings cross the wire).
+- All text arriving from tools/web/screenshots is tagged untrusted by the Brain before it reaches any model (brief §7).
+- Frames are validated with pydantic models server-side; malformed → `E_BAD_MSG`, repeated abuse → close.

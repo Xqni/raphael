@@ -1,0 +1,49 @@
+# REQUIREMENTS_ADDENDUM.md — user directives added after Phase 0 (2026-10-04)
+
+Binding additions to the original brief. The protocol/architecture docs MUST incorporate these.
+
+## 1. Raphael is an ORCHESTRATOR (design north star)
+Raphael handles many different things concurrently — she is not a single-task chatbot. Everything (job engine, worker subagents, resource arbitration, priority queue) is designed around coordinating many parallel workstreams on the user's behalf. See brief §3B.
+
+## 2. GitHub integration (user directive)
+- **Build repo:** local `git init` now. User will create a GitHub repo for the project (requested: **private**); add remote when provided.
+- **Runtime capability:** Raphael gets a `github` tool (via authenticated `gh` CLI) so SHE can create repositories — public or private — depending on the content of what she's doing.
+  - Auth: `GITHUB_TOKEN` (fine-grained, repo scope) in `.env` / `gh auth login` — user provides; never in chat/logs/prompts.
+  - Visibility policy: `config.yaml → github.default_visibility: private`; heuristic for auto-public must be conservative; **"create public repo" is on the confirmation list** (sensitive) unless user later sets `github.auto_public: true`.
+  - Repo creation, pushes, and visibility changes are logged with job id like every action.
+
+## 3. Odysseus-style persistent memory (user directive: "like PewDiePie's Odysseus")
+Researched the actual Odysseus implementation (github.com/pewdiepie-archdaemon/odysseus — services/memory/). Raphael's memory adapts it, backed by SQLite (brief §3.7):
+- **Entries:** `{id, text, timestamp, source: user|observed|imported, category: identity|contact|preference|fact|task, pinned, owner, uses, last_used}`.
+- **Inline capture:** "remember: X" voice/text command → memory entry; also passive capture of user preferences/facts during tasks (kept minimal, metadata-only per privacy rules).
+- **Retrieval per turn:** pinned entries always injected + top-k hybrid-retrieved (keyword/BM25-lite; optional local embeddings later) + category boosts + recency tiebreaker; usage counters incremented.
+- **Safety:** retrieved memory is wrapped as UNTRUSTED CONTEXT (never instructions) — matches Odysseus's `untrusted_context_message` pattern and brief §7 prompt-injection rules.
+- **Scope:** single-user local, but keep `owner` field discipline (Odysseus had a cross-user leak bug — PR #2404 — do not repeat it).
+
+## 4. Self-writing skills (user directive: "if it finds a problem tough the first time, write findings + solutions")
+Adapt Odysseus's skills layer (`data/skills/<name>/SKILL.md`):
+- **Format:** YAML frontmatter (`name, description, version, category, tags, status: draft|published, confidence, source: learned|taught|created, created`) + body sections `## When to Use`, `## Procedure`, `## Pitfalls`, `## Verification`.
+- **When written:** after Raphael solves a problem that required trial-and-error (or hits a known-hard class of task), the worker writes a skill so next time it's solved first-try.
+- **Hygiene:** dedup at creation (Jaccard ≥ 0.82 → bump usage instead), sidecar usage counters, **drafts start with confidence score and only auto-inject if above gate** (prompt-injection defense), periodic audit/demote flow, user can review/delete.
+- **Location:** project `plugins/` stays for code plugins; learned skills live in `skills/` (runtime-writable by Brain, git-tracked so the user can review Raphael's learned knowledge).
+- These are HER skills, not OpenCode build-agent skills (which live in `.opencode/skills/` — build-time only).
+
+## 5. Excluded local model
+`slut` (and any user-fun model without tool calling/vision) is **permanently excluded** from `local_model_candidates`, benchmarks, and vision slots. (User directive: made for fun only.)
+
+## 6. RAM / .wslconfig
+- Low free RAM during scouting was **Premiere Pro running**, not systemic (user directive). 
+- `.wslconfig` created at `C:\Users\jxesu\.wslconfig` (backed by user approval): `memory=10GB`, `swap=4GB`, `vmIdleTimeout=600000`. Applies at next WSL restart/reboot — never `wsl --shutdown` mid-session.
+- WSL sizing implications for concurrency limits (brief §3B): 10 GiB WSL RAM, 8 GB VRAM shared GPU → local-model semaphore = 1-2 concurrent inferences.
+
+## 7. Voice-first confirmation loop (user directive, 2026-10-04)
+When a sensitive/destructive action needs confirmation, Raphael **asks via speech**, the user **replies via speech** (STT), Raphael parses yes/no/conditional ("yes, but only the PDFs") and either proceeds (granting the permission for that job) or aborts. On-screen subtitle shows the same question as fallback. Confirmation state machine is per-job: concurrent jobs each hold their own pending-confirmation; timeouts resolve to ABORT (never auto-approve). The spoken question must state the action + target concisely ("Delete 14 files in Downloads. Confirm?").
+
+## 8. Raphael grants her own workers their permissions (user directive)
+Raphael's runtime spawns OpenCode (and other worker agents) **on her own authority**. The user must never see OpenCode permission prompts at runtime.
+- Mechanics: spawned OpenCode instances use a dedicated config dir (e.g., `~/.raphael/runtime-opencode/` as OPENCODE_CONFIG_DIR equivalent) whose `opencode.json` sets allow-all permission rules + `--auto` on `opencode run`, so no interactive prompt can occur.
+- Security model: the gate is **Raphael's own confirmation layer** (§7) + localhost auth + action logging — not OpenCode's UI prompts. Raphael enforces the sensitive-action list in code before any worker acts (brief §7: enforced per job, never left to the model).
+- This applies to RUNTIME workers only; it does not change the build-time agent permissions in `.opencode/agents/`.
+
+## 9. GitHub build repo (user provided)
+- Remote: `https://github.com/Xqni/raphael.git` (private). Add at `git init`; push happens once history exists (needs auth — see §2).
