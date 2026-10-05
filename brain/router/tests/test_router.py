@@ -141,3 +141,43 @@ async def test_complete_logs_usage() -> None:
         assert res.outcome == Outcome.SUCCESS
     finally:
         await shutdown_router()
+
+
+def test_policy_excluded_models() -> None:
+    from brain.router.policy import is_excluded
+    assert is_excluded("slut")
+    assert is_excluded("slut:latest")
+    assert is_excluded("  SLUT  ")
+    assert not is_excluded("qwen3.5:4b")
+    assert not is_excluded("mimo-v2.6-flash-free")
+    assert not is_excluded("")
+
+
+@pytest.mark.asyncio
+async def test_zen_denylist_filters_excluded() -> None:
+    import time as _time
+    from brain.router.zen import ZenDiscovery, ZenModel
+
+    zd = ZenDiscovery("https://example.invalid")
+    zd._models = [
+        ZenModel(id="mimo-v2.6-flash-free", free=True),
+        ZenModel(id="slut", free=True),
+        ZenModel(id="slut:latest", free=True),
+    ]
+    zd._expires_at = _time.monotonic() + 999
+    ids = await zd.get_free_model_ids()
+    assert ids == ["mimo-v2.6-flash-free"]
+
+
+@pytest.mark.asyncio
+async def test_ollama_denylist_filters_excluded() -> None:
+    from brain.router.ollama import OllamaProvider
+
+    op = OllamaProvider()
+
+    async def fake_tags():
+        return [{"name": "qwen3.5:4b"}, {"name": "slut:latest"}]
+
+    with mock.patch.object(op, "_fetch_tags", new=fake_tags):
+        models = await op.list_models()
+    assert models == ["qwen3.5:4b"]

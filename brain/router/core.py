@@ -178,7 +178,12 @@ class Router:
     async def _health_loop(self) -> None:
         while self._running:
             await asyncio.sleep(30.0 + (time.monotonic() % 5.0))
-            await self.health_check()
+            try:
+                await self.health_check()
+            except Exception:
+                # Isolate probe failures: a flaky network must never kill the
+                # health loop silently (CancelledError is BaseException -> propagates).
+                continue
 
     async def start(self) -> None:
         self._running = True

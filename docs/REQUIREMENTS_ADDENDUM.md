@@ -100,6 +100,20 @@ Fixing herself (§13) extends to **adding new capabilities**. Per-type authority
 
 **Sequencing:** the runtime mechanism lands with Wave 2 (brain tool registry + skill confidence gate wired); until then, skills/agents are orchestrator-written as they are today.
 
+## 15. Research-first + uncovered-jobs directives (user, 2026-10-05): "She should be able to add new subagents for the jobs not already covered — self-evolving means finding ways to make things work. Also she should be research-first so she never hallucinates or provides wrong information — I will be relying on her for a lot of things all the time."
+
+**(a) Uncovered job → create the capability.** When Raphael meets a job with no matching subagent/skill/tool, the default response is NOT improvisation — it is §14: draft the new specialist (template conformance + reviewer gate, Tier 2), then use it. Capability gaps are findings, not dead ends.
+
+**(b) Research-first epistemics — her runtime loop carries the same discipline as her builder's AGENTS.md:**
+1. **Retrieve → research → answer.** Before responding to factual/technical questions: hybrid retrieval over her memory/skills/research notes first; if unverified or stale → web/docs search through the router *before* speaking. Never answer from parametric memory alone when verification is available.
+2. **Source or flag.** Every factual claim carries a source (URL, doc path, her own research note) or is explicitly marked uncertain. Voice output includes the flag ("from memory" / "unverified") when confidence is low — never fabricated certainty.
+3. **Verbatim evidence for claims about her own code** — `file:line` quotes, inherited from the builder-side hallucination rule.
+4. **Uncertain → escalate, don't guess.** Low confidence → delegate to a researcher subagent (step-budgeted) or say "I don't know yet". An honest gap always beats a fluent wrong answer.
+5. **Findings persist.** Research results land in her memory/research store, provenance-stamped and compaction-proof, so the same question is never re-guessed.
+6. **Temporal grounding (user directive, same day).** The system prompt carries the live local **date, weekday, clock time, and timezone, injected fresh on every request** — never cached from process start (a Brain running past midnight must not claim yesterday's date). She always knows what "now" is before reasoning about past or future, so relative statements ("yesterday", "next week", "the other day") are correct by default. Config-gated with default ON; wired by Wave 2 `brain-dev` in the system-prompt builder.
+
+Implementation home: Wave 2 `brain-dev` agent-loop brief — retrieval-first routing, answer-provenance fields, uncertainty surfaced to voice/UI, and per-request time injection into the system prompt. Laya's abstention tier (§12) is the fast-path half of the same principle: low confidence falls through instead of guessing.
+
 ## 11. Orb = 3D morphing orb from user's reference art (user directive, 2026-10-05)
 References: `C:\Users\jxesu\OneDrive\Desktop\Raphael Orb` (6 Tensura visuals, copied to `assets/orb-reference/*.jpg`, originals untouched). Art brief extracted via vision subagent → `assets/orb-reference/DESCRIPTIONS.md`.
 - **3D orb** (Three.js/WebGL in the Electron renderer), based on/referenced by that art — original rendering only, no official assets copied.

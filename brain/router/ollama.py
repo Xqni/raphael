@@ -6,6 +6,8 @@ import json
 from typing import Any
 from urllib import error, request
 
+from .policy import is_excluded
+
 
 class OllamaUnavailable(Exception):
     pass
@@ -44,6 +46,10 @@ class OllamaProvider:
     async def list_models(self) -> list[str]:
         try:
             tags = await self._fetch_tags()
-            return [str(t.get("name")) for t in tags if t.get("name")]
+            return [
+                str(t.get("name"))
+                for t in tags
+                if t.get("name") and not is_excluded(str(t.get("name")))
+            ]
         except OllamaUnavailable:
             return []

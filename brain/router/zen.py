@@ -8,6 +8,8 @@ from dataclasses import dataclass
 from typing import Any
 from urllib import error, request
 
+from .policy import is_excluded
+
 DEFAULT_ZEN_MODELS_URL = "https://opencode.ai/zen/v1/models"
 
 
@@ -81,7 +83,7 @@ class ZenDiscovery:
 
     async def get_free_model_ids(self) -> list[str]:
         models = await self.get_models()
-        ids = [m.id for m in models if m.free]
+        ids = [m.id for m in models if m.free and not is_excluded(m.id)]
         return ids
 
     async def select_free_model(self, candidates: list[str] | None = None) -> str | None:
@@ -90,7 +92,7 @@ class ZenDiscovery:
             for c in candidates:
                 if c in free_ids:
                     return c
-            return candidates[0] if candidates else None
+            return next((c for c in candidates if not is_excluded(c)), None)
         # prefer known free names if present in live list? return first free id
         ids = await self.get_free_model_ids()
         return ids[0] if ids else None

@@ -1,4 +1,8 @@
-"""Benchmark harness for latency/throughput per provider."""
+"""Synthetic benchmark harness — SIMULATED latency (sleep-based), no real HTTP calls.
+
+Use it only for ranking-shape/harness checks. Real provider latency lives in
+`usage.jsonl` (every actual call logs latency there). Never quote these numbers
+as measured provider performance."""
 from __future__ import annotations
 
 import asyncio
@@ -71,6 +75,10 @@ async def _run_provider(provider: str, model: str, samples: int = 20, delay_s: f
 
 
 async def run_benchmark(samples: int = 20) -> list[BenchmarkResult]:
+    """SYNTHETIC benchmark: exercises the harness with simulated timings only.
+
+    Makes zero network calls; p50/p90 numbers here are NOT provider latency.
+    """
     results: list[BenchmarkResult] = []
     # Mock runs; in practice would call real providers behind mocks in tests
     results.append(await _run_provider("zen_free", "mimo-v2.6-flash-free", samples=samples))
