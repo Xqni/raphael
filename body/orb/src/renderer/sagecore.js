@@ -335,17 +335,17 @@ export function updateSageCore(L, ctx) {
     if (state === 'starting') L.genT = 0;
     L.prevState = state;
   }
-  if (L.genT >= 0 && state === 'starting') L.genT = Math.min(L.genT + dt, 5000); // MUST exceed the spin window (4600) or the spin freezes mid-strength
+  if (L.genT >= 0 && state === 'starting') L.genT = Math.min(L.genT + dt, 9000); // MUST exceed the spin window end (8300) or the spin freezes mid-strength
   const gt = (state === 'starting' && L.genT >= 0) ? L.genT : 99999;
   const ease3 = (x) => 1 - Math.pow(1 - Math.min(Math.max(x, 0), 1), 3);
   const genOuter = ease3(gt / 1400);
   const genInner = ease3((gt - 900) / 1200);
   const genSun = ease3((gt - 1700) / 900);
-  const spinProg = Math.min(Math.max((gt - 2300) / 2300, 0), 1);
-  const sinP = Math.sin(Math.PI * spinProg);
-  // sin^2 envelope: zero slope at BOTH ends -> the finishing spin eases cleanly
-  // into the idle spin instead of cutting off (user: it looked abrupt).
-  const genSpin = (gt > 2300 && gt < 4600) ? sinP * sinP * 9 : 0;
+  const spinProg = Math.min(Math.max((gt - 2300) / 6000, 0), 1);
+  const skew = Math.pow(spinProg, 0.4); // peak early, LONG gentle tail
+  const sinP = Math.sin(Math.PI * skew);
+  // sin^2 with skewed timeline: eases over ~6s all the way into the idle spin
+  const genSpin = (gt > 2300 && gt < 8300) ? sinP * sinP * 7 : 0;
   const errOn = state === 'error' ? 1 : 0; // error: white cages, CRANKED glow // absolute speed boost: VISIBLE finishing spin
 
   // 1) nebula

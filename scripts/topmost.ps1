@@ -12,6 +12,8 @@ using System;
 using System.Text;
 using System.Runtime.InteropServices;
 
+public struct RC { public int Left; public int Top; public int Right; public int Bottom; }
+
 public class Win32Top {
   public delegate bool EnumProc(IntPtr hWnd, IntPtr lParam);
 
@@ -26,6 +28,10 @@ public class Win32Top {
   public static extern IntPtr GetWindowLongPtr(IntPtr hWnd, int nIndex);
   [DllImport("user32.dll", EntryPoint = "SetWindowLongPtrW")]
   public static extern IntPtr SetWindowLongPtr(IntPtr hWnd, int nIndex, IntPtr dwNewLong);
+  [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr hWnd, out RC lpRect);
+  [DllImport("user32.dll")] public static extern int SetWindowRgn(IntPtr hWnd, IntPtr hRgn, bool bRedraw);
+  [DllImport("gdi32.dll")] public static extern IntPtr CreateRectRgn(int l, int t, int r, int b);
+  [DllImport("gdi32.dll")] public static extern bool DeleteObject(IntPtr hObject);
   [DllImport("dwmapi.dll")]
   public static extern int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref int pv, int cb);
 }
@@ -71,6 +77,25 @@ if ($newStyle -ne $style) {
 # Win11: DWMWA_WINDOW_CORNER_PREFERENCE(33) = DWMWCP_DONOTROUND(1)
 $noRound = 1
 [void][Win32Top]::DwmSetWindowAttribute($found, 33, [ref]$noRound, 4)
+# DWMWA_SYSTEMBACKDROP_TYPE(38) = DWMSBT_NONE(1) — no accent/transient backdrop
+$bd = 1
+[void][Win32Top]::DwmSetWindowAttribute($found, 38, [ref]$bd, 4)
+# DEFINITIVE shadow kill: give the window a region exactly matching its size.
+# DWM does not draw drop shadows outside a window region.
+$rc = New-Object RC
+if ([Win32Top]::GetWindowRect($found, [ref]$rc)) {
+  $w = $rc.Right - $rc.Left
+  $h = $rc.Bottom - $rc.Top
+  if ($w -gt 0 -and $h -gt 0) {
+    $rgn = [Win32Top]::CreateRectRgn(0, 0, $w, $h)
+    if ($rgn -ne [IntPtr]::Zero) {
+      # on success the system owns the region; delete only on failure
+      if ([Win32Top]::SetWindowRgn($found, $rgn, $true) -eq 0) {
+        [void][Win32Top]::DeleteObject($rgn)
+      }
+    }
+  }
+}
 # Force DWM to re-apply the stripped styles immediately (SWP_FRAMECHANGED=0x20)
 [void][Win32Top]::SetWindowPos($found, [IntPtr](-1), 0, 0, 0, 0,
   0x0001 -bor 0x0002 -bor 0x0010 -bor 0x0040 -bor 0x0020)
