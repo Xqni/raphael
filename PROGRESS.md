@@ -139,3 +139,10 @@ See docs/PAID_USAGE.md. Running total: $0.00 of $2.00.
 - wsl_argv config bug: paths.wsl_sudo applied to EVERY wsl command (would have root-spawned the orb+keepalive too) -> now sudo is per-call, only systemctl_action passes it.
 - launch_orb ran Windows-side `npm start` (died silently: MESA/d3d12 env is Linux-only syntax) -> now `wsl ... sh -lc "cd /home/dami/raphael/body/orb && exec npm start"`; verified live: Linux npm/node (~/.local/bin), SINGLE_INSTANCE handoff vs dev instance works, WSLg path preserved. Orb's cmd.exe "UNC paths not supported" lines in orb.log = main.js:102 TEMP probe (cosmetic, windowsHide).
 - Remaining user-side:2 idle wsl tabs from yesterday's agent tests (10:53PM + 2:48AM) still open — safe to close, one may host the OpenCode TUI.
+
+## 2026-10-05 08:15 — REBOOT VERIFIED (final exam passed)
+- User rebooted: "no terminal windows spawned and it launched on its own as well after 10-15 secs into the logon."
+- Logon chain proven end-to-end with ZERO manual steps: Task "Raphael" (AtLogOn) -> pythonw supervisor pid=12716 (08:15:53, boot+23s) -> WSL-side orb up (~10-15s) -> styled/topmost -> WT children = 0 (no tabs, ever).
+- Pre-rehearsal (08:13) had already swapped my dev instance for the production orb: no --demo, no CDP port, MESA/d3d12 flags, single-instance handoff, watcher "styled hwnd after 658 ms" — identical to what runs at logon.
+- Remaining log noise until Wave 2 (cosmetic, honest status): one "brain unit NOT active" ERROR + one "brain health check failed" ERROR + up to 10 restart WARNs with INFO soft-skip lines, then PERMANENT_ERROR slow-poll. Optional polish when the brain unit lands: downgrade the deferred-restart WARN wording ("issued" -> "would be issued, deferred").
+- TODO #1 CLOSED: logon auto-start fully verified on a real reboot.

@@ -7,7 +7,7 @@ Priority order after Phase 3 completes. Do not let these silently vanish.
 - Task "Raphael" REGISTERED (AtLogOn, State=Ready, restart-on-failure 1m x10, battery-safe, no 72h kill).
 - LIVE SMOKE PASSED: Start-ScheduledTask -> supervisor -> "orb launched cmd=npm start" -> WSL bring-up + keepalive -> body/brain gracefully tolerated while missing.
 - Bug found ONLY by the live smoke (review missed it): ctypes.wintypes.HCURSOR doesn't exist on py3.10 -> power hook crash -> FIXED (ctypes.c_void_p), restart verified clean.
-- REMAINING: confirm on an actual reboot (next Windows logon) that the chain comes up with zero manual steps; uninstall path = scripts/uninstall.ps1.
+- VERIFIED ON REAL REBOOT (2026-10-05): no console/tabs, supervisor pythonw at boot+23s, orb up ~10-15s after logon, zero manual steps. DONE. Uninstall path = scripts/uninstall.ps1.
 - 2026-10-05 follow-up (4 mystery tabs + errors): task host -> pythonw.exe, all spawns -> CREATE_NO_WINDOW, orb launches WSL-side, brain unit soft-skips while not-found (Wave 2). When the brain unit is INSTALLED later: grant NOPASSWD for systemctl to dami (sudoers.d, exact argv match of supervisor's `sudo -n systemctl ...` usage) AND set `paths.wsl_sudo: true` in config.yaml — needed only then, not now.
 
 ## 2. Performance tuning + measurement (spec §5) — PARTIALLY DONE (GPU achieved 2026-10-05)
