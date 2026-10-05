@@ -121,7 +121,7 @@ function startRoam() {
   const d01 = Math.min(1, dist / 3000);
   const speed = 75 + d01 * 85;                       // 75..160 px/s
   const dur = Math.min(7000, Math.max(1000, (dist / speed) * 1000));
-  const lagPx = 10 + d01 * 30;                       // max lag 10..40px (motion blur bump)
+  const lagPx = 14 + d01 * 44;                       // max lag 14..58px (motion blur bump v2)
 
   // orbital ARC: quadratic bezier bowed perpendicular to the chord (solar feel)
   const mx = (b.x + target.x) / 2;
@@ -136,11 +136,11 @@ function startRoam() {
 }
 
 function glideTo(from, to, ctrl, durMs, lagPx) {
-  // Finite-argument validation: Electron's setPosition throws
-  // "TypeError: error processing argument at index 1, conversion failure"
-  // when handed NaN (seen on cross-display hops where bounds go transiently
-  // degenerate). Bad frames are skipped; persistent badness aborts cleanly.
-  const bad = (v) => !Number.isFinite(v);
+  // Finite + range validation: Electron's setPosition throws
+  // "TypeError: error processing argument at index 1, conversion failure" for
+  // NaN AND out-of-int32 values (seen on cross-display hops). Bad frames are
+  // skipped; persistent badness aborts the glide cleanly.
+  const bad = (v) => !Number.isFinite(v) || Math.abs(v) > 2147483000;
   if (bad(from.x) || bad(from.y) || bad(to.x) || bad(to.y) ||
       bad(ctrl.x) || bad(ctrl.y) || bad(durMs) || bad(lagPx)) {
     console.error('GLIDE_ABORT non-finite input', JSON.stringify({ from, to, ctrl, durMs, lagPx }));
@@ -150,8 +150,12 @@ function glideTo(from, to, ctrl, durMs, lagPx) {
   roaming = true;
   const t0 = Date.now();
   let badFrames = 0;
+  let assertTick = 0;
   if (roamAnim) clearInterval(roamAnim);
   roamAnim = setInterval(() => {
+    // mid-glide: the WSLg host can be recreated while crossing displays
+    // (shadow returns) — re-assert the region/topmost every ~700ms in-flight
+    if (reassertTopmost && ++assertTick >= 44) { assertTick = 0; reassertTopmost(); }
     const p = Math.min(1, (Date.now() - t0) / durMs);
     const e = easeInOut2(p);
     const inv = 1 - e;
@@ -177,7 +181,21 @@ function glideTo(from, to, ctrl, durMs, lagPx) {
     vx /= vl; vy /= vl;
     const bell = Math.sin(Math.PI * e); // intensity eases in AND out
     lastProgMoveAt = Date.now();
-    if (win && !win.isDestroyed()) win.setPosition(Math.round(x), Math.round(y));
+    if (win && !win.isDestroyed()) {
+      try {
+        win.setPosition(Math.round(x), Math.round(y));
+      } catch (err) {
+        // conversion failure survived the guard — capture the EXACT values so
+        // the next occurrence is diagnosable with data, not speculation
+        console.error('SETPOS_FAIL', JSON.stringify({
+          x, y, p, e, badFrames,
+          from: [from.x, from.y], to: [to.x, to.y], ctrl: [ctrl.x, ctrl.y],
+          msg: String(err && err.message),
+        }));
+        badFrames++;
+        return;
+      }
+    }
     if (win && !win.isDestroyed() && win.webContents) {
       win.webContents.send('orb-glide', { on: true, vx, vy, px: lagPx * bell });
     }
@@ -188,8 +206,13 @@ function glideTo(from, to, ctrl, durMs, lagPx) {
       if (win && !win.isDestroyed() && win.webContents) win.webContents.send('orb-glide', { on: false });
       savePosition(to.x, to.y);
       // cross-display hops recreate the WSLg host window (region/topmost drop
-      // and the shadow briefly returns) — re-assert immediately on landing.
-      if (reassertTopmost) setTimeout(reassertTopmost, 300);
+      // and the shadow briefly returns) — re-assert immediately AND a few
+      // times after landing to catch delayed host recreation.
+      if (reassertTopmost) {
+        setTimeout(reassertTopmost, 300);
+        setTimeout(reassertTopmost, 1500);
+        setTimeout(reassertTopmost, 4000);
+      }
       scheduleRoam();
     }
   }, 16); // 60 Hz — smooth steps instead of 33ms chops
@@ -258,8 +281,12 @@ function createWindow() {
         { windowsHide: true }, () => {});
     };
     win.webContents.once('did-finish-load', () => {
-      setTimeout(assertTopmost, 800);
-      setInterval(assertTopmost, 10000); // cross-display hops recreate the host (shadow/region drop)
+      // Startup: the host window may not be finalized yet (shadow visible on
+      // restart) — hammer the region/topmost every 700ms for ~9s, then 10s.
+      let fastLeft = 12;
+      const fast = () => { assertTopmost(); if (fastLeft-- > 0) setTimeout(fast, 700); };
+      setTimeout(fast, 300);
+      setInterval(assertTopmost, 10000);
     });
     reassertTopmost = assertTopmost;
   }

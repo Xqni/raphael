@@ -352,16 +352,16 @@ export function updateSageCore(L, ctx) {
   const gx = ctx.glide ? ctx.glide.x : 0;
   const gy = ctx.glide ? ctx.glide.y : 0;
   const gb = ctx.glide ? ctx.glide.blur : 0;
-  L.nebula.position.x = -gx * 0.4;                       // background barely lags
-  L.nebula.position.y = -gy * 0.4;
-  L.speed.position.set(-gx * 1.3, -gy * 1.3, 0);         // rays trail + stretch (blur streak)
-  L.poly.position.set(-gx * 1.05, -gy * 1.05, 0);        // outer cage
+  L.nebula.position.x = -gx * 0.5;                       // background barely lags
+  L.nebula.position.y = -gy * 0.5;
+  L.speed.position.set(-gx * 1.6, -gy * 1.6, 0);         // rays trail + stretch (blur streak)
+  L.poly.position.set(-gx * 1.15, -gy * 1.15, 0);        // outer cage
   L.nodes.position.copy(L.poly.position);
   if (L.cage) L.cage.position.copy(L.poly.position);     // inner cage rides with it
-  L.ringBack.position.set(-gx * 1.2, -gy * 1.2, -0.24);
-  L.ringFront.position.set(-gx * 1.2, -gy * 1.2, 0.24);
-  L.privateRing.position.set(-gx * 1.25, -gy * 1.25, 0);
-  L.spark.position.set(-gx * 1.55, -gy * 1.55, 0);       // sparkles lag the most // absolute speed boost: VISIBLE finishing spin
+  L.ringBack.position.set(-gx * 1.4, -gy * 1.4, -0.24);
+  L.ringFront.position.set(-gx * 1.4, -gy * 1.4, 0.24);
+  L.privateRing.position.set(-gx * 1.45, -gy * 1.45, 0);
+  L.spark.position.set(-gx * 2.0, -gy * 2.0, 0);         // sparkles lag the most // absolute speed boost: VISIBLE finishing spin
 
   // 1) nebula
   L.nebulaMat.uniforms.uTime.value = t;
@@ -371,7 +371,7 @@ export function updateSageCore(L, ctx) {
   // 3) speed lines — listening: rays lengthen (ripple handled by shimmer)
   L.speedMat.uniforms.uTime.value = t;
   L.speedMat.uniforms.uAlpha.value = w.speed;
-  L.speedMat.uniforms.uLength.value = 1 + listening * L.ampS * 0.55 + gb * 1.4; // rays stretch harder while gliding (blur bump)
+  L.speedMat.uniforms.uLength.value = 1 + listening * L.ampS * 0.55 + gb * 2.0; // rays stretch hard while gliding (blur bump v2)
 
   // 4) polyhedron + nodes — slow spin, edge pulses; listening: nodes brighten
   L.polyMat.uniforms.uTime.value = t;
@@ -429,8 +429,8 @@ export function updateSageCore(L, ctx) {
   for (let i = 0; i < L.panes.length; i++) {
     const p = L.panes[i];
     const a = p.ang + t * p.speed;
-    p.m.position.x = Math.cos(a) * p.rad - gx * 1.7;     // panes: heaviest trail (particles lag behind)
-    p.m.position.y = Math.sin(a) * p.rad + Math.sin(t * 0.3 + p.phase) * 0.03 - gy * 1.7;
+    p.m.position.x = Math.cos(a) * p.rad - gx * 2.2;     // panes: heaviest trail (particles lag behind)
+    p.m.position.y = Math.sin(a) * p.rad + Math.sin(t * 0.3 + p.phase) * 0.03 - gy * 2.2;
     let op = p.baseOp * (0.85 + 0.15 * Math.sin(t * (0.5 + i * 0.03) + p.phase));
     if (Math.sin(t * 0.9 + p.phase * 2.7) > 0.992) op *= 0.35; // rare flicker
     p.mat.opacity = op * (0.4 + w.nebula * 0.9);

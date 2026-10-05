@@ -87,7 +87,7 @@ let layerWeights = { coreScale:1, haloOpacity:0.25, latticeOpacity:0.35 };
 
 // Scene
 let renderer, scene, camera, clock;
-let group, core, lattice, halo, rings = [], rays, starsMesh, sage;
+let group, core, lattice, halo, rings = [], rays, starsMesh, sage, glowGhosts = [];
 
 // Geometry targets for morph
 const BASE_VERTEX_COUNT = 60;
@@ -181,6 +181,16 @@ function initScene() {
   const glow = new THREE.Mesh(new THREE.PlaneGeometry(2.6, 2.6), glowMat);
   glow.position.z = 0.58;    // just beyond the front pole (0.52): haze ALWAYS on top of the ball
   core.add(glow);            // inherits breath/pulse scaling with the ball
+  // Motion-blur ghost trails: two extra glow copies trailing the sun during
+  // glides (offsets handled per-frame; brightness = GLB-scaled so they are
+  // invisible at rest).
+  for (let gi = 1; gi <= 2; gi++) {
+    const gm = glowMat.clone(); // deep-cloned uniforms (independent of coreU)
+    const ghost = new THREE.Mesh(glow.geometry, gm);
+    ghost.position.z = 0.58 + gi * 0.02;
+    core.add(ghost);
+    glowGhosts.push({ mesh: ghost, k: 0.85 + gi * 0.75, f: gi === 1 ? 0.5 : 0.32, z: 0.58 + gi * 0.02 });
+  }
   group.add(core);
 
   const haloGeo = new THREE.RingGeometry(1.0, 1.15, 64);
@@ -368,8 +378,16 @@ function animate(now) {
   GLX = damp(GLX, glideTX, gFast, dt);
   GLY = damp(GLY, glideTY, gFast, dt);
   GLB = damp(GLB, glideTB, gFast, dt);
-  core.scale.setScalar(ballScale * (1 + GLB * 0.5));  // blur bump: bloom swells harder while gliding
+  core.scale.setScalar(ballScale * (1 + GLB * 0.7));  // blur bump v2: bloom swells hard while gliding
   core.position.set(-GLX * 0.85, -GLY * 0.85, 0);     // the sun LEADS; everything else trails
+  // ghost trail copies: trailing glow smears (the "motion blur" layer)
+  for (let i = 0; i < glowGhosts.length; i++) {
+    const gh = glowGhosts[i];
+    gh.mesh.position.set(-(gh.k - 0.85) * GLX, -(gh.k - 0.85) * GLY, gh.z);
+    gh.mesh.material.uniforms.uBright.value = core.material.uniforms.uBright.value * GLB * gh.f;
+    gh.mesh.material.uniforms.uAmp.value = core.material.uniforms.uAmp.value;
+    gh.mesh.material.uniforms.color.value.copy(core.material.uniforms.color.value);
+  }
   halo.scale.setScalar(breath * (1 + speakAmp * 0.15));
   halo.material.opacity = 0.25 * layerWeights.haloOpacity;
   lattice.material.opacity = 0.35 * layerWeights.latticeOpacity;
@@ -396,7 +414,7 @@ function animate(now) {
   // Adjust frame interval based on state (active vs idle)
   const activeStates = ['listening','thinking','acting','speaking','error','private_overlay','reconnecting','offline','starting','confirm'];
   const isActive = activeStates.includes(orbState.orbState);
-  const targetFps = fpsCap; // user: push FPS higher — 60 target in ALL states (hidden-window pause kept)
+  const targetFps = isActive ? fpsCap : Math.max(30, Math.round(fpsCap/2)); // spec §5: 60 active / 30 idle — NOT forced (user)
   frameInterval = 1000 / targetFps;
   // Pause rendering when window is hidden
   if (document.hidden) return;
