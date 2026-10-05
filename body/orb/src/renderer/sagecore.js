@@ -335,7 +335,7 @@ export function updateSageCore(L, ctx) {
     if (state === 'starting') L.genT = 0;
     L.prevState = state;
   }
-  if (L.genT >= 0 && state === 'starting') L.genT = Math.min(L.genT + dt, 4000);
+  if (L.genT >= 0 && state === 'starting') L.genT = Math.min(L.genT + dt, 5000); // MUST exceed the spin window (4600) or the spin freezes mid-strength
   const gt = (state === 'starting' && L.genT >= 0) ? L.genT : 99999;
   const ease3 = (x) => 1 - Math.pow(1 - Math.min(Math.max(x, 0), 1), 3);
   const genOuter = ease3(gt / 1400);
