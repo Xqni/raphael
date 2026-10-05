@@ -21,17 +21,17 @@ export const fragmentShader = `
     vec3 L = normalize(vec3(-0.45, 0.55, 0.72));  // fixed light, upper-left
     float diff = clamp(dot(N, L), 0.0, 1.0);
 
-    // anime ball: lit body toward the light, limb falls off, hot camera-center
-    float body = 0.26 + 0.85 * pow(diff, 1.35);
-    float hot  = pow(facing, 3.0) * 0.6;           // bright heart toward viewer
-    float rim  = pow(1.0 - facing, 2.6) * 0.55;    // glowing rim = dimension
+    // SUN-LIKE plasma ball (user): envelope = pow(facing, n) gives a smooth,
+    // monotonic falloff to zero at the limb — NO hard edge, no rim ring.
+    float envelope = pow(facing, 1.6);               // sun falloff: bright heart -> soft haze edge
+    float form = 0.35 + 0.7 * pow(diff, 1.25);       // directional shading keeps it a 3D sphere
+    float hot = pow(facing, 6.0) * 0.5;              // tight white-hot heart
 
     vec3 base = vec3(1.0);
-    base = mix(base, vec3(1.0, 0.94, 0.84), (1.0 - facing) * 0.3 + (1.0 - diff) * 0.2);
-    base = mix(base, color, 0.55 * (1.0 - facing)); // state tint at the limb
-    float limbFade = smoothstep(0.0, 0.3, facing);   // SOFT edge: dissolves into haze at the silhouette
-    float a = clamp((body + hot + rim) * limbFade * uBright * (1.0 + uAmp * 0.25), 0.0, 1.0);
-    gl_FragColor = vec4(base * a, a);                // premultiplied; soft edge fades out
+    base = mix(base, vec3(1.0, 0.94, 0.84), (1.0 - facing) * 0.3 + (1.0 - diff) * 0.18);
+    base = mix(base, color, 0.6 * (1.0 - facing * facing)); // state tint where alpha still LIVES (was at the dead limb)
+    float a = clamp((envelope * form + hot) * uBright * (1.0 + uAmp * 0.25), 0.0, 1.0);
+    gl_FragColor = vec4(base * a, a);                // premultiplied; edge dissolves to zero
   }
 `;
 
@@ -46,10 +46,12 @@ export const glowShader = `
     float r = length(p);
     float ang = atan(p.y, p.x);
     float R = 0.52;                                // must match the ball radius
-    float halo = exp(-max(r - R, 0.0) * 3.4) * 0.55;
-    float rimhaze = exp(-abs(r - R) * 7.0) * 0.38;   // soft haze band at the ball edge
-    float star = pow(abs(cos(ang * 4.0)), 20.0) * exp(-max(r - R, 0.0) * 2.4) * 0.30;
-    float a = (halo + rimhaze + star) * uBright * (1.0 + uAmp * 0.4);
+    // SUN CORONA haze (user): smooth MONOTONIC falloff from the center outward —
+    // no band/ring at R (that read as a flat 2D circle). This layer sits ON TOP
+    // of the sphere (plane z beyond the front pole) = white haze over a 3D star.
+    float corona = exp(-r * 2.6) * 0.55;
+    float star = pow(abs(cos(ang * 4.0)), 20.0) * exp(-r * 2.0) * 0.25;
+    float a = (corona + star) * uBright * (1.0 + uAmp * 0.3);
     a = clamp(a, 0.0, 1.0);
     float edge = smoothstep(1.28, 0.9, r);         // unit fade before plane edge
     vec3 tinted = mix(vec3(1.0), color, 0.35);

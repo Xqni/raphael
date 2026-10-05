@@ -18,15 +18,15 @@ const TAU = 400; // blend time constant (ms) — inside the spec's 300-600ms win
 // nebula, speed(lines), poly, node, ring, spark, spin(rad/ms-ish), bright(core)
 const S = {
   idle:            { nebula: 0.55, speed: 0.85, poly: 1.00, node: 1.00, ring: 0.75, spark: 0.70, spin: 0.00005, bright: 1.00 },
-  listening:       { nebula: 0.70, speed: 1.15, poly: 1.05, node: 1.35, ring: 1.00, spark: 0.80, spin: 0.00006, bright: 1.12 },
-  thinking:        { nebula: 0.60, speed: 1.00, poly: 1.40, node: 1.50, ring: 0.90, spark: 0.95, spin: 0.00025, bright: 1.10 },
-  acting:          { nebula: 0.50, speed: 1.00, poly: 1.10, node: 1.15, ring: 0.85, spark: 0.70, spin: 0.00010, bright: 1.05 },
-  speaking:        { nebula: 0.60, speed: 1.10, poly: 1.00, node: 1.10, ring: 0.90, spark: 0.80, spin: 0.00006, bright: 1.00 },
-  confirm:         { nebula: 0.40, speed: 0.70, poly: 0.90, node: 1.00, ring: 0.70, spark: 0.50, spin: 0.00005, bright: 1.05 },
-  error:           { nebula: 0.35, speed: 0.60, poly: 0.85, node: 0.90, ring: 0.60, spark: 0.40, spin: 0.00004, bright: 1.00 },
-  starting:        { nebula: 0.30, speed: 0.50, poly: 0.70, node: 0.80, ring: 0.50, spark: 0.40, spin: 0.00003, bright: 0.80 },
-  reconnecting:    { nebula: 0.30, speed: 0.55, poly: 0.75, node: 0.85, ring: 0.55, spark: 0.40, spin: 0.00003, bright: 0.85 },
-  offline:         { nebula: 0.12, speed: 0.00, poly: 0.50, node: 0.50, ring: 0.30, spark: 0.15, spin: 0.000006, bright: 0.55 },
+  listening:       { nebula: 0.80, speed: 1.35, poly: 1.10, node: 1.60, ring: 1.20, spark: 1.00, spin: 0.00007, bright: 1.45 },
+  thinking:        { nebula: 0.65, speed: 1.00, poly: 1.60, node: 1.80, ring: 0.95, spark: 1.20, spin: 0.00040, bright: 1.15 },
+  acting:          { nebula: 0.50, speed: 1.05, poly: 1.25, node: 1.35, ring: 0.90, spark: 0.80, spin: 0.00012, bright: 1.10 },
+  speaking:        { nebula: 0.60, speed: 1.20, poly: 1.00, node: 1.20, ring: 1.00, spark: 0.90, spin: 0.00007, bright: 1.05 },
+  confirm:         { nebula: 0.40, speed: 0.75, poly: 0.95, node: 1.10, ring: 0.70, spark: 0.50, spin: 0.00006, bright: 1.15 },
+  error:           { nebula: 0.35, speed: 0.50, poly: 0.80, node: 0.80, ring: 0.50, spark: 0.30, spin: 0.00003, bright: 1.10 },
+  starting:        { nebula: 0.30, speed: 0.40, poly: 0.60, node: 0.70, ring: 0.40, spark: 0.30, spin: 0.00002, bright: 0.70 },
+  reconnecting:    { nebula: 0.30, speed: 0.50, poly: 0.70, node: 0.80, ring: 0.50, spark: 0.35, spin: 0.00002, bright: 0.75 },
+  offline:         { nebula: 0.12, speed: 0.00, poly: 0.40, node: 0.40, ring: 0.20, spark: 0.10, spin: 0.000005, bright: 0.45 },
   private_overlay: { nebula: 0.50, speed: 0.85, poly: 1.00, node: 1.00, ring: 0.75, spark: 0.60, spin: 0.00005, bright: 1.00 },
 };
 const KEYS = Object.keys(S.idle);
@@ -246,7 +246,7 @@ export function initSageCore(THREE, group, scene) {
   //    arc so it reads as passing BEHIND and IN FRONT of the core (spec §2.1.5)
   const ringBackMat = new THREE.ShaderMaterial({
     vertexShader: ringVert, fragmentShader: ringFrag,
-    uniforms: { uTime: { value: 0 }, uAlpha: { value: 0.35 }, uSeed: { value: 0.37 } },
+    uniforms: { uTime: { value: 0 }, uAlpha: { value: 0.35 }, uSeed: { value: 0.37 }, uTint: { value: new THREE.Color(0xffffff) } },
     side: THREE.DoubleSide, transparent: true, depthWrite: false,
     blending: THREE.AdditiveBlending,
   });
@@ -266,6 +266,19 @@ export function initSageCore(THREE, group, scene) {
   group.add(L.ringFront);
   L.ringBackMat = ringBackMat;
   L.ringFrontMat = ringFrontMat;
+
+  // Private Mode: thin teal outer ring (spec §3) — only lit in private_overlay
+  L.privateMat = new THREE.ShaderMaterial({
+    vertexShader: ringVert, fragmentShader: ringFrag,
+    uniforms: { uTime: { value: 0 }, uAlpha: { value: 0 }, uSeed: { value: 0.63 },
+                uTint: { value: new THREE.Color(0x2dd4bf) } },
+    side: THREE.DoubleSide, transparent: true, depthWrite: false,
+    blending: THREE.AdditiveBlending,
+  });
+  L.privateRing = new THREE.Mesh(new THREE.RingGeometry(1.4, 1.425, 96), L.privateMat);
+  L.privateRing.rotation.set(0.12, 0.06, 0);
+  group.add(L.privateRing);
+  L.privateW = 0;
 
   // 7) Sparkle dust (spec §2.1.7)
   const N_SPARK = 40;
@@ -328,6 +341,7 @@ export function updateSageCore(L, ctx) {
   if (L.cage) {
     L.cage.rotation.y += w.spin * dt * L.dir.cageY * 1.7;
     L.cage.rotation.x += w.spin * dt * 0.7 * L.dir.cageX;
+    if (ctx.ballScale) L.cage.scale.setScalar(0.56 * ctx.ballScale); // cage breathes WITH the ball
   }
   L.speed.rotation.y += w.spin * dt * 0.4 * L.dir.speedY;
   L.speed.rotation.x += w.spin * dt * 0.25 * L.dir.speedX;
@@ -347,6 +361,11 @@ export function updateSageCore(L, ctx) {
   L.ringFront.scale.setScalar(ringScale);
   L.ringBack.rotation.z += 0.0004 * dt * L.dir.ringB;
   L.ringFront.rotation.z += 0.0003 * dt * L.dir.ringF;
+  // Private teal ring fades in only for private_overlay
+  L.privateW = damp(L.privateW, state === 'private_overlay' ? 1 : 0, TAU, dt);
+  L.privateMat.uniforms.uTime.value = t;
+  L.privateMat.uniforms.uAlpha.value = L.privateW * 0.9;
+  L.privateRing.rotation.z += 0.0005 * dt * L.dir.ringF;
 
   // 7) sparkles
   L.sparkMat.uniforms.uTime.value = t;
@@ -363,10 +382,16 @@ export function updateSageCore(L, ctx) {
     p.mat.opacity = op * (0.4 + w.nebula * 0.9);
   }
 
-  // 6) core brightness/amp (uniforms live on the renderer's core material)
+  // 6) core brightness/amp + state FX (warning pulse / reconnect flicker)
+  let fx = 1;
+  if (state === 'error' || state === 'confirm') {
+    fx = 0.8 + 0.35 * (0.5 + 0.5 * Math.sin(t * 3.4));      // slow warning pulse
+  } else if (state === 'reconnecting') {
+    fx = 0.55 + 0.45 * (0.5 + 0.5 * Math.sin(t * 11.0) * Math.sin(t * 4.7)); // dim flicker
+  }
   const cu = ctx.coreU;
   if (cu && cu.uBright && cu.uAmp) {
-    cu.uBright.value = damp(cu.uBright.value, w.bright, TAU, dt);
+    cu.uBright.value = damp(cu.uBright.value, w.bright * fx, TAU, dt);
     cu.uAmp.value = L.ampS;
   }
 }

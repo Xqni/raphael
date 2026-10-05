@@ -103,13 +103,14 @@ export const ringFrag = `
   uniform float uTime;
   uniform float uAlpha;
   uniform float uSeed;
+  uniform vec3 uTint;
   void main() {
     float ang = atan(vPos.y, vPos.x);
     // faint gaps along the loop + thickness/brightness variation
     float gaps = 0.55 + 0.45 * sin(ang * 3.0 + uSeed * 6.28);
     float wiggle = 0.8 + 0.2 * sin(ang * 7.0 - uTime * 0.4 + uSeed);
     float b = gaps * wiggle * uAlpha;
-    gl_FragColor = vec4(vec3(1.0) * b, b);   // glowing white
+    gl_FragColor = vec4(uTint * b, b);
   }
 `;
 

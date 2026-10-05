@@ -169,7 +169,7 @@ function initScene() {
     blending: THREE.AdditiveBlending,
   });
   const glow = new THREE.Mesh(new THREE.PlaneGeometry(2.6, 2.6), glowMat);
-  glow.position.z = -0.36;   // behind the ball: halo shows around the silhouette
+  glow.position.z = 0.58;    // just beyond the front pole (0.52): haze ALWAYS on top of the ball
   core.add(glow);            // inherits breath/pulse scaling with the ball
   group.add(core);
 
@@ -341,11 +341,12 @@ function animate(now) {
   layerWeights.coreScale = damp(layerWeights.coreScale, target.coreScale, MORPH_DURATION, dt);
   layerWeights.haloOpacity = damp(layerWeights.haloOpacity, target.haloOpacity, MORPH_DURATION, dt);
   layerWeights.latticeOpacity = damp(layerWeights.latticeOpacity, target.latticeOpacity, MORPH_DURATION, dt);
-  core.scale.setScalar(breath * pulse * layerWeights.coreScale);
+  const ballScale = breath * pulse * layerWeights.coreScale;
+  core.scale.setScalar(ballScale);
   halo.scale.setScalar(breath * (1 + speakAmp * 0.15));
   halo.material.opacity = 0.25 * layerWeights.haloOpacity;
   lattice.material.opacity = 0.35 * layerWeights.latticeOpacity;
-  updateSageCore(sage, { t, dt, state: orbState.orbState, amp: speakAmp, coreU: core.material.uniforms });
+  updateSageCore(sage, { t, dt, state: orbState.orbState, amp: speakAmp, coreU: core.material.uniforms, ballScale });
   rays.rotation.z += 0.01;
   rings[0].rotation.z += 0.008;
   rings[1].rotation.z -= 0.006;
