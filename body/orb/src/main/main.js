@@ -64,7 +64,55 @@ const ROAM = {
   userHoldMs: 30000,  // pause after manual drag
 };
 const ROAM_CALM = new Set(['idle', 'listening', 'thinking']);
-let reassertTopmost = null; // assigned in createWindow (WSL host re-assert)
+let topmostWatcher = null; // persistent styling watcher (scripts/topmost-watcher.ps1)
+
+// Spawn the styling watcher at MODULE LOAD (before Electron boots the app):
+// compiled EXE (resources/topmost-watcher.exe) starts in ~50ms — PowerShell
+// cold-start (~2s) caused the taskbar flash the user reported. Copied to
+// Windows TEMP on each launch (WSL interop only executes PEs from DrvFs);
+// falls back to the PS script if the copy/exec fails.
+if (process.env.WSL_DISTRO_NAME) {
+  const { execFile } = require('child_process');
+  const watcherRoot = path.join(__dirname, '..', '..', '..'); // body/orb/resources
+  const srcExe = path.join(watcherRoot, 'topmost-watcher.exe');
+  const startWatcher = (target) => {
+    topmostWatcher = execFile(target,
+      [], { windowsHide: true }, (_e, out) => {
+        if (out && out.trim()) console.log('WATCHER:', out.trim());
+      });
+    topmostWatcher.stdout && topmostWatcher.stdout.on('data', (d) => {
+      const s = d.toString().trim();
+      if (s) console.log('WATCHER:', s);
+    });
+    topmostWatcher.on('error', () => {
+      // fallback: PowerShell watcher
+      try {
+        const psScript = '\\\\wsl.localhost\\' + process.env.WSL_DISTRO_NAME +
+          path.join(__dirname, '..', '..', '..').replace(/\//g, '\\') + '\\scripts\\topmost-watcher.ps1';
+        topmostWatcher = execFile('powershell.exe',
+          ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', psScript],
+          { windowsHide: true }, () => {});
+      } catch (e) { console.error('WATCHER_FALLBACK_FAILED', e); }
+    });
+  };
+  try {
+    let winTemp = null;
+    try {
+      winTemp = require('child_process')
+        .execFileSync('cmd.exe', ['/c', 'echo', '%TEMP%'], { encoding: 'utf8' })
+        .replace(/[\r\n]/g, '');
+    } catch (e) { winTemp = null; }
+    if (winTemp && /^[A-Za-z]:\\/.test(winTemp)) {
+      const destLnx = '/mnt/c' + winTemp.slice(2).replace(/\\/g, '/') + '/raphael-watcher.exe';
+      const destWin = destLnx; // execFile takes the WSL path; interop runs the PE
+      try { require('fs').copyFileSync(srcExe, destLnx); } catch (e) { /* keep existing */ }
+      if (require('fs').existsSync(destLnx)) { startWatcher(destWin); }
+      else { startWatcher(srcExe); }
+    } else {
+      startWatcher(srcExe);
+    }
+  } catch (e) { console.error('WATCHER_SPAWN_FAILED', e); }
+}
 let roamTimer = null;
 let roamAnim = null;
 let roaming = false;
@@ -176,13 +224,8 @@ function glideTo(from, to, ctrl, durMs, lagPx) {
   roaming = true;
   const t0 = Date.now();
   let badFrames = 0;
-  let assertTick = 0;
   if (roamAnim) clearInterval(roamAnim);
   roamAnim = setInterval(() => {
-    // mid-glide: the WSLg host can be recreated while crossing displays
-    // (shadow returns) — re-assert every ~290ms in-flight (was 700ms = the
-    // user-visible ~1s shadow window between moves)
-    if (reassertTopmost && ++assertTick >= 18) { assertTick = 0; reassertTopmost(); }
     const p = Math.min(1, (Date.now() - t0) / durMs);
     const e = easeInOut2(p);
     const inv = 1 - e;
@@ -232,15 +275,8 @@ function glideTo(from, to, ctrl, durMs, lagPx) {
       roaming = false;
       if (win && !win.isDestroyed() && win.webContents) win.webContents.send('orb-glide', { on: false });
       savePosition(to.x, to.y);
-      // cross-display hops recreate the WSLg host window (region/topmost drop
-      // and the shadow briefly returns) — re-assert immediately AND a few
-      // times after landing to catch delayed host recreation.
-      if (reassertTopmost) {
-        setTimeout(reassertTopmost, 150);
-        setTimeout(reassertTopmost, 700);
-        setTimeout(reassertTopmost, 2000);
-        setTimeout(reassertTopmost, 5000);
-      }
+      // (styling/topmost re-assert after hops = the persistent watcher's job,
+      // re-applied within ~100ms of any host-window recreation)
       scheduleRoam();
     }
   }, 8); // 120Hz updates — smoother glide (host samples finer steps)
@@ -299,28 +335,8 @@ function createWindow() {
   // dropdown UI removed — tests drive state via window.__orbDemo instead).
   win.setIgnoreMouseEvents(true);
   // WSLg: Electron's alwaysOnTop never reaches the host HWND — apply the
-  // PowerToys mechanism (HWND_TOPMOST via scripts/topmost.ps1) on the Windows
-  // side, re-asserted periodically. No-op on native Windows (alwaysOnTop works).
-  if (process.env.WSL_DISTRO_NAME) {
-    const { execFile } = require('child_process');
-    const wslRoot = path.join(__dirname, '..', '..', '..', '..');
-    const psWin = '\\\\wsl.localhost\\' + process.env.WSL_DISTRO_NAME +
-      wslRoot.replace(/\//g, '\\') + '\\scripts\\topmost.ps1';
-    const assertTopmost = () => {
-      execFile('powershell.exe',
-        ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', psWin],
-        { windowsHide: true }, () => {});
-    };
-    win.webContents.once('did-finish-load', () => {
-      // Startup: the host window may not be finalized yet (shadow visible on
-      // restart) — hammer the region/topmost every 700ms for ~9s, then 10s.
-      let fastLeft = 12;
-      const fast = () => { assertTopmost(); if (fastLeft-- > 0) setTimeout(fast, 700); };
-      setTimeout(fast, 300);
-      setInterval(assertTopmost, 10000);
-    });
-    reassertTopmost = assertTopmost;
-  }
+  // (styling watcher spawns at module load - see topmostWatcher - so its
+  // warmup overlaps Electron's boot and the taskbar never flashes)
   // PINNED DOCK (user): start docked top-right; re-dock when monitors change
   // (second monitor preferred, laptop/primary fallback). Roam = opt-in only.
   setTimeout(dockTopRight, 700);
@@ -455,6 +471,10 @@ app.whenReady().then(async () => {
 
 app.on('before-quit', () => {
   isQuitting = true;
+  if (topmostWatcher) {
+    try { topmostWatcher.kill(); } catch (e) { /* already gone */ }
+    topmostWatcher = null;
+  }
 });
 
 app.on('second-instance', () => {

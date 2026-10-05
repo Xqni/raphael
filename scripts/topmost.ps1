@@ -1,13 +1,13 @@
-# Raphael orb — Windows-side always-on-top + shadow suppression (PowerToys
+# Raphael orb - Windows-side always-on-top + shadow suppression (PowerToys
 # mechanism, no keybinding). Handles ALL windows titled "Raphael Orb*":
 #   - HWND_TOPMOST on each
 #   - strips CAPTION|THICKFRAME|BORDER|DLGFRAME styles (DWM shadow/round anchors)
 #   - DWM: no NC rendering, no rounded corners, no backdrop
 #   - INNER region: WSLg/Weston bakes a ~32px shadow margin INSIDE the surface
-#     (host 344x344 for a 280 app) — clipping to the inner content rect removes
+#     (host 344x344 for a 280 app) - clipping to the inner content rect removes
 #     those baked pixels, which no DWM API can touch.
 # Idempotent; main.js re-runs this every 30s.
-param([string]$Title = "Raphael Orb")
+param([string]$Title = "Raphael Orb", [switch]$Wait)
 
 Add-Type @"
 using System;
@@ -40,7 +40,12 @@ public class Win32Top {
 }
 "@
 
-# Collect ALL visible windows whose title starts with the prefix
+# Collect ALL visible windows whose title starts with the prefix.
+# -Wait: retry every 100ms (up to 10s) until the msrdc host window EXISTS -
+# the taskbar entry must never get a visible gap (user: no taskbar window at
+# ANY point, including app start).
+$tries = 1
+if ($Wait) { $tries = 100 }
 $wins = @()
 $enum = [Win32Top+EnumProc]{
   param([IntPtr]$h, [IntPtr]$l)
@@ -53,7 +58,12 @@ $enum = [Win32Top+EnumProc]{
   }
   return $true
 }
-[void][Win32Top]::EnumWindows($enum, [IntPtr]::Zero)
+for ($t = 0; $t -lt $tries; $t++) {
+  $wins = @()
+  [void][Win32Top]::EnumWindows($enum, [IntPtr]::Zero)
+  if ($wins.Count -gt 0) { break }
+  Start-Sleep -Milliseconds 100
+}
 
 if ($wins.Count -eq 0) {
   Write-Output "NOT_FOUND prefix='$Title'"
@@ -102,7 +112,7 @@ foreach ($found in $wins) {
     }
   }
   # Hide from taskbar + Alt-Tab (WS_EX_TOOLWINDOW=0x80) and never take focus
-  # (WS_EX_NOACTIVATE=0x80000000) — user: no separate taskbar app entry;
+  # (WS_EX_NOACTIVATE=0x80000000) - user: no separate taskbar app entry;
   # the orb is a pure on-screen overlay. FRAMECHANGED re-applies it.
   $exv = [Win32Top]::GetWindowLongPtr($found, -20).ToInt64()
   $want = $exv -bor 0x80 -bor 0x80000000

@@ -9,7 +9,6 @@
     "start:demo": "electron . --demo",
     "lint": "echo 'lint not configured'",
     "orb:demo": "electron . --demo --remote-debugging-port=9333"
-
   },
   "dependencies": {
     "electron": "30.5.1",
