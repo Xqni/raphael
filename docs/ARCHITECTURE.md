@@ -49,6 +49,7 @@ raphael/
 │  │  ├─ capture.py (screenshot+downscale), automation.py (UIA/hotkeys/input-lock),
 │  │  ├─ apps.py (launch/URL/paths), clipboard.py, system.py (volume/brightness/media),
 │  │  └─ hotkeys.py (kill switch, PTT, private, pause)
+│  │     Runs on the Windows system Python 3.10.11 (Path python.exe) — the ONLY Windows Python besides supervisor/.
 │  └─ orb/                   # Electron overlay                                 [orb-dev]
 │     └─ src/ (main: frameless/always-on-top/tray/mutex; renderer: GLSL orb,
 │              states, job dots, subtitle, context menu, WS client role=ui)
@@ -79,7 +80,8 @@ raphael/
 - **asyncio, single event loop.** Blocking work (STT, TTS, vision, disk I/O, subprocess) in `asyncio.to_thread`/process pool. No blocking calls on the loop (enforced by a latency watchdog test).
 - **Job engine:** SQLite-backed (`jobs` table = journal for crash recovery) + in-memory asyncio tasks. Fields: id, status, priority, owner_tools, input_lock:bool, pending_confirm, created/updated, parent (for worker-subagent jobs). Features: per-job cancellation (asyncio.Event), priority queue (user_facing preempts background), progress events, terminal-state immutability.
 - **Worker subagents (runtime):** the Brain spawns *its own* lightweight asyncio workers (research/file/vision/shell lanes) — NOT OpenCode — for parallel subtasks; optional escalation to a spawned OpenCode worker (`opencode run`, dedicated auto-permit config per addendum §8) when general reasoning is needed. All inherit the untrusted-text rule.
-- **Input lock:** Brain-arbitrated mutex; exactly one GUI job holds it; `lock:true` tool calls from others queue FIFO. Non-GUI tools (URL, shell, files, timers, API) never touch it.
+- **Input lock:** Brain-arbitrated mutex; exactly one GUI job holds it; `lock:true` tool calls from others queue FIFO. **The lock is never stolen/transferred mid-hold** — no preemption of in-flight GUI work (killing/stopping a GUI job happens only via cancel/kill switch/pause, which go through the cancellation path: `cancelled` state → lock released → next queued `lock:true` job admitted). Non-GUI tools (URL, shell, files, timers, API) never touch it.
+- **Priority semantics:** `user_facing` preempts *admission order and announcement/TTS/LLM-lane access* — NOT in-flight execution and never the input lock. In-flight background jobs keep running until done/cancelled.
 - **Limits:** per-provider semaphore (from router rate headers + config), local-model concurrency = 1 (8 GB VRAM), tts semaphore = 1, wake/STT lane always reserved so background jobs can't starve voice (user_facing priority floor).
 - **Fast path:** `fastpath.py` regex/keyword rules run BEFORE any LLM: open app/URL, YouTube search, volume/brightness/media, timers/reminders, window ops, "what's running", job status/cancel, mode toggles → instant `act_req`. Target: action dispatch < 300 ms from end-of-utterance. Miss → LLM path with instant cached ack ("Understood.") + streamed sentences → Fish-Speech.
 - **Router chain:** `zen_free` (discover via GET `https://opencode.ai/zen/v1/models`, filter free — never hardcode IDs; benchmark ranks them) → `go` (only if `allow_go_runtime:true`) → `ollama` local. Health checks, per-provider circuit breaker (open after N failures → cooldown with jitter), 401/429/5xx handling, rate-limit header honoring, model-vanished → re-select (normal, not an error). Offline → local, brief spoken notice, automatic switch-back.
@@ -88,7 +90,7 @@ raphael/
 
 ## 5. Latency instrumentation (brief §3B)
 
-Every stage timestamped into `logs/latency.jsonl`: `stt_final`, `route`, `llm_first_token`, `tool_start`, `tts_first_audio`. `raphael latency` computes report vs targets: fast-path action ≤300 ms, ack ≤500 ms, LLM first spoken word ≤1.5 s (provider permitting). `raphael selftest` runs the full matrix (WSL/auth/mic/speaker/screenshot/orb/providers/local models/TTS/YouTube demo/latency/concurrency).
+Every stage timestamped into `logs/latency.jsonl`: `stt_final`, `route`, `llm_first_token`, `tool_start`, `tts_first_audio`. **Measurement boundaries:** *fast-path action* = timestamp of last STT token (or text `command` receipt) → Brain sends first `act_req` on the wire. *ack* = same start → first TTS audio chunk handed to Body for playback. *LLM first word* = command receipt → first `speak` chunk. Each metric tagged with `source: voice|text|orb` (voice includes STT time; text does not). `raphael latency` computes report vs targets: fast-path action ≤300 ms, ack ≤500 ms, LLM first spoken word ≤1.5 s (provider permitting). `raphael selftest` runs the full matrix (WSL/auth/mic/speaker/screenshot/orb/providers/local models/TTS/YouTube demo/latency/concurrency).
 
 ## 6. Config surface (`config.yaml`)
 

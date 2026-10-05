@@ -8,9 +8,9 @@ Status: **authoritative** — every builder works against this file. Orchestrato
 |---|---|
 | Server | Brain (FastAPI + uvicorn) in WSL2, single port **8765** serving HTTP REST + WebSocket (`/ws`) |
 | Bind | `0.0.0.0:8765` in WSL (required so Windows reaches it via WSL2 NAT `localhostForwarding` as `ws://127.0.0.1:8765` — Windows' localhost redirects into the WSL vNIC; LAN→WSL inbound is not forwarded by NAT, and the token is still required). In mirrored networking mode, bind `127.0.0.1` instead. Mode detected at startup (`wslinfo --networking-mode`). |
-| WSL IP churn | Never hardcode the WSL IP (changes every restart). Windows side always uses `127.0.0.1:8765`. WSL-internal clients (CLI, Body spawned in WSL) use `127.0.0.1:8765` directly. |
+| WSL IP churn | Never hardcode the WSL IP (changes every restart). Windows side always uses `ws://127.0.0.1:8765` via WSL2 NAT `localhostForwarding`. **Fallback:** if a Windows-side connect to 127.0.0.1:8765 fails 3× (forwarding off / mirrored mode quirk), supervisor resolves the live WSL IP once (`wsl.exe … hostname -I`) and retries against it for that session only; mirrored mode serves `127.0.0.1` natively. WSL-internal clients use `127.0.0.1:8765` directly. |
 | CLI REST | Same port: `GET /health`, `GET /jobs`, `POST /jobs/{id}/cancel`, `POST /control`, `GET /status` — all require token. |
-| Heartbeat | WS protocol-level ping every 10 s; peer considered dead after 3 missed pongs (10 s → close + reconnect with backoff). HTTP `/health` for supervisor probes. |
+| Heartbeat | App-level WS ping initiated by server every 10 s (uvicorn does not auto-ping; this is the ONLY ping source — clients reply pong). Peer considered dead after 3 missed pongs → **max silence 30 s** → server closes session + client reconnects with exponential backoff (5 s → 30 s cap, ±20% jitter). On disconnect the server cancels that session's tasks (late `act_res` from a cancelled session → logged `E_CANCELLED`, ignored). HTTP `/health` for supervisor probes. |
 | Limits | Max message 8 MiB; max 40 msgs/s per connection (except binary audio frames: 125/s); server closes on violation with `E_RATE_LIMIT`. |
 
 ## 2. Authentication
@@ -84,6 +84,7 @@ Server drops the frame with `E_UNSUPPORTED` if a role exceeds its capabilities.
 ```
 - State machine: `queued → running → (awaiting_confirm → running) → done|failed|cancelled|interrupted`. Terminal states are immutable; `interrupted` = crashed/restarted mid-run → **reported at startup, never auto-resumed** (brief §6).
 - `seq` is per-job monotonic; clients drop stale out-of-order events.
+- **Cancellation vs in-flight `act_req`:** on cancel/kill the Brain stops issuing new actions; an already-sent `act_req` completes (Body executes it atomically) or is dropped by Body if it hasn't started — either way the late `act_res` is accepted, logged, and ignored for job progress. Body never leaves a partial input sequence dangling (atomic key-chord/mouse-step units).
 - Completion announcements: Brain emits `job_event(done)` with short `text` ("Task complete: YouTube search") and queues it behind any ongoing speech (never interrupts mid-sentence).
 
 ## 6. Binary frames (WS binary messages)
@@ -120,6 +121,7 @@ Text transcription of audio always travels as JSON (`stt_final`); binary audio i
 ## 10. Error codes
 
 `E_AUTH`, `E_AUTH_RATE`, `E_PROTO`, `E_BAD_MSG`, `E_UNSUPPORTED`, `E_RATE_LIMIT`, `E_LOCK_BUSY`, `E_TIMEOUT` (action/step timeout), `E_CONFIRM_TIMEOUT`, `E_CANCELLED`, `E_PROVIDER_429` (rate limit), `E_PROVIDER_5XX`, `E_PROVIDER_AUTH`, `E_LOCAL_OOM` (GPU/RAM), `E_LOCAL_DOWN` (ollama dead), `E_OFFLINE` (no network, local fallback unavailable), `E_INTERNAL`.
+**Retry semantics:** retryable (transient — client/Brain may retry after backoff): `E_RATE_LIMIT`, `E_LOCK_BUSY`, `E_TIMEOUT`, `E_PROVIDER_429`, `E_PROVIDER_5XX`, `E_LOCAL_DOWN`, `E_OFFLINE`. Fatal (never auto-retried): `E_AUTH`, `E_AUTH_RATE`, `E_PROTO`, `E_PROVIDER_AUTH`, `E_CANCELLED`, `E_CONFIRM_TIMEOUT`, `E_BAD_MSG`, `E_UNSUPPORTED`, `E_LOCAL_OOM` (recover by unloading models, not by retrying the call), `E_INTERNAL`.
 Recoverable vs fatal is defined per-callsite; clients surface `error.detail` as subtitle text only when `code` ∈ {E_LOCK_BUSY, E_TIMEOUT, E_CONFIRM_TIMEOUT, E_PROVIDER_429, E_LOCAL_OOM, E_LOCAL_DOWN, E_OFFLINE} (brief communication rules).
 
 ## 11. Security invariants (protocol level)
