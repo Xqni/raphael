@@ -78,6 +78,16 @@ async def handle_message(msg: Any, ws, mic_streamer):
     msg_type = data.get('type')
     if msg_type == 'ping':
         await ws.send(json.dumps({"type": "pong", "v": 1}))
+    elif msg_type == 'speak':
+        # lifecycle for the continuous player (binary kind=2 carries PCM;
+        # these JSON events delimit utterances — old player had no lifecycle
+        # and opened a fresh device stream PER CHUNK = the stutter).
+        ev = data.get('event')
+        if ev == 'start':
+            audio_out.speak_start()
+        elif ev == 'end':
+            asyncio.get_running_loop().create_task(audio_out.speak_end())
+        return
     
     elif msg_type == 'act_req':
         job = data.get('job')

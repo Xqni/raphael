@@ -791,14 +791,54 @@ def launch_body(cfg, log):
     return _spawn(argv, REPO_ROOT, log, "body", LOG_DIR / "body.log")
 
 
-class _ExternalBody:
-    """Sentinel: a body instance we did not start is running (rc==0 exit)."""
+def _external_body_pid():
+    """PID the body wrote into its single-instance lock (authoritative — the
+    rc=0 bounce pid we used to store was always DEAD, so it could never be
+    used for liveness)."""
+    try:
+        import tempfile
+        txt = (Path(tempfile.gettempdir()) / 'raphael_body.lock').read_text()
+        return int(txt.strip())
+    except (OSError, ValueError):
+        return None
 
-    def __init__(self, pid):
-        self.pid = pid
+
+def _pid_exists(pid: int) -> bool:
+    if os.name == 'nt':
+        import ctypes
+        PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+        h = ctypes.windll.kernel32.OpenProcess(
+            PROCESS_QUERY_LIMITED_INFORMATION, False, int(pid))
+        if h:
+            ctypes.windll.kernel32.CloseHandle(h)
+            return True
+        return False
+    try:
+        os.kill(int(pid), 0)
+        return True
+    except OSError:
+        return False
+
+
+class _ExternalBody:
+    """Sentinel: a body instance we did not start is running (rc==0 exit).
+
+    Liveness (TODO §3c fix, found when a crashed external body was never
+    relaunched): poll() checks the PID the body recorded in its lock file —
+    no lock / dead pid -> -1 ('dead') so body_status relaunches it.
+    """
+
+    def __init__(self, pid=None):
+        self.pid = pid  # bounce pid (always dead) — kept only for call-compat
 
     def poll(self):
-        return None
+        pid = _external_body_pid()
+        if pid is None:
+            return -1  # no lock -> no body holding the single-instance slot
+        try:
+            return None if _pid_exists(pid) else -1
+        except Exception:  # noqa: BLE001 — unknown -> assume running (old behavior)
+            return None
 
 
 def body_status(cfg, procs):
@@ -808,7 +848,13 @@ def body_status(cfg, procs):
         rc = proc.poll()
         if rc is None:
             return "running", "pid=%s" % getattr(proc, "pid", "?")
-        if isinstance(proc, _ExternalBody) or rc == 0:
+        if isinstance(proc, _ExternalBody):
+            if rc is None:
+                return "running", ("external instance (lock-verified alive) "
+                                   "— unsupervised")
+            procs["body"] = None
+            return "dead", "external body exited (lock pid gone) — relaunching"
+        if rc == 0:
             procs["body"] = _ExternalBody(getattr(proc, "pid", -1))
             return "running", ("external instance (clean exit rc=0, likely "
                                "single-instance handoff) — unsupervised")

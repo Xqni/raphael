@@ -26,9 +26,19 @@ Priority order after Phase 3 completes. Do not let these silently vanish.
 - Optional one-liner (elevated PowerShell), then set `paths.brain_relay: false` in config.yaml and restart the Raphael task:
   Set-NetFirewallHyperVVMSetting -Name '{40E0AC32-46A5-438A-A0B2-2B479E8F2E90}' -DefaultInboundAction Allow
 
-## 3c. Supervisor: _ExternalBody staleness (found live 2026-10-05)
-- After a single-instance rc=0 handoff procs['body'] becomes _ExternalBody whose poll() hardcodes None — if that external body later DIES the supervisor never notices (observed: old body crashed on binary TTS, no respawn until a task restart).
-- Fix direction: periodic re-verify of external bodies, or treat externals as unmanaged-with-notice.
+## 3c. Supervisor: _ExternalBody staleness — FIXED 2026-10-05
+- Was: poll() hardcoded None → a crashed external body was never relaunched (observed live: old body died on binary TTS, stayed dead until a task restart).
+- Now: poll() verifies the PID the body writes into its single-instance lock (%TMP%\raphael_body.lock — the rc=0 bounce pid was always dead, so the lock is the authoritative source): no lock/dead pid → -1 → body_status relaunches. Synthetic test: dead→-1, alive→None, no-lock→-1 PASS.
+
+## 3d. Router providers: core.complete() is a fake-text stub (confirmed 2026-10-05)
+- brain/router/core.py:297 literally returns `f"[{provider}:{model}] response"` — free-form chat answers are placeholder text (visible as job result "[ollama:gpt-oss:120b-cloud] response").
+- config.yaml providers.chain = [zen_free, go, ollama] already configured (allow_go_runtime/allow_paid_runtime false per user directive).
+- Needed (router-dev phase): real HTTP calls to zen free-tier + local ollama via the existing discovery/circuit-breaker/rate-limit scaffolding; fastpath commands unaffected (they act for real).
+
+## 3e. Voice phase-2 (post-user-test)
+- Wake word "Raphael" always-listening: body streams mic only while PTT held — always-on capture is a PRIVACY decision (mic LED live forever) → user call before building.
+- Typed input channel: orb menu has no text entry (protocol submit_text exists); needs an orb UI affordance or the CLI (raphael/raphael.cmd not built).
+- Audio cadence: new continuous player verified in==out (82476B/15 chunks); inter-sentence gaps = fish generation latency (partly masked by0.25s prebuffer) — tune PREBUF_S/chunk_ms by the user's ears.
 
 ## 4. Minor known items
 - NOACTIVATE exstyle bit doesn't stick (msrdc rewrites it) — cosmetic, TOOLWINDOW covers the ask.

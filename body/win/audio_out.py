@@ -1,41 +1,154 @@
-"""Audio output for the Windows Body.
-Plays back PCM (24kHz mono) chunks received from the Brain per PROTOCOL §6.
+"""Audio output for the Windows Body — CONTINUOUS stream playback.
+
+PROTOCOL §6: kind=2 binary frames carry PCM s16le @24 kHz (chunk_ms slices).
+The old player called sd.play() PER CHUNK with sleep-based pacing — every
+chunk paid PortAudio stream-open latency and the sleeps never matched real
+playback time, so replies came out as 'im....a.....g...pp...' stutter (user
+report, 2026-10-05). This version opens ONE OutputStream whose callback
+drains a shared buffer: chunks concatenate seamlessly; a short pre-buffer
+absorbs network jitter; underruns render as silence instead of clicks.
 """
 import asyncio
 import sys
+import threading
 
-def _ensure_pkg(pkg: str, import_name: str = None, pin: str = ''):
-    try:
-        __import__(import_name or pkg)
-    except ImportError:
-        import subprocess
-        subprocess.check_call([sys.executable, '-m', 'pip', 'install', '--quiet', 
-                                ('%s==%s' % (pkg, pin)) if pin else pkg])
-        __import__(import_name or pkg)
-
-_ensure_pkg('sounddevice', pin='0.5.1')
-import sounddevice as sd
 import numpy as np
+import sounddevice as sd
 
-class AudioPlayer:
-    def __init__(self, sample_rate: int = 24000):
+RATE_DEFAULT = 24000          # PROTOCOL §3 speak sample_rate
+PREBUF_S = 0.25               # start rendering once this much is buffered
+DRAIN_POLL_S = 0.05           # finish() poll while the tail drains
+DRAIN_TIMEOUT_S = 5.0         # never hang a job on a stuck buffer
+
+
+class StreamPlayer:
+    """Buffered float32 mono OutputStream; feed() from the async side,
+    callback drains on PortAudio's thread (lock-guarded)."""
+
+    def __init__(self, rate: int = RATE_DEFAULT):
+        self.rate = rate
+        self._buf = bytearray()
+        self._lock = threading.Lock()
+        self._stream = None
+        self._playing = False
+        self.chunks = 0
+        self.bytes_in = 0
+        self.bytes_out = 0
+        self.underruns = 0
+
+    # -- producer side -----------------------------------------------------
+    def feed(self, pcm: bytes):
+        if not pcm:
+            return
+        with self._lock:
+            self._buf += pcm
+            self.bytes_in += len(pcm)
+            self.chunks += 1
+            prebuffered = len(self._buf) >= int(PREBUF_S * self.rate * 2)
+        if self._stream is None and prebuffered:
+            self._open()
+
+    def reset(self):
+        """speak 'start' — drop leftovers from a previous utterance."""
+        with self._lock:
+            self._buf.clear()
+        self._playing = False
+
+    async def finish(self, tail: float = 1.0):
+        """speak 'end' — flush whatever is buffered, then close cleanly."""
+        # if end raced ahead of chunks (sub-prebuffer utterance), open anyway
+        with self._lock:
+            has_data = bool(self._buf)
+        if has_data and self._stream is None:
+            self._open()
+        deadline = asyncio.get_event_loop().time() + DRAIN_TIMEOUT_S
+        while True:
+            with self._lock:
+                empty = not self._buf
+            if empty:
+                break
+            if asyncio.get_event_loop().time() > deadline:
+                break
+            await asyncio.sleep(DRAIN_POLL_S)
+        await asyncio.sleep(min(tail, 0.5))  # let the last callback pull
+        self._close()
+
+    # -- device lifecycle --------------------------------------------------
+    def _callback(self, outdata, frames, time_info, status):
+        with self._lock:
+            take = min(frames * 2, len(self._buf)) & ~1  # whole int16 samples
+            if take:
+                pcm = np.frombuffer(bytes(self._buf[:take]), dtype='<i2')
+                del self._buf[:take]
+                self.bytes_out += take
+            else:
+                pcm = None
+                if self._playing:
+                    self.underruns += 1
+        if pcm is None:
+            outdata[:frames, 0] = 0.0
+            return
+        n = len(pcm)
+        outdata[:n, 0] = pcm.astype(np.float32) / 32768.0
+        if n < frames:
+            outdata[n:, 0] = 0.0
+        self._playing = True
+
+    def _open(self):
+        if self._stream is not None:
+            return
+        try:
+            self._stream = sd.OutputStream(
+                samplerate=self.rate, channels=1, dtype='float32',
+                blocksize=0, callback=self._callback)
+            self._stream.start()
+        except Exception as e:  # noqa: BLE001 — device issues must not crash
+            print(f"[audio_out] stream open failed: {e}", file=sys.stderr,
+                  flush=True)
+            self._stream = None
+
+    def _close(self):
+        st, self._stream = self._stream, None
+        self._playing = False
+        if st is not None:
+            try:
+                st.stop()
+                st.close()
+            except Exception as e:  # noqa: BLE001
+                print(f"[audio_out] stream close: {e}", file=sys.stderr,
+                      flush=True)
+
+    def stats(self) -> dict:
+        with self._lock:
+            return {'chunks': self.chunks, 'bytes_in': self.bytes_in,
+                    'bytes_out': self.bytes_out, 'underruns': self.underruns,
+                    'buffered': len(self._buf)}
+
+
+# module singleton — one device handle for the whole body process
+PLAYER = StreamPlayer()
+
+
+# -- legacy/simple API (ws binary path calls this) --------------------------
+async def play_tts_chunk(chunk: bytes, sample_rate: int = RATE_DEFAULT):
+    PLAYER.feed(chunk)
+
+
+def speak_start():
+    PLAYER.reset()
+
+
+async def speak_end():
+    await PLAYER.finish()
+    st = PLAYER.stats()
+    print(f"[audio_out] utterance done: {st['chunks']} chunks, "
+          f"in={st['bytes_in']}B out={st['bytes_out']}B "
+          f"underruns={st['underruns']}", flush=True)
+
+
+class AudioPlayer:  # backwards-compat shim (old name)
+    def __init__(self, sample_rate: int = RATE_DEFAULT):
         self.sample_rate = sample_rate
 
     async def play_chunk(self, chunk: bytes):
-        # Binary frames arrive as [RAPH][kind=2][seq u32][payload]
-        # We strip the header if passed as a full frame, but usually’s passed as payload
-        # For now, we assume this is the raw PCM payload.
-        try:
-            audio_data = np.frombuffer(chunk, dtype=np.int16).astype(np.float32) / 32768.0
-            # Non-blocking playback using sounddevice
-            sd.play(audio_data, self.sample_rate)
-            # Wait for the chunk to finish playing to avoid overlaps/gaps in streaming
-            # (In a real production driver we'd use a stream buffer)
-            await asyncio.sleep(len(audio_data) / self.sample_rate)
-        except Exception as e:
-            print(f"[audio_out] Playback error: {e}", file=sys.stderr)
-
-async def play_tts_chunk(chunk: bytes, sample_rate: int = 24000):
-    """Convenience wrapper."""
-    player = AudioPlayer(sample_rate)
-    await player.play_chunk(chunk)
+        PLAYER.feed(chunk)

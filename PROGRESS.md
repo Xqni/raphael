@@ -208,3 +208,10 @@ See docs/PAID_USAGE.md. Running total: $0.00 of $2.00.
 - Mic lane found DOUBLE-stubbed by phase-3 agent and completed by orchestrator: Session.__slots__ lacked audio_buf/audio_reason (every audio_start = AttributeError) AND binary kind=1 handler was a bare `pass` (buffer never filled). Fixed: slots+init, PCM accumulation with 10MB cap, handler exceptions now logged to brain.log (were swallowed as bare E_INTERNAL).
 - VERIFIED: synthetic silence mic-lane PASS (ack start/end + stt_final rtf0.591); CLOSED SPEECH LOOP PASS — fish TTS "what time is it" -> resampled 24k->16k -> kind1 frames -> whisper transcribed EXACTLY -> gate passthrough (ptt) -> job queued/running/done. (speak=0 in that run = harness broke on 'done' before narration streamed; e2e_wave2 already proved speak delivery with 17 frames.)
 - Channels for the user: PTT voice = live; wake-word "Raphael" always-listening = NOT yet (body streams mic only while PTT held); typed input = not yet (orb menu = Show/Hide/Private/Pause/Quit only); fastpath voice commands (open/screenshot/status/pause...) act for real, free-form chat = router path (provider text).
+
+## 2026-10-05 12:2x — AUDIO STUTTER FIXED + loose ends closed
+- User report: replies came out 'im....a.....g...pp...' — root cause = audio_out opened a FRESH sd.play stream PER chunk_ms-sized slice with sleep-based pacing (stream-open latency + timing drift between every fragment). Rewrote as ONE continuous OutputStream whose callback drains a shared buffer:0.25s prebuffer absorbs jitter, chunks concatenate, speak start/end JSON events drive reset/finish, stats line per utterance.
+- VERIFIED: "[audio_out] utterance done: 15 chunks, in=82476B out=82476B underruns=76" — full drain (in==out), 24k device open OK, no errors. Inter-sentence gaps remain fish-generation cadence (TODO §3e tune).
+- fish server: TTSEngine auto-spawns on demand (_start_once -> _spawn) → boot-resilient ✓.
+- TODO §3c FIXED + synthetic-tested: external-body liveness now verified via the body's lock-file PID (dead/alive/no-lock all correct).
+- Router stub confirmed (core.py:297 fake text) → TODO §3d; voice leftovers → §3e.
