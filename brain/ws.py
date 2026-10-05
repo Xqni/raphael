@@ -613,6 +613,14 @@ class WsHub:
         buf = bytes(s.audio_buf)
         s.audio_buf = bytearray()
         reason = getattr(s, 'audio_reason', 'wake')
+        try:
+            import numpy as _np
+            _x = _np.frombuffer(buf, dtype='<i2')
+            _rms = float(_np.sqrt(_np.mean(_x.astype(_np.float64) ** 2))) if _x.size else 0.0
+            print(f"[ws] audio_end: {len(buf)}B ({len(buf)/32000:.2f}s) "
+                  f"rms={_rms:.0f} reason={reason}", flush=True)
+        except Exception:  # noqa: BLE001
+            print(f"[ws] audio_end: {len(buf)}B reason={reason}", flush=True)
         
         from brain.voice import get_voice, stt_final_frame, error_frame, VoiceSTTError
         voice = get_voice()

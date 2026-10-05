@@ -206,7 +206,7 @@ async def start_client():
         if _current_ws: await _current_ws.send(frame)
     async def on_mic_start(start_frame):
         if _current_ws: await _current_ws.send(json.dumps(start_frame))
-    async def on_mic_end(end_frame):
+    async def on_mic_end(end_frame=None):  # WakeStream/MicStreamer call with 0 args
         if _current_ws: await _current_ws.send(json.dumps({"type": "audio_end", "v": 1}))
 
     mic_streamer = await audio_in.start_mic_stream(on_mic_frame, on_mic_start, on_mic_end)
@@ -217,8 +217,25 @@ async def start_client():
     # raises. Chord hold handled by add_hotkey + trigger_on_release; the loop
     # is captured HERE, on the asyncio side.)
     cfg = _load_config()
+    always = bool((cfg.get('voice', {}) or {}).get('always_listen', True))
     ptt_hk = (cfg.get('voice', {}) or {}).get('ptt_hotkey')
-    if ptt_hk:
+    if always:
+        # Always-on wake listening (user request 2026-10-05): body streams
+        # voice-activity segments with reason='wake'; brain's WakeGate
+        # requires the wake word. PTT is skipped (one mic consumer at a time).
+        wake = audio_in.WakeStream(on_mic_frame, on_mic_start, on_mic_end)
+
+        async def _run_wake_guarded():
+            try:
+                await wake.run()
+            except Exception as e:  # noqa: BLE001 — silent task death = no mic
+                print(f"[body-win] wake task died: {type(e).__name__}: {e}",
+                      flush=True)
+
+        asyncio.get_running_loop().create_task(_run_wake_guarded())
+        print("[body-win] always-listening ON — say 'Raphael, <command>'",
+              flush=True)
+    elif ptt_hk:
         import keyboard
         loop = asyncio.get_running_loop()
 

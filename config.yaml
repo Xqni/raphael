@@ -28,7 +28,8 @@ voice:
   tts_voice: assets/raphael_reference.wav   # falls back to default voice + spoken notice if missing
   tts_sample_rate: 24000
   wake_word: raphael
-  ptt_hotkey: "ctrl+alt+space"
+  ptt_hotkey: "ctrl+alt+space"   # used only when always_listen: false
+  always_listen: true            # wake-word streaming (say "Raphael, ..."); false = PTT
   ack_cache: assets/acks/
 
 jobs:

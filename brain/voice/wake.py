@@ -48,20 +48,45 @@ class WakeGate:
                      leading filler ("hey", "ok", "please") is tolerated.
     """
 
-    FILLER = {"hey", "hi", "ok", "okay", "please", "yo", "so"}
+    FILLER = {"hey", "hi", "ok", "okay", "please", "yo", "so",
+              "um", "uh", "uhm", "eh", "ah"}
+    # ASR tolerance: the live digital wake test showed whisper renders
+    # "Raphael" as "Rafael" — exact matching rejected a perfect utterance.
+    # 0.82 fuzzy ratio accepts homophone spellings, rejects real non-words
+    # ("banana" ~0.38, "rachel" ~0.55 vs wake "raphael").
 
     def __init__(self, wake_word: str = "raphael"):
         self.wake_word = normalize_text(wake_word) or "raphael"
 
+    @staticmethod
+    def _fold(word: str) -> str:
+        """Phonetic fold for homophone spellings (ASR renders 'Raphael' as
+        'Rafael'). Plain fuzzy ratio CANNOT discriminate: difflib gives
+        rafael/raphael 0.77 AND rachel/raphael ~0.77 — folding does:
+        raphael->rafael == rafael ✓, rachel->racel ≠ rafael ✓ rejected."""
+        return word.replace('ph', 'f').replace('h', '')
+
+    def _is_wake(self, word: str) -> bool:
+        if word == self.wake_word:
+            return True
+        if len(word) >= 4 and len(self.wake_word) >= 4:
+            if self._fold(word) == self._fold(self.wake_word):
+                return True
+            import difflib
+            return (difflib.SequenceMatcher(None, word, self.wake_word)
+                    .ratio() >= 0.90)  # only near-identical extras pass
+        return False
+
     def matches_wake(self, transcript: str) -> bool:
-        """True when transcript begins with the wake word (with filler tolerated)."""
+        """True when transcript begins with the wake word (filler + ASR
+        spelling variance tolerated)."""
         words = normalize_text(transcript).split()
         if not words:
             return False
         i = 0
         while i < len(words) and words[i] in self.FILLER:
             i += 1
-        return i < len(words) and words[i] == self.wake_word
+        return i < len(words) and self._is_wake(words[i])
 
     def extract(self, transcript: str) -> str:
         """Strip the wake word + filler prefix -> the command remainder."""
@@ -69,7 +94,7 @@ class WakeGate:
         i = 0
         while i < len(words) and words[i] in self.FILLER:
             i += 1
-        if i < len(words) and words[i] == self.wake_word:
+        if i < len(words) and self._is_wake(words[i]):
             i += 1
         return " ".join(words[i:])
 
