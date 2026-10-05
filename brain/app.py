@@ -120,14 +120,13 @@ class CancelIn(BaseModel):
 async def cancel(job_id: str, body: Optional[CancelIn] = None,
                  auth: bool = Depends(token_auth)) -> Dict[str, Any]:
     scope = body.scope if body and body.scope in ('gui', 'full') else 'full'
-    engine = get_engine()
-    job = engine.cancel(job_id, scope=scope)
+    job = store.get_job(job_id)
     if job is None:
         raise HTTPException(status_code=404, detail='Job not found')
-    if job['status'] in store.TERMINAL and job['status'] != 'cancelled':
-        raise HTTPException(status_code=400,
-                            detail=f"Job already {job['status']}",
-                            )
+    if job['status'] in store.TERMINAL:
+        # terminal states are immutable — report as-is, do not re-cancel
+        raise HTTPException(status_code=400, detail=f"Job already {job['status']}")
+    job = get_engine().cancel(job_id, scope=scope)
     return {'cancelled': True, 'job': job}
 
 

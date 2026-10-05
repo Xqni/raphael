@@ -79,6 +79,17 @@ class JobEngine:
         self._tasks.clear()
         self._workers.clear()
         self.lock.force_release()
+        # graceful stop: nothing is left non-terminal — queued/running
+        # leftovers journal as `cancelled` (next start would call them
+        # `interrupted`; explicit cancel is the honest record of a clean stop)
+        for job in store.list_jobs():
+            if job['status'] in store.TERMINAL:
+                continue
+            if store.transition(job['id'], 'cancelled', stage='done', progress=1.0,
+                                error_code='E_CANCELLED', result='engine shutdown'):
+                self.emit_event(store.get_job(job['id']), 'cancelled', stage='done',
+                                progress=1.0, text='Cancelled (engine shutdown)',
+                                error_code='E_CANCELLED')
 
     def _mark_interrupted(self):
         """Startup crash recovery: report non-terminal jobs as interrupted."""

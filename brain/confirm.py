@@ -90,9 +90,11 @@ def parse_free_text(answer: str) -> str:
     """§9: free text goes through a small yes/no/modify intent check.
     Anything not clearly affirmative FAILS CLOSED (treated as deny)."""
     a = (answer or '').strip().lower().strip('.,!?')
-    if a in YES_WORDS:
+    words = a.split()
+    first = words[0] if words else ''
+    if a in YES_WORDS or first in YES_WORDS:
         return 'yes'
-    if a in NO_WORDS:
+    if a in NO_WORDS or first in NO_WORDS:
         return 'no'
     return 'no'  # modify/unclear -> abort; user re-issues the command
 

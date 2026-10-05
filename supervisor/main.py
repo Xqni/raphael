@@ -77,6 +77,8 @@ DEFAULT_CONFIG = {
         "wsl_sudo": False,          # true -> 'sudo -n systemctl ...' over wsl.exe
         "wsl_keepalive": True,      # hold a lightweight wsl.exe to keep the VM up
         "brain_relay": True,        # win 127.0.0.1:8765 -> wsl-ip:8765 splice
+        "brain_mode": "auto",       # auto: systemd unit if installed, else process
+        "brain_port": 8765,         # brain listen port (PROTOCOL fixed default)
     },
     "supervisor": {
         "health_url": HEALTH_URL,
@@ -496,7 +498,17 @@ def systemctl_action(cfg, log, verb, unit, timeout=60):
     return False
 
 
-def restart_brain(cfg, log):
+def restart_brain(cfg, log, procs=None):
+    if brain_run_mode(cfg) == "process":
+        # Root-less recycle: pkill as the wsl_user (own process only — no
+        # sudo), then respawn. pkill never matches itself; pattern targets
+        # the uvicorn command line from launch_brain().
+        log.info("brain process mode: recycling via pkill + respawn")
+        wsl_run(cfg, "pkill", "-f", "uvicorn brain.app", timeout=10)
+        time.sleep(1.5)
+        if procs is not None:
+            procs["brain"] = launch_brain(cfg, log)
+        return True
     unit = str(cfg["paths"]["brain_unit"])
     log.info("restarting brain via wsl.exe: %s"
              % " ".join(wsl_argv(cfg, "systemctl", "restart", unit,
@@ -723,6 +735,36 @@ def body_script(cfg):
     return exe, argv, script_path, ""
 
 
+def brain_run_mode(cfg):
+    """auto: systemd unit when installed, else 'process' (root-less bring-up).
+
+    Installing raphael-brain.service needs root the orchestrator does not have
+    (NOPASSWD grant is a user action, see docs/TODO.md §3b) — process mode
+    makes Wave 2 fully autonomous meanwhile: supervisor spawns uvicorn itself.
+    """
+    pref = str(cfg["paths"].get("brain_mode", "auto")).lower()
+    if pref == "process":
+        return "process"
+    if unit_load_state(cfg, str(cfg["paths"]["brain_unit"])) == "not-found":
+        return "systemd" if pref == "systemd" else "process"
+    return "systemd"
+
+
+def launch_brain(cfg, log):
+    """Process mode: run the brain directly under wsl (no root/systemd)."""
+    repo_wsl = _wsl_path(REPO_ROOT)
+    if not repo_wsl:
+        log.warn("brain process mode: repo is not a WSL UNC path — cannot launch")
+        return None
+    port = int(cfg["paths"].get("brain_port") or 8765)
+    inner = wsl_argv(
+        cfg, "sh", "-lc",
+        "cd %s && exec brain/.venv/bin/python -m uvicorn brain.app:app "
+        "--host 127.0.0.1 --port %d" % (shlex.quote(repo_wsl), port))
+    log.info("brain process: launching uvicorn (127.0.0.1:%d) under wsl" % port)
+    return _spawn(inner, REPO_ROOT, log, "brain", LOG_DIR / "brain.log")
+
+
 def launch_body(cfg, log):
     """Phase 1b / watchdog: relaunch the Windows Body from paths.body_cmd."""
     exe, argv, script_path, why = body_script(cfg)
@@ -900,7 +942,7 @@ def start_brain_relay(cfg, log, listen_port=8765, backend_port=8766):
     return "relay"
 
 
-def bring_up_wsl(cfg, log):
+def bring_up_wsl(cfg, log, procs=None):
     S = cfg["supervisor"]
     paths = cfg["paths"]
     unit = str(paths["brain_unit"])
@@ -917,29 +959,38 @@ def bring_up_wsl(cfg, log):
     deadline = time.monotonic() + timeout
     state = "unknown"
     boot = True
-    while True:
-        state = wsl_state(cfg, unit, timeout=60 if boot else 30)
-        boot = False
-        if state == "active":
-            log.info("brain unit '%s' is active" % unit)
-            break
-        left = deadline - time.monotonic()
-        if left <= 0:
-            break
-        log.info("brain unit '%s' state=%s — polling (%.0fs left)"
-                 % (unit, state, left))
-        time.sleep(min(poll, left))
-    if state != "active":
-        log.warn("brain unit '%s' still %s after %.0fs — issuing "
-                 "'systemctl start'" % (unit, state, timeout))
-        systemctl_action(cfg, log, "start", unit)
-        verify_until = time.monotonic() + 30.0
-        while time.monotonic() < verify_until:
-            state = wsl_state(cfg, unit, timeout=30)
+    if brain_run_mode(cfg) == "process":
+        # Root-less Wave-2 path: the systemd unit is not installed yet, so
+        # skip60s of unit polling entirely and spawn the brain directly.
+        log.info("brain process mode — unit '%s' not installed; spawning "
+                 "brain directly under wsl (systemctl skipped)" % unit)
+        state = "process"
+        if procs is not None:
+            procs["brain"] = launch_brain(cfg, log)
+    else:
+        while True:
+            state = wsl_state(cfg, unit, timeout=60 if boot else 30)
+            boot = False
             if state == "active":
-                log.info("brain unit '%s' started OK" % unit)
+                log.info("brain unit '%s' is active" % unit)
                 break
-            time.sleep(poll)
+            left = deadline - time.monotonic()
+            if left <= 0:
+                break
+            log.info("brain unit '%s' state=%s — polling (%.0fs left)"
+                     % (unit, state, left))
+            time.sleep(min(poll, left))
+        if state != "active":
+            log.warn("brain unit '%s' still %s after %.0fs — issuing "
+                     "'systemctl start'" % (unit, state, timeout))
+            systemctl_action(cfg, log, "start", unit)
+            verify_until = time.monotonic() + 30.0
+            while time.monotonic() < verify_until:
+                state = wsl_state(cfg, unit, timeout=30)
+                if state == "active":
+                    log.info("brain unit '%s' started OK" % unit)
+                    break
+                time.sleep(poll)
     # ollama check
     ostate = wsl_state(cfg, ollama_unit, timeout=30)
     if ostate == "active":
@@ -950,10 +1001,10 @@ def bring_up_wsl(cfg, log):
         systemctl_action(cfg, log, "start", ollama_unit, timeout=60)
         ostate = wsl_state(cfg, ollama_unit, timeout=30)
         log.info("ollama unit '%s' now %s" % (ollama_unit, ostate))
-    if state != "active":
+    if state not in ("active", "process"):
         log.error("brain unit '%s' NOT active (%s) — health watchdog will "
                   "keep retrying" % (unit, state))
-    return state == "active"
+    return state in ("active", "process")
 
 
 # --------------------------------------------------------------------------
@@ -1236,7 +1287,7 @@ def run_health_loop(cfg, log, hooks, procs):
                 log.info("brain still down (%s) — PERMANENT_ERROR slow poll"
                          % detail)
             elif brain_bo.attempts == 0 or now >= brain_bo.next_at:
-                restart_brain(cfg, log)
+                restart_brain(cfg, log, procs)
                 attempts, delay = brain_bo.record_failure()
                 log.warn("brain restart attempt %d/%d issued; next "
                          "probe+restart in %.0fs"
@@ -1592,7 +1643,7 @@ def main(argv=None):
             procs["body"] = launch_body(cfg, log)
             log.info("phase 2: WSL bring-up")
             procs["keepalive"] = start_keepalive(cfg, log)
-            bring_up_wsl(cfg, log)
+            bring_up_wsl(cfg, log, procs)
             procs["relay"] = start_brain_relay(cfg, log)
         else:
             log.warn("non-Windows runner — phases 1/2 (orb/body/WSL "
