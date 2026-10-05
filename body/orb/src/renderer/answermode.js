@@ -5,7 +5,7 @@
 // zero per-frame allocation (uniforms + transforms only).
 // Anime rules (appendix item 11): flat additive glow, symbolic, crisp.
 // ============================================================================
-import { ringVert, bandFrag, polyVert, polyFrag } from './shaders/sage.glsl.js';
+import { polyVert, polyFrag } from './shaders/sage.glsl.js';
 import { glyphVert, glyphFrag, streakVert, streakFrag } from './shaders/answer.glsl.js';
 
 const AM_TAU = 400; // state blend (ms)
@@ -262,19 +262,8 @@ export function initAnswerMode(THREE, group) {
     dSegs.push(i0[0], i0[1], 0, i1[0], i1[1], 0);
   }
   AM.dodec = mkLineSet(THREE, AM, dSegs, 0xfff0c8, 1.8);
-  AM.dodecGlow = new THREE.Mesh(
-    new THREE.RingGeometry(0.54, 0.74, 96),
-    new THREE.ShaderMaterial({
-      vertexShader: ringVert, fragmentShader: bandFrag,
-      uniforms: {
-        uR0: { value: 0.54 }, uR1: { value: 0.74 },
-        uAlpha: { value: 0 }, uTint: { value: new THREE.Color(0xffd79a) },
-      },
-      side: THREE.DoubleSide, transparent: true, depthWrite: false,
-      blending: THREE.AdditiveBlending,
-    }));
-  AM.dodecGlow.position.z = -0.005;
-  AM.root.add(AM.dodecGlow);
+  // (dodecGlow annulus REMOVED — user: it read as "a golden disc rotating
+  // around the sun"; the pale 12-gon LINE ring stays per spec §2.2.3)
 
   // --- 4) GOLD RADIAL STREAKS (denser than Sage's white rays; amp-reactive)
   const SR = 140;
@@ -423,7 +412,6 @@ export function updateAnswerMode(AM, ctx) {
   const dodecA = F + Q * 0.25;
   AM.dodec.mat.uniforms.uTime.value = t;
   AM.dodec.mat.uniforms.uAlpha.value = dodecA;
-  AM.dodecGlow.material.uniforms.uAlpha.value = dodecA * 0.6;
 
   // gold streaks: length + brightness react to amplitude (spec §2.2.4/§3)
   AM.streakMat.uniforms.uTime.value = t;
