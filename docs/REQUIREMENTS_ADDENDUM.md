@@ -72,6 +72,18 @@ Source: `github.com/NandhaKishorM/laya` (Apache-2.0) — open local replacement 
 - **Phase 2 (after fine-tune on Raphael labels + `laya` recalibration): may gate.** Voice-confirm parsing, `act_req` confirm probability with `min_confidence` abstention = fail-closed → ask user, needs-llm routing. Fine-tune via upstream Kaggle notebook (free GPU) on traffic-derived labels.
 - **Tier order:** `fastpath.py` rules → Laya (advisory→gating) → LLM System 2 chain. Runs in `brain/.venv` (shared torch with voice phase). GPU residency vs Ollama + fish-speech on the 8 GB card = brain-dev scheduling concern (config `device: cpu` fallback exists but loses the latency win).
 
+## 13. Self-evolution directive (user, 2026-10-05): "Raphael upgrades herself when needed, audits herself for fixes against current best-in-market, audits her own security and fixes findings, rewrites parts of her own code to fix, patch, upgrade, or evolve."
+
+Answer: YES — Raphael's architecture (orchestrator + subagents + git + reviewer gates) is the right substrate. Self-evolution runs in **three authority tiers**; git history is the rollback safety net, the test suite + reviewer/security-reviewer (verbatim `file:line` findings) are the merge gates.
+
+1. **AUTO — read-only self-audits.** Scheduled (supervisor-driven) loops: failing-test scan, dependency CVE scan (`npm audit` / `pip-audit` / OSV), backlog of reviewer findings, bounded research digests on "best in market" (researcher subagents → `docs/SELF_AUDIT.md` findings + proposed patches). Also skill self-upgrades via the existing draft + confidence gate, docs, config comments.
+2. **AUTO-with-gates — low-risk patches.** Branch → implement → full tests green → reviewer (verbatim quotes, grep-verified) green → merge. Covers: dependency patch/minor bumps that pass the suite, cosmetic fixes, docs. Rollback = `git revert`. Swaps land at restart while the running version stays up.
+3. **PROPOSE→APPROVE — never auto.** Rewrites of core paths (brain core, body, WS protocol), anything changing behavior/protocol/security semantics, major version upgrades, and all secret/auth/token-handling code. Proposal = diff + test evidence + risk + cost estimate → user yes → builders execute (same wave process as today).
+
+Constraints: audits are laptop-side (free — no pod spend, money gates unchanged); research bounded by step budgets; audit agents read **code only, never `.env`**; accumulated self-edits get periodic human review; one-GPU rule untouched (Laya gate excluded from self-rewrite authority — it's a weights-level component).
+
+**Sequencing:** read-only audit loop unlocks after the Wave 2 foundation stabilizes (you can't self-edit a building mid-construction); auto-patch tier unlocks when `tests/` exists as the standing suite; core-rewrite tier is permanently behind approval. Prior art: Darwin Gödel Machine / AlphaEvolve patterns (sandboxed evaluation + version archive) — we adopt the pattern, not their autonomy level, layered on Raphael's existing autonomy contract.
+
 ## 11. Orb = 3D morphing orb from user's reference art (user directive, 2026-10-05)
 References: `C:\Users\jxesu\OneDrive\Desktop\Raphael Orb` (6 Tensura visuals, copied to `assets/orb-reference/*.jpg`, originals untouched). Art brief extracted via vision subagent → `assets/orb-reference/DESCRIPTIONS.md`.
 - **3D orb** (Three.js/WebGL in the Electron renderer), based on/referenced by that art — original rendering only, no official assets copied.
