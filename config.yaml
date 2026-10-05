@@ -64,7 +64,7 @@ github:
 orb:
   reference_dir: assets/orb-reference    # user-provided Tensura art + DESCRIPTIONS.md art brief
   renderer: threejs                      # 3D WebGL (not flat canvas)
-  size_px: 320                         # default per rebuild spec §4 (configurable 160-600; <200 = simplified mode)
+  size_px: 280                         # user-chosen (spec default 320; allowed 160-600; <200 = simplified mode)
   opacity: 0.95
   fps_cap: 60
   quality: auto                        # auto|low|medium|high — auto tiers (rebuild spec §5)
