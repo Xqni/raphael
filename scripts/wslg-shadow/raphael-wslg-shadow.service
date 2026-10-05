@@ -1,0 +1,12 @@
+[Unit]
+Description=Raphael: install weston shadow-kill wrapper (WSLg) + respawn weston
+After=multi-user.target
+
+[Service]
+Type=oneshot
+ExecStart=/home/dami/scripts/raphael-wslg-shadow.sh
+RemainAfterExit=yes
+TimeoutStartSec=120
+
+[Install]
+WantedBy=multi-user.target

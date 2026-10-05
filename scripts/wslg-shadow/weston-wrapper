@@ -1,0 +1,8 @@
+#!/bin/sh
+# Raphael orb: inject the Weston shadow kill-switch before exec'ing the real
+# compositor. WSLGd spawns /usr/bin/weston by path (stderr.log proves:
+# `sh -c /usr/bin/weston --backend=rdp-backend.so ...`), so this wrapper is
+# guaranteed to run on every (re)spawn. Env-only mechanism (rdp-backend.so
+# reads it via getenv; no weston.ini support — verified via strings).
+export WESTON_RDP_WINDOW_SHADOW_REMOTING=0
+exec /usr/bin/weston.bin "$@"

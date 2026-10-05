@@ -88,6 +88,7 @@ let layerWeights = { coreScale:1, haloOpacity:0.25, latticeOpacity:0.35 };
 // Scene
 let renderer, scene, camera, clock;
 let group, core, lattice, halo, rings = [], rays, starsMesh, sage, glowGhosts = [];
+let edgeRT = null, maskScene = null, maskCam = null, maskMat = null;
 
 // Geometry targets for morph
 const BASE_VERTEX_COUNT = 60;
@@ -150,6 +151,45 @@ function initScene() {
   else renderer.setPixelRatio(window.devicePixelRatio); // auto
   renderer.setClearColor(0x000000, 0);
   renderer.setSize(sizePx, sizePx);
+
+  // --- Screen-space EDGE MASK (post pass): everything is composited through
+  // this, and the outer 8% of every side fades to zero. Glide offsets push
+  // layer content PAST its per-shader fades into the window boundary (user:
+  // "glow hits the sides of the box and seems cut on the edge") — this
+  // guarantees a soft fade instead of a hard cut, for ALL layers at once.
+  const dprNow = renderer.getPixelRatio();
+  edgeRT = new THREE.WebGLRenderTarget(
+    Math.max(2, Math.round(sizePx * dprNow)),
+    Math.max(2, Math.round(sizePx * dprNow)),
+    { minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, format: THREE.RGBAFormat, depthBuffer: true }
+  );
+  maskScene = new THREE.Scene();
+  maskCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+  maskMat = new THREE.ShaderMaterial({
+    uniforms: { tScene: { value: edgeRT.texture } },
+    vertexShader: 'varying vec2 vUv; void main() { vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }',
+    fragmentShader: [
+      'precision mediump float;',
+      'varying vec2 vUv;',
+      'uniform sampler2D tScene;',
+      'void main() {',
+      '  vec4 c = texture2D(tScene, vUv);',
+      '  float m = smoothstep(0.0, 0.08, vUv.x) * smoothstep(1.0, 0.92, vUv.x)',
+      '          * smoothstep(0.0, 0.08, vUv.y) * smoothstep(1.0, 0.92, vUv.y);',
+      '  gl_FragColor = vec4(c.rgb * m, c.a * m);', // premultiplied out
+      '}',
+    ].join('\n'),
+    depthTest: false,
+    depthWrite: false,
+    blending: THREE.NoBlending, // straight replace of the framebuffer
+  });
+  maskScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), maskMat));
+
+  function resizeEdgeRT(w, h) {
+    if (edgeRT) edgeRT.setSize(Math.max(2, Math.round(w * renderer.getPixelRatio())),
+                               Math.max(2, Math.round(h * renderer.getPixelRatio())));
+  }
+  resizeEdgeRT(sizePx, sizePx);
 
   scene = new THREE.Scene();
   camera = new THREE.PerspectiveCamera(45, 1, 0.1, 100);
@@ -406,6 +446,7 @@ function animate(now) {
   if (window.orbDemoSize && sizePx !== window.orbDemoSize) {
     sizePx = window.orbDemoSize;
     renderer.setSize(sizePx, sizePx);
+    if (typeof resizeEdgeRT === 'function') resizeEdgeRT(sizePx, sizePx);
   }
   if (window.orbDemoAmp !== undefined) {
     speakAmp = parseFloat(window.orbDemoAmp);
@@ -421,7 +462,16 @@ function animate(now) {
   if (now - lastFrame < frameInterval) return;
   lastFrame = now;
   updateMorph(now);
-  renderer.render(scene, camera);
+  // Render scene -> offscreen target, then composite through the edge mask
+  // (soft 8% fade on every side: no content ever meets the window box hard).
+  if (edgeRT) {
+    renderer.setRenderTarget(edgeRT);
+    renderer.render(scene, camera);
+    renderer.setRenderTarget(null);
+    renderer.render(maskScene, maskCam);
+  } else {
+    renderer.render(scene, camera);
+  }
 
   // FPS counter
   frameCount++;
