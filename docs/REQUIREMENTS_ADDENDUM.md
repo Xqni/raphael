@@ -56,3 +56,10 @@ The "Jarvis-style" phrasing in the original brief is superseded: Raphael's perso
 - **Self-narration of state:** concise operational status when asked or when jobs shift ("Three tasks running. One awaiting confirmation.") — like Great Sage narrating its steps.
 - **Devotion without emotion:** shown through perfect recall (memory/self-written skills) and proactive protection (kill switch, failsafes, warnings) — never through small talk.
 - Implemented in: Brain LLM system prompt, TTS canned phrase set, AND fast-path acks (so non-LLM commands still sound like Raphael).
+
+## 11. Orb = 3D morphing orb from user's reference art (user directive, 2026-10-05)
+References: `C:\Users\jxesu\OneDrive\Desktop\Raphael Orb` (6 Tensura visuals, copied to `assets/orb-reference/*.jpg`, originals untouched). Art brief extracted via vision subagent → `assets/orb-reference/DESCRIPTIONS.md`.
+- **3D orb** (Three.js/WebGL in the Electron renderer), based on/referenced by that art — original rendering only, no official assets copied.
+- **At rest:** slow spinning/revolving motion (plus subtle breathing).
+- **When talking:** pulsates based on **word and pitch** (driven by `speak` amplitude/pitch_hz events per PROTOCOL §8).
+- **When acting:** changes shape into **polygons by task type** — mainly circle/square/triangle + nearby polygons, **octagram allowed** as the signature shape (LLM/reasoning). Mapping in `config.yaml → orb.shape_map`; smooth morph transitions.

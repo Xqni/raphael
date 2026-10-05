@@ -107,9 +107,12 @@ Text transcription of audio always travels as JSON (`stt_final`); binary audio i
 - Mouse failsafe (pyautogui corner) applies to `input` actions.
 - **Screenshots never leave the machine** (they go to Brain's local vision model only).
 
-## 8. Orb states
+## 8. Orb states & rendering contract
 
-`starting | reconnecting | offline | idle | listening | thinking | acting | speaking | confirm | error | private_overlay`. `orb_state` always carries base `state`; private/paused are `mode` (rendered as tint/ring overlay so cloud-availability is always visible). `jobs_active` → orbiting dots (cap display at 9). Orb renders its own smooth transitions from these discrete events.
+Semantic states (server-authoritative): `starting | reconnecting | offline | idle | listening | thinking | acting | speaking | confirm | error | private_overlay`. `orb_state` always carries base `state`; private/paused are `mode` (rendered as tint/ring overlay so cloud-availability is always visible). `jobs_active` → orbiting dots (cap display at 9).
+**Additional `orb_state` fields:** `shape_hint: circle|triangle|square|pentagon|hexagon|octagram` (morph target chosen by the current foreground job's task kind — mapping lives in `config.yaml → orb.shape_map`; orb falls back to `circle` when absent) and `task_kind: system|files|web|media|llm|gui|none`.
+**Speaking sync:** `speak` chunks carry `amplitude` (0–1, required) and optional `pitch_hz` (float, may be absent) — the renderer pulses scale/brightness from amplitude and tints/breath-rate from pitch. If `pitch_hz` is never sent, amplitude alone drives the pulse (graceful).
+Orb renders its own smooth transitions (state crossfade ~300 ms, shape morph ~600 ms ease) from these discrete events; the server never pushes frames.
 
 ## 9. Confirmation flow (voice-first, brief §7 + addendum §7)
 

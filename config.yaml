@@ -61,6 +61,24 @@ github:
   default_visibility: private
   auto_public: false                     # true = Raphael may create public repos without asking
 
+orb:
+  reference_dir: assets/orb-reference    # user-provided Tensura art + DESCRIPTIONS.md art brief
+  renderer: threejs                      # 3D WebGL (not flat canvas)
+  size_px: 180
+  opacity: 0.95
+  fps_cap: 60
+  rest_motion: revolve                   # at rest = slow spin/revolve + breathing
+  speak_pulse: [amplitude, pitch]        # pulsate per word/pitch during TTS
+  morph_duration_ms: 600
+  shape_map:                             # task kind → morph target polygon
+    system: triangle                     # volume, brightness, windows, timers, media
+    files: square                        # files, folders, shell, downloads
+    web: pentagon                        # URLs, search, fetch/summarize
+    media: hexagon                       # music/video playback
+    llm: octagram                        # reasoning/research — signature shape
+    gui: circle                          # computer-use (calm, precise)
+    none: circle                         # default / idle / speaking base
+
 voice_personality:
   character: raphael_great_sage          # Tensei Slime's Great Sage — NOT Jarvis (addendum §10)
   gender: female                         # Raphael is a SHE — female anime-authentic voice, she/her in all prompts/docs

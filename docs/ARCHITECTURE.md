@@ -50,9 +50,15 @@ raphael/
 │  │  ├─ apps.py (launch/URL/paths), clipboard.py, system.py (volume/brightness/media),
 │  │  └─ hotkeys.py (kill switch, PTT, private, pause)
 │  │     Runs on the Windows system Python 3.10.11 (Path python.exe) — the ONLY Windows Python besides supervisor/.
-│  └─ orb/                   # Electron overlay                                 [orb-dev]
-│     └─ src/ (main: frameless/always-on-top/tray/mutex; renderer: GLSL orb,
+│  └─ orb/                   # Electron overlay — 3D WebGL orb                [orb-dev]
+│     └─ src/ (main: frameless/always-on-top/tray/mutex; renderer: Three.js/GLSL orb,
 │              states, job dots, subtitle, context menu, WS client role=ui)
+│        ART: based on user references in assets/orb-reference/*.jpg + art brief
+│        (assets/orb-reference/DESCRIPTIONS.md). Behavior (user directive addendum §11):
+│        - at rest: 3D orb slowly spinning/revolving (idle breathing on top)
+│        - speaking: pulsates per-word + pitch (amplitude/pitch_hz from `speak` events)
+│        - acting: morphs between polygons by task type — circle (base), triangle, square,
+│          pentagon, hexagon, octagram (signature, LLM/reasoning) — smooth vertex morph
 ├─ supervisor/               # Windows bring-up + watchdog (Python/PS1)          [supervisor-dev]
 ├─ scripts/                  # setup.sh/.cmd, uninstall, task-register,          [supervisor-dev]
 │                             #   venv build, token gen, selftest entry
