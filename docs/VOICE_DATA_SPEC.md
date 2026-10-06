@@ -2,6 +2,8 @@
 
 Verified against current Fish-Speech docs (fish.audio + github.com/fishaudio/fish-speech).
 
+**STATUS (2026-10-05):** v1 voice shipped with a SYNTHESIZED reference instead of anime clips — `scripts/win/make-ref-voice.ps1` (Microsoft Zira SAPI, 22 s @ 24 kHz → `assets/raphael_reference.wav` + `.txt` transcript). The clip-assembly path below remains the fidelity upgrade path (same format/transcript rules apply).
+
 ## Method
 Zero-shot cloning only for v1 (no fine-tune): reference audio + EXACT transcript.
 - Official sweet spot: **10–30 s** clean speech; 1–2 min improves fidelity

@@ -4,11 +4,12 @@ Rules: paid Zen models + Go models beyond the Go limits both draw on the same **
 
 | # | Date | Task | Provider | Model | Est in/out tok | Est cost | Actual in/out tok | Actual cost | Running total | Remaining est. | Why it qualified (T3/T4 rule) |
 |---|---|---|---|---|---|---|---|---|---|---|---|
-| — | — | (none yet) | — | — | — | $0.00 | — | $0.00 | **$0.00** | $2.00 | — |
+| — | — | Wave-2 Go dispatches (brain phase 2 + voice phase; details in notes below) | opencode-go | mimo-v2.5 | — | — | not captured | see notes | **~$1.70** | **~$0.30** | free tiers failed 3× / rate-limited → escalation rule 0→1 |
 
 ## Notes
 - 2026-10-04: log created. Free tiers in use for all Phase 0 work.
 - Free models that are also free on the Go endpoint (`longcat-2.5-preview-free`, `space-bunny-free`) are T0-cost but still logged here if called via Go, for reconciliation.
+- 2026-10-05 evening — USER-REPORTED correction: ≈$1.70 of the $2.00 pool consumed across the Wave-2 Go dispatches (brain phase 2 + voice phase, opencode-go/mimo-v2.5; escalation rule 0→1 after free-tier failures/rate limits). Per-call token actuals were not captured — provider dashboard is the source of truth; the table above is corrected to the user-reported figure. **Remaining ≈$0.30 = AT the stop line → NO further Go/paid dispatches until the user re-authorizes (OC monthly reset ~2026-10-06).**
 
 ## 2026-10-05 — Authorization: opencode-go as sparing fallback
 - User directive: "we can use the opencode go models now but sparingly" — Go tier re-authorized as

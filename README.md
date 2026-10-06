@@ -7,7 +7,7 @@ Raphael is a local-first, voice-operated AI desktop orchestrator. She lives as a
 Raphael is designed to be a silent, high-performance assistant that manages your computer without intrusive consoles or tabs.
 
 - **The Orb (UI):** A 3D WebGL interface that morphs its shape and color based on Raphael's state (Idle, Speaking, Thinking, Acting).
-- **The Brain (WSL2):** A FastAPI-powered core handling the agent loop, tool orchestration, and the "Fast Path" decision engine (Laya).
+- **The Brain (WSL2):** A FastAPI-powered core handling the agent loop, tool orchestration, and the "Fast Path" decision engine (deterministic keyword rules today; the Laya decision tier is benchmarked but **not yet wired** — see [TODO §5](docs/TODO.md)).
 - **The Body (Windows):** A native Python layer handling the "physical" interaction: microphone capture, audio playback, screenshots, and UI automation.
 - **The Supervisor (Windows):** A silent watchdog that ensures the entire stack starts automatically at logon and recovers from crashes.
 
@@ -37,7 +37,7 @@ Raphael is configured for **zero-touch startup**. Once installed via `scripts/se
 | **Kill GUI** | `Ctrl+Alt+Shift+K` | Momentary; closes the Orb immediately |
 | **Pause** | `Ctrl+Alt+P` | Persistent; stops Raphael from listening/acting |
 | **Private Mode** | `Ctrl+Alt+Shift+P` | Persistent; disables all cloud-based LLM calls |
-| **Push-to-Talk** | `Ctrl+Alt+Space` | Reserved for Voice Phase 3 |
+| **Push-to-Talk** | `Ctrl+Alt+Space` | Fallback mic input — always-listen is the default (`voice.always_listen: true`); hold to talk when it is off |
 
 ## 🧪 Verification & Testing
 
@@ -56,7 +56,10 @@ Run these from their respective environments to verify the current Wave 2 state:
 - **[TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md):** Common failure modes (Firewalls, WSLg, Process locks).
 - **[TODO.md](docs/TODO.md):** Current gaps and pending user actions.
 
-## ⚠️ Known Gaps (Wave 2)
+## ⚠️ Known Gaps
 - **Firewall:** Hyper-V may block the built-in WSL localhost relay (see Troubleshooting).
-- **Assets:** `assets/raphael_reference.wav` is pending user delivery.
 - **Brain Unit:** The systemd unit is not yet installed; the supervisor currently uses process-mode spawning.
+- **Laya decision tier:** researched + benchmarked + installed, but not yet wired into the fast path (TODO §5).
+- **Voice latency:** Fish TTS generates ≈13 s/reply → ask-to-audio ≈15–20 s (acceleration queued, TODO §6).
+- **Typed input:** no text entry yet — orb menu affordance / `raphael` CLI not built (TODO §3e).
+- **Run state:** Raphael is temporarily shut down at logon (task Disabled, user order) — TODO §0.

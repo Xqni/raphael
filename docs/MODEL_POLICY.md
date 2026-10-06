@@ -17,7 +17,7 @@ Applies to the BUILD only (orchestrator + subagents). Raphael's own runtime mode
 | T0 | No LLM | scripts/grep/linters/tests | anything a shell command can do |
 | T1 | Default free | `opencode/mimo-v2.6-flash-free` | boilerplate, config, scripts, small edits, run tests, docs, status |
 | T2 | Best other free | **`opencode/big-pickle`** (PASS, 33s), fallback `opencode/fledge-alpha-free` (PASS, 37s); backups: ling-3.1-flash-free (59s), nemotron-3.5-lightning-free (117s) | full-module implementation against protocol, debugging a failing test, code review, T1 shaky output |
-| T3 | Paid pool, cheap | primary: `opencode-go/glm-5.3-flash` (0.15/0.50); alt: `opencode-go/gpt-6-luna` (0.10/0.50), `opencode-go/deepseek-v4.1-flash` | only after T1/T2 failed twice (log both attempts) or a listed hard task |
+| T3 | Paid pool, cheap | primary: `opencode-go/mimo-v2.5` (0.14/0.28 — cheapest output; actually used for the Wave-2 dispatches); alts: `opencode-go/glm-5.3-flash` (0.15/0.50), `opencode-go/gpt-6-luna` (0.10/0.50), `opencode-go/deepseek-v4.1-flash` | only after T1/T2 failed twice (log both attempts) or a listed hard task |
 | T4 | Paid pool, strong | `opencode-go/qwen3.7-plus` (0.40/1.60) | rare; genuinely complex (job-engine races, WSL<->Windows interop, security design review) |
 
 **Hard-qualifying tasks for T3/T4 (all conditions in the brief must hold):** concurrent job engine + resource arbitration design/debug, WSL<->Windows networking interop edge cases, auth/security design review, an intricate race/deadlock, or a bug persisting after 2 real Tier 1/2 attempts.

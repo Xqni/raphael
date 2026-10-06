@@ -249,3 +249,16 @@ See docs/PAID_USAGE.md. Running total: $0.00 of $2.00.
 - Actions: Disable-ScheduledTask 'Raphael' (verified State=Disabled), pythonw x0, WSL side killed (orb electron, brain uvicorn, fish TTS, wsl-relay helper, keepalive) + ollama (user request; noted: chat replies + comics vision-QC depend on it — revived on restart). SURVIVORS untouched: opencode serve (this session!), WSL VM, system services.
 - RAM: free2.9 -> 3.3GB+ visible (vmmem3.5 -> 3.1); remaining ~2.5GB locked in vmmem can only be freed by wsl --shutdown (would end this session — offered, not done).
 - Docs/TODO.md §0 = the shutdown record + exact revival commands. Re-enable ONLY on user confirmation post-RAM-swap.
+
+## 2026-10-05 15:4x — DOC-SYNC AUDIT (user: "document properly before we continue"; docs-only, zero code)
+- Trigger: user spotted gaps between what was DONE and what was DOCUMENTED (named Laya). Full read-through of README, ARCHITECTURE, PROTOCOL, TODO, REQUIREMENTS_ADDENDUM, PAID_USAGE, MODEL_POLICY, VOICE_DATA_SPEC, PROGRESS.
+- VERIFIED IN SYNC (no change): PROTOCOL (speak JSON -> body+ui / binary -> body-only Option A ✓, audio_start reason ptt|wake ✓), ORB_REBUILD_TASK, TEAM_ROSTER, TROUBLESHOOTING.
+- FIXED (22 edits / 7 files):
+  - README: Brain bullet no longer claims Laya is the engine (not wired); PTT row no longer "Reserved for Voice Phase 3" (built; fallback to always-listen); Known Gaps refreshed (dropped delivered voice asset; added Laya/TTS-latency/typed-input/temporary-shutdown rows).
+  - ARCHITECTURE: topology = PROCESS-MODE brain (systemd unit NOT installed — was documented as fact); mutual watchdog = uvicorn respawn not systemctl; CLI marked PLANNED (not built); fast-path = Laya NOT WIRED status + 9 clock/date intents added; latency instrumentation section marked NOT BUILT (no latency.jsonl writer); config snippet gains always_listen.
+  - TODO: §0 un-gated from RAM (upgrade SKIPPED, budget — revival = user's word only; autoMemoryReclaim=discard already staged); §3e wake word marked DONE; cadence points at new §6; NEW §5 = Laya source-of-truth (done vs remaining: advisory adapter, fine-tune, Phase 2) + NEW §6 = TTS latency (13.4s/phrase, attack options, cold-spawn fix).
+  - REQUIREMENTS_ADDENDUM: §12 explicit "none of this is wired yet" status; §15(6) records what was actually implemented (unconditional date/time injection + fastpath intents; config gate + timezone not done).
+  - PAID_USAGE: corrected to user-reported ≈$1.70/$2.00 spent (was showing $0.00 — the logging rule was violated by not recording actuals); remaining ≈$0.30 = at stop line, no Go/paid until re-authorized.
+  - MODEL_POLICY: T3 primary corrected to mimo-v2.5 (what was actually used).
+  - VOICE_DATA_SPEC: status = v1 shipped with synthesized Zira reference (make-ref-voice.ps1); anime-clip path = upgrade path.
+- Also noted: user's name ("Rajveer") exists NOWHERE in repo/git/configs — session-summary artifact only, git identity = Xani; corrected with user.

@@ -8,18 +8,18 @@ Status: **authoritative** (with PROTOCOL.md). Orchestrator-owned. Last updated: 
 Windows (logon)
  └─ supervisor/raphael-supervisor.exe|pyw  (entry: Task Scheduler "Raphael" @ logon; Startup-folder fallback)
      ├─ 1) launches body/orb (Electron) FIRST → orb shows "starting" immediately, even before WSL is up
-     ├─ 2) spawns WSL:  wsl.exe -d Ubuntu-26.04 -u dami -- (systemd bring-up check, ollama, raphael-brain)
+     ├─ 2) spawns WSL:  wsl.exe -d Ubuntu-26.04 -u dami -- (systemd bring-up check + ollama; brain runs PROCESS-MODE: uvicorn spawned + /tmp/raphael-brain.pid — raphael-brain.service NOT installed yet)
      │     └─ WSL (systemd)
-     │          ├─ raphael-brain.service  (Restart=always)  ← FastAPI :8765, agent loop, jobs, router, STT/TTS
+     │          ├─ raphael-brain (process-mode today; systemd unit planned)  ← FastAPI :8765, agent loop, jobs, router, STT/TTS
      │          └─ ollama.service         (already exists, Restart=always)
      ├─ 3) body/win (Python, Windows-native) → WS client role=body → ws://127.0.0.1:8765/ws
      │     (mic capture, playback, screenshot, UIA, input, hotkeys, clipboard)
      └─ 4) health loop: HTTP /health + WS ping every 5 s → exponential-backoff restarts (cap → orb error, no thrash)
 Electron orb ← role=ui WS client (direct to Brain) + local IPC to Body for menus that need Windows ops (open logs/settings)
-CLI: raphael (WSL bash) + raphael.cmd (Windows) → role=cli (REST/WS on 127.0.0.1:8765)
+CLI: raphael (WSL bash) + raphael.cmd (Windows) → role=cli (REST/WS on 127.0.0.1:8765)  ← PLANNED, not built yet (TODO §3e)
 ```
 
-**Mutual watchdog:** Supervisor restarts dead Brain (via `wsl.exe … systemctl restart raphael-brain`); Brain restarts dead Body via `powershell.exe` interop (relaunch Body exe/script). Neither is a single point of failure. Orb reconnects independently (`reconnecting` state).
+**Mutual watchdog:** Supervisor restarts dead Brain (process-mode: respawn uvicorn in WSL, pidfile check; systemctl path activates once the brain unit is installed); Brain restarts dead Body via `powershell.exe` interop (relaunch Body exe/script). Neither is a single point of failure. Orb reconnects independently (`reconnecting` state).
 
 **Keep-WSL-alive:** supervisor holds an attached lightweight WSL process + `.wslconfig` `vmIdleTimeout=600000` (created 2026-10-04).
 
@@ -89,14 +89,14 @@ raphael/
 - **Input lock:** Brain-arbitrated mutex; exactly one GUI job holds it; `lock:true` tool calls from others queue FIFO. **The lock is never stolen/transferred mid-hold** — no preemption of in-flight GUI work (killing/stopping a GUI job happens only via cancel/kill switch/pause, which go through the cancellation path: `cancelled` state → lock released → next queued `lock:true` job admitted). Non-GUI tools (URL, shell, files, timers, API) never touch it.
 - **Priority semantics:** `user_facing` preempts *admission order and announcement/TTS/LLM-lane access* — NOT in-flight execution and never the input lock. In-flight background jobs keep running until done/cancelled.
 - **Limits:** per-provider semaphore (from router rate headers + config), local-model concurrency = 1 (8 GB VRAM), tts semaphore = 1, wake/STT lane always reserved so background jobs can't starve voice (user_facing priority floor).
-- **Fast path:** `fastpath.py` regex/keyword rules run BEFORE any LLM: open app/URL, YouTube search, volume/brightness/media, timers/reminders, window ops, "what's running", job status/cancel, mode toggles → instant `act_req`. Target: action dispatch < 300 ms from end-of-utterance. Miss → **Laya decision tier** (`brain/.venv`, GPU: measured 44.7 ms single / 21 ms batched): typed `intent`/`task_kind`/`urgency`/`needs_confirm` questions — **Phase 1 advisory** (task_kind → orb shape_hint, urgency, pre-check hints; per addendum §12), Phase 2 gating after fine-tune; abstention (`min_confidence`) = fail-closed escalation. Still unresolved / `needs-llm` → LLM path with instant cached ack ("Understood.") + streamed sentences → Fish-Speech.
+- **Fast path:** `fastpath.py` regex/keyword rules run BEFORE any LLM: open app/URL, YouTube search, volume/brightness/media, timers/reminders, window ops, clock/date (9 phrases — "what time", "what's the date", added 2026-10-05), "what's running", job status/cancel, mode toggles → instant `act_req`. Target: action dispatch < 300 ms from end-of-utterance. Miss → **Laya decision tier** — **STATUS 2026-10-05: NOT WIRED** (researched + installed + GPU-benchmarked at 44.7 ms single / 21 ms batched in `brain/.venv`, but no code integration yet; Phase 1 advisory adapter = TODO §5, positioning per addendum §12): typed `intent`/`task_kind`/`urgency`/`needs_confirm` questions — Phase 1 advisory (task_kind → orb shape_hint, urgency, pre-check hints), Phase 2 gating after fine-tune; abstention (`min_confidence`) = fail-closed escalation. Still unresolved / `needs-llm` → LLM path with instant cached ack ("Understood.") + streamed sentences → Fish-Speech.
 - **Router chain:** `zen_free` (discover via GET `https://opencode.ai/zen/v1/models`, filter free — never hardcode IDs; benchmark ranks them) → `go` (only if `allow_go_runtime:true`) → `ollama` local. Health checks, per-provider circuit breaker (open after N failures → cooldown with jitter), 401/429/5xx handling, rate-limit header honoring, model-vanished → re-select (normal, not an error). Offline → local, brief spoken notice, automatic switch-back.
 - **Privacy:** `private_on` disables all cloud calls (persisted flag); foreground-window blocklist (password managers/banking/messengers) forces local models for that interaction; `allow_free_models_for_personal_data:false` default → personal-flagged content → local only; redaction of keys/tokens/cards/emails before any cloud call; screenshots → local vision only, ever.
 - **Memory + self-written skills:** SQLite tables mirroring Odysseus semantics (pinned + hybrid-retrieved memories wrapped as untrusted context; skills as `skills/<name>/SKILL.md` with draft/confidence gate + usage counters + dedup). See REQUIREMENTS_ADDENDUM §3/§4.
 
 ## 5. Latency instrumentation (brief §3B)
 
-Every stage timestamped into `logs/latency.jsonl`: `stt_final`, `route`, `llm_first_token`, `tool_start`, `tts_first_audio`. **Measurement boundaries:** *fast-path action* = timestamp of last STT token (or text `command` receipt) → Brain sends first `act_req` on the wire. *ack* = same start → first TTS audio chunk handed to Body for playback. *LLM first word* = command receipt → first `speak` chunk. Each metric tagged with `source: voice|text|orb` (voice includes STT time; text does not). `raphael latency` computes report vs targets: fast-path action ≤300 ms, ack ≤500 ms, LLM first spoken word ≤1.5 s (provider permitting). `raphael selftest` runs the full matrix (WSL/auth/mic/speaker/screenshot/orb/providers/local models/TTS/YouTube demo/latency/concurrency).
+**STATUS 2026-10-05: NOT BUILT yet** — no `logs/latency.jsonl` writer exists and the `raphael latency`/`raphael selftest` CLI is unimplemented (TODO §3e/§6). Target spec from the brief: every stage timestamped into `logs/latency.jsonl`: `stt_final`, `route`, `llm_first_token`, `tool_start`, `tts_first_audio`. **Measurement boundaries:** *fast-path action* = timestamp of last STT token (or text `command` receipt) → Brain sends first `act_req` on the wire. *ack* = same start → first TTS audio chunk handed to Body for playback. *LLM first word* = command receipt → first `speak` chunk. Each metric tagged with `source: voice|text|orb` (voice includes STT time; text does not). `raphael latency` computes report vs targets: fast-path action ≤300 ms, ack ≤500 ms, LLM first spoken word ≤1.5 s (provider permitting). `raphael selftest` runs the full matrix (WSL/auth/mic/speaker/screenshot/orb/providers/local models/TTS/YouTube demo/latency/concurrency).
 
 ## 6. Config surface (`config.yaml`)
 
@@ -105,7 +105,7 @@ providers: { chain: [zen_free, go, ollama], allow_go_runtime: false, allow_paid_
              allow_free_models_for_personal_data: false, model: auto, benchmark_ranking_path: ... }
 local_model: { candidates: [qwen3.5:4b, qwen3.5:9b, qwen3:1.7b, huihui_ai/qwen3-vl-abliterated:4b-instruct],
                text: auto, vision: auto, keep_alive: "5m", vision_keep_alive: "0" }   # slut: EXCLUDED permanently
-voice: { stt_model: small, tts_voice: assets/raphael_reference.wav, wake_word: "raphael", ptt_hotkey: ... }
+voice: { stt_model: small, tts_voice: assets/raphael_reference.wav, wake_word: "raphael", always_listen: true, ptt_hotkey: ... }
 jobs: { max_concurrent: 8, gui_steps_cap: 25, local_concurrency: 1 }
 safety: { confirm_actions: [delete, send_message, purchase, password, system_settings, install, make_public_repo],
           failsafe_corner: true, kill_switch_hotkey: ..., pause_persist: true }
