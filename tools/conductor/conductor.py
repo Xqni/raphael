@@ -580,6 +580,46 @@ class Conductor:
             st["integrator_wake_ts"] = now()
             self.wake_integrator(st)
 
+    # ------------------------------------------------------------ server watchdog
+    def _pgrep(self, pattern: str) -> list:
+        try:
+            r = subprocess.run(["pgrep", "-f", pattern], capture_output=True, text=True,
+                               timeout=10)
+            if r.returncode not in (0, 1):
+                return []
+            return [int(x) for x in r.stdout.split() if x.strip().isdigit()]
+        except Exception:
+            return []
+
+    def _kill(self, pid: int) -> None:
+        with contextlib.suppress(ProcessLookupError, PermissionError):
+            subprocess.run(["kill", "-9", str(pid)], timeout=10)
+
+    def check_server_sanity(self, st: dict) -> None:
+        """NEVER multiple servers at once (user mandate 2026-10-06: five orphaned fish
+        api_servers ate ~3.9GB). Rules: >1 fish -> kill all but the oldest (keep the
+        likely-legitimate one); 1 fish while state.live_e2e is false -> stray, kill it;
+        1 fish with a live E2E in progress -> untouched."""
+        if not self.cfg.get("server_watchdog", True):
+            return
+        pids = self._pgrep("tools.api_[s]erver")
+        if not pids:
+            return
+        live = bool(st.get("live_e2e"))
+        if len(pids) > 1:
+            keep = min(pids)
+            victims = [x for x in pids if x != keep]
+            for v in victims:
+                self._kill(v)
+            self.log(f"WATCHDOG: {len(pids)} fish api_servers at once — killed {victims}, "
+                     f"kept oldest {keep}")
+            if not live:
+                self._kill(keep)
+                self.log(f"WATCHDOG: stack not live (live_e2e=false) — killed stray {keep}")
+        elif not live:
+            self._kill(pids[0])
+            self.log(f"WATCHDOG: stray fish api_server while stack is off — killed {pids[0]}")
+
     def check_stall(self, st: dict) -> None:
         if not self.cfg.get("api_check", False) or self.dry:
             return
@@ -610,6 +650,7 @@ class Conductor:
         st = read_state(self.cd)
         # 2) compute + do all side effects WITHOUT holding the state lock
         self.refresh_from_events(st, self.cd)
+        self.check_server_sanity(st)
         self.check_integrator(st)
         self.check_sweep(st)
         self.check_wave(st)

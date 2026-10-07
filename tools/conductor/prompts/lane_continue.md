@@ -22,7 +22,9 @@ your existing session) or as the first message of a fresh headless run in your w
    write a `docs/requests/` file instead.
 4. **RAM rule (AGENT_RULES §14):** smallest test target first, one suite at a time, never in
    parallel; kill every process you spawn (fish api_server, pytest, Electron) before your
-   task ends — the user's laptop is memory-strained.
+   task ends — the user's laptop is memory-strained. **Never spawn a second server while
+   one exists: pgrep/port-check first, reuse or fail loudly (rule 14) — the conductor
+   watchdog kills multiples on sight.**
    **Continue the work loop** from the first unblocked task in `docs/lanes/<your-lane>.md:
    implement → test (real output only) → `git commit -m "[lane] summary"` → update
    `docs/status/<your-lane>.md` → next task.

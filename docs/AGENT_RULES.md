@@ -22,6 +22,11 @@ Read this at session start. Verbatim from the INTEGRATOR session brief (2026-10-
     Electron/gates, headless runs) must be killed before your task ends — check with
     `pgrep`/`ps` and leave zero orphans. Prefer mocks over real runtimes. Free what you
     allocate as soon as you are done with it.
+    **NEVER have multiple servers in play at once (user mandate, 2026-10-06):** before
+    spawning ANY server-like process (fish api_server, Electron, extra headless runs of a
+    kind already running) you MUST `pgrep -f <pattern>` / check the port first — if one
+    exists, do NOT spawn: reuse it, or fail loudly and report. One fish, one conductor,
+    one opencode serve — never N. The conductor watchdog auto-kills violations within a tick.
 
 (Rule 13 added 2026-10-06 with the coord bus — mechanics in `docs/COORD_PROTOCOL.md`;
 adoption/continuation texts in `~/.raphael-coord/prompts/`.)

@@ -75,5 +75,7 @@
  "_sweep": "stranded-lane backstop: adopted + wave-active + empty inbox + no pending events -> board-review wake",
  "_model_note": "user directive 2026-10-06: Go models for anything needing an LLM (nothing local until RAM upgrade)",
  "wake_grace_s": 600,
- "_guard_note": "patient loop guard: grace per wake attempt, 1 re-ping, then escalate (interactive turns take minutes)"
+ "_guard_note": "patient loop guard: grace per wake attempt, 1 re-ping, then escalate (interactive turns take minutes)",
+ "server_watchdog": true,
+ "_watchdog_note": "user mandate 2026-10-06: never multiple servers at once; conductor kills stray/multiple fish api_servers every tick (live_e2e=true exempts the single legitimate one)"
 }

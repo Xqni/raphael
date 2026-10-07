@@ -321,6 +321,34 @@ class TestCursorDurability(CBase):
                          "conductor tick reverted current_wave")
 
 
+class TestServerWatchdog(CBase):
+    """User mandate 2026-10-06: NEVER multiple servers at once."""
+
+    def _run(self, pids, live=False, enabled=True):
+        self.cfg["server_watchdog"] = enabled
+        c = self.mk(dry=True)
+        killed = []
+        c._pgrep = lambda pat: list(pids)
+        c._kill = lambda pid: killed.append(pid)
+        st = self.st()
+        st["live_e2e"] = live
+        c.check_server_sanity(st)
+        return killed
+
+    def test_multiple_servers_all_but_oldest_killed(self):
+        killed = self._run([300, 111, 222], live=True)
+        self.assertEqual(sorted(killed), [222, 300])   # oldest (111) kept
+
+    def test_stray_killed_when_stack_off(self):
+        self.assertEqual(self._run([555], live=False), [555])
+
+    def test_single_server_exempt_during_live_e2e(self):
+        self.assertEqual(self._run([555], live=True), [])
+
+    def test_watchdog_can_be_disabled(self):
+        self.assertEqual(self._run([1, 2], live=False, enabled=False), [])
+
+
 class TestPauseResume(CBase):
     def test_pause_blocks_wake_resume_re_enables(self):
         cond.main(["pause", "infra"])
