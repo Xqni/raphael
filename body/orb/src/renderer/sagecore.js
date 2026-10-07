@@ -16,18 +16,22 @@ const TAU = 400; // blend time constant (ms) — inside the spec's 300-600ms win
 
 // Per-state visual targets for the Sage layers.
 // nebula, speed(lines), poly, node, ring, spark, spin(rad/ms-ish), bright(core)
+// `paused` and `offline` are deliberately BOTH "dead grey" (ORB_REBUILD §3) but
+// are told apart by structure: paused is a MODE overlay (steel ring, lattice
+// still lit, 10% spin) while offline is a state with everything switched off.
 const S = {
-  idle:            { nebula: 0.55, speed: 0.85, poly: 1.00, node: 1.00, ring: 0.75, spark: 0.70, spin: 0.00013, bright: 1.00 },
-  listening:       { nebula: 0.80, speed: 1.35, poly: 1.10, node: 1.60, ring: 1.20, spark: 1.00, spin: 0.00017, bright: 1.45 },
-  thinking:        { nebula: 0.65, speed: 1.00, poly: 1.60, node: 1.80, ring: 0.95, spark: 1.20, spin: 0.00040, bright: 1.15 },
-  acting:          { nebula: 0.50, speed: 1.05, poly: 1.25, node: 1.35, ring: 0.90, spark: 0.80, spin: 0.00014, bright: 1.10 },
-  speaking:        { nebula: 0.60, speed: 1.20, poly: 1.00, node: 1.20, ring: 1.00, spark: 0.90, spin: 0.00016, bright: 1.05 },
-  confirm:         { nebula: 0.40, speed: 0.75, poly: 0.95, node: 1.10, ring: 0.70, spark: 0.50, spin: 0.00013, bright: 1.15 },
-  error:           { nebula: 0.35, speed: 0.50, poly: 0.80, node: 0.80, ring: 0.50, spark: 0.30, spin: 0.00012, bright: 1.45 },
-  starting:        { nebula: 0.55, speed: 0.85, poly: 1.00, node: 1.00, ring: 0.75, spark: 0.70, spin: 0.00013, bright: 1.00 },
-  reconnecting:    { nebula: 0.30, speed: 0.50, poly: 0.70, node: 0.80, ring: 0.50, spark: 0.35, spin: 0.00008, bright: 0.75 },
-  offline:         { nebula: 0.12, speed: 0.00, poly: 0.40, node: 0.40, ring: 0.20, spark: 0.10, spin: 0.000006, bright: 0.45 },
-  private_overlay: { nebula: 0.50, speed: 0.85, poly: 1.00, node: 1.00, ring: 0.75, spark: 0.60, spin: 0.00013, bright: 1.00 },
+  idle:            { nebula: 0.55, speed: 0.70, poly: 1.15, node: 1.30, ring: 0.80, spark: 0.70, spin: 0.00013, bright: 1.00, cage: 1.00 },
+  listening:       { nebula: 0.80, speed: 1.35, poly: 1.55, node: 2.10, ring: 1.45, spark: 1.00, spin: 0.00017, bright: 1.45, cage: 1.00 },
+  thinking:        { nebula: 0.65, speed: 1.00, poly: 1.60, node: 1.80, ring: 0.95, spark: 1.20, spin: 0.00040, bright: 1.15, cage: 0.15 },
+  acting:          { nebula: 0.50, speed: 1.05, poly: 1.25, node: 1.35, ring: 0.90, spark: 0.80, spin: 0.00014, bright: 1.10, cage: 1.00 },
+  speaking:        { nebula: 0.60, speed: 1.20, poly: 1.00, node: 1.20, ring: 1.00, spark: 0.30, spin: 0.00016, bright: 1.05, cage: 1.00 },
+  confirm:         { nebula: 0.40, speed: 0.75, poly: 0.95, node: 1.10, ring: 0.70, spark: 0.50, spin: 0.00013, bright: 1.15, cage: 1.00 },
+  error:           { nebula: 0.35, speed: 0.50, poly: 0.80, node: 0.80, ring: 0.50, spark: 0.30, spin: 0.00012, bright: 1.45, cage: 0.60 },
+  starting:        { nebula: 0.35, speed: 0.50, poly: 0.70, node: 0.70, ring: 0.40, spark: 0.35, spin: 0.00006, bright: 0.72, cage: 1.00 },
+  reconnecting:    { nebula: 0.45, speed: 0.55, poly: 0.85, node: 0.90, ring: 0.55, spark: 0.45, spin: 0.00008, bright: 0.75, cage: 0.80 },
+  offline:         { nebula: 0.00, speed: 0.00, poly: 0.30, node: 0.30, ring: 0.00, spark: 0.00, spin: 0.000006, bright: 0.30, cage: 0.25 },
+  paused:          { nebula: 0.16, speed: 0.00, poly: 0.75, node: 0.70, ring: 0.40, spark: 0.10, spin: 0.000014, bright: 0.60, cage: 0.50 },
+  private_overlay: { nebula: 0.55, speed: 0.70, poly: 1.15, node: 1.30, ring: 0.80, spark: 0.70, spin: 0.00013, bright: 1.00, cage: 1.00 },
 };
 const KEYS = Object.keys(S.idle);
 const FALLBACK = S.idle;
@@ -38,6 +42,54 @@ function damp(cur, tgt, tau, dt) {
 }
 function h(n) { return (Math.sin(n * 127.1) * 43758.5453) % 1; } // stable hash -1..1
 function h01(n) { return Math.abs(h(n)); }
+
+// ---------------------------------------------------------------------------
+// Per-state CAGE SHAPE (user, 2026-10-06): "make the cages change shapes for
+// different states with color changes as well ... keep things 3d".
+//
+// The icosphere TOPOLOGY is preserved — every vertex is projected onto the
+// target solid along its own direction, so edges, spokes and node dots all stay
+// attached while the silhouette becomes a cube / prism / octahedron / ball.
+// Positions lerp over 600 ms with an ease-in-out (never snapped), and because
+// the deformation is radial, the cage still reads as a solid 3D object from
+// every angle — no flat card anywhere.
+// ---------------------------------------------------------------------------
+const CAGE_MORPH_MS = 600;
+
+/** Radius of a regular n-gon (circumradius 1) at polar angle `theta`. */
+function nGonScale(theta, n) {
+  const seg = (Math.PI * 2) / n;
+  const a = ((theta % seg) + seg) % seg - seg / 2;
+  return Math.cos(Math.PI / n) / Math.cos(a);
+}
+
+/**
+ * src/out are Float32Array vertex sets of the SAME topology. `shape` is one of
+ * the PROTOCOL §8 / config orb.shape_map values; anything unknown is the ball.
+ */
+function projectShape(src, shape, out) {
+  for (let i = 0; i < src.length; i += 3) {
+    const x = src[i], y = src[i + 1], z = src[i + 2];
+    const len = Math.hypot(x, y, z) || 1;
+    const dx = x / len, dy = y / len, dz = z / len;
+    let px = dx, py = dy, pz = dz;
+    const th = Math.atan2(dy, dx);
+    if (shape === 'square') {                 // -> cube (square cross-section)
+      const s = nGonScale(th, 4); px = dx * s; py = dy * s;
+    } else if (shape === 'triangle') {        // -> triangular prism
+      const s = nGonScale(th, 3); px = dx * s; py = dy * s; pz = dz * 0.78;
+    } else if (shape === 'pentagon') {        // -> pentagonal prism
+      const s = nGonScale(th, 5); px = dx * s; py = dy * s; pz = dz * 0.88;
+    } else if (shape === 'hexagon') {         // -> hexagonal prism
+      const s = nGonScale(th, 6); px = dx * s; py = dy * s; pz = dz * 0.78;
+    } else if (shape === 'octagram') {        // -> octahedron: sharp, spiky
+      const m = Math.abs(dx) + Math.abs(dy) + Math.abs(dz) || 1e-6;
+      px = dx / m; py = dy / m; pz = dz / m;
+    }
+    // 'circle' (and anything unknown) falls through as the plain sphere
+    out[i] = px * len; out[i + 1] = py * len; out[i + 2] = pz * len;
+  }
+}
 
 // --- Pane textures: drawn ONCE at startup (spec §5) -------------------------
 function makePaneTexture(THREE, kind) {
@@ -76,7 +128,8 @@ function makePaneTexture(THREE, kind) {
 }
 
 // --- Init -------------------------------------------------------------------
-export function initSageCore(THREE, group, scene) {
+export function initSageCore(THREE, group, scene, pal) {
+  pal = pal || { haze_lime: '#B8E02A', haze_teal: '#2DD4BF', haze_blue: '#3B82F6', haze_magenta: '#C026D3', ring_color: '#FFFFFF', accent: '#2DD4BF' };
   const L = { panes: [], ampS: 0 };
   L.w = Object.assign({}, S.idle);
 
@@ -86,10 +139,10 @@ export function initSageCore(THREE, group, scene) {
     fragmentShader: nebulaFrag,
     uniforms: {
       uTime: { value: 0 }, uOpacity: { value: S.idle.nebula },
-      cLime: { value: new THREE.Color(0xb8e02a) },
-      cTeal: { value: new THREE.Color(0x2dd4bf) },
-      cBlue: { value: new THREE.Color(0x3b82f6) },
-      cMagenta: { value: new THREE.Color(0xc026d3) },
+      cLime: { value: new THREE.Color(pal.haze_lime) },      // §5 tokens + §3.7 vibrance
+      cTeal: { value: new THREE.Color(pal.haze_teal) },
+      cBlue: { value: new THREE.Color(pal.haze_blue) },
+      cMagenta: { value: new THREE.Color(pal.haze_magenta) },
     },
     transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
   });
@@ -103,21 +156,21 @@ export function initSageCore(THREE, group, scene) {
   const texSoft = makePaneTexture(THREE, 'soft');
   const texCube = makePaneTexture(THREE, 'cube');
   const paneGeo = new THREE.PlaneGeometry(1, 1);
-  const N_PANES = 30;
+  const N_PANES = 18;   // §3.6: fewer, larger panes (was 30 small ones)
   for (let i = 0; i < N_PANES; i++) {
     const near = ((i * 7) % 10) / 9;                 // 0 far .. 1 near
-    const isCube = i % 5 === 0;
-    const soft = !isCube && near < 0.34;             // far ones blurred (DoF)
+    const isCube = i % 4 === 0;
+    const soft = !isCube && near < 0.30;             // far ones blurred (DoF)
     const mat = new THREE.MeshBasicMaterial({
       map: isCube ? texCube : (soft ? texSoft : texSharp),
       transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
-      opacity: 0.10 + near * 0.30, color: 0xdff2ff,
+      opacity: 0.12 + near * 0.32, color: 0xdff2ff,
     });
     const m = new THREE.Mesh(paneGeo, mat);
-    const s = 0.09 + near * 0.20;
+    const s = 0.13 + near * 0.30;   // §3.6: larger
     m.scale.set(s, s, 1);
     const ang = (i / N_PANES) * Math.PI * 2 + i * 0.618 * Math.PI * 2;
-    const rad = 0.55 + h01(i + 3) * 0.75;            // max ~1.30 (+half size < edge)
+    const rad = 0.50 + h01(i + 3) * 0.80;            // max ~1.30 (+half size < edge)
     const z = -0.35 + ((i * 13) % 9) / 8 * 0.75;
     m.position.set(Math.cos(ang) * rad, Math.sin(ang) * rad, z);
     m.rotation.z = (i % 4) * Math.PI * 4;            // axis-aligned squares
@@ -171,7 +224,7 @@ export function initSageCore(THREE, group, scene) {
     const k = ip[i].toFixed(3) + ',' + ip[i + 1].toFixed(3) + ',' + ip[i + 2].toFixed(3);
     if (!seen.has(k)) { seen.add(k); uniq.push([ip[i], ip[i + 1], ip[i + 2]]); }
   }
-  const SPOKES = 14;
+  const SPOKES = 10;   // §3.3: fewer stray spokes (wireframe reads cleaner)
   const lp = new Float32Array(ePos.length + SPOKES * 6);
   lp.set(ePos);
   const aT = new Float32Array((ePos.length / 3) + SPOKES * 2);
@@ -206,7 +259,8 @@ export function initSageCore(THREE, group, scene) {
 
   // Inner cage: the SAME polyhedron at smaller scale hugging the core ball
   // (user prescription: revolving polygon at smaller scale around the sphere).
-  L.cage = new THREE.LineSegments(polyGeo, L.polyMat);
+  L.cageMat = L.polyMat.clone();   // own material: per-state cage weight (§3.3)
+  L.cage = new THREE.LineSegments(polyGeo, L.cageMat);
   L.cage.scale.setScalar(0.56);           // 1.15 * 0.56 = 0.64 > ball 0.52
   L.cage.rotation.x = 0.30;
   group.add(L.cage);
@@ -235,7 +289,7 @@ export function initSageCore(THREE, group, scene) {
     vertexShader: nodeVert, fragmentShader: nodeFrag,
     uniforms: {
       uTime: { value: 0 }, uAlpha: { value: 1 },
-      uBoost: { value: 1 }, uSize: { value: 7.5 },
+      uBoost: { value: 1 }, uSize: { value: 8.5 },   // §3.6: slightly heavier node weight
       uTint: { value: new THREE.Color(0xffffff) },
     },
     transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
@@ -244,19 +298,37 @@ export function initSageCore(THREE, group, scene) {
   L.nodes.rotation.x = 0.30;
   group.add(L.nodes);
 
+  // per-state cage-shape morph state (see projectShape above). The outer cage,
+  // the inner cage and the node dots all ride these buffers, so they deform as
+  // one object instead of drifting apart.
+  L.polyGeo = polyGeo;
+  L.nodeGeo = nodeGeo;
+  L.polyBase = new Float32Array(lp);              // pristine icosphere
+  L.nodeBase = new Float32Array(np);
+  L.cageFrom = new Float32Array(lp.length);       // preallocated: no per-frame alloc
+  L.cageTo = new Float32Array(lp.length);
+  L.nodeFrom = new Float32Array(np.length);
+  L.nodeTo = new Float32Array(np.length);
+  L.cageShape = 'circle';
+  L.cageMs = CAGE_MORPH_MS;
+  L.cageActive = false;
+
   // 5) Orbit rings — tilted ellipse split into a dim back half + bright front
   //    arc so it reads as passing BEHIND and IN FRONT of the core (spec §2.1.5)
   const ringBackMat = new THREE.ShaderMaterial({
     vertexShader: ringVert, fragmentShader: ringFrag,
-    uniforms: { uTime: { value: 0 }, uAlpha: { value: 0.35 }, uSeed: { value: 0.37 }, uTint: { value: new THREE.Color(0xffffff) } },
+    uniforms: { uTime: { value: 0 }, uAlpha: { value: 0.35 }, uSeed: { value: 0.37 }, uTint: { value: new THREE.Color(pal.ring_color) } }, // §5 token
     side: THREE.DoubleSide, transparent: true, depthWrite: false,
     blending: THREE.AdditiveBlending,
   });
   const ringFrontMat = ringBackMat.clone();
   ringFrontMat.uniforms.uSeed.value = 0.81;
   ringFrontMat.uniforms.uAlpha.value = 0.8;
-  const backGeo = new THREE.RingGeometry(1.24, 1.264, 72, 1, Math.PI, Math.PI);
-  const frontGeo = new THREE.RingGeometry(1.24, 1.274, 72, 1, 0.04, Math.PI - 0.08);
+  // §3.6 "slightly thicker line weights": these are real geometry (unlike the
+  // GL_LINES wireframe, whose width WebGL clamps to 1 device px), so the
+  // tilted orbit ring is the one line weight we can actually turn up.
+  const backGeo = new THREE.RingGeometry(1.238, 1.278, 72, 1, Math.PI, Math.PI);
+  const frontGeo = new THREE.RingGeometry(1.236, 1.298, 72, 1, 0.04, Math.PI - 0.08);
   L.ringBack = new THREE.Mesh(backGeo, ringBackMat);
   L.ringFront = new THREE.Mesh(frontGeo, ringFrontMat);
   const tilt = { x: 1.02, y: -0.10 };     // tilted until it crosses the core
@@ -269,18 +341,41 @@ export function initSageCore(THREE, group, scene) {
   L.ringBackMat = ringBackMat;
   L.ringFrontMat = ringFrontMat;
 
-  // Private Mode: thin teal outer ring (spec §3) — only lit in private_overlay
+  // MODE overlays (INTERFACES §e: private/paused are `mode`, NOT states, so
+  // they must render on top of ANY base state):
+  //   private -> thin TEAL outer ring (ORB_REBUILD §3 "always clear cloud is off")
+  //   paused  -> dashed STEEL outer ring (same design language, unmistakable
+  //              colour+shape difference from private and from offline)
   L.privateMat = new THREE.ShaderMaterial({
     vertexShader: ringVert, fragmentShader: ringFrag,
     uniforms: { uTime: { value: 0 }, uAlpha: { value: 0 }, uSeed: { value: 0.63 },
-                uTint: { value: new THREE.Color(0x2dd4bf) } },
+                uTint: { value: new THREE.Color(pal.accent) } },   // §5 accent token
     side: THREE.DoubleSide, transparent: true, depthWrite: false,
     blending: THREE.AdditiveBlending,
   });
-  L.privateRing = new THREE.Mesh(new THREE.RingGeometry(1.28, 1.305, 96), L.privateMat);
+  // ... a DOUBLE hairline so a 1.6px line is still legible at 280px window
+  // size over a LIGHT wallpaper (single line = ~1.3/255 mean, too subtle).
+  L.privateRing = new THREE.Mesh(new THREE.RingGeometry(1.262, 1.302, 96), L.privateMat);
   L.privateRing.rotation.set(0.12, 0.06, 0);
   group.add(L.privateRing);
   L.privateW = 0;
+  L.privateMat2 = L.privateMat.clone();
+  L.privateMat2.uniforms.uSeed.value = 0.41;
+  L.privateRing2 = new THREE.Mesh(new THREE.RingGeometry(1.335, 1.372, 96), L.privateMat2);
+  L.privateRing2.rotation.set(0.12, 0.06, 0);
+  group.add(L.privateRing2);
+
+  L.pausedMat = new THREE.ShaderMaterial({
+    vertexShader: ringVert, fragmentShader: ringFrag,
+    uniforms: { uTime: { value: 0 }, uAlpha: { value: 0 }, uSeed: { value: 0.19 },
+                uTint: { value: new THREE.Color(0x9fb6d8) } },
+    side: THREE.DoubleSide, transparent: true, depthWrite: false,
+    blending: THREE.AdditiveBlending,
+  });
+  L.pausedRing = new THREE.Mesh(new THREE.RingGeometry(1.33, 1.372, 96), L.pausedMat);
+  L.pausedRing.rotation.set(-0.16, 0.10, 0);
+  group.add(L.pausedRing);
+  L.pausedW = 0;
   L.genT = 0;          // boot generation sequence plays on load (state starts 'starting')
   L.prevState = 'starting';
   L.tintCur = new THREE.Color(0xffffff); // damped state tint for cages/nodes
@@ -311,11 +406,49 @@ export function initSageCore(THREE, group, scene) {
   return L;
 }
 
+// --- Pose lock (test hook, W2.1) --------------------------------------------
+// The orb animates continuously (a full polyhedron turn takes ~40 s), so two
+// screenshots of the SAME state taken seconds apart differ by 5-8/255 purely
+// from rotation — that noise is larger than several real state differences and
+// makes any pixel-diff gate meaningless. Locking puts every layer back on a
+// canonical pose and pins the weights to their targets, so a captured frame is
+// a pure function of (state, mode, amplitude). Harness-only: called via
+// window.__orbLockPose() from CDP; never used by the production path.
+export function lockSageCore(L, state, mode, opts = {}) {
+  const tgt = (mode === 'paused') ? S.paused : (S[state] || S.idle);
+  L.w = Object.assign({}, tgt);
+  L.prevState = state;
+  L.genT = state === 'starting' ? (opts.genMs === undefined ? 2000 : opts.genMs) : 99999;
+  L.privateW = (mode === 'private' || state === 'private_overlay') ? 1 : 0;
+  L.pausedW = (mode === 'paused') ? 1 : 0;
+  L.ampS = opts.amp || 0;
+  if (opts.tint !== undefined) { L.tintTgt.setHex(opts.tint); L.tintCur.setHex(opts.tint); }
+  // canonical t=0 pose for every accumulated transform
+  L.nebula.rotation.z = 0;
+  L.speed.rotation.set(0, 0, 0);
+  L.poly.rotation.set(0.30, 0, 0);
+  L.nodes.rotation.set(0.30, 0, 0);
+  if (L.cage) L.cage.rotation.set(0.30, 0, 0);
+  L.ringBack.rotation.set(1.02, -0.10, 0);
+  L.ringFront.rotation.set(1.02, -0.10, 0);
+  L.privateRing.rotation.set(0.12, 0.06, 0);
+  L.privateRing2.rotation.set(0.12, 0.06, 0);
+  L.pausedRing.rotation.set(-0.16, 0.10, 0);
+  L.polyMat.uniforms.uDrop.value = state === 'reconnecting' ? 0.42 : 0;
+  return L;
+}
+
 // --- Per-frame update -------------------------------------------------------
 // ctx = { t (s), dt (ms), state, amp (0..1), coreU (core material uniforms) }
 export function updateSageCore(L, ctx) {
   const t = ctx.t, dt = Math.min(Math.max(ctx.dt, 1), 100), state = ctx.state;
-  const tgt = S[state] || FALLBACK;
+  // ctx.lock (test pose-lock): damping still runs so uniforms converge to
+  // their targets, but every accumulated transform is frozen.
+  const spinDt = ctx.lock ? 0 : dt;
+  // MODE override (INTERFACES §e): `paused` is not a state — it fully takes
+  // over the base look (spec §3: desaturated grey, ~10% spin, no rays).
+  // `private` is a pure overlay: the base state keeps rendering untouched.
+  const tgt = (ctx.mode === 'paused') ? S.paused : (S[state] || FALLBACK);
 
   // amplitude smoothing: ~30ms attack, ~150ms release (spec §6)
   const ampTgt = ctx.amp || 0;
@@ -329,23 +462,25 @@ export function updateSageCore(L, ctx) {
   const w = L.w;
   const listening = state === 'listening' ? 1 : 0;
 
-  // --- STARTING generation sequence (user spec): outer cage grows from zero
-  // (random spin) -> inner cage -> sun ignites -> quick finishing spin ---
+  // --- STARTING build sequence (§1): the wireframe builds edge-by-edge from
+  // the core outward with an EASE-IN-OUT on build PROGRESS (no hard stop),
+  // while the physical spin-down (renderer.js stepSpin) decays underneath it —
+  // the two overlap instead of fighting. The build clock only advances while
+  // unlocked and only while `starting`; core brightness follows genSun, so the
+  // sun ramps smoothly instead of popping on.
   if (state !== L.prevState) {
     if (state === 'starting') L.genT = 0;
     L.prevState = state;
   }
-  if (L.genT >= 0 && state === 'starting') L.genT = Math.min(L.genT + dt, 9000); // MUST exceed the spin window end (8300) or the spin freezes mid-strength
+  if (!ctx.lock && L.genT >= 0 && state === 'starting') L.genT = Math.min(L.genT + dt, 9000);
   const gt = (state === 'starting' && L.genT >= 0) ? L.genT : 99999;
-  const ease3 = (x) => 1 - Math.pow(1 - Math.min(Math.max(x, 0), 1), 3);
-  const genOuter = ease3(gt / 1400);
-  const genInner = ease3((gt - 900) / 1200);
-  const genSun = ease3((gt - 1700) / 900);
-  const spinProg = Math.min(Math.max((gt - 2300) / 6000, 0), 1);
-  const skew = Math.pow(spinProg, 0.4); // peak early, LONG gentle tail
-  const sinP = Math.sin(Math.PI * skew);
-  // sin^2 with skewed timeline: eases over ~6s all the way into the idle spin
-  const genSpin = (gt > 2300 && gt < 8300) ? sinP * sinP * 7 : 0;
+  const easeInOut3 = (x) => {
+    const c = Math.min(Math.max(x, 0), 1);
+    return c < 0.5 ? 4 * c * c * c : 1 - Math.pow(-2 * c + 2, 3) / 2;
+  };
+  const genOuter = easeInOut3(gt / 1400);
+  const genInner = easeInOut3((gt - 900) / 1200);
+  const genSun = easeInOut3((gt - 1700) / 900);
   const errOn = state === 'error' ? 1 : 0; // error: white cages, CRANKED glow
 
   // --- glide lag: solar-system inertia (sun leads; layers trail by factor) ---
@@ -361,12 +496,14 @@ export function updateSageCore(L, ctx) {
   L.ringBack.position.set(-gx * 1.4, -gy * 1.4, -0.24);
   L.ringFront.position.set(-gx * 1.4, -gy * 1.4, 0.24);
   L.privateRing.position.set(-gx * 1.45, -gy * 1.45, 0);
+  L.privateRing2.position.set(-gx * 1.45, -gy * 1.45, 0);
+  L.pausedRing.position.set(-gx * 1.45, -gy * 1.45, 0);
   L.spark.position.set(-gx * 2.0, -gy * 2.0, 0);         // sparkles lag the most // absolute speed boost: VISIBLE finishing spin
 
   // 1) nebula
   L.nebulaMat.uniforms.uTime.value = t;
   L.nebulaMat.uniforms.uOpacity.value = w.nebula;
-  L.nebula.rotation.z += 0.00015 * dt; // slow swirl so the haze is visibly alive
+  L.nebula.rotation.z += 0.00015 * spinDt; // slow swirl so the haze is visibly alive
 
   // 3) speed lines — listening: rays lengthen (ripple handled by shimmer)
   L.speedMat.uniforms.uTime.value = t;
@@ -382,6 +519,39 @@ export function updateSageCore(L, ctx) {
     ? 0.3 + 0.18 * (0.5 + 0.5 * Math.sin(t * 7.3))
     : 0;
   L.polyMat.uniforms.uDrop.value = damp(L.polyMat.uniforms.uDrop.value || 0, dropTgt, TAU, dt);
+  // inner cage rides the same look but has its own weight (§3.3: fewer lines
+  // while thinking — it is the doubled-up cage that reads as "tangled yarn")
+  L.cageMat.uniforms.uTime.value = t;
+  L.cageMat.uniforms.uPulse.value = w.poly * (1 + errOn * 1.2);
+  L.cageMat.uniforms.uDrop.value = L.polyMat.uniforms.uDrop.value;
+  L.cageMat.uniforms.uAlpha.value = w.poly * w.cage * (0.9 + errOn * 0.7);
+  L.cageMat.uniforms.uTint.value = L.polyMat.uniforms.uTint.value;
+
+  // --- per-state cage SHAPE: project onto the target solid, then lerp ------
+  if (ctx.shape && ctx.shape !== L.cageShape) {
+    L.cageShape = ctx.shape;
+    L.cageFrom.set(L.polyGeo.attributes.position.array);
+    L.nodeFrom.set(L.nodeGeo.attributes.position.array);
+    projectShape(L.polyBase, ctx.shape, L.cageTo);
+    projectShape(L.nodeBase, ctx.shape, L.nodeTo);
+    L.cageMs = ctx.lock ? CAGE_MORPH_MS : 0;   // pose-lock snaps to the target
+    L.cageActive = true;
+  }
+  if (L.cageActive) {
+    L.cageMs += ctx.lock ? CAGE_MORPH_MS : dt;
+    const k = easeInOut3(Math.min(1, L.cageMs / CAGE_MORPH_MS));
+    const pa = L.polyGeo.attributes.position;
+    for (let i = 0; i < pa.array.length; i++) {
+      pa.array[i] = L.cageFrom[i] + (L.cageTo[i] - L.cageFrom[i]) * k;
+    }
+    pa.needsUpdate = true;
+    const na = L.nodeGeo.attributes.position;
+    for (let i = 0; i < na.array.length; i++) {
+      na.array[i] = L.nodeFrom[i] + (L.nodeTo[i] - L.nodeFrom[i]) * k;
+    }
+    na.needsUpdate = true;
+    if (k >= 1) L.cageActive = false;
+  }
   // state tint damped onto the cages + node dots (error = red cages/nodes)
   if (ctx.tint !== undefined) {
     L.tintTgt.setHex(state === 'error' ? 0xffffff : ctx.tint); // error: WHITE cages (red sun behind for contrast)
@@ -394,19 +564,19 @@ export function updateSageCore(L, ctx) {
   const outerS = Math.min(1.12, 1 + 0.45 * ((ctx.ballScale || 1) - 1));
   L.poly.scale.setScalar(outerS * genOuter);
   if (L.nodes) L.nodes.scale.setScalar(outerS * genOuter);
-  L.poly.rotation.y += w.spin * dt * L.dir.polyY + genSpin * dt * 0.0012 * L.dir.polyY;
-  L.poly.rotation.x += w.spin * dt * 0.5 * L.dir.polyX + genSpin * dt * 0.0007 * L.dir.polyX;
+  L.poly.rotation.y += w.spin * spinDt * L.dir.polyY;
+  L.poly.rotation.x += w.spin * spinDt * 0.5 * L.dir.polyX;
   if (L.cage) {
-    L.cage.rotation.y += w.spin * dt * L.dir.cageY * 1.7 + genSpin * dt * 0.0016 * L.dir.cageY;
-    L.cage.rotation.x += w.spin * dt * 0.7 * L.dir.cageX + genSpin * dt * 0.0009 * L.dir.cageX;
+    L.cage.rotation.y += w.spin * spinDt * L.dir.cageY * 1.7;
+    L.cage.rotation.x += w.spin * spinDt * 0.7 * L.dir.cageX;
     if (ctx.ballScale) L.cage.scale.setScalar(0.56 * ctx.ballScale * genInner); // breathes WITH the ball + gen reveal
   }
-  L.speed.rotation.y += w.spin * dt * 0.4 * L.dir.speedY;
-  L.speed.rotation.x += w.spin * dt * 0.25 * L.dir.speedX;
+  L.speed.rotation.y += w.spin * spinDt * 0.4 * L.dir.speedY;
+  L.speed.rotation.x += w.spin * spinDt * 0.25 * L.dir.speedX;
   L.nodeMat.uniforms.uTime.value = t;
   L.nodeMat.uniforms.uAlpha.value = w.node;
   L.nodeMat.uniforms.uBoost.value = 1 + listening * L.ampS * 0.8;
-  L.nodeMat.uniforms.uSize.value = 7.5 + errOn * 5; // error: bigger glowing white dots
+  L.nodeMat.uniforms.uSize.value = 8.5 + errOn * 5 + (state === 'thinking' ? 2.0 : 0); // §3.3 thinking: bright node dots
   L.nodes.rotation.y = L.poly.rotation.y; // node dots track the lattice exactly
   L.nodes.rotation.x = L.poly.rotation.x;
 
@@ -418,13 +588,26 @@ export function updateSageCore(L, ctx) {
   const ringScale = 1 + listening * L.ampS * 0.05;
   L.ringBack.scale.setScalar(ringScale);
   L.ringFront.scale.setScalar(ringScale);
-  L.ringBack.rotation.z += 0.0004 * dt * L.dir.ringB;
-  L.ringFront.rotation.z += 0.0003 * dt * L.dir.ringF;
-  // Private teal ring fades in only for private_overlay
-  L.privateW = damp(L.privateW, state === 'private_overlay' ? 1 : 0, TAU, dt);
+  L.ringBack.rotation.z += 0.0004 * spinDt * L.dir.ringB;
+  L.ringFront.rotation.z += 0.0003 * spinDt * L.dir.ringF;
+  // MODE overlays follow `mode`, not `state` (INTERFACES §e) — the base state
+  // keeps rendering underneath, so cloud-availability is always visible.
+  const isPrivate = ctx.mode === 'private' || state === 'private_overlay';
+  const isPaused = ctx.mode === 'paused';
+  L.privateW = damp(L.privateW, isPrivate ? 1 : 0, TAU, dt);
   L.privateMat.uniforms.uTime.value = t;
   L.privateMat.uniforms.uAlpha.value = L.privateW * 0.9;
-  L.privateRing.rotation.z += 0.0005 * dt * L.dir.ringF;
+  L.privateMat2.uniforms.uTime.value = t;
+  L.privateMat2.uniforms.uAlpha.value = L.privateW * 0.7;
+  L.privateRing.visible = L.privateW > 0.003;
+  L.privateRing2.visible = L.privateW > 0.003;
+  L.privateRing.rotation.z += 0.0005 * spinDt * L.dir.ringF;
+  L.privateRing2.rotation.z -= 0.0004 * spinDt * L.dir.ringB;
+  L.pausedW = damp(L.pausedW, isPaused ? 1 : 0, TAU, dt);
+  L.pausedMat.uniforms.uTime.value = t;
+  L.pausedMat.uniforms.uAlpha.value = L.pausedW * 0.85;
+  L.pausedRing.visible = L.pausedW > 0.003;
+  L.pausedRing.rotation.z -= 0.0004 * spinDt * L.dir.ringB;
 
   // 7) sparkles
   L.sparkMat.uniforms.uTime.value = t;
@@ -438,7 +621,7 @@ export function updateSageCore(L, ctx) {
     p.m.position.y = Math.sin(a) * p.rad + Math.sin(t * 0.3 + p.phase) * 0.03 - gy * 2.2;
     let op = p.baseOp * (0.85 + 0.15 * Math.sin(t * (0.5 + i * 0.03) + p.phase));
     if (Math.sin(t * 0.9 + p.phase * 2.7) > 0.992) op *= 0.35; // rare flicker
-    p.mat.opacity = op * (0.4 + w.nebula * 0.9);
+    p.mat.opacity = op * (0.12 + w.nebula * 1.4);
   }
 
   // 6) core brightness/amp + state FX (warning pulse / reconnect flicker)

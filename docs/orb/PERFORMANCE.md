@@ -75,3 +75,98 @@ Runtime validation (2026-10-05, demo instance): `{"on":true,"dpr":1,"ceiling":1,
 through the full 33-shot state-morph matrix — correct ladder snap, **zero spurious shifts**.
 The downshift *apply* path is code-reviewed but not artificially forced (no load generator on
 this GPU); if it ever triggers in the wild it shows as `acted>0` + a lower `dpr`.
+
+---
+
+# §2 Motion blur — cost report (fidelity pass, 2026-10-06)
+
+Build: `agent/orb` · instance `orb` · window 280×280 (content 200) · dpr 1.0 ·
+quality `auto` · `orb.motion_blur: auto` · measured by `npm run orb:trace`
+(`docs/orb/trace/blur-perf.json`), rolling EMA of real animation-tick
+intervals, 2.5 s per condition after a 1.6 s settle.
+
+## Design (why it is cheap)
+
+- **Velocity gated.** `amount = clamp((speed − 0.35) / (1.60 − 0.35), 0, 1)`
+  where `speed` = the physical assembly spin (`spin.omega`, rad/s), raised to
+  0.55 while Answer Mode is on and 0.45 while the Data Rings are on. Below
+  0.35 rad/s — i.e. the idle rest spin of 0.18 rad/s — the gate returns *calm*
+  and **the pass is not executed at all**.
+- **One LOW-RES pass.** `edgeRT → blurRT` at **half resolution**, 4 taps
+  (2/3/6 for low/medium/high tiers, 0 on quality `low`), sampling the already
+  rendered scene at tangential offsets around the window centre — an angular
+  blur, which is what a spinning overlay actually needs. There is **no**
+  full-resolution post chain: the existing edge-mask pass just mixes
+  `tScene` with `tBlur` when `uBlur > 0`.
+- **Premultiplied alpha throughout**: the shader only averages premultiplied
+  RGBA, so rgb and alpha decay together and a smear over a transparent region
+  stays transparent.
+- **Gates that turn it off:** `orb.motion_blur: off`, `reduced_motion: true`,
+  quality tier `low`, and the frame-time governor (if it has already
+  downshifted the pixel ratio, the tap budget drops to 2).
+
+## Measured
+
+| condition | frame time (EMA) | notes |
+|---|---|---|
+| **idle** (rest spin 0.18 rad/s) | 16.670 ms | gate = **`calm`** → pass skipped, `uBlur = 0` → **idle cost unchanged** |
+| active (speaking), blur **OFF** | 16.677 ms | baseline |
+| active (speaking), blur **FORCED ON** | 16.671 ms | worst case (`amount = 0.9`, 4 taps) |
+
+**Overhead: −0.04% (no measurable change).** The display is vsync-locked at
+60 Hz, so this reads as "the blur fits inside the existing frame budget" — if
+it did not, the tick interval would stretch past 16.67 ms. It does not.
+
+Against the budget in the brief (**≤ 25% added to active-state frame time**):
+**−0.04% measured, 25% = ~4.2 ms of headroom unused.** No taps or resolution
+were reduced to fit.
+
+`__orbMotionBlur()` reports `{amount, angle, taps, skipped, reason, speed}` per
+frame; reasons seen: `calm`, `on`, `reduced_motion`, `motion_blur-off`,
+`quality-tier`, `override-off`.
+
+## Quality tiers / controls (not re-measured — they only ever reduce work)
+
+| setting | taps | blur RT |
+|---|---|---|
+| `orb.motion_blur: auto` + `quality: auto` | 4 | ½ resolution |
+| `motion_blur: low` | 2 | ½ |
+| `motion_blur: high` | 6 | ½ |
+| `quality: low` | **0 (off)** | not rendered |
+| `quality: medium` | 3 | ½ |
+| `quality: high` | 6 | ½ |
+| governor has downshifted | ≤ 2 | ½ |
+| `reduced_motion: true` / `motion_blur: off` | **0 (off)** | not rendered |
+
+## Transparency with blur on (§4)
+
+`gl.readPixels` on the drawing buffer (a CDP screenshot of a transparent page
+comes back empty in this WSLg/ANGLE environment, so screenshots are useless
+for alpha) — blur **forced on**, outermost 2 px of the canvas:
+
+| scene | max border alpha | max border RGB | lit px |
+|---|---|---|---|
+| idle | 0 | 0 | 4830 |
+| speaking | 0 | 0 | 9269 |
+| error | 0 | 0 | 3935 |
+| paused | 0 | 0 | 1719 |
+| reconnecting | 0 | 0 | 2028 |
+
+Budget: border alpha ≤ 16, border RGB ≤ 24, lit px ≥ 200 (so the check cannot
+pass vacuously). **PASS** — no box, no fringe, no clipping at the window edge
+in any state with the blur on.
+
+## Frame-time governor — not regressed
+
+Still active for `quality: auto`, unchanged ladder (0.5 < 0.75 < 1 < 1.5 < 2),
+EMA vs target interval, 90 slow frames → downshift with a 4 s cooldown, 360
+fast frames → climb, capped at the startup rung. Two additions:
+
+1. it is **frozen while the startup spin-down is in progress** (`spin.phase !==
+   'run'` or state `starting`) — a mid-startup dpr change is exactly the
+   "animation visibly hitches" cause from §1, and the startup assertions
+   include `governor_quiet: 0 actions`;
+2. when it *has* downshifted, it also cuts the motion-blur tap budget.
+
+Runtime validation: `gov.acted = 0` across the whole 8 s startup window and
+`dpr` held at 1.0 through every one of the 86 per-state captures.

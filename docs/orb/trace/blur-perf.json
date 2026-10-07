@@ -1,0 +1,29 @@
+{
+  "sampleMs": 2500,
+  "off": {
+    "ema": 16.677861203417027,
+    "n": 150
+  },
+  "on": {
+    "ema": 16.671194001906365,
+    "n": 151
+  },
+  "pctOverhead": -0.039976358055411665,
+  "idle": {
+    "ema": 16.679617891855646,
+    "reason": "calm",
+    "skipped": true,
+    "speed": 0.1800000000000011
+  },
+  "activeBlur": {
+    "amount": 0,
+    "angle": 0,
+    "taps": 0,
+    "skipped": true,
+    "reason": "calm",
+    "speed": 0.1800000000000011,
+    "reducedMotion": false,
+    "quality": "auto",
+    "config": "auto"
+  }
+}

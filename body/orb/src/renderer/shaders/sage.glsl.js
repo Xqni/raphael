@@ -55,12 +55,15 @@ export const polyFrag = `
     // reconnecting (spec §3): some wireframe edges go missing (flicker)
     if (uDrop > 0.001 && h(vEdgeId * 3.1) < uDrop) discard;
     // depth-based brightness (near = brighter) — subtle, still graphic
-    float depthB = clamp(1.35 - (vDepth - 2.4) * 0.45, 0.35, 1.0);
+    // USER FEEDBACK (2026-10-06): re-centred on this camera's real depth
+    // (vDepth ~= 5.07) — the old curve clamped to its 0.35 floor here, so the
+    // cage drew at ~19% alpha and was 'barely visible on different screens'.
+    float depthB = clamp(1.18 - (vDepth - 4.2) * 0.22, 0.55, 1.15);
     // light traveling along the edge
     float pp = fract(uTime * 0.3 + h(vEdgeId));
     float pulse = exp(-pow((vEdgeT - pp) * 7.0, 2.0)) * uPulse;
     float spokeDim = mix(1.0, 0.55, vSpoke);
-    float b = depthB * (0.55 + pulse) * uAlpha * spokeDim;
+    float b = depthB * (0.66 + pulse) * uAlpha * spokeDim;
     gl_FragColor = vec4(uTint * b, b);        // state-tinted lines (uniform hairline)
   }
 `;
@@ -77,7 +80,7 @@ export const nodeFrag = `
   void main() {
     vec2 d = gl_PointCoord - 0.5;
     float disc = smoothstep(0.5, 0.12, length(d));
-    float depthB = clamp(1.35 - (vDepth - 2.4) * 0.45, 0.4, 1.0);
+    float depthB = clamp(1.18 - (vDepth - 4.2) * 0.22, 0.55, 1.15); // matches the cage curve
     float tw = 0.85 + 0.15 * sin(uTime * 2.0 + vDepth * 9.0);
     float b = disc * depthB * tw * uAlpha * uBoost;
     gl_FragColor = vec4(uTint * b, b);

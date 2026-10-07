@@ -29,6 +29,10 @@ class StatusWS extends EventEmitter {
     this.authSent = false;
     this.fatalAuth = false;
     this.seq = 0;
+    // Frame trace (W2.1): every WS frame the orb RECEIVES, bounded ring.
+    // Read over IPC by test/orb-trace.cjs — this is the "frames received"
+    // half of the end-to-end evidence.
+    this.rx = [];
     this.state = {
       orbState: 'starting',
       jobsActive: 0,
@@ -36,9 +40,26 @@ class StatusWS extends EventEmitter {
       private: false,
       paused: false,
       subtitle: null,
-      shapeHint: 'circle',
+      // null until a frame carries one (PROTOCOL §8: absent shape_hint -> the
+      // orb falls back to the per-state default, not to a stale leftover)
+      shapeHint: null,
       taskKind: 'none',
+      provider: null,
+      model: null,
+      amplitude: null,   // optional 0..1 on orb_state (listening reactivity)
+      // RESERVED (docs/orb/THEMES.md §5): forwarded but deliberately unused —
+      // a future evolution flourish must not need a protocol change.
+      evolveStage: null,
     };
+  }
+
+  _rx(frame) {
+    this.rx.push({ t: Date.now(), type: frame && frame.type, frame });
+    if (this.rx.length > 300) this.rx.shift();
+  }
+
+  traceFrames() {
+    return this.rx.slice();
   }
 
   start() {
@@ -100,6 +121,7 @@ class StatusWS extends EventEmitter {
   }
 
   handle(msg) {
+    this._rx(msg);
     switch (msg.type) {
       case 'ping':
         if (this.ws && this.ws.readyState === WebSocket.OPEN) {
@@ -122,18 +144,39 @@ class StatusWS extends EventEmitter {
       case 'orb_state':
         if (msg.state && ORB_STATES.has(msg.state)) {
           this.state.orbState = msg.state;
+        } else if (msg.state) {
+          // Unknown state name (state-name mismatch) — keep the last good one
+          // but record it so the trace can prove WHO sent an unknown value.
+          this.state.unknownState = msg.state;
         }
         this.state.jobsActive = msg.jobs_active || 0;
         this.state.mode = msg.mode || 'normal';
         this.state.private = this.state.mode === 'private' || msg.state === 'private_overlay' || !!msg.private;
         this.state.paused = this.state.mode === 'paused';
         this.state.subtitle = msg.subtitle || null;
-        if (msg.shape_hint && ['circle','triangle','square','pentagon','hexagon','octagram'].includes(msg.shape_hint)) {
-          this.state.shapeHint = msg.shape_hint;
-        }
+        if (msg.provider) this.state.provider = msg.provider;
+        if (msg.model) this.state.model = msg.model;
+        this.state.shapeHint = (msg.shape_hint &&
+          ['circle','triangle','square','pentagon','hexagon','octagram'].includes(msg.shape_hint))
+          ? msg.shape_hint : null;
         if (msg.task_kind) this.state.taskKind = msg.task_kind;
+        this.state.amplitude = (typeof msg.amplitude === 'number') ? msg.amplitude : null;
+        // reserved + forwarded, never acted on (THEMES.md §5)
+        this.state.evolveStage = ('evolve_stage' in msg) ? msg.evolve_stage : null;
         this.updateOrbState(this.state.orbState);
         this.emit('state', this.state);
+        break;
+      case 'needs_confirm':
+        // PROTOCOL §9: brain emits needs_confirm; base state follows it even if
+        // the paired orb_state frame is late/lost (orb renders, never decides).
+        this.updateOrbState('confirm');
+        this.state.jobsActive = Math.max(1, this.state.jobsActive);
+        this.state.subtitle = msg.question || this.state.subtitle;
+        this.emit('state', this.state);
+        this.emit('confirm', msg);
+        break;
+      case 'job_list':
+        this.emit('job_list', msg.jobs || []);
         break;
       case 'subtitle':
         this.emit('subtitle', { job: msg.job, text: msg.text, fade_ms: msg.fade_ms });
@@ -178,6 +221,28 @@ class StatusWS extends EventEmitter {
   sendControl(msg) {
     if (!this.ws || !this.connected) return;
     this.ws.send(JSON.stringify({ type: 'control', ...msg }));
+  }
+
+  /** PROTOCOL §3 `command` — typed input entered on the orb (TODO §3e). */
+  sendCommand(text) {
+    if (!this.ws || !this.connected || !text) return false;
+    this.ws.send(JSON.stringify({ type: 'command', v: 1, text, source: 'orb' }));
+    return true;
+  }
+
+  /** PROTOCOL §3 `job_list` request — right-click menu job list. */
+  requestJobList() {
+    if (!this.ws || !this.connected) return false;
+    this.ws.send(JSON.stringify({ type: 'job_list', v: 1 }));
+    return true;
+  }
+
+  /** PROTOCOL §3 `cancel` — menu job cancel. scope `full`, because `gui`
+   *  only releases the input lock and would leave the job running. */
+  cancelJob(ref) {
+    if (!this.ws || !this.connected) return false;
+    this.ws.send(JSON.stringify({ type: 'cancel', v: 1, job: ref, scope: 'full' }));
+    return true;
   }
 
   getOrbState() {

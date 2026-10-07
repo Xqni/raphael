@@ -25,10 +25,12 @@ export const fragmentShader = `
     // monotonic falloff to zero at the limb — NO hard edge, no rim ring.
     float envelope = pow(facing, 1.6);               // sun falloff: bright heart -> soft haze edge
     float form = 0.35 + 0.7 * pow(diff, 1.25);       // directional shading keeps it a 3D sphere
-    float hot = pow(facing, 6.0) * 0.5;              // tight white-hot heart
+    float hot = pow(facing, 7.0) * 0.62;             // tight white-hot heart (§3.1: hottest centre)
 
     vec3 base = vec3(1.0);
-    base = mix(base, vec3(1.0, 0.94, 0.84), (1.0 - facing) * 0.3 + (1.0 - diff) * 0.18);
+    // §3.1: a FAINT WARM tint only at the very centre — it fades out fast so
+    // the middle reads white-hot while the rim picks up the state colour.
+    base = mix(base, vec3(1.0, 0.92, 0.80), pow(facing, 3.0) * 0.55);
     base = mix(base, color, 0.85 + 0.15 * (1.0 - facing * facing)); // state color dominates the WHOLE sun (error = red core; white states unaffected)
     float a = clamp((envelope * form + hot) * uBright * (1.0 + uAmp * 0.25), 0.0, 1.0);
     gl_FragColor = vec4(base * a, a);                // premultiplied; edge dissolves to zero
@@ -46,12 +48,15 @@ export const glowShader = `
     float r = length(p);
     float ang = atan(p.y, p.x);
     float R = 0.52;                                // must match the ball radius
-    // SUN CORONA haze (user): smooth MONOTONIC falloff from the center outward —
-    // no band/ring at R (that read as a flat 2D circle). This layer sits ON TOP
-    // of the sphere (plane z beyond the front pole) = white haze over a 3D star.
-    float corona = exp(-r * 2.6) * 0.55;
-    float star = pow(abs(cos(ang * 4.0)), 20.0) * exp(-r * 2.0) * 0.25;
-    float a = (corona + star) * uBright * (1.0 + uAmp * 0.3);
+    // §3.1 BLOOM: two exponentials — a tight halo plus a much wider skirt —
+    // so the falloff is smooth and edgeless all the way to the plane border.
+    float corona = exp(-r * 3.2) * 0.42;
+    float skirt  = exp(-r * 1.15) * 0.16;
+    // §3.1 DIFFRACTION: six thin spikes — four at 90 deg plus a horizontal
+    // lens-flare pair. Thin (high pow), long (slow exp), subtle.
+    float spikes = pow(abs(cos(ang * 4.0)), 44.0) * exp(-r * 1.5) * 0.30;
+    float flare  = pow(max(1.0 - abs(sin(ang)), 0.0), 120.0) * exp(-r * 1.9) * 0.12;
+    float a = (corona + skirt + spikes + flare) * uBright * (1.0 + uAmp * 0.3);
     a = clamp(a, 0.0, 1.0);
     float edge = smoothstep(1.28, 0.9, r);         // unit fade before plane edge
     vec3 tinted = mix(vec3(1.0), color, 0.8); // corona carries the state color (error = red GLOW)

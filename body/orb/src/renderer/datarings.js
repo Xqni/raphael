@@ -50,11 +50,11 @@ export function initDataRings(THREE, group) {
   const DR = { w: 0, root: new THREE.Group(), rings: [], barsDir: -0.00012 };
   group.add(DR.root);
 
-  const N_RINGS = 6;
+  const N_RINGS = 4;   // §3.3: fewer, cleaner rings (6 read as clutter)
   for (let i = 0; i < N_RINGS; i++) {
     const hue = i / N_RINGS;                       // prismatic sweep
     const color = new THREE.Color().setHSL(hue, 0.95, 0.6);
-    const r = 0.86 + i * 0.105;                    // 0.86 .. 1.385 (edge-safe)
+    const r = 0.80 + i * 0.145;                    // 0.80 .. 1.235 (inside content_px)
     const segs = [];
 
     // dashes along the circle with deterministic gaps
@@ -83,10 +83,19 @@ export function initDataRings(THREE, group) {
                 cx - s, cy + s, 0, cx - s, cy - s, 0);
     }
     const line = mkLine(THREE, DR.root, segs, color.getHex(), 1.3);
+    // USER FEEDBACK: "nothing should feel 2d" — the rings were all coplanar
+    // with the screen, so revolving read as a flat disc. Tilt each plane; the
+    // z-spin (its own speed + direction) is untouched.
+    // USER FEEDBACK: the ring stack read as "a disk around the sun and inner
+    // cage". Speaking's Answer Mode works because its bands are tilted hard
+    // enough to pass IN FRONT OF and BEHIND the core — same idea here, so the
+    // rings become orbits in depth instead of a flat plate.
+    line.ls.rotation.x = 0.85 - i * 0.16;
+    line.ls.rotation.y = (i % 2 ? 0.30 : -0.24) + i * 0.06;
     DR.rings.push({
       ls: line.ls, mat: line.mat,
       dir: (i % 2 ? -1 : 1) * (0.00016 + i * 0.00007), // own speed + direction
-      base: 0.85 - i * 0.05,
+      base: 1.25 - i * 0.07,   // §3.3: fewer rings, each carrying more weight
     });
   }
 
@@ -96,7 +105,7 @@ export function initDataRings(THREE, group) {
   for (let b = 0; b < BAR; b++) {
     if (((b * 5 + 1) % 7) < 2) continue;
     const a = (b / BAR) * Math.PI * 2;
-    const rr = 1.45;
+    const rr = 1.30;   // §3.6: keep the outermost layer inside 90% of content_px
     const halfLen = 0.017 + (((b * 13) % 5) / 5) * 0.028;
     const tx = -Math.sin(a), ty = Math.cos(a);   // tangent dir
     const rx = Math.cos(a), ry = Math.sin(a);    // radial dir
@@ -109,12 +118,24 @@ export function initDataRings(THREE, group) {
               p0x + rx * w2, p0y + ry * w2, 0, p0x - rx * w2, p0y - ry * w2, 0);
   }
   DR.bars = mkLine(THREE, DR.root, bars, 0xbfd4ff, 0.8);
+  DR.bars.ls.rotation.x = -0.62;  // same 3D treatment as the rings above
+  DR.bars.ls.rotation.y = 0.18;
   return DR;
 }
 
-// ctx = { t (s), dt (ms), state, amp, glide: {x, y} }
+// --- Pose lock (test hook, W2.1) --------------------------------------------
+export function lockDataRings(DR, state, opts = {}) {
+  DR.w = DR_STATES[state] || 0;
+  for (const R of DR.rings) R.ls.rotation.set(0, 0, 0);
+  DR.bars.ls.rotation.set(0, 0, 0);
+  DR.root.visible = DR.w > 0.005;
+  return DR;
+}
+
+// ctx = { t (s), dt (ms), state, amp, glide: {x, y}, lock }
 export function updateDataRings(DR, ctx) {
   const t = ctx.t, dt = Math.min(Math.max(ctx.dt, 1), 100), state = ctx.state;
+  const spinDt = ctx.lock ? 0 : dt; // pose-lock: damping runs, transforms don't
   DR.w = damp(DR.w, DR_STATES[state] || 0, DR_TAU, dt);
   const gx = ctx.glide ? ctx.glide.x : 0;
   const gy = ctx.glide ? ctx.glide.y : 0;
@@ -124,11 +145,11 @@ export function updateDataRings(DR, ctx) {
 
   const boost = 1 + (ctx.amp || 0) * 0.4;         // thinking brightness breathes
   for (const R of DR.rings) {
-    R.ls.rotation.z += R.dir * (0.5 + 0.5 * DR.w) * dt; // own speed + direction
+    R.ls.rotation.z += R.dir * (0.5 + 0.5 * DR.w) * spinDt; // own speed + direction
     R.mat.uniforms.uTime.value = t;
     R.mat.uniforms.uAlpha.value = R.base * DR.w * boost;
   }
-  DR.bars.ls.rotation.z += DR.barsDir * dt;
+  DR.bars.ls.rotation.z += DR.barsDir * spinDt;
   DR.bars.mat.uniforms.uTime.value = t;
-  DR.bars.mat.uniforms.uAlpha.value = 0.8 * DR.w * boost;
+  DR.bars.mat.uniforms.uAlpha.value = 1.05 * DR.w * boost;
 }

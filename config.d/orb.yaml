@@ -1,0 +1,46 @@
+# config.d/orb.yaml — orb lane fragment (OWNERSHIP: config.d/<lane>.yaml)
+# Deep-merged over config.yaml by brain-core's loader (INTERFACES §c); the orb
+# renderer reads the same keys through body/orb/src/main/config.js.
+# ONLY lane-owned/new keys live here — never restate the integrator's base
+# config.yaml values (that would silently override them for everyone).
+
+orb:
+  # USER FEEDBACK (2026-10-06): the spec §4 legibility backing read as "a black
+  # haze around the sun in the center which shouldn't be". It is a black radial
+  # disc behind everything — invisible on dark wallpaper, a grey smudge on
+  # light — so it is OFF. The orb's own glow is what keeps it readable now.
+  # (0 disables it per ORB_REBUILD §4; raise it again only if a review says
+  # the white lines are unreadable over a bright window.)
+  backing_disc_alpha: 0.0
+  # Design system hook for Raphael -> Ciel (docs/orb/THEMES.md).
+  #   raphael | ciel | custom   — `ciel` is currently an alias of `raphael`, so a
+  #   later Ciel reskin is a config/theme-file change, not a renderer rewrite.
+  #   `custom` reads the token block below.
+  theme: raphael
+  # Colour richness of the haze/glyph palette. Range 0.8-1.5; 1.0 = untouched.
+  # Spec §3.7: "raise saturation and richness toward the reference haze".
+  vibrance: 1.15
+  # Velocity-gated cheap motion blur (spec §2 of the fidelity pass).
+  #   auto = on above the velocity threshold, off whenever calm; off = never;
+  #   low|high = force a tier. `reduced_motion: true` always wins and disables it.
+  motion_blur: auto
+  startup:
+    # Spin-down time constant for the starting -> idle hand-off: omega relaxes
+    # to the rest spin as omega(t) = rest + (start - rest) * exp(-t / tau).
+    # ~1400 ms puts the tail below perception at ~3 s. See docs/orb/STARTUP.md.
+    spin_tau_ms: 1400
+  # Reserved for the future evolution moment (docs/orb/THEMES.md §"evolve_stage").
+  # NOT read by the renderer today — documented, deliberately inert.
+  # evolve_stage is carried on the orb_state frame, not in config.
+
+  # Palette tokens used when `orb.theme: custom` (all optional; the defaults are
+  # the Raphael palette, so `custom` without edits renders identically to it).
+  custom_theme:
+    core_tint: "#FFFFFF"
+    haze_lime: "#B8E02A"
+    haze_teal: "#2DD4BF"
+    haze_blue: "#3B82F6"
+    haze_magenta: "#C026D3"
+    ring_color: "#FFFFFF"
+    glyph_color: "#FFB000"
+    accent: "#2DD4BF"

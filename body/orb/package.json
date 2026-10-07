@@ -8,7 +8,12 @@
     "start": "MESA_LOADER_DRIVER_OVERRIDE=d3d12 GALLIUM_DRIVER=d3d12 electron . --no-sandbox --disable-gpu-sandbox --ignore-gpu-blocklist",
     "start:demo": "MESA_LOADER_DRIVER_OVERRIDE=d3d12 GALLIUM_DRIVER=d3d12 electron . --demo --no-sandbox --disable-gpu-sandbox --ignore-gpu-blocklist",
     "lint": "echo 'lint not configured'",
-    "orb:demo": "MESA_LOADER_DRIVER_OVERRIDE=d3d12 GALLIUM_DRIVER=d3d12 electron . --demo --remote-debugging-port=9333 --no-sandbox --disable-gpu-sandbox --ignore-gpu-blocklist"
+    "test": "node tests/state-machine.test.js && node test/orb-diff.cjs",
+    "test:unit": "node tests/state-machine.test.js",
+    "orb:demo": "node test/run-demo.cjs",
+    "orb:trace": "node test/orb-trace.cjs",
+    "orb:diff": "node test/orb-diff.cjs",
+    "orb:size": "node test/orb-size.cjs"
   },
   "dependencies": {
     "electron": "30.5.1",
