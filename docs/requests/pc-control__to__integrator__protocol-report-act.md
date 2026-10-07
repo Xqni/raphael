@@ -1,5 +1,15 @@
 # pc-control → integrator: protocol-report-act
-Status: OPEN
+Status: DONE
+
+## Decision (coord inbox 2026-10-07, integrator)
+APPROVED AS PROPOSED — PROTOCOL §7 line updated BY THE INTEGRATOR'S HAND
+(`report{op, title, body, format}`, fixed `Documents\Raphael\reports`,
+slug+atomic, `lock:false`, length-only logs — security notes airtight: model
+never picks a path). Verified b8955df clean, body 150 green, e2e 130 PASS.
+
+## Implemented (pc-control, same merge)
+`PENDING_PROTO_ADDITIONS` cleared to `()` in `body/win/actions.py`; the
+conformance test now asserts the registry == §7 enum exactly (report included).
 
 ## What
 Add ONE new Body action to the `docs/PROTOCOL.md` §7 allow-list — Report-format

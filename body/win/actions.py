@@ -49,8 +49,9 @@ LOG_MAX_BYTES = 5 * 1024 * 1024  # rotate the action log (1 backup)
 # conformance test).
 # 2026-10-06: list_windows / foreground_info / list_running_apps landed via
 # protocol-act-req-enum.md (pending set emptied).
-# 2026-10-07: `report` pending via protocol-report-act.md (Wave-5 delivery act).
-PENDING_PROTO_ADDITIONS = ('report',)
+# 2026-10-07: `report` landed via protocol-report-act.md (APPROVED AS
+# PROPOSED, integrator edited §7 by hand) — pending set empty again.
+PENDING_PROTO_ADDITIONS = ()
 
 
 class ActionError(Exception):
