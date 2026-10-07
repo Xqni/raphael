@@ -518,3 +518,7 @@ live_e2e=false) when wanted.
   ahead of unstarted router — recorded in merge msg + exceptions file; evolution shadow
   runs UNBLOCKED). CI fix: test_hardening bare-module import (qa pattern missed file) —
   exact CI step 738 green, pushed c60c23c.
+- Wave-5 rolling: router Analysis routing (e80c8fd) + answer/report emitters + PROTOCOL §3
+  hand-edit (239eb90/a4b1565, atomic conformance whitelist pair) + loader-authority-guard
+  (security, qa request → brain-core decision/implementation → merged) all landed.
+  Queued: infra@7, evolution@10; qa (whitelist rebase + wave_done) next.
