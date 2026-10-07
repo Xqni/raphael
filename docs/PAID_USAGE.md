@@ -21,3 +21,12 @@ Rules: paid Zen models + Go models beyond the Go limits both draw on the same **
 - Task: brain /ws + loop + confirm build. Free models failed 3x on this task (gpt-oss:120b-cloud tool-hallucination x2 + fabricated test output; mimo-v2.6-flash-free rate-limited) → escalation rule 0→1 applied.
 - Dispatch: brain-dev phase 2 on `opencode-go/mimo-v2.5` (Tier-1 default), background.
 - Precedent: earlier free dispatches (gpt-oss:120b-cloud) built body-win phase 1+2 and brain phase 1 at $0.
+
+## 2026-10-06 — USER-APPROVED vision-only paid slot
+- **Approval (verbatim):** "you can use the opencode go paid models please for vision for now at least"
+  (conversation, 2026-10-06 ~22:25) = human sign-off per AGENT_RULES §7.
+- **Scope:** vision purpose ONLY (`providers.allow_vision_paid: true`); chat/tools/STT stay on the
+  free chain (`allow_go_runtime: false`, `allow_paid_runtime: false` unchanged).
+- **Model:** Go-tier vision (discovered id `opencode-go/deepseek-v4-flash-vision-exp`).
+- **Cap:** `vision_paid_daily_cap_usd: 1.00` — router enforces daily; exceed -> E_OFFLINE + attention.
+- Implementation: router lane (brain/router/**); gate = config.yaml (integrator).

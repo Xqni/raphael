@@ -15,6 +15,9 @@ providers:
   groq_base_url: https://api.groq.com/openai/v1   # OpenAI-compatible; GROQ_API_KEY from .env — never logged
   allow_go_runtime: false                # user directive: off by default (bills Zen balance past Go limits)
   allow_paid_runtime: false              # paid Zen models never used by Raphael's runtime unless enabled
+  allow_vision_paid: true                # USER APPROVAL 2026-10-06 ("use the opencode go paid models for vision for now")
+                                        #   -> VISION PURPOSE ONLY; chat/tools/STT remain free-chain. Owner: router lane.
+  vision_paid_daily_cap_usd: 1.00        # hard stop: exceed -> vision() refuses E_OFFLINE + coord attention
   allow_free_models_for_personal_data: false   # personal/sensitive-flagged → local model only
   zen_base_url: https://opencode.ai/zen/v1
   go_base_url: https://opencode.ai/zen/go/v1

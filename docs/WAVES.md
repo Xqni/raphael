@@ -26,13 +26,12 @@ Cloud provider chain + tool calling; conversational loop with persona; orb state
 
 1. "Open YouTube and search lo-fi" works by voice **and** by text.
 2. A free-form question gets a real cloud answer in her voice.
-3. "What am I looking at" returns a real vision answer. **— DECIDED 2026-10-06: DEFERRED to
-   Wave 6 (local vision) as a known gap** (user's blanket "go ahead with whatever needs to
-   be done" = the no-spend path; verified facts: no free vision-capable model exists — Groq 11
-   models none vision, Zen 88/14-free none vision, Zen's only vision id is PAID).
-   `router.vision()` keeps refusing `E_OFFLINE/no_model` until then. Reopens ONLY if the user
-   says "approve vision spend" (one spend-capped slot) or Wave 6 arrives
-   (detail: docs/requests/router__to__integrator__vision-free-model-gap.md, branch agent/router).
+3. "What am I looking at" returns a real vision answer. **— REOPENED 2026-10-06: user approved
+   a spend-capped VISION-ONLY paid slot ("use the opencode go paid models for vision for now").
+   Chain: groq -> zen free -> Go-tier vision model (discovered: `opencode-go/deepseek-v4-flash-vision-exp`),
+   gated by `providers.allow_vision_paid: true` + `vision_paid_daily_cap_usd: 1.00`; chat/tools stay
+   free-only. Falls back to E_OFFLINE/no_model if the slot is exhausted or disabled (previous known-gap
+   text lives in docs/requests/router__to__integrator__vision-free-model-gap.md, branch agent/router).
 4. Per-state orb screenshots prove distinct visuals.
 5. Pause / private / kill all work.
 6. Full mock test suite green.
