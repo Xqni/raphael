@@ -400,3 +400,6 @@ land, the integrator re-runs the full six-criterion live gate for `wave-2-gate`.
   DEFERRED). qa nudged (conformance whitelist), orb/infra nudged (optional render).
   pc-control Bug B body half verified (85/85) → next: wave_done (merge pos 3).
   tools-memory woken with brain-core's conversation-hook request.
+- **pc-control merged (wave 3)** — Bug B body half lands: no-console spawns, act_res
+  always answered, stage-count errors, 17 tools schema-offered. Merge order: router ✓,
+  brain-core ✓ (follow-up goal 3 in progress), pc-control ✓ → voice next.
