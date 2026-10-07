@@ -20,7 +20,8 @@ def test_kill_shell_uses_proper_pidfile_plus_legacy_fallback():
 def test_kill_shell_instance_paths():
     shell = sup._kill_brain_shell({"instance": "voice"})
     assert "~/.raphael/voice/brain.pid" in shell
-    assert "/tmp/raphael-brain_voice.pid" in shell
+    # lanes never touch /tmp (§d — config.legacy_pidfile() is main-only)
+    assert "/tmp/raphael-brain_voice.pid" not in shell
     assert "raphael_body" not in shell             # never touches body locks
 
 

@@ -1,5 +1,14 @@
 # infra → brain-core: pidfile-location
-Status: OPEN
+Status: DONE   (SUPERSEDED — decision recorded by requester from coord bus 2026-10-06)
+
+## Decision (coord bus, integrator/brain-core, 2026-10-06)
+
+SUPERSEDED / fulfilled differently: brain-core's `app.py` already writes
+`config.pidfile()` (`<data-dir>/brain.pid`) plus the legacy `/tmp` dual-write
+for `main` — so supervisor and brain resolve the same path without the
+proposed env-var plumbing. INTERFACES §d now names `brain/config.py::pidfile()`
+as the single source. This lane mirrored that source (WSL-side spelling,
+parity-tested in `supervisor/tests/test_pc_control_requests.py`).
 
 ## What
 

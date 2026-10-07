@@ -49,6 +49,58 @@ def test_mutex_never_raises_on_invalid_env(monkeypatch):
     assert name.startswith("Raphael_Supervisor")
 
 
+def test_mutex_matches_brain_config_derivation(monkeypatch):
+    """§d names brain/config.py as the derivation source — all three
+    derivations (brain.config, body/win, supervisor mirror) must agree."""
+    try:
+        from brain import config as bcfg
+    except Exception:      # noqa: BLE001
+        pytest.skip("brain/config.py not importable in this env")
+    for name in ("main", "router", "infra", "qa-security",
+                 "evolution-persona"):
+        if name == "main":
+            monkeypatch.delenv("RAPHAEL_INSTANCE", raising=False)
+        else:
+            monkeypatch.setenv("RAPHAEL_INSTANCE", name)
+        assert sup.inst_mod.mutex_name() == bcfg.supervisor_mutex_name()
+        assert sup.inst_mod.body_lock_name() == bcfg.body_lock_name()
+        shared = _shared_mutex_fn()
+        if shared is not None:
+            assert shared() == bcfg.supervisor_mutex_name()
+
+
+def test_pidfile_parity_with_brain_config(monkeypatch):
+    """Structural parity: supervisor's WSL-side mirror must resolve to the
+    SAME files brain/config.py::pidfile()/legacy_pidfile() name (§d single
+    source), modulo home spelling (tilde vs Path.home())."""
+    from pathlib import Path
+    try:
+        from brain import config as bcfg
+    except Exception:      # noqa: BLE001
+        pytest.skip("brain/config.py not importable in this env")
+    home_root = Path.home() / ".raphael"
+    for name in ("main", "router", "brain-core", "pc-control", "voice",
+                 "computer-use", "orb", "infra", "qa-security",
+                 "tools-memory", "evolution-persona"):
+        if name == "main":
+            monkeypatch.delenv("RAPHAEL_INSTANCE", raising=False)
+        else:
+            monkeypatch.setenv("RAPHAEL_INSTANCE", name)
+        their_new = bcfg.pidfile()
+        assert their_new.is_absolute()
+        rel = their_new.relative_to(home_root)      # brain.pid | <lane>/brain.pid
+        mine = sup.inst_mod.wsl_pidfiles(name)
+        assert mine[0] == "~/.raphael/%s" % rel
+        their_legacy = bcfg.legacy_pidfile()
+        if name == "main":
+            assert their_legacy is not None
+            assert len(mine) == 2
+            assert mine[1] == str(their_legacy)
+        else:
+            assert their_legacy is None             # lanes never touch /tmp
+            assert len(mine) == 1
+
+
 def test_child_env_merges_and_never_unsets(monkeypatch):
     monkeypatch.setenv("RAPHAEL_INSTANCE", "infra")
     merged = sup._child_env({"FOO": "1"})

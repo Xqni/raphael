@@ -1,5 +1,21 @@
 # infra → integrator: pidfile-location
-Status: OPEN
+Status: DONE   (decision recorded by requester from coord bus 2026-10-06)
+
+## Decision (coord bus, integrator, 2026-10-06)
+
+APPROVED and APPLIED on main: INTERFACES §d brain-pidfile column now reads
+main → `~/.raphael/brain.pid` (legacy `/tmp` kept as read/remove fallback),
+lanes → `~/.raphael/<instance>/brain.pid`; the format note names
+`brain/config.py::pidfile()` as the single source and lists the
+Windows-side extras (`run/supervisor[_<lane>].pid`,
+`logs/<name>[_<lane>].log`). Doc sweep (README kill one-liner,
+TROUBLESHOOTING pid rows, ARCHITECTURE topology, tests/e2e_wave2.py) queued
+with integrator/qa-security — not blocking.
+
+Implemented on this branch in response: supervisor mirrors the source with
+WSL-side spelling (parity test-bound in `test_pidfile_parity_with_brain_config`),
+and lane instances now drop the legacy `/tmp` path entirely
+(`wsl_pidfiles()` = data-dir only for lanes — "lanes never touch /tmp").
 
 ## What
 

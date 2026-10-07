@@ -582,12 +582,12 @@ def systemctl_action(cfg, log, verb, unit, timeout=60):
 def _kill_brain_shell(cfg):
     """POSIX sh: cmdline-verified SIGTERM of the process-mode brain.
 
-    Reads the derived pidfile FIRST (~/.raphael[/instance]/brain.pid, the
-    proper location) and the legacy /tmp/raphael-brain*.pid as fallback
-    (brain/app.py still writes it — see docs/requests/infra__to__brain-core
-    __pidfile-location.md). Never broad `pkill -f`: the target's /proc
-    cmdline must actually be uvicorn brain.app before any kill.
-    Exits 0 iff a kill was issued.
+    Reads every path from instance.wsl_pidfiles() — the derived
+    `<data-dir>/brain.pid` first (single source per INTERFACES §d =
+    brain/config.py::pidfile()), plus the legacy /tmp path for `main`
+    only (dual-write compat; lanes never touch /tmp). Never broad
+    `pkill -f`: the target's /proc cmdline must actually be uvicorn
+    brain.app before any kill. Exits 0 iff a kill was issued.
     """
     inst = cfg.get("instance") or inst_mod.instance_name()
     pidfiles = " ".join(inst_mod.wsl_pidfiles(inst))   # tilde-safe: sanitized

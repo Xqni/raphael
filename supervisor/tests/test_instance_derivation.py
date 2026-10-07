@@ -23,8 +23,7 @@ def test_instance_derivation_matches_interface_table(monkeypatch):
     monkeypatch.setenv("RAPHAEL_INSTANCE", "infra")
     assert im.instance_port() == 8907
     assert im.mutex_name() == "Raphael_Supervisor_infra"
-    assert im.wsl_pidfiles() == ["~/.raphael/infra/brain.pid",
-                                 "/tmp/raphael-brain_infra.pid"]
+    assert im.wsl_pidfiles() == ["~/.raphael/infra/brain.pid"]   # lanes: no /tmp (§d)
     assert im.body_lock_name() == "raphael_body_infra.lock"
     assert im.health_url() == "http://127.0.0.1:8907/health"
     assert im.supervisor_pidfile().name == "supervisor_infra.pid"

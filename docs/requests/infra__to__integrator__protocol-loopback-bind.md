@@ -1,5 +1,18 @@
 # infra → integrator: protocol-loopback-bind
-Status: OPEN
+Status: DONE   (decision recorded by requester from coord bus 2026-10-06)
+
+## Decision (coord bus, integrator, 2026-10-06)
+
+APPROVED and APPLIED on main:
+- PROTOCOL §1 Bind row: `127.0.0.1:8765` in BOTH networking modes (supervisor
+  relay, optional narrow Hyper-V rule, mirrored native loopback;
+  `RAPHAEL_BIND` = explicit escape hatch).
+- WSL-IP-churn row: live-WSL-IP retry fallback REMOVED, replaced with
+  "direct VM-IP must fail by design".
+- `config.yaml server.host` → `127.0.0.1` with a NETWORK-SECURITY.md
+  comment (grep confirmed no code reads the key).
+- Note: main's `brain/run.py` keeps NAT → 0.0.0.0 until agent/infra merges —
+  the loopback default lands with this branch (keep as-is, per decision).
 
 ## What
 

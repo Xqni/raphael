@@ -1,6 +1,6 @@
 # infra — status
 
-Updated: 2026-10-06 (Wave 2 COMPLETE — handoff below, AGENT_RULES §11)
+Updated: 2026-10-06 (Wave 2 complete + coord-bus follow-ups; awaiting merge slot, AGENT_RULES §11/§13)
 
 ## Done (Wave 2 — all tasks, commits `0451dba..737e216` on `agent/infra`)
 
@@ -64,13 +64,34 @@ Updated: 2026-10-06 (Wave 2 COMPLETE — handoff below, AGENT_RULES §11)
    override; explicit python path in `body_cmd` respected), selfcheck row
    `body venv` (WARN until installed).
 
+## Coord-bus follow-ups (2026-10-06, after wave_done verification)
+
+8. **Approved pc-control request implemented** (bus msg 5): supervisor
+   mutex REUSES `body/win/instance.py::supervisor_mutex()` (mirror fallback
+   keeps the logon entry point alive); `_child_env()` merge guarantees
+   `RAPHAEL_INSTANCE` is never unset; `launch_body`/`launch_brain`/
+   `launch_orb` all carry the `RAPHAEL_INSTANCE + RAPHAEL_PORT +
+   RAPHAEL_TOKEN_PATH` triple (WSL side existence-picked, instance token
+   first).
+9. **Pidfile source adopted** (bus msg 2): `wsl_pidfiles()` now mirrors
+   `brain/config.py::pidfile()` as the §d single source — structural
+   parity test-bound vs `bcfg.pidfile()/legacy_pidfile()`; **lane instances
+   dropped the legacy `/tmp` path entirely** ("lanes never touch /tmp",
+   main keeps its dual-read fallback).
+10. **Rebased onto merged main twice** (rule 4) — router/brain-core/
+    pc-control/voice landed clean, zero conflicts; brain-suite tool-registry
+    flake from the pre-follow-up tree resolved by main's dfcc5a8
+    follow-up merge (227 green).
+11. **All 4 request files recorded** with their bus decisions (Status:
+    DONE ×3, ACCEPTED ×1).
+
 ## Blocked
 
-- Nothing. Four cross-lane requests are OPEN (they don't block this lane):
-  `docs/requests/infra__to__integrator__protocol-loopback-bind.md`,
-  `infra__to__integrator__pidfile-location.md`,
-  `infra__to__brain-core__pidfile-location.md`,
-  `infra__to__qa-security__ci-supervisor-tests.md`.
+- Nothing. Requests resolved: `protocol-loopback-bind` DONE,
+  `pidfile-location` (integrator) DONE, `pidfile-location` (brain-core)
+  DONE/SUPERSEDED, `ci-supervisor-tests` ACCEPTED (qa-security implements).
+- Waiting only for the merge slot (merge order: … → orb → **infra** →
+  qa-security; voice merged, computer-use + orb ahead) / `wave_open`.
 
 ## Test output (real runs only — 2026-10-06)
 
@@ -92,14 +113,26 @@ Updated: 2026-10-06 (Wave 2 COMPLETE — handoff below, AGENT_RULES §11)
 - NOT run (by design): no live stack start, no elevated command, no
   Task Scheduler / `.wslconfig` change, no scheduled-task re-enable.
 
+### Post-follow-up re-runs (2026-10-06, branch rebased onto merged main)
+
+- `tests/.venv/bin/python -m pytest tests supervisor/tests body -q` → **154 passed**
+  (10 root + 66 supervisor/CLI + 78 pc body; mutex + pidfile parity vs
+  `brain/config.py` and `body/win/instance.py` ACTIVE and green)
+- `cd brain && ./.venv/bin/pytest -q` → **227 passed** (brain-core suite
+  on the rebased tree; the transient 2-fail window pre-dated main's
+  dfcc5a8 tool-discovery follow-up)
+- `python3 supervisor/main.py --selfcheck` → exit 0 · `scripts/secret-scan.sh` → exit 0
+
 ## Next
 
-- **STOP at the wave gate** (AGENT_RULES §11): Wave 3+ starts only when
-  the integrator bumps `docs/WAVES.md current_wave`. Wave 3 note for the
-  handoff: supervisor log rotation (5 MB × 3) already exists and is
-  selfcheck-verified — Wave 3 extends rotation to brain/body/orb logs and
-  adds crash reports with last-known state (`/status` snapshot +
-  supervisor's `procs`/backoff state at the moment of death).
+- **WAIT for the merge slot / `wave_open`** (coord handoff 2026-10-06):
+  merge order is … → orb → **infra** → qa-security; voice already merged,
+  computer-use + orb ahead. Do not start Wave 3 until WAVES.md bumps
+  (AGENT_RULES §11).
+- Wave 3 note for the handoff: supervisor log rotation (5 MB × 3) already
+  exists and is selfcheck-verified — Wave 3 extends rotation to
+  brain/body/orb logs and adds crash reports with last-known state
+  (`/status` snapshot + supervisor's `procs`/backoff state at death).
 - Merge-order position: infra merges after `orb`, before `qa-security`
   (WAVES.md). Rebase on latest main at merge time; no conflicts expected
   (only my own paths + docs/requests/* + docs/{lanes,status}/infra.md edited).

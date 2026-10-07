@@ -143,17 +143,32 @@ def wsl_data_dir(inst=None) -> str:
 
 
 def wsl_pidfiles(inst=None):
-    """[new proper path, legacy /tmp path] — always both, new first.
+    """[new proper path] (+ legacy /tmp path for `main` only).
 
-    supervisor writes the new path at spawn; brain/app.py still writes the
-    legacy one until brain-core adopts the request. Recycle code reads both
-    (cmdline-verified) and removes both.
+    SINGLE SOURCE per INTERFACES §d (integrator decision 2026-10-06):
+    `brain/config.py::pidfile()` = `<data-dir>/brain.pid`; the legacy
+    `/tmp/raphael-brain.pid` dual-write is kept for `main` only — **lanes
+    never touch /tmp** (§d), so lane instances get exactly one path here.
+    This is a structural MIRROR of config.pidfile() with WSL-side spelling:
+    the supervisor may run on Windows where Path.home()/RAPHAEL_HOME resolve
+    to the *Windows* home, but these strings only ever reach a sh that runs
+    INSIDE WSL — `~` is the only home spelling correct there. Parity
+    (structure under the default home) is test-bound in
+    supervisor/tests/test_pc_control_requests.py.
+
+    Known divergence (safe): the `RAPHAEL_HOME` override honored by
+    config.data_dir() is NOT mirrored — if it is ever set, the cmdline-
+    verified kill simply misses and the guarded pgrep fallback takes over
+    (kill shell in supervisor/main.py).
+
+    supervisor writes the new path at spawn; brain/app.py writes the same
+    path (config.pidfile()) plus the legacy one for main — recycle code
+    reads every returned path (cmdline-verified) and removes them all.
     """
     inst = inst or instance_name()
     if inst == "main":
         return [MAIN_WSL_PIDFILE, LEGACY_WSL_PIDFILE]
-    return ["~/.raphael/%s/brain.pid" % inst,
-            "/tmp/raphael-brain_%s.pid" % inst]
+    return ["~/.raphael/%s/brain.pid" % inst]
 
 
 def body_lock_name(inst=None) -> str:

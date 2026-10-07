@@ -1,5 +1,15 @@
 # infra → qa-security: ci-supervisor-tests
-Status: OPEN
+Status: ACCEPTED   (decision recorded by requester from coord bus 2026-10-06)
+
+## Decision (coord bus, integrator→qa-security, 2026-10-06)
+
+APPROVED — qa-security told (in their inbox) to include `supervisor/tests`
+in the root/CI command:
+`tests/.venv/bin/python -m pytest -q tests supervisor/tests`
+(66 lane tests / 154 combined with `tests/` + `body/` as of 2026-10-06
+post-rebase), and to consider superseding the `tests/supervisor` relay mocks
+with `supervisor/tests/test_relay_bind.py` coverage. Awaiting their CI
+implementation (their lane).
 
 ## What
 
