@@ -285,3 +285,28 @@ async def test_module_facade_helpers_wired(tmp_path) -> None:
     assert out["provider"] == "mock"
     with pytest.raises(RouterError):
         await router.chat([], purpose="tool")
+
+
+def test_speed_mandate_fast_hint_and_never_models_denied() -> None:
+    """Speed mandate (BUGS-WAVE2/PAID_USAGE 2026-10-07): flash-class/mimo get
+    the fast slot, and MODEL_POLICY 'never' models (grok 2/6, kimi 3/15) are
+    unreachable for chat/vision even if a paid chain is enabled."""
+    from brain.router.roles import ModelInfo, pick
+
+    go_models = [
+        ModelInfo("opencode-go/gpt-6-sol", "go"),
+        ModelInfo("opencode-go/mimo-v2.5", "go"),
+        ModelInfo("opencode-go/grok-4.7", "go"),
+        ModelInfo("opencode-go/kimi-k3", "go"),
+    ]
+    fast = pick(go_models, "fast")
+    assert fast is not None
+    assert fast.id == "opencode-go/mimo-v2.5"        # fast hint beats length fallback
+
+    only_never = [ModelInfo("opencode-go/grok-4.7", "go"),
+                  ModelInfo("opencode-go/kimi-k3", "go")]
+    assert pick(only_never, "fast") is None          # denied → no selection
+    assert pick(only_never, "vision") is None        # denied for vision too
+
+    # deny never blocks a normal model
+    assert pick([ModelInfo("allam-2-7b", "groq")], "fast").id == "allam-2-7b"

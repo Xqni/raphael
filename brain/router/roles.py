@@ -19,7 +19,8 @@ ROLES = ("fast", "strong", "vision", "stt")
 # on 2026-10-06 (Groq 11 models, Zen 88 models) — hints, never exact IDs.
 DEFAULT_ROLE_HINTS: dict[str, list[str]] = {
     "fast": ["instant", "flash", "small", "tiny", "lite", "mini",
-             "1b", "1.7b", "3b", "4b", "7b", "8b"],
+             "1b", "1.7b", "3b", "4b", "7b", "8b",
+             "mimo"],   # speed mandate 2026-10-07: mimo-v2.5/flash-class defaults
     "strong": ["large", "plus", "pro", "max", "ultra", "9b", "12b", "24b",
                "27b", "32b", "70b", "90b", "120b"],
     "vision": ["vision", "llava", "multimodal", "-vl", "vl-", "maverick",
@@ -33,6 +34,9 @@ DEFAULT_ROLE_HINTS: dict[str, list[str]] = {
 DEFAULT_DENY_HINTS: list[str] = [
     "prompt-guard", "safeguard", "guard", "orpheus", "tts",
     "embed", "moderation", "rerank", "whisper",
+    # MODEL_POLICY "never" (2/6 and 3/15 USD) — cost hygiene stays in force
+    # under the broad paid approval (docs/PAID_USAGE.md 2026-10-07)
+    "grok", "kimi",
 ]
 
 # purpose (INTERFACES §a) → role. Usage tag only, but it picks the slot.
