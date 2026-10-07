@@ -96,9 +96,31 @@ def _owner_of(rel: str, lanes: dict) -> tuple:
     return best, matched
 
 
+EXCEPTIONS_PATH = Path(__file__).resolve().parent / 'ownership_exceptions.txt'
+
+
+def load_exceptions() -> dict:
+    """Lane-owned, assignment-backed exceptions: {path: sanctioned_lane}.
+    The integrator reviews this file at merge (never a silent bypass)."""
+    out: dict = {}
+    if not EXCEPTIONS_PATH.exists():
+        return out
+    for line in EXCEPTIONS_PATH.read_text(encoding='utf-8').splitlines():
+        line = line.strip()
+        if not line or line.startswith('#'):
+            continue
+        entry = line.split('#', 1)[0].split()
+        if len(entry) >= 2 and entry[1].startswith('='):
+            out[entry[0]] = entry[1][1:]
+    return out
+
+
 def check_file(rel: str, lane: str, lanes: dict) -> str | None:
     """-> violation reason or None if allowed."""
     rel = rel[2:] if rel.startswith('./') else rel
+    exc = load_exceptions()
+    if exc.get(rel) == lane:
+        return None                      # sanctioned by documented assignment
     # universal write allowances
     if rel.startswith('docs/requests/'):
         return None

@@ -77,6 +77,26 @@ def test_lanes_cannot_edit_others_files(path, lane):
     assert reason is not None, f'{lane} must NOT be allowed to edit {path}'
 
 
+def test_assignment_exceptions_are_scoped_and_documented():
+    """Sanctioned out-of-lane edits live in tests/ownership_exceptions.txt
+    (lane-owned, assignment-backed, integrator-reviewed at merge) — the
+    checker never bypasses silently."""
+    from ownership_check import load_exceptions
+    exc = load_exceptions()
+    # the registry-pollution fix (coord inbox [18]) is the founding entry
+    assert exc.get('brain/tools/computer_use/tests/test_runner.py') == \
+        'qa-security', exc
+    # only the sanctioned lane passes; the owner lane is unaffected either way
+    rel = 'brain/tools/computer_use/tests/test_runner.py'
+    assert check_file(rel, 'qa-security', LANES) is None
+    # a DIFFERENT lane is still blocked even for an excepted path
+    reason = check_file(rel, 'router', LANES)
+    assert reason is not None and 'computer-use' in reason, reason
+    # unknown paths are never covered by the exception
+    assert check_file('brain/tools/computer_use/tests/other.py',
+                      'qa-security', LANES) is not None
+
+
 def test_integrator_may_touch_anything():
     for path in ('tests/anything.py', 'brain/loop.py', 'body/win/main.py',
                  'docs/PROTOCOL.md'):

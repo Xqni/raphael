@@ -1,0 +1,8 @@
+# qa-security ownership exceptions — files this lane touched OUTSIDE its
+# OWNERSHIP.md paths under an explicit assignment (AGENT_RULES §2 decision).
+# Format: <path> =<lane>   # <date> <assignment reference>: <reason>
+# The integrator reviews this file at merge; remove entries once merged/
+# superseded. NEVER add an entry without a coord decision backing it.
+brain/tools/computer_use/tests/__init__.py =qa-security  # 2026-10-07 inbox [18] "fix the tests; registry untouched": package marker caused the tools.* double-import registry pollution (removed)
+brain/tools/computer_use/tests/test_runner.py =qa-security  # 2026-10-07 inbox [18]: try/except harness import after the __init__ removal
+brain/tools/computer_use/tests/test_see_screen.py =qa-security  # 2026-10-07 inbox [18]: try/except harness import after the __init__ removal
