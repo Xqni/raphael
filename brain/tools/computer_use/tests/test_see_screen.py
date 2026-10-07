@@ -5,8 +5,12 @@ import asyncio
 import brain.tools.computer_use as cu
 from brain.tools.computer_use import wiring
 
-from .harness import (CHANGED_TREE, DEFAULT_TREE, ScriptedChat,
-                      ScriptedGateway, final_reply, action_reply)
+try:
+    from .harness import (CHANGED_TREE, DEFAULT_TREE, ScriptedChat,
+                          ScriptedGateway, final_reply, action_reply)
+except ImportError:  # bare-module collection (no tests/__init__.py)
+    from harness import (CHANGED_TREE, DEFAULT_TREE, ScriptedChat,
+                          ScriptedGateway, final_reply, action_reply)
 from brain.vision.config import VisionConfig
 from brain.vision.image import make_jpeg
 

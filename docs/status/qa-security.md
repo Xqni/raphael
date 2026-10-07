@@ -2,7 +2,7 @@
 
 Updated: 2026-10-07 (Wave 3 open; CI ownership fix done)
 
-## Wave 3 (current — docs/WAVES.md current_wave: 3)
+## Waves 3–4 (docs/WAVES.md current_wave: 4 since 2026-10-07; wave-3 gate PASSED)
 
 - **DONE 2026-10-07 (urgent):** CI ownership self-check un-hardcoded
   (`.github/workflows/ci.yml`, commit 67e64f3 — cherry-picked to main as
@@ -33,6 +33,26 @@ Updated: 2026-10-07 (Wave 3 open; CI ownership fix done)
 - Also on latest main: infra's ollama-profile-gate tripwires promoted to
   strict (both landed); Wave-2 work confirmed merged (this branch now sits
   on 048b0c1).
+- **DONE 2026-10-07: registry-pollution flake (infra evidence, assigned) —
+  ROOT-CAUSED + FIXED.** Full `pytest brain` had 2 order-dependent failures
+  in `brain/memory/tests` (identity asserts vs the tool registry), isolated
+  memory 116/116 green.
+  **Root cause:** `brain/` has no `__init__.py` while
+  `brain/tools/computer_use/tests/__init__.py` exists → pytest (prepend
+  mode) walked up to `brain/`, put it on `sys.path`, and imported the whole
+  tools tree a SECOND time as top-level `tools.*` (registered `tools.shell`
+  fns into the registry) — memory tests then compared `brain.tools.shell`
+  against `tools.shell` = two distinct function objects. Bisected with a
+  temp state plugin (collection-finish hook): polluter =
+  computer_use/tests collection alone.
+  **Fix (test files only, registry untouched):** removed
+  `brain/tools/computer_use/tests/__init__.py` + converted the two
+  `from .harness import` to try-relative/except-bare (repo's own pattern).
+  Full brain now **572 passed, 12 skipped, 0 failed — twice in a row**;
+  my suite 279/9 unaffected.
+  NOTE: computer-use-owned test files changed under the explicit
+  assignment ("fix the tests; don't edit the registry") — flagged in the
+  coord task_done.
 - **DONE 2026-10-07: contract follow-ups after sync** (branch rebased on
   main 9e44c5c):
   - Bug E xfail **flipped green** — brain-core 18744b3 (speaking>listening
@@ -43,8 +63,9 @@ Updated: 2026-10-07 (Wave 3 open; CI ownership fix done)
     parsing §3 against `BRAIN_TO_CLIENT_FRAMES` (both directions: new frames
     must be whitelisted deliberately, stale entries flagged) + `notice` row
     shape test (ui,cli / text,level,ts,job — escaped-pipe-safe).
-- **Suite (2026-10-07, real runs): `263 passed, 9 xfailed, 0 failed` —
-  py3.14 + py3.12 CI recipe, core_guard OK, ownership OK (8 files).**
+- **Suite (2026-10-07, real runs): own suite `279 passed, 9 xfailed`
+  (py3.14 + py3.12 CI recipe) + FULL brain suite `572 passed, 12 skipped,
+  0 failed` ×2 after the pollution fix; core_guard OK; ownership OK.**
 - Next per inbox/Wave-3 list: Wave-3 goals (docs/lanes/qa-security.md +
   docs/WAVES.md; SPEED MANDATE Rule 15) — wave close = re-run ALL six
   WAVES criteria live (status table in docs/BUGS-WAVE2.md).
