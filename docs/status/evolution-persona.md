@@ -3,6 +3,10 @@
 Updated: 2026-10-07 (Wave 4)
 
 ## Done
+- **Wave 4 closed for this lane (2026-10-07)** — `wave_done` posted (final merge position 10/10).
+  Conductor VERIFIED the spikes (3f1afe8+9a01774; reran evolution+persona tests green; core guard +
+  ownership OK). Shadow request APPROVED + assigned to brain-core; shadow verification runs are
+  **carried into Wave 5** (brain-core's config row, not this lane's plate).
 - Wave 2 (2026-10-05): design notes `docs/evolution/01-self-evolution-infra.md` + `02-persona-tiers.md` +
   shadow-instance request to brain-core.
 - Wave 3 (2026-10-07): design-notes refresh (core_guard-as-single-manifest, Notice frame anchor, config.d

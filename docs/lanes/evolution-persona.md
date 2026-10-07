@@ -37,6 +37,9 @@ Wave 3 is MERGED + **GATE PASSED** (tag `wave-3-gate`, all six criteria live, ac
   - [x] Persona tier switch deep-merge test plan: `docs/evolution/04-tier-switch-test-plan.md` +
     `brain/persona/tests/test_tier_switch.py` (14 passed) + lane fragment `config.d/evolution-persona.yaml`
     (default `persona.tier: great_sage`, `evolution.mode: propose`).
+- [x] **Wave 4 WAVE_DONE posted 2026-10-07** (final merge position 10/10; conductor-verified spikes
+  3f1afe8+9a01774). Shadow request APPROVED + assigned to brain-core; shadow verification runs
+  (`shadow.py`/`baseline.py` + controller) **carried into Wave 5** — note it at wave-5 start.
 - [ ] Wait for next coord ping (mode: exit) — at task start: `ls docs/requests/*__to__evolution-persona__*.md`.
 
 ## Later waves
