@@ -1,8 +1,24 @@
 # evolution-persona — status
 
-Updated: 2026-10-07 (Wave 4)
+Updated: 2026-10-07 (Wave 5)
 
 ## Done
+- **Wave 5 part 1+2 (2026-10-07):**
+  - **Shadow verification (Wave-4 carry-over, unblocked by brain-core's row merge 577f09c):**
+    `brain/evolution/shadow.py` (shadow env, REAL derivation check instance=shadow/port=8911,
+    fail-closed refusal, subprocess pytest under shadow env — no server spawn, live stack untouched),
+    `brain/evolution/baseline.py` (capture/save/load + fail-closed compare: shadow failure,
+    core-guard flip, transcript drift block promote; commit move alone passes), seed golden
+    `brain/evolution/golden/open-youtube.json`. Commit 960c05e.
+  - **Persona tier implementation (primary):** `brain/persona/tiers.py` extended — deny-by-default
+    `PROACTIVE_ZONE` (great_sage ∅ / raphael 4 safe classes / ciel +5 earned; authority classes never
+    listed; bogus tier fails closed), `evaluate_unlock()` (raphael & ciel criteria; `ready` never
+    absorbs user approval), `is_demotion` guard; `brain/persona/probation.py` — start/record/evaluate
+    lifecycle in instance data-dir, fatal ⇒ instant sticky fail, window needs BOTH jobs+hours,
+    expiry-without-evidence fails, `demotion_target` + `apply_tier` line-scoped comment-preserving
+    edit (round-trip proven on the real lane fragment). Automatic changes only ever LOWER autonomy.
+  - Docs: `docs/evolution/05-tier-probation-impl.md`. Reports posted per part (task_done ×2,
+    test_result ×1).
 - **Wave 4 closed for this lane (2026-10-07)** — `wave_done` posted (final merge position 10/10).
   Conductor VERIFIED the spikes (3f1afe8+9a01774; reran evolution+persona tests green; core guard +
   ownership OK). Shadow request APPROVED + assigned to brain-core; shadow verification runs are
@@ -43,7 +59,8 @@ Updated: 2026-10-07 (Wave 4)
   router weights) from 01 §7.
 
 ## Test output (real runs only — never claim unrun tests)
-- 2026-10-07: `tests/.venv/bin/python -m pytest brain/evolution/tests -q` → **49 passed in 0.14s**
-- 2026-10-07: `tests/.venv/bin/python -m pytest brain/persona/tests -q` → **14 passed in 0.10s**
-- 2026-10-07: `python3 tests/core_guard.py` → `Core Guard OK (4 files byte-stable)` (exit 0)
-- 2026-10-07: `tests/ownership_check.py --lane evolution-persona --files <11 new files>` → `ownership OK (11 checked)`
+- 2026-10-07 (wave 5): `tests/.venv/bin/python -m pytest brain/persona/tests -q` → **56 passed in 0.13s**
+- 2026-10-07 (wave 5): `tests/.venv/bin/python -m pytest brain/evolution/tests -q` → **63 passed in 0.80s**
+- 2026-10-07 (wave 5): `python3 tests/core_guard.py` → `Core Guard OK (4 files byte-stable)` (exit 0)
+- 2026-10-07 (wave 5): `tests/ownership_check.py --lane evolution-persona --worktree` → `ownership OK (10 checked)`
+- 2026-10-07 (wave 4): `tests/.venv/bin/python -m pytest brain/evolution/tests -q` → **49 passed in 0.14s**

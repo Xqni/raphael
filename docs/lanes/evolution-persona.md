@@ -46,7 +46,16 @@ Wave 3 is MERGED + **GATE PASSED** (tag `wave-3-gate`, all six criteria live, ac
 
 Wave 4 is MERGED + **GATE PASSED** (tag `wave-4-gate`, 10/10 lanes, mock 308 green). Wave-5 theme per WAVES.md: Raphael features — Answer/Notice/Report formats, Analysis, Simulation, parallel-minds visuals, persona tiers. Rule 15 speed mandate binds; shared-contract changes go through integrator requests. Carried items are noted in WAVES.md gate record (shadow row; C1+C2 residual).
 
-- [ ] PERSONA TIER IMPLEMENTATION (primary): great_sage -> raphael -> ciel tier behavior behind the wave-4 deep-merge switch (docs/evolution/04 = test plan), tier probation/probation-rollback semantics; shadow verification runs the moment brain-core's row lands.
+- [x] PERSONA TIER IMPLEMENTATION (primary) — DONE 2026-10-07: deny-by-default proactive zones +
+  unlock-criteria evaluator + probation lifecycle with automatic demotion (line-scoped `tier:` edit);
+  `brain/persona/{tiers,probation}.py`, 56 tests green, core guard OK. Notes: docs/evolution/05-tier-probation-impl.md.
+  - [x] Shadow verification (Wave-4 carry-over) — DONE 2026-10-07: `brain/evolution/{shadow,baseline}.py`,
+    real derivation check (shadow/8911) + real subprocess pytest under RAPHAEL_INSTANCE=shadow, fail-closed
+    promote compare (shadow/core-guard/transcript deltas; commit move alone passes); seed golden
+    `brain/evolution/golden/open-youtube.json`. 63 tests green. Notes: docs/evolution/03-wave4-spikes.md § What landed (shadow/baseline).
+- [ ] Wave-5 leftovers needing shared contracts (request FIRST): Analysis/Simulation task_kind, minds[]
+  parallel-minds field, Ciel voice slot + gold palette (see docs/evolution/05 § Not here).
+- [ ] Wait for next coord ping (mode: exit) — at task start: `ls docs/requests/*__to__evolution-persona__*.md`.
 
 ## Later waves
 - Per docs/WAVES.md — do not start early (AGENT_RULES §11).
