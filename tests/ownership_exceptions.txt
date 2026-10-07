@@ -6,3 +6,4 @@
 brain/tools/computer_use/tests/__init__.py =qa-security  # 2026-10-07 inbox [18] "fix the tests; registry untouched": package marker caused the tools.* double-import registry pollution (removed)
 brain/tools/computer_use/tests/test_runner.py =qa-security  # 2026-10-07 inbox [18]: try/except harness import after the __init__ removal
 brain/tools/computer_use/tests/test_see_screen.py =qa-security  # 2026-10-07 inbox [18]: try/except harness import after the __init__ removal
+docs/INTERFACES.md =brain-core  # 2026-10-07 integrator decision (inbox, shadow row): add the approved 'shadow' instance row to INTERFACES §d alongside brain/config.py
