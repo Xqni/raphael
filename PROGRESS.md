@@ -537,3 +537,8 @@ live_e2e=false) when wanted.
   Analysis/Simulation + all 3 privacy gates, tripwire GREEN), full sweep 346 rc=0,
   root 313 zero failures. current_wave stays 5 — wave 6 (local-model cutover) is
   human-gated on the RAM upgrade; attention posted with options.
+- Orb USER DIRECTIVE merged: shape-morph revert (constant circle, kind accents off,
+  flagged machinery kept; colour + speaking pulse + banners retained; distinctness
+  104/104 via colour). tests-heavy CI round 2 GREEN both jobs (full battery + orb gates
+  in the cloud — laptop-free testing verified end to end). TTS research: PocketTTS wins
+  (1.1GB CPU, clones JP ref) — voice eval task assigned.
