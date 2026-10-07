@@ -432,3 +432,8 @@ land, the integrator re-runs the full six-criterion live gate for `wave-2-gate`.
   (gate-bug regressions STRICT incl. flipped Bug E, notice conformance row, flake
   quarantined — root 263 green). Positions 1-8 of 10 DONE. Remaining: tools-memory@9
   (rebase --skip pending its session), evolution-persona@10 (never started, pinged).
+- **tools-memory wave-3 MERGED** (39 files, ownership OK, memory 116 green post-merge,
+  core guard OK) — memory core + skills/plugins + full tools bulk + MCP client all in
+  main. Rule-4 incident fully closed (rebase --skip of empty 6d174f0 verified by lane).
+  **9/10 lanes landed.** Only evolution-persona remains: design-notes task DONE (2e3c534,
+  verified), assigned post wave_done at final position 10 — session asleep, ping queued.
