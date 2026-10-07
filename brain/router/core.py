@@ -729,9 +729,20 @@ class Router:
         raise self._exhausted(errors)
 
     def _role_for(self, purpose: str, tools: list[dict[str, Any]] | None) -> str:
+        """purpose → model tier (INTERFACES §a `purpose` + Wave-5 tier policy).
+
+        A purpose mapped to the DEEP tier (analysis/simulation) wins over the
+        tools→strong rule — depth is the whole point of Analysis/Simulation.
+        Everything else keeps Rule-15 behavior: tools → strong, otherwise the
+        purpose's own mapping, defaulting to fast.
+        """
+        roles = self.config.providers.purpose_roles
+        mapped = roles.get(purpose)
+        if mapped == "deep":
+            return mapped
         if tools:
-            return self.config.providers.purpose_roles.get("tool", "strong")
-        return self.config.providers.purpose_roles.get(purpose, "fast")
+            return roles.get("tool", "strong")
+        return mapped or roles.get("chat", "fast")
 
     # ------------------------------------------------------------------ #
     # FACADE — vision (INTERFACES §a, PROTOCOL §7 gates)

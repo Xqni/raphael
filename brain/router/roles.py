@@ -12,7 +12,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Iterable, Sequence
 
-ROLES = ("fast", "strong", "vision", "stt")
+ROLES = ("fast", "strong", "deep", "vision", "stt")
 
 # capability words → role. Kept in code as the *default*; config can override
 # per deployment without touching this file. Verified against the live lists
@@ -23,6 +23,10 @@ DEFAULT_ROLE_HINTS: dict[str, list[str]] = {
              "mimo"],   # speed mandate 2026-10-07: mimo-v2.5/flash-class defaults
     "strong": ["large", "plus", "pro", "max", "ultra", "9b", "12b", "24b",
                "27b", "32b", "70b", "90b", "120b"],
+    # Analysis/Simulation (Wave 5): depth over speed — biggest tier wins,
+    # ties break to the LARGEST id (Rule 15 still governs normal turns)
+    "deep": ["120b", "90b", "70b", "48b", "32b", "27b", "24b",
+             "plus", "pro", "max", "ultra", "large"],
     "vision": ["vision", "llava", "multimodal", "-vl", "vl-", "maverick",
                "scout", "4a", "4u"],
     "stt": ["whisper", "distil-whisper", "speech-to-text"],
@@ -46,6 +50,9 @@ DEFAULT_PURPOSE_ROLES: dict[str, str] = {
     "plan": "strong",
     "ack": "fast",
     "vision": "vision",
+    # Wave 5 Raphael features — tier-aware routing (config can override)
+    "analysis": "deep",
+    "simulation": "deep",
 }
 
 
@@ -106,7 +113,7 @@ def pick(
         return None
     hints = hints or DEFAULT_ROLE_HINTS
     deny = list(DEFAULT_DENY_HINTS if deny_hints is None else deny_hints)
-    if role in ("fast", "strong", "vision") and deny:
+    if role in ("fast", "strong", "deep", "vision") and deny:
         low = [d.lower() for d in deny if d]
         models = [m for m in models
                   if not any(d in m.id.lower() for d in low)]
@@ -132,6 +139,9 @@ def pick(
     best = max(s for s, _, _ in scored)
     if best > 0:
         top = [m for s, _, m in scored if s == best]
+        if role == "deep" and len(top) > 1:
+            # depth over first-seen: prefer the biggest (longest) id on ties
+            return max(top, key=lambda m: len(m.id))
         return top[0]
     if role == "fast":
         return min(candidates, key=lambda m: len(m.id))
