@@ -12,8 +12,9 @@ def default_token_path():
     RAPHAEL_TOKEN_PATH always wins. Unset instance (`main`) resolves to
     ~/.raphael/token — byte-for-byte the previous behavior. A lane instance
     resolves to ~/.raphael/<instance>/token so two stacks never share one
-    credential (approved 2026-10-06: docs/requests/pc-control__to__integrator
-    __instance-token-path.md; Body's token_candidates() already matches).
+    credential (approved 2026-10-06: `pc-control__to__integrator__
+    __instance-token-path.md`, branch agent/pc-control, not yet in main;
+    this implementation lives on MAIN; Body's token_candidates() matches).
     """
     env = os.environ.get('RAPHAEL_TOKEN_PATH')
     if env:
