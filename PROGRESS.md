@@ -384,3 +384,6 @@ land, the integrator re-runs the full six-criterion live gate for `wave-2-gate`.
   wave_done, queued at merge position 7), qa-security CI fix verified+landed (NEXT:
   P0-REGRESSIONS), voice started Bug D (JP ref on every synthesis). Killed a live
   keepalive orphan (pid 6079) infra spotted — Bug G evidence.
+- CI CONFIRMED GREEN: run 37576160561 (be6814a) = success; ownership step printed
+  `lane=integrator ref=main` → ownership OK. The "fails every time" era is over —
+  evidence in `.opencode/research/ci-green-check.md`.
