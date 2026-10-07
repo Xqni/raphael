@@ -46,11 +46,12 @@ Updated: 2026-10-07 (Wave 5)
 - —
 
 ## Blocked
-- **shadow instance row** — APPROVED + assigned to brain-core (priority ping sent); hard-blocks the
-  shadow verification runs until their config row merges. Request-only from this lane.
-- Full controller (`controller/worktree/shadow/baseline/promote`) waits on: shadow row, infra rollback-hook
-  seam, qa-security golden-harness seam + CORE_GUARD_FILES extension, router weights ownership
+- ~~shadow instance row~~ — **LANDED 577f09c**; shadow verification built + green (see Done).
+- Full controller (`controller/worktree/promote`) still waits on: infra rollback-hook seam,
+  qa-security golden-harness seam + CORE_GUARD_FILES extension, router weights ownership
   (all listed in `docs/evolution/03-wave4-spikes.md` § Dependencies).
+- Wave-5 shared-contract leftovers (Analysis/Simulation `task_kind`, `minds[]`, Ciel voice slot,
+  gold palette) need integrator/orb/voice requests — next task when pinged.
 
 ## Next
 - On ping: re-check requests to this lane + shadow request status; if landed, build `worktree.py` +
