@@ -526,3 +526,10 @@ live_e2e=false) when wanted.
   tiers, 486fbe0 computer-use gather_context+vision guard, a0960a1 orb banners/fan-out/themes,
   aa5cf83 infra tier CLI): gates all green, brain 184, conformance 4/4, core guard OK, pushed.
   Remaining wave-5: qa(8) whitelist rebase + wave_done, tools-memory(9), evolution(10).
+- Wave-5 closing batch MERGED: qa 2ffc185 (instance-count cross-source fix, field-shape
+  tests, loader-guard flip STRICT, voicespy kwargs fix), tools-memory 2a7d1fb (kind-aware
+  memory feeding + report cache + injection probes), evolution eb3fb0d (persona tier
+  implementation, shadow/baseline, formats, probation — 140 tests in its gate).
+  Positions 1-10 ALL MERGED. ONE KNOWN RED on main (attributed, deliberate):
+  qa's armed analysis/sim privacy tripwire — missing gates = brain-core's P0 next batch
+  (assigned + pinged); wave-5 tag waits on it.
