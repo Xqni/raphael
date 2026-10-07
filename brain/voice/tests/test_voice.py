@@ -3,6 +3,7 @@
 Run:  brain/.venv/bin/python -m pytest brain/voice/tests -q
 """
 import asyncio
+import atexit
 import os
 import sys
 from pathlib import Path
@@ -288,21 +289,54 @@ async def _consume(aiter):
 
 
 # ---- TTS fish-server integration (never spawns; skips deterministically) ----
+# Rule 14 (RAM frugality): fish api_server is ~3.9 GB. A spawn that survives an
+# interrupted/failed test run leaves an ORPHAN (5 were found across worktrees,
+# 2026-10-07). Track every fish THIS session spawned and kill it: after each
+# test (try/finally semantics) AND at process exit (atexit, for crashes/skips
+# mid-test). A server we did NOT spawn is never touched (reuse, don't kill).
+_SPAWNED_SERVERS: list = []
+
+
+def _kill_spawned_fish() -> None:
+    while _SPAWNED_SERVERS:
+        srv = _SPAWNED_SERVERS.pop()
+        try:
+            srv.stop()                     # SIGTERM -> SIGKILL process group
+        except Exception:  # noqa: BLE001 — best-effort, never mask test result
+            pass
+
+
+atexit.register(_kill_spawned_fish)
+
+
+@pytest.fixture(autouse=True)
+def _kill_fish_after_test():
+    yield
+    _kill_spawned_fish()
+
+
 def _require_fish(eng):
-    """Integration gate (flake-hardening + INTERFACES §d).
+    """Integration gate (flake-hardening + INTERFACES §d + Rule 14).
 
     Lanes NEVER spawn Fish (port 8777 belongs to the real stack; voice tests
     mock TTS), and a spawn attempt under parallel load is exactly the flake:
     up to 240 s of startup, GPU contention, port races. So: skip unless a
     server is ALREADY healthy — unless RAPHAEL_FISH_SPAWN=1 explicitly opts
-    into spawning (integrator runs only).
+    into spawning (integrator runs only). When WE spawn, the server is
+    registered for guaranteed teardown (see _kill_spawned_fish).
     """
     if os.environ.get("RAPHAEL_FISH_SPAWN") == "1":
         try:
             asyncio.run(eng.fish.ensure_started(timeout_s=240))
-            return
         except TTSError as e:
             pytest.skip(f"fish spawn failed: {e.code} {e.detail[:120]}")
+        # ensure_started returns instantly on an ALREADY-running server
+        # (proc stays None) — only a process we started is ours to kill.
+        if eng.fish.proc is not None and eng.fish.proc.poll() is None:
+            _SPAWNED_SERVERS.append(eng.fish)
+            print(f"[voice-tests] spawned fish pid={eng.fish.proc.pid} "
+                  f"(registered for teardown)", flush=True)
+        return
     if not asyncio.run(eng.fish.health()):
         pytest.skip("fish server not running — lanes never spawn Fish "
                     "(INTERFACES §d); start it or set RAPHAEL_FISH_SPAWN=1")
@@ -338,6 +372,24 @@ def test_require_fish_gate_never_spawns_and_skips(tmp_path, monkeypatch):
     monkeypatch.setattr(eng.fish, "ensure_started", _spawn)
     _require_fish(eng)                      # no skip: opt-in path taken
     assert calls == [240.0]
+
+
+def test_spawned_fish_registry_is_killed():
+    """Rule 14 (RAM): EVERY fish this session spawns must be terminated —
+    exercised here without real processes (registry + stop() path)."""
+    class _FakeServer:
+        def __init__(self):
+            self.stopped = 0
+
+        def stop(self):
+            self.stopped += 1
+
+    fake = _FakeServer()
+    _SPAWNED_SERVERS.append(fake)
+    _kill_spawned_fish()
+    assert fake.stopped == 1 and _SPAWNED_SERVERS == []
+    _kill_spawned_fish()                      # idempotent (fixture + atexit)
+    assert fake.stopped == 1
 
 
 @pytest.mark.integration

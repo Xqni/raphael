@@ -133,15 +133,29 @@ Also emitted on the STT path: `stt_final_frame(text, lang, rtf)` and
   → `assets/acks/<sha1(key)[:16]>.wav` (auto-stored after first synthesis).
 - Cache hits stream instantly (`cached:true`, engine `cache`).
 
-### Reference voice
+### Reference voice (USER DIRECTIVE 2026-10-07 — Bug D)
 
-`config voice.tts_voice = assets/raphael_reference.wav` — **asset does not
-exist yet** (user-provided; addendum §10). While missing, Fish-Speech picks
-its own timbre and the first degraded notice tells the user. When the file
-(+ optional `assets/raphael_reference.txt` transcript) appears, the adapter
-sends it automatically as an in-context reference (base64 JSON per fish
-`ServeReferenceAudio`) — no code change needed. Restart the fish server
-(`voice.tts.shutdown()` then warmup) to pick it up.
+`config voice.tts_voice = assets/raphael_reference_jp.wav` — the great-sage
+(JP slime) reference, **user-approved and PERMANENT** (Zira retired). Every
+synthesis sends it as an in-context reference (base64 JSON per fish
+`ServeReferenceAudio`) and logs the proof line:
+
+```
+[tts] ref sent: path=.../assets/raphael_reference_jp.wav bytes=751686 sha1=f64bd512ea1e sentence='Task ...'
+```
+
+- **`voice.tts_reference_required: true` (default):** a missing/empty
+  reference FAILS LOUD — `TTSError` → subtitle notice ("Voice reference
+  unavailable …") + `[tts] BLOCKED (reference)` log, ZERO audio. No silent
+  default voice, ever. Only `VoiceConfig(tts_reference_required=False)`
+  opts out (tests/tooling).
+- **Cache namespacing:** the phrase cache lives in
+  `assets/acks/<sha1(ref)[:12]>/` (e.g. `…/f64bd512ea1e/`), so a reference
+  change can never replay another voice's wavs; `TTSEngine.refresh_reference()`
+  re-namespaces automatically when the file changes. fish's own
+  `use_memory_cache` is `"off"` (its key is text-only — Bug D suspect #3).
+- **Live proof:** `brain/.venv/bin/python brain/voice/scripts/prove_reference.py`
+  (never spawns fish; exit 3 when the server is unreachable).
 
 ### Fallback (degraded) path — honest behavior
 

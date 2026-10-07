@@ -13,10 +13,15 @@ Engine resolution order for speak(text):
                              the truth ("TTS engine unavailable ...") instead
                              of the reply arriving as mysterious silence.
 
-Reference voice: config voice.tts_voice (assets/raphael_reference.wav). When
-the asset exists it is sent as an in-context reference (base64 JSON per
-tools/schema.py ServeReferenceAudio) — until then Fish-Speech picks its own
-timbre (addendum §10: fallback voice + spoken/subtitled notice).
+Reference voice (USER DIRECTIVE 2026-10-07 — Bug D): config voice.tts_voice
+(currently assets/raphael_reference_jp.wav, the great-sage voice) is sent as
+an in-context reference (base64 JSON per tools/schema.py ServeReferenceAudio)
+on EVERY synthesis, with a proof log line (`[tts] ref sent: path=... bytes=
+...`). voice.tts_reference_required (default True) turns a missing reference
+into a LOUD failure (subtitle notice + log) instead of a silent default/Zira
+voice. The phrase cache is namespaced by sha1(reference)[:12] — a reference
+change can never replay another voice's audio — and fish's own text-keyed
+memory cache is disabled for the same reason.
 
 Amplitude: per-chunk RMS of the real synthesized audio, gain 3.0, clamped
 0..1 (PROTOCOL §8 — orb pulse). pitch_hz: rough zero-crossing estimate,
@@ -65,6 +70,24 @@ class TTSError(Exception):
         super().__init__(f"{code}: {detail}")
         self.code = code
         self.detail = detail
+
+
+def _log(msg: str) -> None:
+    """stdout-flushed lane log (brain's stdout goes to its log file; pythonw
+    pipes swallow unflushed prints — always flush)."""
+    print(msg, flush=True)
+
+
+def reference_fingerprint(path: Path) -> str:
+    """sha1(reference audio)[:12] — the phrase-cache namespace (Bug D).
+    Missing/unreadable file -> 'noref' (never raises: engine must construct)."""
+    try:
+        data = Path(path).read_bytes()
+    except OSError:
+        return "noref"
+    if not data:
+        return "noref"
+    return hashlib.sha1(data).hexdigest()[:12]
 
 
 # ---- audio helpers ---------------------------------------------------------
@@ -166,14 +189,24 @@ def wav_bytes_to_s16le_pcm(wav: bytes, target_sr: int) -> Tuple[bytes, int]:
 class PhraseCache:
     """Disk cache of synthesized phrases (config voice.ack_cache).
 
-    Lookup order per phrase: human-named '<normalized>.wav' first (lets the
-    user drop pre-recorded acks), then sha1-normalized hash file.
+    REFERENCE-NAMESPACED (Bug D / user directive 2026-10-07 — "JP great-sage
+    voice on EVERY speech"): auto-stored wavs live in `<ack_cache>/<ref_fp>/`,
+    where `ref_fp` = sha1(reference audio)[:12]. Changing the voice reference
+    can therefore NEVER replay an old-voice wav (the Zira-era hashes at the
+    top level become unreachable), and future persona voices coexist.
+
+    Lookup order per phrase: current-ref human-named '<normalized>.wav'
+    (subdir) -> user-dropped ack at the TOP level (text-named only: a hash
+    file up there is an unreachable leftover from another voice, never read)
+    -> sha1 hash file in the current-ref subdir.
     Key = normalize_text(text) (wake.py: NFKC + lowercase + de-punctuated).
     """
 
-    def __init__(self, directory: Path):
+    def __init__(self, directory: Path, fingerprint: str = ""):
         self.dir = Path(directory)
-        self.dir.mkdir(parents=True, exist_ok=True)
+        self.fingerprint = (fingerprint or "noref")[:12] or "noref"
+        self.subdir = self.dir / self.fingerprint
+        self.subdir.mkdir(parents=True, exist_ok=True)
 
     @staticmethod
     def key_for(text: str) -> str:
@@ -185,10 +218,13 @@ class PhraseCache:
 
     def path_for(self, text: str) -> Path:
         key = self.key_for(text)
-        human = self.dir / f"{key}.wav"
-        if human.exists():
-            return human
-        return self.dir / self._hash_name(key)
+        human_sub = self.subdir / f"{key}.wav"
+        if human_sub.exists():
+            return human_sub
+        human_top = self.dir / f"{key}.wav"        # user-dropped ack (text name)
+        if human_top.exists():
+            return human_top
+        return self.subdir / self._hash_name(key)
 
     def load(self, text: str) -> Optional[bytes]:
         try:
@@ -204,7 +240,8 @@ class PhraseCache:
         run, or the live stack — must never see a half-written wav. Write to a
         per-process temp file, then os.replace() (atomic on POSIX + Windows)."""
         try:
-            p = self.dir / self._hash_name(self.key_for(text))
+            p = self.subdir / self._hash_name(self.key_for(text))
+            p.parent.mkdir(parents=True, exist_ok=True)
             tmp = p.with_name(f"{p.name}.{os.getpid()}.tmp")
             tmp.write_bytes(wav)
             os.replace(tmp, p)
@@ -339,15 +376,47 @@ class FishSpeechServer:
         self.proc = None
         self._starting = None
 
-    # -- synthesis -----------------------------------------------------------
-    def _references(self) -> List[Dict[str, str]]:
-        """In-context reference from assets/raphael_reference.wav when present."""
+    # -- reference voice (USER DIRECTIVE / Bug D) ----------------------------
+    def check_reference(self) -> Path:
+        """The configured reference MUST be loadable before synthesis.
+
+        `tts_reference_required` (default True — user directive 2026-10-07:
+        the great-sage voice on EVERY speech, no default/Zira voice ever):
+        a missing or empty reference raises TTSError so speak() degrades
+        LOUDLY (notice + log) instead of quietly synthesizing in fish's
+        default voice. Opt out only with VoiceConfig(
+        tts_reference_required=False) — tests and explicit tooling.
+        """
         voice = self.cfg.tts_voice_path
-        if not voice.exists():
-            return []
+        try:
+            missing = (not voice.exists()) or voice.stat().st_size == 0
+        except OSError:
+            missing = True
+        if missing and self.cfg.tts_reference_required:
+            raise TTSError("E_INTERNAL",
+                           f"voice reference MISSING: {voice} — refusing to "
+                           f"synthesize without it (config voice.tts_voice)")
+        return voice
+
+    def _references(self) -> List[Dict[str, str]]:
+        """In-context reference payload — sent on EVERY synthesis.
+
+        LOUD (Bug D): never silently empty. Missing+required -> TTSError;
+        missing+explicitly-optional -> one clear log line about fish's
+        default voice being used.
+        """
+        voice = self.check_reference()          # raises when required+missing
         try:
             raw = voice.read_bytes()
-        except OSError:
+        except OSError as e:
+            if self.cfg.tts_reference_required:
+                raise TTSError("E_INTERNAL",
+                               f"voice reference unreadable: {voice} ({e})") from e
+            _log(f"[tts] REFERENCE UNREADABLE ({voice}) — fish default voice")
+            return []
+        if not raw:
+            if self.cfg.tts_reference_required:
+                raise TTSError("E_INTERNAL", f"voice reference empty: {voice}")
             return []
         ref_text = ""
         txt = voice.with_suffix(".txt")
@@ -359,13 +428,32 @@ class FishSpeechServer:
         return [{"audio": base64.b64encode(raw).decode("ascii"),
                  "text": ref_text}]
 
+    def _payload(self, text: str, references: List[Dict[str, str]]) -> Dict[str, Any]:
+        # fish's own memory cache is keyed by TEXT alone — after a reference
+        # change it would replay the OLD voice (Bug D suspect #3), so it is
+        # OFF and our reference-namespaced PhraseCache is the only cache.
+        return {
+            "text": text, "format": "wav", "streaming": False,
+            "normalize": True, "use_memory_cache": "off",
+            "references": references,
+        }
+
     async def synthesize(self, text: str) -> bytes:
         """Sentence -> wav bytes (decoder rate). Raises TTSError on failure."""
-        payload = {
-            "text": text, "format": "wav", "streaming": False,
-            "normalize": True, "use_memory_cache": "on",
-            "references": self._references(),
-        }
+        references = self._references()          # LOUD: raises if ref missing
+        voice = self.cfg.tts_voice_path
+        try:
+            size = voice.stat().st_size
+        except OSError:
+            size = 0
+        if references:
+            # PROOF LINE (Bug D acceptance): path + bytes sent per synthesis
+            _log(f"[tts] ref sent: path={voice} bytes={size} sha1="
+                 f"{reference_fingerprint(voice)} sentence={text[:48]!r}")
+        else:
+            _log(f"[tts] NO REFERENCE sent (optional mode): {voice} — "
+                 f"fish default voice in use")
+        payload = self._payload(text, references)
         try:
             async with httpx.AsyncClient(timeout=180.0) as client:
                 r = await client.post(f"{self.base}/v1/tts", json=payload)
@@ -407,10 +495,28 @@ class TTSEngine:
 
     def __init__(self, cfg: Optional[VoiceConfig] = None):
         self.cfg = cfg or load_voice_config()
-        self.cache = PhraseCache(self.cfg.ack_cache_path)
+        # reference fingerprint = phrase-cache namespace (Bug D): switching the
+        # voice reference can never replay a wav synthesized with another voice
+        self.reference_path = self.cfg.tts_voice_path
+        self.reference_fp = reference_fingerprint(self.reference_path)
+        self.cache = PhraseCache(self.cfg.ack_cache_path,
+                                 fingerprint=self.reference_fp)
         self.fish = FishSpeechServer(self.cfg)
         self.stats = SpeakStreamStats()
         self._notice_shown = False      # degraded-mode notice: ONCE per process
+
+    def refresh_reference(self) -> str:
+        """Re-read the reference fingerprint (cheap) and re-namespace the
+        phrase cache when it changed — self-heals a reference swap (user drops
+        in a new recording) WITHOUT a restart, and invalidates old-voice cache
+        entries the moment the file changes. Returns the current fingerprint."""
+        fp = reference_fingerprint(self.reference_path)
+        if fp != self.reference_fp:
+            _log(f"[tts] reference changed {self.reference_fp} -> {fp} "
+                 f"({self.reference_path}); phrase cache re-namespaced")
+            self.reference_fp = fp
+            self.cache = PhraseCache(self.cfg.ack_cache_path, fingerprint=fp)
+        return fp
 
     def _once(self, message: str) -> Optional[str]:
         """Returns `message` the first time, None afterwards (one-time notice)."""
@@ -433,11 +539,21 @@ class TTSEngine:
 
     async def warmup(self) -> None:
         """Pre-start the fish server (resume hook: ARCHITECTURE §6 reliability).
-        Never raises — warmup failure degrades to fallback at speak time."""
+        Never raises — warmup failure degrades to fallback at speak time.
+        Also verifies (LOUDly) that the reference voice is loadable, so a
+        missing ref is visible at boot instead of at the first answer."""
         try:
             await self.fish.ensure_started()
         except TTSError as e:
             self.fish.last_error = str(e)
+        try:
+            ref = self.fish.check_reference()
+            size = ref.stat().st_size if ref.exists() else 0
+            _log(f"[tts] reference present: path={ref} bytes={size} "
+                 f"fp={self.refresh_reference()}")
+        except TTSError as e:
+            self.fish.last_error = str(e)
+            _log(f"[tts] BLOCKED (reference) at warmup: {e.detail}")
 
     def shutdown(self) -> None:
         self.fish.stop()
@@ -485,6 +601,10 @@ class TTSEngine:
         # activation gate can drop her own voice when it bounces back through
         # the mic (self-trigger loop prevention — activation.py).
         get_playback_echoes().remember(text)
+        # Reference handshake (Bug D): re-fingerprint + re-namespace the phrase
+        # cache BEFORE any cache lookup, so a swapped reference is picked up
+        # immediately and old-voice wavs are unreachable from the first chunk.
+        self.refresh_reference()
         self.stats = SpeakStreamStats(sentences=len(sentences))
 
         # --- 1. cache check (whole phrase) ---------------------------------
@@ -540,12 +660,20 @@ class TTSEngine:
 
         # --- 2b. fish-speech, sentence by sentence --------------------------
         fish_ok = False
+        pre_err: Optional[TTSError] = None
         if not force_fallback:
             try:
                 await self.fish.ensure_started()
-                fish_ok = True
-            except TTSError:
-                fish_ok = False
+            except TTSError as e:
+                pre_err = e
+            if pre_err is None:
+                try:
+                    # LOUD reference gate (Bug D): a missing reference must
+                    # never reach a default-voice synthesis
+                    self.fish.check_reference()
+                    fish_ok = True
+                except TTSError as e:
+                    pre_err = e
 
         synthesized: List[bytes] = []
         notice: Optional[str] = None
@@ -598,6 +726,12 @@ class TTSEngine:
             # ONE-TIME notice explains the missing voice instead of silence
             # being mysterious (or the apology repeating on every reply).
             self.stats.engine = "fallback"
+            if pre_err is not None and "reference" in pre_err.detail:
+                # Bug D / user directive: missing reference = LOUD, specific
+                # notice (subtitled) + the log line — never a default voice
+                notice = notice or self._once(
+                    f"Voice reference unavailable — {pre_err.detail[:180]}")
+                _log(f"[tts] BLOCKED (reference): {pre_err.detail}")
             notice = notice or self.fallback_notice()
             if cancel is not None and cancel.is_set():
                 yield _end(interrupted=True, notice=notice)

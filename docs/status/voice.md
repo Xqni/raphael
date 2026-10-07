@@ -208,3 +208,77 @@ $ brain/.venv/bin/python -m pytest brain/tests brain/router/tests -q
 
 Not run (on purpose): anything that spawns Fish, opens a real microphone,
 registers a hotkey, or calls a live provider (AGENT_RULES §5, INTERFACES §d).
+
+## Wave 3 — Bug D (JP great-sage voice on EVERY speech) + Rule 14 fish kill-safety (2026-10-07)
+
+**Coordinator inbox addressed:**
+- **#5 (inventory / stitch / A-B)** — **already satisfied by the integrator's
+  run, nothing for me to switch**: `assets/reference/` no longer exists on
+  disk (no clips left to inventory), `assets/raphael_reference_jp.wav` IS
+  present (751686 bytes), `config.yaml voice.tts_voice` already points at it,
+  and Bug D records the user heard + approved the A/B. I made no auto-switch;
+  the config value was the integrator's (user-approved).
+- **#6 (spawn-kill-safe test)** — DONE, see below.
+- **#9 (user directive -> Bug D)** — code DONE; live proof pending fish (below).
+
+**Bug D fixes (`brain/voice/tts.py`, `brain/voice/config.py`):**
+1. **LOUD reference loading** — `check_reference()` / `_references()` raise
+   `TTSError` when `voice.tts_reference_required` (default **True**) and the
+   file is missing/empty/unreadable. speak() then degrades with a specific
+   subtitle notice (`Voice reference unavailable ...`) + `[tts] BLOCKED
+   (reference)` log and **zero audio chunks** — the silent default-voice path
+   (suspect #1) is gone. Only `VoiceConfig(tts_reference_required=False)`
+   opts out (tests/tooling). `warmup()` logs the reference at boot too.
+2. **Proof per synthesis** — `[tts] ref sent: path=... bytes=... sha1=...
+   sentence=...` (flushed -> brain log) on EVERY sentence.
+3. **Phrase cache namespaced by reference** — `assets/acks/<sha1(ref)[:12]>/`
+   (now `f64bd512ea1e`); the stale Zira-era top-level hash
+   `assets/acks/9c03c5b020d75c39.wav` is unreachable (tested).
+   `TTSEngine.refresh_reference()` re-namespaces automatically when the ref
+   file changes — no restart, old-voice wavs dead from the first chunk.
+4. **fish's text-keyed memory cache off** — `use_memory_cache: "off"`
+   (suspect #3); value verified against the vendored schema
+   (`tools/schema.py: Literal["on","off"] = "off"`).
+5. **Suspect #1 (CWD) ruled out** by test: `tts_voice_path` resolves against
+   REPO_ROOT regardless of process CWD.
+6. Defaults (`VoiceConfig.tts_voice` + loader fallback) now point at the JP
+   reference, so direct constructions use it too.
+
+**Rule 14 / inbox #6 — spawn-kill-safe fish fixture:** integration tests skip
+unless a server is already reachable; with explicit `RAPHAEL_FISH_SPAWN=1` a
+spawned server is registered in `_SPAWNED_SERVERS` and killed (a) after EVERY
+test via an autouse fixture and (b) at process exit via `atexit`
+(`_kill_spawned_fish` -> SIGTERM/SIGKILL on the process group). A server we
+did NOT spawn is never touched (reuse, don't kill). Kill path unit-tested
+without real processes.
+
+### Test output (real runs; one suite at a time per Rule 14)
+
+```
+$ brain/.venv/bin/python -m pytest brain/voice/tests -q -rs
+93 passed, 2 skipped in 2.46s     # 2 skips = fish down (deterministic, no spawn)
+$ brain/.venv/bin/python -m pytest brain/tests -q
+125 passed in 9.80s
+$ brain/.venv/bin/python -m pytest brain/router/tests -q
+92 passed in 27.57s
+$ brain/.venv/bin/python brain/voice/scripts/prove_reference.py
+configured reference : /home/dami/raphael-wt/voice/assets/raphael_reference_jp.wav
+exists               : True (751686 bytes)
+fingerprint          : f64bd512ea1e
+reference_required   : True
+phrase-cache dir     : .../assets/acks/f64bd512ea1e/  (namespaced per reference)
+FISH NOT REACHABLE at http://127.0.0.1:8777 — this script never spawns it ...
+exit=3 ; orphan check after run: zero (no tools.api_server process)
+```
+
+### Live proof status: PENDING fish reachability
+
+INTERFACES §d + Rule 14: the voice lane does not spawn fish. At the next
+bring-up (or ping me when the stack is up — I'll render one phrase and post
+the log line):
+
+```
+brain/.venv/bin/python brain/voice/scripts/prove_reference.py
+# expect exit 0 +: [tts] ref sent: path=.../assets/raphael_reference_jp.wav bytes=751686 sha1=f64bd512ea1e
+grep -m1 '\[tts\] ref sent' logs/*.log      # same line from a REAL live answer
+```
