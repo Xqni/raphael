@@ -450,3 +450,10 @@ sure its done to the very end where raphael is alive and usable and can control 
 laptop" — treated as the GO for the wave-3 live E2E (attention "Wave 3 gate ready")
 AND instruction to LEAVE THE STACK RUNNING at the end (manual bring-up; scheduled task
 stays Disabled per rule 12; one-fish rule 14 still binds).
+- CI CONFIRMED FULLY GREEN after encoding fix: run 37618571343 — Ubuntu success + Windows
+  success (research/ci-encoding-fix-green.md by watcher).
+- Stack UP for live gate (user GO): brain pid191414 healthy, sessions body=1 ui=1, fish
+  ONE + 8777 listening + GPU 2.1GB, JP reference loaded ("reference present:
+  raphael_reference_jp.wav"), first live utterances played (audio_out 404/418 chunks).
+  live_e2e=true restored (watchdog was correctly killing fish while flag was false —
+  rule-14 design verified in the wild).
