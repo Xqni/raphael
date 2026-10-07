@@ -1,0 +1,18 @@
+# Raphael Body (Windows) — pinned dependencies for the Body's own venv.
+#
+# Why: system Python 3.10 reaches end of life around 2026-10 — the Body
+# must not inherit the supervisor's/system's interpreter. The venv is built
+# with Python 3.13 (3.12 minimum: numpy>=2.5 needs >=3.12).
+#
+# Versions verified against PyPI on 2026-10-06; every requires_python
+# floor is <=3.12, so all install cleanly on 3.13.
+# Refresh with:  scripts/install-body-venv.ps1   (re-pins are a deliberate,
+# tested change — never float to latest).
+pywinauto==0.6.9
+comtypes==1.4.17
+keyboard==0.13.5
+mss==10.2.0
+pillow==12.3.0
+numpy==2.5.3
+sounddevice==0.5.6
+pywin32==312

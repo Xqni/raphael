@@ -90,6 +90,7 @@ DEFAULT_CONFIG = {
         # body_cmd / orb_dir / distro / brain_unit are the four keys the
         # supervisor contract requires from config.yaml; everything has a default.
         "body_cmd": "python body/win/main.py",
+        "body_venv": "",            # optional override of the pinned Body venv
         "orb_dir": "body/orb",
         "distro": "Ubuntu-26.04",
         "wsl_user": "dami",
@@ -325,8 +326,8 @@ def _normalize(cfg, parsed):
     alt = parsed.get("supervisor") if isinstance(parsed.get("supervisor"),
                                                  dict) else {}
     for key in ("distro", "wsl_user", "brain_unit", "ollama_unit",
-                "body_cmd", "orb_dir", "token_win", "wsl_sudo",
-                "wsl_keepalive"):
+                "body_cmd", "body_venv", "orb_dir", "token_win",
+                "wsl_sudo", "wsl_keepalive"):
         if paths.get(key) in (None, "") and alt.get(key) not in (None, ""):
             paths[key] = alt[key]
     if "health_interval" not in alt and "health_interval_s" in alt:
@@ -872,6 +873,46 @@ def _split_body_cmd(raw):
             else p for p in parts]
 
 
+def body_venv_python(cfg):
+    """Pinned Body venv interpreter, or None (system Python fallback).
+
+    System Python 3.10 is EOL around 2026-10 (Wave-2 task: the Body gets
+    its own pinned venv/Python). Lookup order: config paths.body_venv ->
+    %LOCALAPPDATA%\\Raphael\\body-venv (scripts/install-body-venv.ps1
+    default) -> repo .venv-body (dev). Missing -> caller degrades to its
+    own interpreter and selfcheck warns.
+    """
+    candidates = []
+    configured = str(cfg["paths"].get("body_venv") or "").strip()
+    if configured:
+        candidates.append(_resolve(configured))
+    localapp = os.environ.get("LOCALAPPDATA")
+    if localapp:
+        candidates.append(Path(localapp) / "Raphael" / "body-venv" /
+                          "Scripts" / "python.exe")
+    candidates.append(REPO_ROOT / ".venv-body" / "Scripts" / "python.exe")
+    for cand in candidates:
+        found = _venv_python_in(cand)
+        if found:
+            return found
+    return None
+
+
+def _venv_python_in(path):
+    """Accept either the interpreter file itself or a venv directory."""
+    try:
+        if path.is_file():
+            return path
+        if path.is_dir():
+            for sub in ("Scripts/python.exe", "bin/python", "bin/python3"):
+                cand = path / sub
+                if cand.is_file():
+                    return cand
+    except OSError:
+        pass
+    return None
+
+
 def body_script(cfg):
     """Parse paths.body_cmd -> (exe, argv, script_path, why)."""
     raw = str(cfg["paths"].get("body_cmd") or "").strip()
@@ -885,7 +926,10 @@ def body_script(cfg):
         return None, None, None, "paths.body_cmd empty"
     exe = parts[0]
     if exe.lower().replace(".exe", "") in ("python", "python3", "py"):
-        exe = sys.executable
+        # Pinned Body venv first; an EXPLICIT python path in body_cmd is
+        # respected as-is (deliberate pin by whoever wrote the config).
+        venv_py = body_venv_python(cfg)
+        exe = str(venv_py) if venv_py else sys.executable
     script_tok = None
     for tok in parts[1:]:
         if "/" in tok or "\\" in tok or tok.endswith(".py"):
@@ -1816,6 +1860,18 @@ def selfcheck(args):
         results.append(("profile", "PASS",
                         "%s — Ollama/model pulls/model warm SKIPPED; "
                         "Orb/Body/Brain/Fish still started" % profile))
+
+    # 2d — pinned Body venv (system Python 3.10 EOL ~2026-10)
+    body_venv = body_venv_python(cfg)
+    if body_venv:
+        results.append(("body venv", "PASS",
+                        "pinned interpreter: %s" % body_venv))
+    else:
+        results.append(("body venv", "WARN",
+                        "pinned venv not found — Body falls back to this "
+                        "system Python %s (EOL ~2026-10); run "
+                        "scripts/install-body-venv.ps1"
+                        % sys.version.split()[0]))
 
     # 3 — wsl.exe discovery
     wsl = find_wsl()
