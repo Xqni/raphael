@@ -47,6 +47,7 @@ import httpx
 import numpy as np
 
 from .config import VoiceConfig, load_voice_config
+from .activation import get_playback_echoes
 from .wake import normalize_text
 
 TTS_SAMPLE_RATE_DEFAULT = 24000
@@ -459,6 +460,10 @@ class TTSEngine:
         sentences = split_sentences(text)
         if not sentences:
             return
+        # Playback-echo bookkeeping: remember what she is about to say so the
+        # activation gate can drop her own voice when it bounces back through
+        # the mic (self-trigger loop prevention — activation.py).
+        get_playback_echoes().remember(text)
         self.stats = SpeakStreamStats(sentences=len(sentences))
 
         # --- 1. cache check (whole phrase) ---------------------------------
