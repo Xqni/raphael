@@ -133,17 +133,23 @@ def _shape_for(kind: str) -> str:
 
 
 def derive_state(engine=None) -> str:
-    """§e precedence: booting > confirm > listening > speaking > acting
-    (input-lock) > thinking (jobs active) > error window > idle."""
+    """§e precedence: booting > confirm > speaking > listening > acting
+    (input-lock) > thinking (jobs active) > error window > idle.
+
+    SPEAKING HOLDS (Bug E, P0): once a speak pipeline is active, `speaking`
+    wins over `listening` for the WHOLE utterance — the always-listen mic
+    opening between sentence chunks (audio_start) must never flip her back
+    to `listening` mid-answer. Listening only shows again after the utterance
+    ends (speak_end), or after barge-in stops the speech."""
     if _booting:
         return 'starting'
     stats = engine.stats() if engine is not None else {}
     if stats.get('jobs_pending_confirm'):
         return 'confirm'
-    if _listening:
-        return 'listening'
     if _speaking > 0:
         return 'speaking'
+    if _listening:
+        return 'listening'
     lock = stats.get('input_lock') or {}
     if lock.get('held'):
         return 'acting'
@@ -199,7 +205,13 @@ def refresh(hub=None, engine=None) -> Dict[str, Any]:
 
 def emit(state: str, hub=None, engine=None, extra: Optional[Dict] = None
          ) -> Dict[str, Any]:
-    """Explicit transition (boot/listening/error/...)."""
+    """Explicit transition (boot/listening/error/...).
+
+    Bug E hold: an explicit `listening` while an utterance is active (mic
+    opening mid-speech, always-listen) broadcasts `speaking` instead — she
+    never flips to `listening` before speak_end."""
     if state not in VALID_STATES:
         state = 'idle'
+    if state == 'listening' and _speaking > 0:
+        state = 'speaking'
     return broadcast(build(state=state, engine=engine, extra=extra), hub=hub)

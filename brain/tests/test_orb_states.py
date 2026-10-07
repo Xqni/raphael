@@ -270,3 +270,63 @@ def test_e2e_state_req_returns_full_frame(token_path):
             assert msg['mode'] in ('normal', 'private', 'paused')
             assert msg['shape_hint'] and msg['task_kind']
             assert msg['server_v'].startswith('brain-')
+
+
+# ---- Bug E (Wave-3 P0): speaking must HOLD over listening mid-utterance ----
+@pytest.mark.asyncio
+async def test_bug_e_no_flicker_speaking_holds_over_listening(fake_ui):
+    """Exact renderer sequence from docs/BUGS-WAVE2.md Bug E: the always-listen
+    mic opening BETWEEN sentence chunks (audio_start) must never flip her to
+    `listening` before speak_end — the frame sequence must go
+    idle -> speaking -> (mic opens: STILL speaking) -> listening -> idle."""
+    sess, hub, engine = fake_ui
+    orbstate.finish_boot()
+    orbstate.refresh(hub=hub, engine=engine)              # idle
+    orbstate.speak_start()                                # utterance begins
+    orbstate.refresh(hub=hub, engine=engine)              # speaking
+    # Bug E: mic opens mid-utterance (the live flicker's first half)
+    orbstate.listening_on()
+    orbstate.emit('listening', hub=hub, engine=engine)    # ws audio_start path
+    orbstate.refresh(hub=hub, engine=engine)              # derived again
+    # utterance ends (all sentence chunks spoken)
+    orbstate.speak_end()
+    orbstate.refresh(hub=hub, engine=engine)              # mic still open
+    orbstate.listening_off()                              # audio_end
+    orbstate.refresh(hub=hub, engine=engine)              # idle
+    await drain()
+    states = [f['state'] for f in orb_frames(sess)]
+    assert states == ['idle', 'speaking', 'speaking', 'speaking',
+                      'listening', 'idle'], states
+
+
+@pytest.mark.asyncio
+async def test_bug_e_barge_in_still_reaches_listening(fake_ui):
+    """Barge-in semantics preserved: interrupt stops the utterance
+    (speak_end) -> listening shows, because the hold is keyed on the speak
+    pipeline, not on the mic flag."""
+    sess, hub, engine = fake_ui
+    orbstate.finish_boot()
+    orbstate.speak_start()
+    orbstate.listening_on()
+    orbstate.emit('listening', hub=hub, engine=engine)    # held -> speaking
+    orbstate.speak_end()                                  # barge-in killed it
+    orbstate.refresh(hub=hub, engine=engine)
+    await drain()
+    states = [f['state'] for f in orb_frames(sess)]
+    assert states == ['speaking', 'listening'], states
+
+
+@pytest.mark.asyncio
+async def test_bug_e_confirm_still_beats_speaking(fake_ui):
+    """The spoken confirm question keeps showing `confirm` (unchanged §e)."""
+    from brain.jobs import store as job_store
+    sess, hub, engine = fake_ui
+    orbstate.finish_boot()
+    snap = job_store.create_job('risk check')
+    job_store.transition(snap['id'], 'awaiting_confirm', stage='routing',
+                         progress=0.1)
+    orbstate.speak_start()                                # question is spoken
+    orbstate.refresh(hub=hub, engine=engine)
+    await drain()
+    assert orb_frames(sess)[-1]['state'] == 'confirm'
+    job_store.transition(snap['id'], 'cancelled', stage='done', progress=1.0)

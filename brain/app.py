@@ -216,8 +216,21 @@ async def control(body: ControlIn, auth: bool = Depends(token_auth)) -> Dict[str
 @app.get('/status')
 async def status(auth: bool = Depends(token_auth)) -> Dict[str, Any]:
     engine = get_engine()
+    # router usage/rate block (router request APPROVED 2026-10-07): additive
+    # key only; usage_status() reads a local file + in-memory state (no
+    # network, no keys, never raises). Lazy import: the router lane's branch
+    # may not be merged yet — then the key stays {} and fills in on merge.
+    router_block: Dict[str, Any] = {}
+    try:
+        from brain.router import usage_status
+        router_block = await usage_status()
+    except ImportError:
+        router_block = {}
+    except Exception:  # noqa: BLE001 — /status must stay up
+        router_block = {'error': 'unavailable'}
     return {'ok': True, 'server_v': SERVER_V, 'mode': get_mode().label(),
-            'sessions': get_hub().session_counts(), **engine.stats()}
+            'sessions': get_hub().session_counts(), 'router': router_block,
+            **engine.stats()}
 
 
 # ---- POST /say (CLI voice-out; request: docs/requests/brain-core__to__

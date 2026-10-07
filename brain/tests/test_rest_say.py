@@ -106,3 +106,36 @@ def test_status_jobs_control_still_work(token_path):
         ctl = client.post('/control', json={'action': 'pause'}, headers=h)
         assert ctl.status_code == 200 and ctl.json()['mode'] == 'paused'
         client.post('/control', json={'action': 'resume'}, headers=h)
+
+
+def test_status_includes_router_usage_block(token_path, monkeypatch):
+    """Router request APPROVED 2026-10-07 (surface-usage-in-status): additive
+    'router' key on GET /status — empty until the router lane's usage_status
+    merges, populated after, {'error': 'unavailable'} if it misbehaves (the
+    endpoint itself never goes down)."""
+    h = {'X-Raphael-Token': TEST_TOKEN}
+    import brain.router as router
+    with TestClient(app) as client:
+        # facade not merged yet -> key present, empty (or populated on merge)
+        r = client.get('/status', headers=h)
+        assert r.status_code == 200
+        assert 'router' in r.json()
+        # populated once usage_status exists
+        async def _fake_usage_status():
+            return {'window_hours': 24, 'calls': {'total': 3, 'ok': 3,
+                                                  'errors': 0}}
+
+        monkeypatch.setattr(router, 'usage_status', _fake_usage_status,
+                            raising=False)
+        r = client.get('/status', headers=h)
+        assert r.json()['router']['calls']['total'] == 3
+        assert r.json()['ok'] is True and 'jobs_active' in r.json()
+        # a raising facade degrades the block only — /status stays up
+        async def _boom():
+            raise RuntimeError('log corrupt')
+
+        monkeypatch.setattr(router, 'usage_status', _boom, raising=False)
+        r = client.get('/status', headers=h)
+        assert r.status_code == 200
+        assert r.json()['router'] == {'error': 'unavailable'}
+        assert r.json()['ok'] is True
