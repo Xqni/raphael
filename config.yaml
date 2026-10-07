@@ -135,7 +135,7 @@ supervisor:
   ws_url: ws://127.0.0.1:8765/ws
 
 server:
-  host: 0.0.0.0                         # WSL NAT localhostForwarding requires it; token auth mandatory (PROTOCOL §1)
+  host: 127.0.0.1                         # loopback-only bind (PROTOCOL §1); see scripts/NETWORK-SECURITY.md. Token auth still mandatory.
   port: 8765                            # main instance; lanes use RAPHAEL_INSTANCE-derived ports (INTERFACES §d)
 
 # Profile overlays — deep-merged over this file per docs/INTERFACES.md §(c).

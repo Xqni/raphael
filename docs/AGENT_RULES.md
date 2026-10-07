@@ -14,6 +14,10 @@ Read this at session start. Verbatim from the INTEGRATOR session brief (2026-10-
 10. Small, well-scoped steps. Update docs/lanes/<lane>.md (task list) and docs/status/<lane>.md (done/in progress/blocked/next + real test output) after each task. Don't claim anything you didn't run.
 11. WORK LOOP: read docs/WAVES.md; take the next unblocked task of the current wave in your lane; implement; test; commit; update status; repeat. At your wave's end write a handoff in docs/status/<lane>.md and STOP. Only start the next wave when WAVES.md current_wave says so. After two failed attempts at the same problem, write a blocker/request and move on.
 12. Never re-enable the scheduled task, run elevated commands, or change .wslconfig/Task Scheduler without telling the user first.
+13. Report via coord; check the inbox at each task start; at wave end post wave_done then follow `coord mode`; never wait for the human on routine handoffs.
+
+(Rule 13 added 2026-10-06 with the coord bus — mechanics in `docs/COORD_PROTOCOL.md`;
+adoption/continuation texts in `~/.raphael-coord/prompts/`.)
 
 ## Standing constraints (session brief, 2026-10-05)
 

@@ -26,7 +26,7 @@ Cloud provider chain + tool calling; conversational loop with persona; orb state
 
 1. "Open YouTube and search lo-fi" works by voice **and** by text.
 2. A free-form question gets a real cloud answer in her voice.
-3. "What am I looking at" returns a real vision answer.
+3. **DEFERRED as a known gap — integrator decision 2026-10-06** (`docs/requests/router__to__integrator__vision-free-model-gap.md`): "What am I looking at" needs a **free** vision-capable model and none exists in today's chain — live discovery 2026-10-06: Groq 11 models, none vision; Zen 88 models, 14 `-free` ids, none vision; Zen's only vision id (`deepseek-v4-flash-vision-exp`) is paid (money gate: `allow_paid_runtime: false`, AGENT_RULES §7 → human-only). Deferred to Wave 6 (local vision cutover); `router.vision()` correctly refuses with `E_OFFLINE/no_model` in the meantime. Returns to the exit list earlier **only** if (a) a free vision endpoint appears in the chain, or (b) the user approves a spend-capped vision slot. computer-use's "see my screen" path still ships (privacy gate + mocks); only the live vision answer waits.
 4. Per-state orb screenshots prove distinct visuals.
 5. Pause / private / kill all work.
 6. Full mock test suite green.

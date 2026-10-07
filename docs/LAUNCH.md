@@ -52,6 +52,35 @@ Installing/upgrading packages **through a symlink mutates the shared env** — t
 
 Set `RAPHAEL_INSTANCE=<lane>` for anything that binds a port or takes a lock (derived values: `docs/INTERFACES.md §d`). Never default ports, never Fish spawn, never real mic/hotkeys/input, never Ollama. Mocks are the default; live runs are the integrator's.
 
+## The coord bus (2026-10-06) — lanes no longer wait on the human
+
+Full contract: `docs/COORD_PROTOCOL.md`. Short version:
+
+```bash
+# START the conductor (headless watcher in tmux; NOT the live Raphael stack):
+python3 tools/conductor/conductor.py start
+# WATCH it:
+tmux attach -t raphael-conductor        # detach: Ctrl-b d
+python3 tools/conductor/conductor.py status
+tail -f ~/.raphael-coord/logs/conductor.log
+# STOP it (arms the ~/.raphael-coord/STOP kill switch, kills tmux + managed children):
+python3 tools/conductor/conductor.py stop
+# while STOP exists, start() refuses — remove the file to re-enable
+```
+
+Rehearse safely first: `... conductor.py start --dry-run` (logs intended wakes to
+`logs/launches.dryrun.jsonl`, launches nothing).
+
+**Paste into a lane session that is already open** (adoption, one time per session):
+
+> Read `~/.raphael-coord/prompts/lane_adopt.md` and follow it now: register your session id
+> via a heartbeat (`coord post --lane <L> --type heartbeat --data '{"session_id":"'$OPENCODE_SESSION_ID'"}'`),
+> take your lane lock (`coord hold --lane <L>`), check your inbox, and adopt rule 13
+> (report via coord, follow `coord mode` — never loop waiting on the human).
+
+Idle lanes need no message at all once adopted: the conductor **pings** their session
+(`coord mode` = `exit` means “end your turn; you will be woken”).
+
 ## Merge order (integrator only)
 
 `router → brain-core → pc-control → voice → computer-use → orb → infra → qa-security → tools-memory → evolution-persona` (see `docs/WAVES.md`).

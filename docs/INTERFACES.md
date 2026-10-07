@@ -65,19 +65,19 @@ Set `RAPHAEL_INSTANCE=<lane>` for every lane process/test run. **Unset = `main` 
 
 | instance | WS/REST port | brain pidfile | body lock | supervisor mutex | orb single-instance | CDP | data-dir |
 |---|---|---|---|---|---|---|---|
-| `main` (unset) | 8765 | `/tmp/raphael-brain.pid` | `%TMP%\raphael_body.lock` | `Raphael_Supervisor` | Electron per-userData lock (default userData) | 9333 | `~/.raphael/` |
-| `router` | 8901 | `/tmp/raphael-brain_router.pid` | `%TMP%\raphael_body_router.lock` | `Raphael_Supervisor_router` | userData `~/.raphael/router/orb/` | 9401 | `~/.raphael/router/` |
-| `brain-core` | 8902 | `…_brain-core.pid` | `…_brain-core.lock` | `…_brain-core` | `~/.raphael/brain-core/orb/` | 9402 | `~/.raphael/brain-core/` |
-| `pc-control` | 8903 | `…_pc-control.pid` | `…_pc-control.lock` | `…_pc-control` | `~/.raphael/pc-control/orb/` | 9403 | `~/.raphael/pc-control/` |
-| `voice` | 8904 | `…_voice.pid` | `…_voice.lock` | `…_voice` | `~/.raphael/voice/orb/` | 9404 | `~/.raphael/voice/` |
-| `computer-use` | 8905 | `…_computer-use.pid` | `…_computer-use.lock` | `…_computer-use` | `~/.raphael/computer-use/orb/` | 9405 | `~/.raphael/computer-use/` |
-| `orb` | 8906 | `…_orb.pid` | `…_orb.lock` | `…_orb` | `~/.raphael/orb/orb/` | 9406 | `~/.raphael/orb/` |
-| `infra` | 8907 | `…_infra.pid` | `…_infra.lock` | `…_infra` | `~/.raphael/infra/orb/` | 9407 | `~/.raphael/infra/` |
-| `qa-security` | 8908 | `…_qa-security.pid` | `…_qa-security.lock` | `…_qa-security` | `~/.raphael/qa-security/orb/` | 9408 | `~/.raphael/qa-security/` |
-| `tools-memory` | 8909 | `…_tools-memory.pid` | `…_tools-memory.lock` | `…_tools-memory` | `~/.raphael/tools-memory/orb/` | 9409 | `~/.raphael/tools-memory/` |
-| `evolution-persona` | 8910 | `…_evolution-persona.pid` | `…_evolution-persona.lock` | `…_evolution-persona` | `~/.raphael/evolution-persona/orb/` | 9410 | `~/.raphael/evolution-persona/` |
+| `main` (unset) | 8765 | `~/.raphael/brain.pid` (+ legacy `/tmp/raphael-brain.pid` dual-write until infra cutover) | `%TMP%\raphael_body.lock` | `Raphael_Supervisor` | Electron per-userData lock (default userData) | 9333 | `~/.raphael/` |
+| `router` | 8901 | `~/.raphael/router/brain.pid` | `%TMP%\raphael_body_router.lock` | `Raphael_Supervisor_router` | userData `~/.raphael/router/orb/` | 9401 | `~/.raphael/router/` |
+| `brain-core` | 8902 | `~/.raphael/brain-core/brain.pid` | `…_brain-core.lock` | `…_brain-core` | `~/.raphael/brain-core/orb/` | 9402 | `~/.raphael/brain-core/` |
+| `pc-control` | 8903 | `~/.raphael/pc-control/brain.pid` | `…_pc-control.lock` | `…_pc-control` | `~/.raphael/pc-control/orb/` | 9403 | `~/.raphael/pc-control/` |
+| `voice` | 8904 | `~/.raphael/voice/brain.pid` | `…_voice.lock` | `…_voice` | `~/.raphael/voice/orb/` | 9404 | `~/.raphael/voice/` |
+| `computer-use` | 8905 | `~/.raphael/computer-use/brain.pid` | `…_computer-use.lock` | `…_computer-use` | `~/.raphael/computer-use/orb/` | 9405 | `~/.raphael/computer-use/` |
+| `orb` | 8906 | `~/.raphael/orb/brain.pid` | `…_orb.lock` | `…_orb` | `~/.raphael/orb/orb/` | 9406 | `~/.raphael/orb/` |
+| `infra` | 8907 | `~/.raphael/infra/brain.pid` | `…_infra.lock` | `…_infra` | `~/.raphael/infra/orb/` | 9407 | `~/.raphael/infra/` |
+| `qa-security` | 8908 | `~/.raphael/qa-security/brain.pid` | `…_qa-security.lock` | `…_qa-security` | `~/.raphael/qa-security/orb/` | 9408 | `~/.raphael/qa-security/` |
+| `tools-memory` | 8909 | `~/.raphael/tools-memory/brain.pid` | `…_tools-memory.lock` | `…_tools-memory` | `~/.raphael/tools-memory/orb/` | 9409 | `~/.raphael/tools-memory/` |
+| `evolution-persona` | 8910 | `~/.raphael/evolution-persona/brain.pid` | `…_evolution-persona.lock` | `…_evolution-persona` | `~/.raphael/evolution-persona/orb/` | 9410 | `~/.raphael/evolution-persona/` |
 
-Format for derived names: `<main-name>_<instance>` (pidfile/lock/mutex), `9400 + lane index` (CDP), `~/.raphael/<instance>/` (data-dir: memory DB, orb userData, logs).
+Format for derived names: **brain pidfile = `<data-dir>/brain.pid`** (moved out of world-writable `/tmp` — `brain/config.py::pidfile()` is the single source; `main` keeps dual-writing the legacy `/tmp/raphael-brain.pid` as supervisor's read/remove fallback; integrator decision 2026-10-06 on `infra__to__integrator__pidfile-location.md` + `brain-core__to__integrator__pidfile-out-of-tmp.md`), `<main-name>_<instance>` (body lock / supervisor mutex), `9400 + lane index` (CDP), `~/.raphael/<instance>/` (data-dir: memory DB, orb userData, logs, `brain.pid`, token).
 
 Hard restrictions for lanes (AGENT_RULES §5):
 - **Never** spawn Fish TTS (port 8777 reserved for main; voice tests mock TTS).

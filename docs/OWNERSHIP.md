@@ -5,6 +5,7 @@
 ## Corrections vs the original bootstrap map (verified against the real tree)
 
 - `brain/llm.py` (router seam, docstring says "brain-dev's side") → **brain-core**.
+- `brain/ws.py` (the `/ws` hub behind `app.py`), `brain/orbstate.py` (INTERFACES §e frame builder) and `brain/config.py` (config loader/instance derivation) → **brain-core** (added 2026-10-06 during wave_done verification: brain-core's branch edits them inside its own brief — `/ws` + REST endpoints, server-authoritative `orb_state`, config loading — and no other lane touches them).
 - `brain/auth.py`, `brain/control.py`, `brain/mode.py` → **integrator** (Core Guard: auth, kill/pause/private/watch).
 - `brain/run.py` + `brain/raphael-brain.service` → **infra** (entry point / unit).
 - Tests-inside-your-folder belong to the lane (`brain/tests` → brain-core, `brain/router/tests` → router, `brain/voice/tests` → voice); root `tests/**` → qa-security.
@@ -15,7 +16,7 @@
 
 | Lane | Owns | Notes |
 |---|---|---|
-| **integrator** | `docs/{PROTOCOL,ARCHITECTURE,INTERFACES,WAVES,OWNERSHIP,AGENT_RULES,LAUNCH}.md`, `docs/{TODO,MODEL_POLICY,PAID_USAGE,REQUIREMENTS_ADDENDUM,TEAM_ROSTER,TROUBLESHOOTING,VOICE_DATA_SPEC,ORB_REBUILD_TASK}.md`, `config.yaml`, `config.d/README.md`, `PROGRESS.md`, `README.md`, `SYSTEM_REPORT.md`, `.env.example`, `.opencode/**`, `brain/{auth,control,mode}.py`, all merges | `confirm.py` semantics guarded by AGENT_RULES §8 even though brain-core owns the file |
+| **integrator** | `docs/{PROTOCOL,ARCHITECTURE,INTERFACES,WAVES,OWNERSHIP,AGENT_RULES,COORD_PROTOCOL,LAUNCH}.md`, `docs/{TODO,MODEL_POLICY,PAID_USAGE,REQUIREMENTS_ADDENDUM,TEAM_ROSTER,TROUBLESHOOTING,VOICE_DATA_SPEC,ORB_REBUILD_TASK}.md`, `config.yaml`, `config.d/README.md`, `PROGRESS.md`, `README.md`, `SYSTEM_REPORT.md`, `.env.example`, `.opencode/**`, `tools/conductor/**` (coord CLI + conductor + its tests/prompts), `brain/{auth,control,mode}.py`, all merges | `confirm.py` semantics guarded by AGENT_RULES §8 even though brain-core owns the file; `~/.raphael-coord/` is outside git and integrator/conductor-owned |
 | **orb** | `body/orb/**`, `docs/orb/**`, `assets/orb-reference/**` | renderer + demo/matrix harness |
 | **brain-core** | `brain/app.py`, `brain/loop.py`, `brain/fastpath.py`, `brain/llm.py`, `brain/jobs/**`, `brain/confirm.py`, `brain/tools/__init__.py` (central registry — **nobody else edits it**), config loading + `config.d` loader + profile overlay + instance-env derivation, tool auto-discovery, runtime workers, `brain/tests/**` | `brain/tools/__init__.py` is a central registry (AGENT_RULES §3) |
 | **router** | `brain/router/**` (incl. `brain/router/tests/**`) — all cloud API clients: Groq, Zen free, legacy Ollama client (kept, profile-gated), `chat/vision/transcribe/health` seams, discovery, circuit breakers, usage log | Groq + Zen keys read from `.env`, never logged |
