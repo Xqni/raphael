@@ -173,22 +173,34 @@ def mock_openai():
 def router_to_mock(mock_openai, monkeypatch, tmp_path):
     """Point the REAL brain router at mock_openai: chain=[zen_free] only,
     fake key (presence-only, never a real secret), usage log redirected to
-    tmp so no test writes brain/router/usage.jsonl (runtime data, not ours)."""
-    from brain.router import core as router_core
-    from brain.router.config import load_config
-    import dataclasses
+    tmp so no test writes brain/router/usage.jsonl (runtime data, not ours).
 
-    cfg = load_config()
-    providers = dataclasses.replace(
-        cfg.providers,
+    NOTE: builds RouterConfig directly instead of load_config() — load_config
+    currently CRASHES on config.yaml's profiles block (naive YAML parser;
+    request: qa-security -> router fix-config-loader). The load crash itself
+    is pinned by contract/test_config_loader.py."""
+    from brain.router import core as router_core
+    from brain.router.config import (LocalModelSettings, ProviderEndpoints,
+                                     RouterConfig, RouterSettings)
+
+    providers = RouterSettings(
         chain=['zen_free'],
-        zen_base_url=mock_openai.base_url,
         allow_go_runtime=False,
         allow_paid_runtime=False,
+        allow_free_models_for_personal_data=False,
+        zen_base_url=mock_openai.base_url,
+        go_base_url=ProviderEndpoints().go_base_url,
+        discovery_interval_s=3600,
         max_calls_per_minute=1000,
+        benchmark_ranking_path='brain/router/benchmark_ranking.json',
     )
-    new_cfg = dataclasses.replace(cfg, providers=providers)
-    monkeypatch.setattr(router_core, '_router', router_core.Router(new_cfg))
+    local = LocalModelSettings(candidates=[], text='auto', vision='auto',
+                               keep_alive='5m', vision_keep_alive='0',
+                               max_concurrency=1,
+                               ollama_url=mock_openai.plain_url + '/ollama')
+    cfg = RouterConfig(providers=providers, local_model=local,
+                       repo_root=router_core.REPO_ROOT)
+    monkeypatch.setattr(router_core, '_router', router_core.Router(cfg))
     monkeypatch.setattr(router_core, 'USAGE_LOG_PATH',
                         tmp_path / 'usage.jsonl')
     monkeypatch.setenv('OPENCODE_API_KEY', 'sk-qa-fake-key-not-a-real-secret')

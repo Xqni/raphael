@@ -75,11 +75,20 @@ def test_every_tool_declares_a_strict_json_schema():
 
 @pytest.mark.xfail(reason='INTERFACES §b: the registry must reject '
                    'non-conforming specs LOUDLY at load time; register() '
-                   'currently accepts anything (brain-core)', strict=False)
+                   'currently has no spec concept at all (brain-core)',
+                   strict=False)
 def test_registry_rejects_bad_spec():
+    import inspect
+    assert 'spec' in inspect.signature(tool_reg.register).parameters, \
+        'register() accepts no spec yet'
     bad = {'type': 'array'}          # not an object schema
-    with pytest.raises((ValueError, TypeError)):
-        tool_reg.register('qa_bad_spec_probe', lambda: None, spec=bad)
+    try:
+        with pytest.raises((ValueError, TypeError)):
+            tool_reg.register('qa_bad_spec_probe', lambda: None, spec=bad)
+    finally:
+        # never leave a probe tool in the shared registry
+        tool_reg._registry.pop('qa_bad_spec_probe', None)
+        tool_reg._META.pop('qa_bad_spec_probe', None)
 
 
 # ---- §c configuration -----------------------------------------------------
