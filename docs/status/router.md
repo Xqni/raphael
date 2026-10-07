@@ -1,6 +1,6 @@
 # router — status
 
-Updated: 2026-10-06 (Wave 2 complete — handoff below, waiting on integrator for the vision gap)
+Updated: 2026-10-06 (Wave 2 DONE — decision on the vision gap received, `wave_done` posted to the coord bus)
 
 ## Done (Wave 2 — all lane tasks except the one blocked request)
 
@@ -52,14 +52,29 @@ Commits on `agent/router`:
    deny hints, zen free hints, RPM/TPM, backoff, blocklist-chat flag, vision byte cap.
 
 ## Blocked
-- **Free vision model** — live discovery 2026-10-06 found no vision-capable free model
-  on either provider, so `vision()` correctly refuses instead of guessing
-  (`E_OFFLINE`/`no_model`). Request with full evidence + 3 options:
-  `docs/requests/router__to__integrator__vision-free-model-gap.md`. Wave 2 exit
-  criterion 3 depends on this decision.
+- **RESOLVED — decision received (coord inbox, 2026-10-06): OPTION 3.** Wave 2 exit
+  criterion 3 (live vision answer) is **deferred to Wave 6 as a known gap**; the
+  integrator records it in `docs/WAVES.md`. `vision()` keeps refusing with
+  `E_OFFLINE`/`no_model` (never guess an image-capable model). Return path: a free
+  vision endpoint shows up in the chain, or the user approves a spend-capped vision
+  slot (asked via ATTENTION — paid-pool spend is human-only, AGENT_RULES §7).
+  Independent verification same day: Groq 11 ids (none vision), Zen 88 ids / 14 free
+  (none vision), Zen's only vision id is paid.
+- **`E_BLOCKED` DECLINED for Wave 2** — `reason` remains the discriminator
+  (`private_mode` / `blocked_window` / `cloud_vision_disabled` / `chain_exhausted`).
+  No PROTOCOL §10 edit; revisit only if a consumer needs code-level branching.
+- Original request: `docs/requests/router__to__integrator__vision-free-model-gap.md`
+  (Status flip is the integrator's).
+
+## Wave 2 closed
+- `wave_done` posted to the coord bus (router is first in docs/WAVES.md merge order:
+  `router → brain-core → pc-control → …`). Suites green at post time:
+  **80 router + 30 brain-core + 2 conformance = 112 passed** (commit `7413216`).
 
 ## Next (in order)
-1. Integrator decision on the vision request (then I wire the chosen slot in one commit).
+1. ~~Integrator decision on the vision request~~ **received (OPTION 3)** — nothing to
+   wire now; the return path is a free vision endpoint or an approved spend-capped
+   slot, both integrator-initiated.
 2. Wait for `docs/WAVES.md` to bump `current_wave` before Wave 3 (AGENT_RULES §11):
    usage/rate tracking surfaced in `/status`, schema-normalization edge cases,
    recorded-fixture contract tests for CI (request to qa-security first).
