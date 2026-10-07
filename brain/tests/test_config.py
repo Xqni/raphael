@@ -50,7 +50,7 @@ def test_config_d_fragments_sorted_deep_merged_then_profile(tmp_path):
     assert 'nope' not in c['jobs']
 
 
-def test_profile_overlay_wins_and_env_profile_beats_key(tmp_path):
+def test_profile_overlay_wins_and_env_profile_beats_key(tmp_path, monkeypatch):
     _write(tmp_path / 'config.yaml',
            'profile: cloud_temp\nproviders:\n  chain: [groq, zen_free]\n'
            'profiles:\n  cloud_temp: {}\n'
@@ -59,7 +59,11 @@ def test_profile_overlay_wins_and_env_profile_beats_key(tmp_path):
     c = cfg.load_config(tmp_path / 'config.yaml', force=True)
     assert c['profile'] == 'cloud_temp' and c['providers']['chain'] == ['groq', 'zen_free']
     # RAPHAEL_PROFILE wins over the file's profile key
-    os.environ['RAPHAEL_PROFILE'] = 'local'
+    # (monkeypatch, NOT os.environ directly: _clean_env's delenv(raising=False)
+    #  on an ABSENT var records nothing to restore, so a raw set leaks into
+    #  other suites' tests in the same process — voice's load_voice_config
+    #  then reads profile=local. Seen in the merged-main combined run.)
+    monkeypatch.setenv('RAPHAEL_PROFILE', 'local')
     c = cfg.load_config(tmp_path / 'config.yaml', force=True)
     assert c['profile'] == 'local'
     assert c['providers']['chain'] == ['zen_free', 'go'], c['providers']
@@ -71,10 +75,12 @@ def test_profile_defaults_to_cloud_temp(tmp_path):
     assert c['profile'] == 'cloud_temp'
 
 
-def test_env_overrides_for_instance_values(tmp_path):
+def test_env_overrides_for_instance_values(tmp_path, monkeypatch):
     _write(tmp_path / 'config.yaml', 'server: {host: 0.0.0.0, port: 8765}\n')
-    os.environ['RAPHAEL_PORT'] = '8999'
-    os.environ['RAPHAEL_BIND'] = '127.0.0.1'
+    # monkeypatch (not raw os.environ) so the _clean_env teardown can restore —
+    # same absent-var delenv gap as the profile test above.
+    monkeypatch.setenv('RAPHAEL_PORT', '8999')
+    monkeypatch.setenv('RAPHAEL_BIND', '127.0.0.1')
     c = cfg.load_config(tmp_path / 'config.yaml', force=True)
     assert c['server']['port'] == 8999 and c['server']['host'] == '127.0.0.1'
 

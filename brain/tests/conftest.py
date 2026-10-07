@@ -10,6 +10,7 @@ router so tests never touch brain/memory/memory.db or the network.
 """
 import os
 import tempfile
+from pathlib import Path
 
 _fd, _db = tempfile.mkstemp(prefix='raphael-test-db-')
 os.close(_fd)
@@ -38,13 +39,39 @@ async def _fake_warmup(self):
     return None
 
 
-try:
-    from brain.voice import VoiceStack
-    VoiceStack.speak = _fake_speak
-    VoiceStack.warmup = _fake_warmup
-except Exception as _e:  # noqa: BLE001 — loud: hermeticity must not fail silent
-    print(f'[conftest] TTS mock NOT installed: {type(_e).__name__}: {_e}',
-          flush=True)
+@pytest.fixture(autouse=True)
+def _hermetic_tts(monkeypatch, request):
+    """Patch VoiceStack.speak/warmup PER TEST, only for tests under brain/tests.
+
+    Two leaks fixed (both seen in the merged-main combined run
+    brain/tests + brain/voice/tests, voice failing 4x):
+    1. The original import-time permanent patch stayed on the class for the
+       whole process — voice's own tests (REAL chunk frames from their
+       FakeFish) then saw the fake start/end-only generator.
+    2. A plain function-scoped fixture is not enough either: when pytest's
+       rootdir inference makes this conftest a session-level fixture
+       (baseid=''), it also runs for tests OUTSIDE brain/tests. The physical
+       path guard below makes the mock follow the TEST's location, not
+       pytest's conftest scoping.
+    """
+    try:
+        test_path = Path(str(request.node.path)).resolve()
+    except Exception:  # noqa: BLE001 — no path info: stay hermetic-skip
+        yield
+        return
+    if not test_path.is_relative_to(Path(__file__).resolve().parent):
+        # not a brain/tests test (e.g. brain/voice/tests in a combined run):
+        # they need the REAL VoiceStack.speak — do not touch it.
+        yield
+        return
+    try:
+        from brain.voice import VoiceStack
+        monkeypatch.setattr(VoiceStack, 'speak', _fake_speak)
+        monkeypatch.setattr(VoiceStack, 'warmup', _fake_warmup)
+    except Exception as _e:  # noqa: BLE001 — loud: hermeticity must not fail silent
+        print(f'[conftest] TTS mock NOT installed: {type(_e).__name__}: {_e}',
+              flush=True)
+    yield
 
 
 @pytest.fixture(scope='session', autouse=True)
