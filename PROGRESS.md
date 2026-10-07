@@ -419,3 +419,11 @@ land, the integrator re-runs the full six-criterion live gate for `wave-2-gate`.
   masked by pose-lock screenshots in the old matrix; flip latency 1ms. Notice banner
   accepted (level-tinted, never a state). tools-memory: memory core (FTS5/BM25) +
   skills/plugins gates done (41/58 tests green).
+- INCIDENT (self-inflicted, resolved): a trailing `cat >> PROGRESS.md; git commit` in a
+  shell that had `cd`'d into ~/raphael-wt/tools-memory for a test run committed my bullet
+  onto agent/tools-memory (6d174f0) instead of main — tools-memory hit a perfect rule-4
+  stop and filed a request. Fixed option (a): bullet re-landed on main (ff8a4c7), lane
+  told to rebase --skip the now-empty commit. LESSON: per-command `cd /home/dami/raphael`
+  before ANY git write (single-shell cwd drift).
+- qa-security wave_done queued@8 (regressions strict incl. flipped Bug E, notice whitelist,
+  flake quarantined, 263/9). tools-memory wave_done queued@9 pending its rebase fix.
