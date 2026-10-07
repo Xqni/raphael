@@ -31,6 +31,12 @@ jobs:
       - name: Install suite deps (no secrets)
         run: python -m pip install --upgrade pip && pip install -r tests/requirements.txt
       - name: qa-security mock suite (contract + regression + security + harness)
+        # tests/run_all runs the documented root command:
+        #   pytest -q tests supervisor/tests
+        # supervisor/tests (infra, ~30 synthetic tests) is collected whenever
+        # present — coord decision 2026-10-06 (infra APPROVED, qa-security
+        # owns the timing); merge order puts infra's landing before ours, so
+        # it exists at integration time.
         env:
           RAPHAEL_INSTANCE: qa-security
         run: tests/run_all

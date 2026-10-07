@@ -47,14 +47,44 @@ this branch) and **Core Guard manifest** `tests/core_guard.py` +
 mode + semantic tripwires); `tests/security/` adds 9 tests (secrets-in-logs
 sentinel proof, route gating, Core Guard semantics).
 
+## Follow-up (2026-10-06, coord wake #1)
+
+Inbox items handled (2 messages: infra CI include APPROVED + 3-item nudge):
+1. **CI include (APPROVED decision)** — `tests/run_all` now runs the
+   documented root command `pytest -q tests supervisor/tests`
+   (supervisor/tests collected whenever present; guarded note when absent —
+   merge order puts infra first, so it exists at integration). Verified
+   infra's suite in a detached worktree of `agent/infra`: **55 passed,
+   8.9 s, self-contained**. Superseded the two placeholder mocks
+   `tests/supervisor/{test_relay_parsing,test_tcp_splice}.py` (simulated
+   logic / generic socket check) with infra's real
+   `supervisor/tests/test_relay_bind.py` coverage — directory removed.
+2. **`brain/auth.py::default_token_path`** — new brain-side auth tests in
+   `tests/contract/test_token_paths.py` (14 tests, RAPHAEL_TOKEN_PATH
+   fixture pattern): main path byte-identical, per-lane derivation,
+   precedence, get_token/check_token round trip, deny-when-missing.
+   Derivation tests assert paths only — never open a real token file.
+3. **Rebased onto main (340398b)** — main moved the §d pidfile contract to
+   `~/.raphael/<instance>/brain.pid` (legacy /tmp dual-write): table test
+   updated. Core Guard: `brain/auth.py` drift re-pinned WITH approval
+   reference (`pc-control__to__integrator__instance-token-path.md`,
+   integrator-landed on main; evidence: commit 39e5653 + in-file approval
+   note; `core_guard.py --approval` now also resolves request files that
+   still live on a lane branch via git). PROTOCOL §7 enum additions
+   (nudge item 1) do not affect our conformance tests — suite green.
+4. Posted `heartbeat` (task start), `test_result`, `wave_done` on the bus.
+
 ## Test output (real runs only)
 
 ```
-tests/run_all                       → 161 passed, 23 xfailed in 68s   (py3.14 / tests/.venv)
-PYTHON=<3.12 venv> tests/run_all    → 161 passed, 23 xfailed in 69s   (CI interpreter recipe, fresh venv from tests/requirements.txt)
-brain/router/tests (py3.12 venv)    → 10 passed
-tests/ownership_check.py --diff     → ownership OK (32 files)
-tests/core_guard.py                 → Core Guard OK (4 files byte-stable)
+tests/run_all (2026-10-06, post-rebase)  → 175 passed, 23 xfailed in 68s   (py3.14 / tests/.venv)
+                                           incl. 14 new default_token_path tests; supervisor mocks superseded
+tests/run_all (fresh py3.12 venv)        → 175 passed, 23 xfailed in 69s   (CI interpreter recipe)
+supervisor/tests on agent/infra (detached worktree) → 55 passed in 8.9s    (APPROVED CI include, pre-merge verification)
+tests/run_all (earlier, pre-follow-up)   → 161 passed, 23 xfailed in 68s   (py3.14) / 69s (py3.12)
+brain/router/tests (py3.12 venv)         → 10 passed
+tests/ownership_check.py --diff          → ownership OK (57 files)
+tests/core_guard.py                      → Core Guard OK (auth.py re-pinned w/ approval, 4 files byte-stable)
 ```
 
 The 23 xfail = 23 documented contract gaps; each has a `docs/requests/` file

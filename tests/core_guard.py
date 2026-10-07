@@ -9,6 +9,7 @@ docs/requests/ — mention it:  --update --approval docs/requests/<file>.md
 """
 import hashlib
 import json
+import subprocess
 import sys
 from pathlib import Path
 
@@ -30,14 +31,36 @@ def hashes() -> dict:
     return out
 
 
+def _approval_located(rel: str) -> str | None:
+    """Approval files may still live on a lane branch pre-merge (requests
+    travel with the requester's branch). Returns where it was found."""
+    if (REPO / rel).exists():
+        return 'worktree'
+    try:
+        out = subprocess.run(
+            ['git', 'log', '--all', '--format=%H', '--', rel],
+            cwd=REPO, capture_output=True, text=True, timeout=20)
+        if out.returncode == 0 and out.stdout.strip():
+            first = out.stdout.splitlines()[0]
+            where = subprocess.run(
+                ['git', 'name-rev', '--name-only', first],
+                cwd=REPO, capture_output=True, text=True, timeout=20)
+            return f'git:{where.stdout.strip() or first[:10]}'
+    except Exception:  # noqa: BLE001
+        pass
+    return None
+
+
 def main(argv):
     if '--update' in argv:
         approval = None
         if '--approval' in argv:
             approval = argv[argv.index('--approval') + 1]
-            if not (REPO / approval).exists():
-                print(f'approval file not found: {approval}')
+            found = _approval_located(approval)
+            if not found:
+                print(f'approval file not found anywhere: {approval}')
                 return 2
+            approval = f'{approval} [{found}]'
         MANIFEST.write_text(json.dumps(hashes(), indent=2, sort_keys=True)
                             + '\n')
         note = f' (approval: {approval})' if approval else \

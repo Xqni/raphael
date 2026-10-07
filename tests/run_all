@@ -3,8 +3,15 @@
 #
 #   tests/run_all                # qa suite: contract + regression + security
 #                                #            + harness + baseline tests
+#                                #            + supervisor/tests (when present)
 #   tests/run_all --with-brain   # + brain suite (brain/tests, brain/router/tests)
 #   PYTHON=/path/python tests/run_all   # override interpreter (CI uses this)
+#
+# The documented root command (coord decision 2026-10-06, APPROVED by infra):
+#   pytest -q tests supervisor/tests
+# — supervisor/tests (infra-owned, ~30 synthetic tests, self-contained) is
+# collected whenever it exists on the branch (merge order: infra lands before
+# qa-security, so it is present at integration time).
 #
 # Rules honored here (AGENT_RULES §5):
 # - RAPHAEL_INSTANCE=qa-security is forced by tests/conftest.py;
@@ -33,8 +40,16 @@ if [[ ! -x "$PYTHON" ]]; then
     fi
 fi
 
-echo "== qa-security mock suite =="
-"$PYTHON" -m pytest -q "$SCRIPT_DIR"
+SUITES=("$SCRIPT_DIR")
+if [[ -d "$REPO/supervisor/tests" ]]; then
+    SUITES+=("$REPO/supervisor/tests")
+else
+    echo "run_all: NOTE supervisor/tests absent on this branch yet" \
+         "(infra merges first) — collecting tests/ only" >&2
+fi
+
+echo "== qa-security mock suite (tests + supervisor/tests) =="
+"$PYTHON" -m pytest -q "${SUITES[@]}"
 
 if [[ "${1:-}" == "--with-brain" ]]; then
     echo "== brain suite (brain/tests, brain/router/tests) =="

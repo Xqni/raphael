@@ -55,22 +55,26 @@ def test_interfaces_instance_table_is_collision_free():
     ports = [int(r[1]) for r in rows]
     assert all(1024 < p < 65535 for p in ports), ports
 
-    # derived columns (§d format: <main-name>_<instance>): expand per the
-    # format rule and verify uniqueness + that each cell names its instance
+    # derived columns: expand per the documented format rule and verify
+    # uniqueness + that each cell names its instance.
+    # pidfile contract (updated on main 2026-10-06): `<data-dir>/brain.pid`,
+    # main keeps a legacy /tmp dual-write note — cells may also use `…` shorthand.
     expanded = {'pidfile': [], 'lock': [], 'mutex': []}
     for r, inst in zip(rows, instances):
+        cell_pid, cell_lock, cell_mutex = r[2], r[3], r[4]
         if inst == 'main':
-            expanded['pidfile'].append(main[2])
+            assert cell_pid.startswith('~/.raphael/brain.pid'), cell_pid
+            expanded['pidfile'].append('~/.raphael/brain.pid')
             expanded['lock'].append(main[3])
             expanded['mutex'].append(main[4])
             continue
-        cell_pid, cell_lock, cell_mutex = r[2], r[3], r[4]
-        pid_exp = f'/tmp/raphael-brain_{inst}.pid'
+        pid_exp = f'~/.raphael/{inst}/brain.pid'
         lock_exp = f'%TMP%\\raphael_body_{inst}.lock'
         mutex_exp = f'Raphael_Supervisor_{inst}'
         # cells must reference THEIR instance (doc self-consistency) —
-        # full value (main/router rows) or §d `…` shorthand (later rows)
-        assert cell_pid in (pid_exp, f'…_{inst}.pid'), (inst, cell_pid)
+        # full value (current table) or §d `…` shorthand
+        assert cell_pid in (pid_exp, f'…_{inst}.pid',
+                            f'…_{inst}.brain.pid'), (inst, cell_pid)
         assert cell_mutex in (mutex_exp, f'…_{inst}'), (inst, cell_mutex)
         assert cell_lock in (lock_exp, f'…_{inst}.lock',
                              f'…_body_{inst}.lock'), (inst, cell_lock)
