@@ -1,6 +1,37 @@
 # computer-use — status
 
-Updated: 2026-10-07 (Wave 3: P0-BugF + SPEED done — handoff below)
+Updated: 2026-10-07 (Wave 4: observation hardening done — handoff below)
+
+## Wave 4 (2026-10-07)
+
+**Observation hardening (lane checkbox, all four sub-items):**
+- **UIA crash recovery:** `uia_tree` raising → gated-vision fallback (pixel
+  path still passes fg + debug-capture + downscale gates); UIA crash +
+  debug-capture → refusal before any pixels; UIA crash + body gone → honest
+  E_UNREACHABLE ("no body session connected"), chat never called.
+- **Blocklist bypass suite (privacy audit) — one real bypass found & fixed:**
+  the gateway returned ONLY the window title, so an untitled KeePass dialog
+  titled "Enter Master Key" (process `KeePass.exe`) would have matched
+  nothing. `foreground_window()` now returns a normalized
+  `"title | process"` composite; a real window with ZERO identity → None →
+  fail-closed. Audited: casefold substring, literal (non-regex) entries,
+  empty entries never match-everything.
+- **Foreground-probe failure matrix** (runner + service level): timeout /
+  no-body-session / unsupported op / malformed result → E_UNREACHABLE
+  (availability wording, code or type hint); vanished window (`{'window':
+  None}` / zero identity) → E_NO_FOREGROUND (privacy wording). Both refuse
+  before uia/screenshot/chat.
+- **Screenshot redaction re-verify:** vision answers, UIA tree text, and
+  action feedback all pass `gate.redact` before reaching a model — asserted
+  for all six configured kinds (api_key/token/password/card/email/phone);
+  window content itself (non-secret) stays intact.
+- **qa-security vision-gate request flipped DONE:** items 1-3 landed in
+  Wave 2 (their tripwires already strict-green); item 4 implemented NOW —
+  `gate.check_debug_capture()` (§7(4) enforced in code: cloud send denied
+  while debug_capture is on; local vision unaffected), wired into
+  `see_screen`, `capture_screen` and the runner pixel path.
+- Rule 15: zero new round trips (happy path still 1 fg probe + 1 capture,
+  asserted); live stack untouched (mock-only, no servers spawned).
 
 ## Wave 3 (2026-10-07)
 
@@ -127,16 +158,15 @@ Updated: 2026-10-07 (Wave 3: P0-BugF + SPEED done — handoff below)
 
 ## Test output (real runs only — never claim unrun tests)
 ```
-# Wave 3 (2026-10-07), one suite at a time (Rule 14), RAPHAEL_INSTANCE=computer-use:
+# Wave 4 (2026-10-07), one suite at a time (Rule 14), RAPHAEL_INSTANCE=computer-use:
 lane:            brain/vision/tests + brain/tools/computer_use/tests
-                 88 passed, 2 skipped in 1.68s     # skips = jsonschema-absent
-brain:           brain/tests                -> 152 passed in 11.67s
-conformance:     tests/conformance          -> 2 passed in 0.22s
-(No orphan pytest processes after the runs — Rule 14 checked.)
+                 107 passed, 2 skipped in 1.61s    # skips = jsonschema-absent
+qa regression:   tests/regression                  -> 47 passed, 4 xfailed
+                 (incl. test_redaction tripwires strict-green: 9 passed)
+brain:           brain/tests                       -> 164 passed in 12.31s
+(No orphan pytest processes — Rule 14 verified via pgrep.)
 
-# Wave 2 reference (kept for history):
-# lane 84 passed/2 skipped; merged suite 302 passed/1 failed (pre-existing on
-# then-base, resolved by later merges per handler verification) + conformance 2.
+# Wave 3 reference: lane 88/2skipped, brain 152, conformance 2 (Bug F fix 560640b).
 ```
 - Historical note: the Wave-2-era `test_tool_specs_only_offers_conforming_schemas`
   failure and the persona-streamed-reply flake no longer reproduce — `brain/tests`

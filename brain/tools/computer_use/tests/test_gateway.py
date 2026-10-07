@@ -53,14 +53,36 @@ def test_foreground_window_uses_foreground_info_action():
     gw, hub, eng = make({"ok": True, "result": {
         "window": {"title": "1Password - Browser", "process": "1Password",
                    "pid": 123, "foreground": True}}})
-    title = run(gw.foreground_window())
-    assert title == "1Password - Browser"
+    ident = run(gw.foreground_window())
+    # composite identity: blocklist must be able to match title AND process
+    assert ident == "1Password - Browser | 1Password"
     frame, roles = hub.frames[0]
     assert frame["action"] == "foreground_info"
     assert frame["args"] == {}
     assert frame["lock"] is False           # read-only inspection (§7)
     assert roles == {"body"}
     assert eng.refs == [frame["job"]]       # journaled under one coherent ref
+
+
+def test_foreground_identity_matrix():
+    # vanished window / no fg window -> None (gate fails closed)
+    gw, _, _ = make({"ok": True, "result": {"window": None}})
+    assert run(gw.foreground_window()) is None
+    # hidden-ish: empty title but resolvable process -> process alone
+    gw2, _, _ = make({"ok": True, "result": {
+        "window": {"title": "", "process": "KeePass.exe"}}})
+    assert run(gw2.foreground_window()) == "KeePass.exe"
+    # real window with ZERO identity -> None (cannot be verified -> closed)
+    gw3, _, _ = make({"ok": True, "result": {
+        "window": {"title": "", "process": None}}})
+    assert run(gw3.foreground_window()) is None
+    # malformed shape -> None
+    gw4, _, _ = make({"ok": True, "result": {"weird": 1}})
+    assert run(gw4.foreground_window()) is None
+    # whitespace-normalized composite
+    gw5, _, _ = make({"ok": True, "result": {
+        "window": {"title": "  Ubuntu-26.04 ", "process": "WindowsTerminal.exe"}}})
+    assert run(gw5.foreground_window()) == "Ubuntu-26.04 | WindowsTerminal.exe"
 
 
 def test_foreground_window_none_when_no_window_or_unsupported():

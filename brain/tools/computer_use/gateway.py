@@ -125,18 +125,23 @@ class BodyGateway:
         return data
 
     async def foreground_window(self) -> Optional[str]:
-        """Window title of the foreground window via PROTOCOL §7
-        `foreground_info{}`; None = unverifiable (the gate fails closed on
-        None — no screenshot may leave the machine)."""
+        """Identity of the foreground window via PROTOCOL §7 `foreground_info{}`.
+
+        Returns `"title | process"` (either may be absent), so the blocklist
+        matches BOTH fields — title-only matching was bypassable (an untitled
+        KeePass dialog titled 'Enter Master Key' has process 'KeePass.exe').
+        None = unverifiable (no window, wrong shape, or a real window with
+        ZERO identity) — the gate fails closed on None.
+        """
         result = await self.act("foreground_info", {}, lock=False)
         if isinstance(result, dict):
             win = result.get("window")
-            if isinstance(win, dict):
-                title = win.get("title")
-                # '' (untitled window / desktop) is a real, verifiable answer;
-                # a missing title key or window:None is not.
-                return str(title) if "title" in win and title is not None else None
-            return None                      # {'window': None} — no fg window
+            if not isinstance(win, dict):
+                return None                      # {'window': None} / bad shape
+            title = " ".join(str(win.get("title") or "").split())
+            process = " ".join(str(win.get("process") or "").split())
+            ident = " | ".join(x for x in (title, process) if x)
+            return ident or None                 # real window, zero identity
         return None
 
     async def uia_tree(self, max_chars: int = _DEFAULT_MAX_CHARS,
