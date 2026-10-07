@@ -105,6 +105,24 @@ def migrate(conn) -> None:
     )
     ''')
 
+    # --- report cache (wave 5: Analysis/Simulation report recall) -----------
+    # sections = JSON [{heading, text}] with the PROTOCOL §3 caps re-enforced
+    # at save time (defense in depth; the emitter already caps pre-emit).
+    cur.execute('''
+    CREATE TABLE IF NOT EXISTS reports (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        job TEXT,
+        title TEXT NOT NULL,
+        summary TEXT NOT NULL DEFAULT '',
+        sections TEXT NOT NULL DEFAULT '[]',
+        kind TEXT NOT NULL DEFAULT 'analysis',
+        owner TEXT NOT NULL DEFAULT 'local-user',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+    ''')
+    cur.execute('''
+    CREATE INDEX IF NOT EXISTS idx_reports_owner ON reports(owner, created_at)
+    ''')
     # --- schedules (timers / reminders / recurring) --------------------------
     # due_at is INTEGER epoch; recurring rows stay 'pending' and advance
     # due_at after each fire; attempts/last_error make failed fires visible.

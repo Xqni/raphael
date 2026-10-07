@@ -160,3 +160,52 @@ def retrieve(query: Any, k: Optional[int] = None, *,
                 conn.close()
             except Exception:  # noqa: BLE001
                 pass
+
+
+# ---- wave 5: kind-aware context feeding -------------------------------------
+_KIND_DEFAULTS = {
+    'analysis': {'k': 10, 'max_chars': 8000},     # deep dive: fuller recall
+    'simulation': {'k': 4, 'max_chars': 3000},    # lean: tools + tight context
+}
+
+
+def kind_budget(kind: Any) -> Dict[str, int]:
+    """Retrieval budget for a job kind (`chat|analysis|simulation|act`).
+    Config `memory.kind_budgets.<kind>` overrides the built-ins; unknown
+    kinds fall back to memory.top_k / memory.max_context_chars."""
+    try:
+        k = str(kind or '')
+        cfg = _cfg('memory.kind_budgets', {}) or {}
+        if k in _KIND_DEFAULTS:
+            base = dict(_KIND_DEFAULTS[k])
+        else:
+            base = {'k': int(_cfg('memory.top_k', 5) or 5),
+                    'max_chars': int(_cfg('memory.max_context_chars', 4000) or 4000)}
+        if isinstance(cfg, dict) and isinstance(cfg.get(k), dict):
+            for key in ('k', 'max_chars'):
+                if key in cfg[k]:
+                    base[key] = int(cfg[k][key])
+        return {'k': max(0, int(base['k'])),
+                'max_chars': max(0, int(base['max_chars']))}
+    except Exception:  # noqa: BLE001
+        return {'k': 5, 'max_chars': 4000}
+
+
+def build_context(query: Any, *, kind: Any = None,
+                  include_personal: bool = True,
+                  owner: Optional[str] = None) -> str:
+    """THE wave-5 feeding seam: retrieve with the kind's budget and frame as
+    one untrusted block (ready to append to messages). '' = nothing to
+    inject. Personal categories are excluded with include_personal=False
+    (privacy gate for free cloud providers)."""
+    try:
+        budget = kind_budget(kind)
+        if budget['k'] <= 0 or budget['max_chars'] <= 0:
+            return ''
+        rows = retrieve(query, k=budget['k'], owner=owner)
+        from . import block
+        return block.build_untrusted_block(
+            rows, include_personal=include_personal,
+            max_chars=budget['max_chars'])
+    except Exception:  # noqa: BLE001 — feeding never fails a turn
+        return ''

@@ -55,6 +55,7 @@ def _clean_state():
             conn.execute('DELETE FROM skills_index')
             conn.execute('DELETE FROM plugins_index')
             conn.execute('DELETE FROM schedules')
+            conn.execute('DELETE FROM reports')
             conn.commit()
         finally:
             conn.close()

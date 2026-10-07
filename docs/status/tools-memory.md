@@ -1,6 +1,20 @@
 # tools-memory — status
 
-Updated: 2026-10-07 (wave 4 COMPLETE — handoff below the wave-4 record)
+Updated: 2026-10-07 (wave 5 COMPLETE — handoff below the wave-5 record)
+
+## Wave 5 (current_wave=5)
+
+**DONE — lane checklist item, 10 new tests:**
+1. **Kind-aware memory feeding:** `retrieval.kind_budget(kind)` (analysis `k=10/8000c`, simulation `k=4/3000c`, default `5/4000c`; config `memory.kind_budgets` overrides; unknown kind → default; `k=0` → inject nothing) + `build_context(query, kind=, include_personal=)` — the ONE call the loop needs: retrieve + untrusted framing + marker neutralization + personal gate, fail-silent `''`.
+2. **Report cache:** `brain/memory/reports.py` — `save_report` (PROTOCOL §3 caps re-enforced: summary≤500, sections≤10, heading≤200, text≤2000 — truncate-into-shape, fail-silent `None`), `find_reports` (whitelist-token overlap, operator-proof, owner-scoped), `recent_reports`/`get_report`/`clear_reports`; `reports` table added additively (old DB without it degrades quietly, `init_db` re-migrates — tested).
+3. **Injection probes extended:** report-shaped marker spoof (`[/UNTRUSTED` in title, fake header in summary) neutralized with exact framing intact + structure unbroken (extends the wave-4 probe family).
+4. **Call sites requested** (brain-core owns formats.py/loop.py): `tools-memory__to__brain-core__wave5-feeding-report-cache.md` (feeding via `build_context` + `save_report` on emit; references the still-OPEN injection request).
+
+**Verification (2026-10-07):** `brain/memory/tests` **155 passed** | `brain/tests` **184 passed** | root `tests/` **203 passed, 1 FAILED** — the failure is `regression/test_instance_isolation.py::..._collision_free` (asserts 11 instances; INTERFACES has 12 after the approved `shadow` row 8911). **Verified pre-existing on plain origin/main** (my branch byte-identical to main for INTERFACES+tests) → request `tools-memory__to__qa-security__instance-count-12.md` + `error` post on the bus.
+
+**Wave 5 done → task_done/test_result posted; awaiting brain-core's two call sites + merge.**
+
+## Wave 4 (MERGED, gate `wave-4-gate` 10/10)
 
 ## Wave 4 (current_wave=4, gate: lane checkbox in docs/lanes/tools-memory.md)
 
