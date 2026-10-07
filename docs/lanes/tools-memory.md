@@ -259,5 +259,11 @@ Base `github.*` and `safety.confirm_actions` are read-only for me (never redecla
 - **Wave 4:** skill aging/audit/demote cycle, dedup hardening; memory export + delete controls (user-facing wipe/export).
 - **Wave 5:** predator-style acquisition — notice repeated-task signals (journal + usage counters), draft a skill in a sandbox (isolated write to `skills/.drafts/`), test it, keep `status=draft` below the confidence gate, promote only after gate pass + user approval. Build ONLY on the loader/gate/counters shipped in Wave 3.
 
+## Wave 4 (start only when WAVES.md says so — current_wave: 4)
+
+Wave 3 is MERGED + **GATE PASSED** (tag `wave-3-gate`, all six criteria live, acoustic voice included). Wave-4 theme per WAVES.md: hardening, resilience tests, audit fixes, crash recovery, evolution infrastructure. Rule 15 speed mandate still binds.
+
+- [ ] Memory/plugin hardening: sqlite crash-safety (kill-during-write), FTS corruption recovery, skills/plugins sandbox audit (prompt-injection probes through memory retrieval), MCP stdio orphan/failure modes.
+
 ## Later waves
 - Per docs/WAVES.md — do not start early (AGENT_RULES §11).

@@ -47,6 +47,12 @@ Wave 2 is MERGED; live gate was 3/5 — evidence + bug dossiers: `docs/BUGS-WAVE
 - [x] Conversation-memory hooks to tools-memory — producer side wired in `brain/loop.py::_conversation_hook` (fail-silent, absent-module no-op), API proposed in `docs/requests/brain-core__to__tools-memory__conversation-hook.md`; e2e test w/ fake module incl. raising-hook survival.
 - [ ] Proactive Notice events — **contract first**: `docs/requests/brain-core__to__integrator__notice-events.md` filed (PROTOCOL §3 row + emitters). BLOCKED pending decision; no frame emitted before approval.
 
+## Wave 4 (start only when WAVES.md says so — current_wave: 4)
+
+Wave 3 is MERGED + **GATE PASSED** (tag `wave-3-gate`, all six criteria live, acoustic voice included). Wave-4 theme per WAVES.md: hardening, resilience tests, audit fixes, crash recovery, evolution infrastructure. Rule 15 speed mandate still binds.
+
+- [ ] Crash-recovery: interrupted-job journal replay hardening (post-restart task resume), engine kill-safety matrix, Notice emitter outage-storm drill (Wave-3 addition), input-lock arbitration stress.
+
 ## Later waves
 - Per docs/WAVES.md — do not start early (AGENT_RULES §11).
 - Wave 3 (when current_wave=3): job concurrency polish (input-lock fairness, per-job cancel), conversation-memory hooks to tools-memory, proactive Notice events.

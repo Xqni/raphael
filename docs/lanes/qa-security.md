@@ -25,6 +25,12 @@ Wave 2 is MERGED; live gate was 3/5 — evidence + bug dossiers: `docs/BUGS-WAVE
 - [FLAKE] `tests/contract/test_binary_frames.py::test_kind1_mic_pcm_accumulates_and_transcribes` failed once in a full 757-test run (2026-10-07) but passes in isolation — order-dependent state leak; isolate + quarantine.
 - [SPEED] Suites stay mock-fast (Rule 15).
 
+## Wave 4 (start only when WAVES.md says so — current_wave: 4)
+
+Wave 3 is MERGED + **GATE PASSED** (tag `wave-3-gate`, all six criteria live, acoustic voice included). Wave-4 theme per WAVES.md: hardening, resilience tests, audit fixes, crash recovery, evolution infrastructure. Rule 15 speed mandate still binds.
+
+- [ ] Orchestrate the wave-4 resilience matrix (owns the suite): kill/recovery drills green across brain/body/orb/supervisor, audit-fix verification passes, secret/redaction re-audit, encoding-class regression guard in CI matrix.
+
 ## Later waves (do not start early — AGENT_RULES §11; beyond current_wave 3)
 - [ ] Wave 3: golden job transcripts (replayable recorded conversations/tool traces as regression baseline).
 - [ ] Wave 4: resilience test suites (with infra) + security re-review after fixes.

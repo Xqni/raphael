@@ -23,5 +23,11 @@ Wave 2 is MERGED; live gate was 3/5 — evidence + bug dossiers: `docs/BUGS-WAVE
   shared-file edits). Verified: `python3 tests/core_guard.py` → "Core Guard OK (4 files byte-stable)".
 - [ ] Wait for next coord ping (mode: exit) — check `docs/requests/*__to__evolution-persona__*.md` at task start.
 
+## Wave 4 (start only when WAVES.md says so — current_wave: 4)
+
+Wave 3 is MERGED + **GATE PASSED** (tag `wave-3-gate`, all six criteria live, acoustic voice included). Wave-4 theme per WAVES.md: hardening, resilience tests, audit fixes, crash recovery, evolution infrastructure. Rule 15 speed mandate still binds.
+
+- [ ] Evolution infra (WAVES wave-4): shadow-instance REQUEST resolution with brain-core (currently OPEN), rollback design + journal design notes -> implementation spikes (docs/evolution), persona tier switch deep-merge test plan.
+
 ## Later waves
 - Per docs/WAVES.md — do not start early (AGENT_RULES §11).

@@ -49,5 +49,11 @@ Wave 2 is MERGED; live gate was 3/5 — full evidence + bug dossiers: `docs/BUGS
       (`router__to__brain-core__fastpath-open-search-mapping.md`); pc-control owns the
       body `open_app` half.
 
+## Wave 4 (start only when WAVES.md says so — current_wave: 4)
+
+Wave 3 is MERGED + **GATE PASSED** (tag `wave-3-gate`, all six criteria live, acoustic voice included). Wave-4 theme per WAVES.md: hardening, resilience tests, audit fixes, crash recovery, evolution infrastructure. Rule 15 speed mandate still binds.
+
+- [ ] Provider failure-injection resilience suite (429/5xx/network-drop storms, circuit-breaker transitions, failover ordering) + usage-log integrity audit + prompt-bias STT seam regression (Wave-3 live gate).
+
 ## Later waves
 - Per docs/WAVES.md — do not start early (AGENT_RULES §11).

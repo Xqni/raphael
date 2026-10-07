@@ -18,6 +18,12 @@ Wave 2 is MERGED; live gate was 3/5 — evidence + bug dossiers: `docs/BUGS-WAVE
 - [x] [P0-BugF] `foreground_info` refuses vision on a NORMAL window: foreground = Windows Terminal titled "Ubuntu-26.04" (non-blocklisted, title query works) yet the answer was "I can't verify which window is in front" (docs/BUGS-WAVE2.md Bug F). Find the failing verification, fix it for non-blocklisted windows, keep blocklist refusal intact, test with a terminal foreground. — **Root cause (evidence-backed, dossier hypothesis disproven): `foreground_info` never ran. body.log shows `received 1012 (service restart)` between jobs 42/44; job 43's journal = instant refusal with NO `foreground_info` record in actions.log, while jobs 35/41 succeeded (16 ms, real titles). The body was disconnected mid-restart; my `capture_screen` swallowed the ActError into `title=None` and the gate spoke the privacy verdict for an availability failure. Fixed: `gate.unreachable()` + `gate.err_hint()` — probe failures now say "I can't reach the Body right now (detail)"; `{'window': None}`/missing title keeps "can't verify…" (fail closed); blocklist refusal intact. Also closed a gate hole found while fixing: the blocklist now gates EVERY observation (UIA text goes to cloud chat too), not just the vision path. Tests: terminal-foreground happy path (service + loop, exactly ONE fg probe = Rule 15), probe-failure verdict, missing-window verdict, blocklist-refuses-before-UIA.`
 - [x] [SPEED] Screenshot→answer stays instant (Rule 15). — no new round trips: happy path = 1 `foreground_info` + 1 `screenshot` (asserted `foreground_calls == 1` in tests); no retries/sleeps added.
 
+## Wave 4 (start only when WAVES.md says so — current_wave: 4)
+
+Wave 3 is MERGED + **GATE PASSED** (tag `wave-3-gate`, all six criteria live, acoustic voice included). Wave-4 theme per WAVES.md: hardening, resilience tests, audit fixes, crash recovery, evolution infrastructure. Rule 15 speed mandate still binds.
+
+- [ ] Observation hardening: UIA crash recovery, blocklist bypass attempt suite (privacy audit), foreground-probe failure matrix (locked/hidden/vanished windows), screenshot redaction re-verify.
+
 ## Later waves
 - Per docs/WAVES.md — do not start early (AGENT_RULES §11).
   (Wave 3: watch mode, help-with-error, summarize-page, window-aware context.

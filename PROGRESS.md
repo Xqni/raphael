@@ -457,3 +457,31 @@ stays Disabled per rule 12; one-fish rule 14 still binds).
   raphael_reference_jp.wav"), first live utterances played (audio_out 404/418 chunks).
   live_e2e=true restored (watchdog was correctly killing fish while flag was false —
   rule-14 design verified in the wild).
+
+## WAVE-3 GATE PASSED 🎉 + WAVE 4 OPEN (2026-10-07, user GO run)
+
+**Tag `wave-3-gate` pushed — all six criteria PASS live:**
+1. TEXT: "open YouTube and search lo-fi" → search_youtube → `results?search_query=lo-fi`
+   opened (Bug B fixed); laptop control: `open notepad` → system32\notepad.exe act ok.
+2. VOICE (acoustic, x2 clean runs): speaker→mic→wake segment→STT (rtf 0.13)→wake gate
+   →extract→fastpath→open_app→**notepad launched (ok=True 108-141ms)**. Spoken answer:
+   "Paris is the capital of France." 63 fish chunks in JP voice; prove_reference.py
+   PROOF OK (sha1=f64bd512ea1e).
+3. VISION: real screen description via Go paid slot ("tiling WM, Python editor, browser
+   open to YouTube…") — spend $0.0007/day of $1 cap.
+4. ORB: distinct live states incl speaking (Bug C).
+5. pause/private/kill: all acked (private blocks cloud exactly right).
+6. MOCK: `tests/run_all --with-brain` 272 passed rc=0.
+
+**Bug H (found+fixed by the live gate, all committed 07cadcb):** voice input was SILENTLY
+dead since wave 2 — stt.py never awaited the async Router.transcribe (empty transcripts);
+plus stt_language parsed-then-discarded in the loader + pinned `en` (whisper returned
+hangul for the wake word under the JP voice), wake extract left a repeated wake copy,
+fastpath passed "notepad please" as app name, whisper now gets a wake-word prompt bias
+(additive transcribe seam kwarg). CI encoding fix (qa absorbed+extended) green both OSes.
+
+**current_wave → 4** (hardening/resilience/audit/crash-recovery/evolution): wave_open to
+all 10 lanes with Wave-4 sections written. **Stack left ALIVE per user directive:**
+brain+body+orb+fish+relay up, live_e2e=true (watchdog exempt), scheduled task still
+Disabled, zero orphans, conductor running. Stop with `scripts/raphael stop` (+ set
+live_e2e=false) when wanted.

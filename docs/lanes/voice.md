@@ -29,6 +29,12 @@ Wave 2 is MERGED; live gate was 3/5 — evidence + bug dossiers: `docs/BUGS-WAVE
 - [x] [COORD] spawn-kill-safe fish test fixture (Rule 14 RAM): integration tests spawn ONLY with `RAPHAEL_FISH_SPAWN=1`, and anything spawned is registered + killed per-test (fixture) AND at process exit (atexit) — `_kill_spawned_fish`, unit-tested; a server we didn't spawn is never touched.
 - [x] [SPEED] Sentence-streamed fish TTS stays local and instant (Rule 15). Verified: `speak()` streams sentence N while N+1 generates (test_speak_frames_and_binary_audio asserts incremental chunk arrival), and there is no cloud-TTS code path at all — fish is the only synthesis engine (cache hit → fish → subtitle-only fallback).
 
+## Wave 4 (start only when WAVES.md says so — current_wave: 4)
+
+Wave 3 is MERGED + **GATE PASSED** (tag `wave-3-gate`, all six criteria live, acoustic voice included). Wave-4 theme per WAVES.md: hardening, resilience tests, audit fixes, crash recovery, evolution infrastructure. Rule 15 speed mandate still binds.
+
+- [ ] Voice pipeline failure modes: fish death mid-speak recovery (restart + spoken notice), STT outage path (cloud gate -> subtitle notice, no silent drop), audio soak (24h segment continuity), Bug H regression guards (async bridge, stt_language pin, extract-all).
+
 ## Later waves
 - Per docs/WAVES.md — do not start early (AGENT_RULES §11).
   - Wave 3: natural-conversation polish (utterance-end handling, interruptions, `spoken_reply_max_sentences` short replies).
