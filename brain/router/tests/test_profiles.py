@@ -71,6 +71,13 @@ def test_repo_config_is_cloud_temp_chain() -> None:
     assert cfg.voice.stt_engine == "groq"
     assert cfg.vision.provider == "cloud"
     assert cfg.local_model.enabled is False
+    # vision-only paid slot (user approval, docs/PAID_USAGE.md) — gate + cap
+    # come straight from the integrator-owned config.yaml
+    assert cfg.providers.allow_vision_paid is True
+    assert cfg.providers.vision_paid_daily_cap_usd == 1.00
+    assert cfg.providers.allow_go_runtime is False
+    assert cfg.providers.allow_paid_runtime is False
+    assert cfg.providers.vision_paid_price_per_mtok["input"] > 0
 
 
 def test_repo_config_profile_local_overlay(monkeypatch) -> None:
