@@ -29,5 +29,31 @@ def migrate(conn) -> None:
     cur.execute('''
     CREATE INDEX IF NOT EXISTS idx_conv_turns_ts ON conversation_turns(ts)
     ''')
-    # (Wave-3 tasks add: memories + FTS5, conversation_summaries, skills_index,
-    #  plugins_index, schedules — same additive pattern.)
+
+    # --- memories (addendum §3, Odysseus semantics) --------------------------
+    # owner is on EVERY row and EVERY query filters it (PR #2404 leak lesson).
+    cur.execute('''
+    CREATE TABLE IF NOT EXISTS memories (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        text TEXT NOT NULL,
+        ts TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        source TEXT NOT NULL DEFAULT 'observed',   -- user | observed | imported
+        category TEXT NOT NULL DEFAULT 'fact',     -- identity|contact|preference|fact|task
+        pinned INTEGER NOT NULL DEFAULT 0,
+        owner TEXT NOT NULL DEFAULT 'local-user',
+        uses INTEGER NOT NULL DEFAULT 0,
+        last_used TIMESTAMP
+    )
+    ''')
+    cur.execute('''
+    CREATE INDEX IF NOT EXISTS idx_memories_owner ON memories(owner, category)
+    ''')
+
+    # FTS5 index (external content = memories) + sync triggers. Availability is
+    # detected, not assumed: if this sqlite build lacks FTS5, fts.ensure()
+    # reports False and retrieval falls back to keyword scoring (same API).
+    from . import fts as _fts
+    _fts.ensure(conn)
+
+    # (Wave-3 tasks add: conversation_summaries, skills_index, plugins_index,
+    #  schedules — same additive pattern.)

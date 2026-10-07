@@ -27,15 +27,21 @@ import pytest  # noqa: E402
 
 
 @pytest.fixture(autouse=True)
-def _clean_conversation():
-    """Per-test: no leftover flusher threads (Rule 14) + empty turn table."""
+def _clean_state():
+    """Per-test: no leftover flusher threads (Rule 14) + empty memory tables."""
     yield
     try:
-        from brain.memory import conversation
+        from brain.memory import conversation, get_conn
         conversation.shutdown(timeout=2.0)
         conversation.clear_turns()
+        conn = get_conn()
+        try:
+            conn.execute('DELETE FROM memories')
+            conn.commit()
+        finally:
+            conn.close()
     except Exception as _e:  # noqa: BLE001 — loud, hermeticity must not hide
-        print(f'[conftest] conversation cleanup failed: {type(_e).__name__}: {_e}',
+        print(f'[conftest] state cleanup failed: {type(_e).__name__}: {_e}',
               flush=True)
 
 
