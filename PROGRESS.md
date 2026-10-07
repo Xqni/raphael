@@ -376,3 +376,11 @@ land, the integrator re-runs the full six-criterion live gate for `wave-2-gate`.
   construction; `ownership_check --lane integrator` passes by design (merge-loop does real
   enforcement). File is qa-security-owned → assigned as its urgent NEXT TASK (suggested fix
   shape in its inbox). Main CI stays red until that lands — known, not silent.
+- CI fixed per USER DIRECTIVE: qa-security's lane-derivation fix cherry-picked early to main
+  as `be6814a` (merge-order deviation documented; branch keeps its commits for the in-order
+  merge). Background watcher verifies the run → `.opencode/research/ci-green-check.md`.
+- Wave-3 review loop: brain-core wave-3 batch verified (134 brain green = +9 new tests;
+  assigned NEXT: post wave_done), infra Bug G verified (82/82 supervisor; NEXT: post
+  wave_done, queued at merge position 7), qa-security CI fix verified+landed (NEXT:
+  P0-REGRESSIONS), voice started Bug D (JP ref on every synthesis). Killed a live
+  keepalive orphan (pid 6079) infra spotted — Bug G evidence.
