@@ -33,6 +33,20 @@ Advance with `coord cursor --lane <L>` ONLY after that lane's batch is fully han
      are already merged), then `coord reply --lane <lane> --type decision
      --msg "decision: merged <sha>"`. If not clean: reject with the exact fix list.
 
+## Citation & authority rules (hard)
+
+- **Cite only files you have verified exist** (`ls` in main, or `git show agent/<lane>:<path>`).
+  Request files normally live on the REQUESTING LANE'S BRANCH/worktree — read them at
+  `~/raphael-wt/<lane>/docs/requests/` and cite as `(branch: agent/<lane>, not yet in main)`
+  when absent from main. Never name a path you have not seen.
+- **Branch-landing behavior must be annotated.** If you document code that lives on a lane
+  branch (`/say`, `pidfile()`, helper scripts, …), say so inline: "(implemented on
+  `agent/<lane>` — lands at its merge)". Never imply main has behavior it does not have.
+- **Exit criteria and anything the human specified (WAVES, briefs, budgets) are NOT yours to
+  change silently** — write `coord attention "..."` with the facts + options and stop on that
+  item. Deciding real `request`/`blocked` events within protocol is yours; changing the goalposts is the human's.
+- Before any `git add`: never sweep while another run may be active — add explicit paths.
+
 ## Wave gate
 
 When every required lane (not paused, `current_wave >= start_conditions[lane].min_wave`) has
