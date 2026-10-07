@@ -1,6 +1,37 @@
 # computer-use — status
 
-Updated: 2026-10-06 (coord-assigned task #1 re-verified post-merge; handoff below)
+Updated: 2026-10-07 (Wave 3: P0-BugF + SPEED done — handoff below)
+
+## Wave 3 (2026-10-07)
+
+**Bug F fixed (P0 gate bug) — root cause with live evidence:**
+- `foreground_info` was NEVER the failure: `logs/actions.log` shows jobs 35/41
+  probing successfully in 16 ms with real titles (`window.title [chars=26]`),
+  while the refusing job 43 has **no fg record at all** — `logs/body.log`
+  shows `Connection error: received 1012 (service restart)` between jobs
+  42↔44, i.e. the body was **disconnected during a brain restart** when
+  `see_screen` ran. `hub.get_body_session()` → None → `ActError` →
+  my `capture_screen` collapsed it into `title=None` → gate spoke the
+  **privacy** verdict for an **availability** failure. (The dossier's
+  process-resolution hypothesis is disproven by evidence.)
+- **Fix:** new `gate.unreachable(detail)` (E_UNREACHABLE, "I can't reach the
+  Body right now (detail) — try again in a moment.") + `gate.err_hint()`
+  (speech-safe: structured detail/code or type name, never raw `str(e)`).
+  Applied in `service.capture_screen` AND `runner._observe` (fg probe AND
+  screenshot probe). `{'window': None}`/missing title keeps the fail-closed
+  "can't verify which window" message; blocklist refusal untouched.
+- **Gate hole found & closed while fixing:** the blocklist check only ran on
+  the *vision* path — a blocklisted window with a rich UIA tree would have
+  sent its text to cloud chat (ARCHITECTURE §4: blocklisted foreground forces
+  local models). `_observe` now checks `check_foreground(fg)` BEFORE accepting
+  ANY observation (UIA or vision); refusal covers both paths.
+- **Terminal-foreground tests (dossier ask):** `Ubuntu-26.04` reaches vision
+  (service) and the full loop (runner) with exactly ONE fg probe; probe-failure
+  and missing-window verdicts asserted distinctly; blocklist refuses before
+  UIA/vision/chat.
+- **SPEED (Rule 15):** zero added round trips — happy path stays
+  1× `foreground_info` + 1× `screenshot` (asserted in tests), no retries/sleeps.
+- Reported via coord: heartbeat (task start), `error` (root cause + evidence).
 
 ## Done (Wave 2, docs/lanes/computer-use.md all checked)
 
@@ -96,33 +127,20 @@ Updated: 2026-10-06 (coord-assigned task #1 re-verified post-merge; handoff belo
 
 ## Test output (real runs only — never claim unrun tests)
 ```
-# lane (post-merge, foreground_info gateway + discovery hook + new contract tests)
-$ RAPHAEL_INSTANCE=computer-use /home/dami/raphael/brain/.venv/bin/python -m pytest -q \
-    brain/vision/tests brain/tools/computer_use/tests
-84 passed, 2 skipped in 0.87s           # 2 skips = jsonschema-absent spec checks
+# Wave 3 (2026-10-07), one suite at a time (Rule 14), RAPHAEL_INSTANCE=computer-use:
+lane:            brain/vision/tests + brain/tools/computer_use/tests
+                 88 passed, 2 skipped in 1.68s     # skips = jsonschema-absent
+brain:           brain/tests                -> 152 passed in 11.67s
+conformance:     tests/conformance          -> 2 passed in 0.22s
+(No orphan pytest processes after the runs — Rule 14 checked.)
 
-# everything merged (brain-core + router + voice + pc-in-tools + mine)
-$ RAPHAEL_INSTANCE=computer-use /home/dami/raphael/brain/.venv/bin/python -m pytest -q \
-    brain/tests brain/router/tests brain/voice/tests brain/vision/tests brain/tools
-1 failed, 302 passed, 2 skipped in 43.06s
-
-$ RAPHAEL_INSTANCE=computer-use /home/dami/raphael/brain/.venv/bin/python -m pytest -q tests/conformance
-2 passed in 0.01s
+# Wave 2 reference (kept for history):
+# lane 84 passed/2 skipped; merged suite 302 passed/1 failed (pre-existing on
+# then-base, resolved by later merges per handler verification) + conformance 2.
 ```
-- **The 1 failure is pre-existing on main, NOT this lane** (verified: fails
-  with my changes `git stash`ed on the clean merged tree):
-  `brain/tests/test_tools_registry.py::test_tool_specs_only_offers_conforming_schemas`
-  — `assert 'shell' in specs and 'launch_url' in specs`.
-  Root cause: `import brain.tools` registers the gui stubs WITH schema, then
-  `discover()` imports `brain/tools/pc` whose `_register_all()` re-registers
-  `launch_url` (and the other pc tools) **without `schema=`**, so
-  `tool_specs()` stops offering them. Owners: brain-core (test/expectation) +
-  pc-control (drops schema on re-registration — they keep model-facing specs
-  in `pc.openai_tools()`); a schema-preserving re-register or passing
-  `schema=s.to_schema()` fixes it. Reported via coord `test_result`.
-- `brain/tests/test_agent_loop.py::test_persona_streamed_reply_and_multi_turn_history`
-  failed once in the first combined run and passed on every rerun (isolation
-  + combined) — timing flake, same class as the disclosed brain-suite flake.
+- Historical note: the Wave-2-era `test_tool_specs_only_offers_conforming_schemas`
+  failure and the persona-streamed-reply flake no longer reproduce — `brain/tests`
+  ran 152 passed / 0 failed today (handler verified the merged tree too).
 - `tests/body_win/test_hotkeys_envelope.py` collection error (`No module named
   pip`, shared venv) — pre-existing, qa-security's area, unrelated.
 
