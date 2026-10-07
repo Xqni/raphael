@@ -1,5 +1,5 @@
 ---
-current_wave: 3
+current_wave: 4
 updated: 2026-10-07
 ---
 
@@ -52,11 +52,17 @@ pc-control, voice, computer-use, orb, infra, qa-security, tools-memory, evolutio
 Every P0 gate bug (A/B/C/D/E/F/G) landed with regression tests. Full mock sweep green:
 `tests/run_all --with-brain` = 272 passed, rc=0.
 
-**GATE STATUS: waiting on the human's go for the LIVE E2E re-run** (all six Wave-2
-criteria on the real stack + `prove_reference.py` JP-voice proof + wave-goal demos).
-Starting the live stack is human-only — see `coord attention` "Wave 3 gate ready".
-One open cross-lane item: evolution-persona's shadow-instance request (OPEN with
-brain-core) hard-blocks Wave-4 shadow runs only.
+**GATE PASSED 2026-10-07 — tag `wave-3-gate`** (user GO, live run by integrator):
+all six criteria PASS live — 1) text+voice YouTube command (search_youtube URL opened;
+acoustic chain mic→STT→wake→extract→open_app→notepad launched ×2), 2) spoken answer in
+JP great-sage voice (`prove_reference.py` PROOF OK, sha1=f64bd512ea1e), 3) real vision
+answer via Go paid slot (spend $0.0007/day of $1), 4) distinct live orb states incl
+speaking (Bug C), 5) pause/private/kill acked, 6) mock suite 272 passed rc=0.
+Bugs fixed during the gate (integrator glue, all committed): **Bug H** stt.py async
+never-awaited (voice input was silently dead), stt_language config dropped in loader +
+pinned `en`, wake extract-all, fastpath tail fillers, whisper prompt bias (additive).
+**current_wave bumped to 4** per gate procedure. One open cross-lane item:
+evolution-persona's shadow-instance request (OPEN with brain-core) is Wave-4 scope.
 
 
 **P0 (from the live gate, `docs/BUGS-WAVE2.md` — do these before wave goals):**
