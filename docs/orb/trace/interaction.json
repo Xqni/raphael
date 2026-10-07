@@ -34,7 +34,7 @@
     {
       "name": "mousemove_listener_wired",
       "ok": true,
-      "detail": "listener saw clientX=140 clientY=140 dist=0.0 inside=true seen=1 (expect inside == dist<=112)",
+      "detail": "listener saw clientX=51 clientY=101 dist=97.2 inside=true seen=2 (expect inside == dist<=112)",
       "pass": true
     },
     {

@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { vertexShader, sphereVert } from './shaders/vertex.glsl.js';
 import { fragmentShader, glowShader } from './shaders/fragment.glsl.js';
 import { blurVert, blurFrag } from './shaders/blur.glsl.js';
-import { initSageCore, updateSageCore, lockSageCore } from './sagecore.js';
+import { initSageCore, updateSageCore, lockSageCore, projectShape } from './sagecore.js';
 import { initAnswerMode, updateAnswerMode, lockAnswerMode } from './answermode.js';
 import { initDataRings, updateDataRings, lockDataRings } from './datarings.js';
 import { initJobDots, updateJobDots, lockJobDots } from './jobdots.js';
@@ -236,7 +236,6 @@ const sceneStats = { calls: 0, tris: 0 }; // cached AFTER the scene pass (mask p
 
 // Geometry targets for morph
 const BASE_VERTEX_COUNT = 60;
-const OCTAGRAM_VERTEX_COUNT = 48;
 
 function circlePoints(n) {
   const pts = [];
@@ -262,13 +261,27 @@ function polygonPoints(nSides, n, radius = 1) {
   return new Float32Array(pts);
 }
 function octagramPoints(n) {
+  // BUGS-WAVE2 Bug C ("cages stuck in weird shape"): this used to emit one
+  // point per star vertex (48 floats/point-set = 144) while EVERY other target
+  // emitted 60 (180). updateMorph lerps only Math.min(from,to), so indices
+  // 144-179 were never written again — a permanent stale tail that startMorphTo
+  // then re-captured as the next `from`, wedging the lattice the first time an
+  // octagram morph was interrupted. Now: sample ALONG the star outline so the
+  // count always equals `n`, like every other shape.
   const pts = [];
   const r1 = 1.0, r2 = 0.4;
+  const V = 16;               // 8 outer + 8 inner star vertices
   for (let i = 0; i < n; i++) {
-    const t = i / n;
-    const a = t * Math.PI * 2 * 4; // 8 points
-    const r = i % 2 === 0 ? r1 : r2;
-    pts.push(r * Math.cos(a), r * Math.sin(a), 0);
+    const t = (i / n) * V;
+    const k = Math.floor(t);
+    const f = t - k;
+    const k0 = k % V, k1 = (k + 1) % V;
+    const a0 = (k0 / V) * Math.PI * 2, a1 = (k1 / V) * Math.PI * 2;
+    const r0 = k0 % 2 === 0 ? r1 : r2;
+    const rB = k1 % 2 === 0 ? r1 : r2;
+    const x0 = Math.cos(a0) * r0, y0 = Math.sin(a0) * r0;
+    const x1 = Math.cos(a1) * rB, y1 = Math.sin(a1) * rB;
+    pts.push(x0 + (x1 - x0) * f, y0 + (y1 - y0) * f, 0);
   }
   return new Float32Array(pts);
 }
@@ -276,7 +289,7 @@ function octagramPoints(n) {
 const LATTICE_DEPTH = 0.20; // world units of z the lattice gains (see below)
 function makeMorphTarget(name) {
   let pts;
-  if (name === 'octagram') pts = octagramPoints(OCTAGRAM_VERTEX_COUNT);
+  if (name === 'octagram') pts = octagramPoints(BASE_VERTEX_COUNT);
   else if (name === 'triangle') pts = polygonPoints(3, BASE_VERTEX_COUNT);
   else if (name === 'square') pts = polygonPoints(4, BASE_VERTEX_COUNT);
   else if (name === 'pentagon') pts = polygonPoints(5, BASE_VERTEX_COUNT);
@@ -532,10 +545,21 @@ if (backingDiscAlpha > 0) {
 }
 
 function startMorphTo(targetName) {
-  const to = makeMorphTarget(targetName);
   const posAttr = lattice.geometry.getAttribute('position');
-  const fromArr = new Float32Array(posAttr.count * 3);
-  for (let i = 0; i < fromArr.length; i++) fromArr[i] = posAttr.array[i];
+  const need = posAttr.count * 3;
+  const raw = makeMorphTarget(targetName);
+  // Safety net for Bug C: every target is built at BASE_VERTEX_COUNT now, but
+  // a SHORTER target is what permanently wedged the lattice (the untouched tail
+  // of the buffer was re-used as the next `from`). Cycle instead of leaving a
+  // stale tail — the shape stays right even if a target is ever mis-sized.
+  let to = raw;
+  if (raw.length !== need) {
+    console.error('[orb] MORPH TARGET LENGTH MISMATCH', targetName, raw.length, 'vs', need);
+    to = new Float32Array(need);
+    for (let i = 0; i < need; i++) to[i] = raw[i % raw.length];
+  }
+  const fromArr = new Float32Array(need);
+  fromArr.set(posAttr.array);
   morphFrom = fromArr;
   morphTo = to;
   morphStart = performance.now();
@@ -559,6 +583,29 @@ function updateMorph(now) {
     morphFrom = null;
     morphTo = null;
   }
+}
+
+// Single owner of the lattice morph (Bug C-2). Idempotent via `lastMorphShape`,
+// so the IPC path and the per-frame path can both call it safely, and a
+// mid-ramp restart stays continuous because startMorphTo captures the CURRENT
+// positions as its `from`.
+let lastMorphShape = null;
+function snapLatticeTo(shape) {
+  if (!lattice) return;
+  const posAttr = lattice.geometry.getAttribute('position');
+  const need = posAttr.count * 3;
+  const to = makeMorphTarget(shape);
+  for (let i = 0; i < need; i++) posAttr.array[i] = to[i % to.length];
+  posAttr.needsUpdate = true;
+  morphActive = false; morphFrom = null; morphTo = null;
+}
+function applyLatticeShape() {
+  const want = effectiveShape();
+  orbState.shapeHint = want;
+  if (poseLock) { snapLatticeTo(want); lastMorphShape = want; return; }
+  if (want === lastMorphShape) return;
+  lastMorphShape = want;
+  startMorphTo(want);
 }
 
 const demoSeq = [
@@ -719,14 +766,12 @@ function animate(now) {
     lastShapeState = orbState.orbState;
     // echo the visual state to main (roam gating + future features)
     try { if (window.raphael && window.raphael.sendOrbState) window.raphael.sendOrbState(orbState.orbState); } catch (e) { /* no preload */ }
-    // PROTOCOL §8: the SERVER's shape_hint is authoritative — the per-state
-    // default only applies when the frame carried none (and `acting` has no
-    // default of its own: it is owned by the task-kind map, config orb.shape_map).
-    const want = effectiveShape();
-    if (want !== orbState.shapeHint) {
-      orbState.shapeHint = want;
-      if (!poseLock) startMorphTo(want);
-    }
+    // PROTOCOL §8 + Bug C(2): one owner for the lattice morph. The old code
+    // only morphed when `want !== orbState.shapeHint`, but onOrbState had
+    // ALREADY assigned shapeHint — so a state change never morphed at all and
+    // the lattice kept its previous shape. The pose lock then snapped it for
+    // every screenshot, which is exactly why the pixel gates never saw this.
+    applyLatticeShape();
     // TTS amplitude belongs to `speaking` only: a missed speak{end} must not
     // keep pulsing every later state (W2.1 frame-trace finding).
     if (orbState.orbState !== 'speaking' && window.orbDemoAmp === undefined) {
@@ -762,7 +807,7 @@ function animate(now) {
   halo.material.opacity = 0.25 * layerWeights.haloOpacity;
   lattice.material.opacity = 0.35 * layerWeights.latticeOpacity;
   const mode = orbState.mode;
-  updateSageCore(sage, { t, dt, state: orbState.orbState, mode, lock: poseLock, shape: orbState.shapeHint, amp: reactiveAmp, coreU: core.material.uniforms, ballScale, core, tint: getStateTint(orbState.orbState), glide: { x: GLX, y: GLY, blur: GLB } });
+  updateSageCore(sage, { t, dt, state: orbState.orbState, mode, lock: poseLock, shape: effectiveShape(), amp: reactiveAmp, coreU: core.material.uniforms, ballScale, core, tint: getStateTint(orbState.orbState), glide: { x: GLX, y: GLY, blur: GLB } });
   if (AM) updateAnswerMode(AM, { t, dt, state: orbState.orbState, mode, lock: poseLock, amp: reactiveAmp, glide: { x: GLX, y: GLY } });
   if (DR) updateDataRings(DR, { t, dt, state: orbState.orbState, mode, lock: poseLock, amp: reactiveAmp, glide: { x: GLX, y: GLY } });
   if (JD) updateJobDots(JD, { t, dt, jobs: orbState.jobsActive, lock: poseLock });
@@ -921,17 +966,7 @@ window.__orbLockPose = () => {
   lastShapeState = st;
   const target = modeTarget(st, mode);
   layerWeights = { ...target };
-  const want = effectiveShape();
-  orbState.shapeHint = want;
-  // snap the lattice morph instead of animating it
-  if (lattice) {
-    const posAttr = lattice.geometry.getAttribute('position');
-    const to = makeMorphTarget(want);
-    const n = Math.min(posAttr.array.length, to.length);
-    for (let i = 0; i < n; i++) posAttr.array[i] = to[i];
-    posAttr.needsUpdate = true;
-    morphActive = false; morphFrom = null; morphTo = null;
-  }
+  applyLatticeShape();   // snaps while poseLock is on (set above)
   // clear every accumulated transform so all scenes share one pose
   rays.rotation.set(Math.PI / 4, 0, 0);
   rings[0].rotation.set(0, 0, 0);
@@ -941,7 +976,7 @@ window.__orbLockPose = () => {
   const la = st === 'listening'
     ? (typeof orbState.amplitude === 'number' ? orbState.amplitude : 0)
     : (st === 'speaking' ? speakAmp : 0);
-  if (sage) lockSageCore(sage, st, mode, { tint: getStateTint(st), amp: la, shape: orbState.shapeHint });
+  if (sage) lockSageCore(sage, st, mode, { tint: getStateTint(st), amp: la, shape: effectiveShape() });
   if (AM) lockAnswerMode(AM, st, { amp: la });
   if (DR) lockDataRings(DR, st, { amp: la });
   if (JD) lockJobDots(JD, orbState.jobsActive);
@@ -987,6 +1022,46 @@ window.__orbSpin = () => ({
   govDpr: GOV ? GOV_LADDER[GOV.idx] : null,
   frame: renderer ? renderer.info.render.frame : null,
 });
+
+// --- Bug C probes ----------------------------------------------------------
+// MORPH TARGET INVARIANT: every lattice target must share one vertex count.
+// Checked once at load so a regression is loud in the console, and reported by
+// __orbMorphDiff so the CDP gate can assert it.
+const MORPH_SHAPES = ['circle', 'triangle', 'square', 'pentagon', 'hexagon', 'octagram'];
+const MORPH_TARGET_LENGTHS = MORPH_SHAPES.map((s) => makeMorphTarget(s).length);
+if (new Set(MORPH_TARGET_LENGTHS).size !== 1) {
+  console.error('[orb] MORPH TARGET LENGTH MISMATCH', MORPH_SHAPES, MORPH_TARGET_LENGTHS);
+}
+
+/**
+ * Is the lattice exactly where `shape` says it should be? A non-zero maxErr
+ * after a settle means a morph was interrupted and left a stale tail (Bug C).
+ * `cage` is the per-state 3D cage deformation, checked the same way.
+ */
+window.__orbMorphDiff = () => {
+  if (!lattice) return null;
+  const shape = effectiveShape();
+  const have = lattice.geometry.getAttribute('position').array;
+  const want = makeMorphTarget(shape);
+  let lat = null;
+  if (want.length !== have.length) {
+    lat = { lengthMismatch: true, want: want.length, have: have.length };
+  } else {
+    let m = 0;
+    for (let i = 0; i < want.length; i++) m = Math.max(m, Math.abs(want[i] - have[i]));
+    lat = { lengthMismatch: false, maxErr: m, points: have.length / 3 };
+  }
+  let cage = null;
+  if (sage && sage.polyBase && sage.cageTo) {
+    projectShape(sage.polyBase, shape, sage.cageTo);
+    const arr = sage.polyGeo.attributes.position.array;
+    let m = 0;
+    for (let i = 0; i < arr.length; i++) m = Math.max(m, Math.abs(arr[i] - sage.cageTo[i]));
+    cage = { maxErr: m, active: !!sage.cageActive, shape: sage.cageShape };
+  }
+  return { shape, shapeHintField: orbState.shapeHint, morphActive,
+           targetLengths: MORPH_TARGET_LENGTHS, lattice: lat, cage };
+};
 
 // --- §2 / §4 probes ---------------------------------------------------------
 window.__orbMotionBlur = () => ({ ...blurState, reducedMotion: !!cfg.reducedMotion,
@@ -1124,20 +1199,14 @@ setTimeout(() => {
 if (window.raphael) {
   window.raphael.onOrbState((s) => {
     traceRx('orb_state', s);
-    const prevState = orbState.orbState;
-    const prevShape = orbState.shapeHint;
     // PROTOCOL §8: `shape_hint` on the frame is authoritative; null means the
-    // frame carried none and the per-state default applies instead.
+    // frame carried none and the per-state default applies instead. NB the merge
+    // below also overwrites `shapeHint` with the SERVER's value (usually
+    // 'circle'), which is why the effective shape is recomputed right after.
     if ('shapeHint' in s) orbState.serverShapeHint = s.shapeHint || null;
     orbState = { ...orbState, ...s };
     orbState.serverShapeHint = ('shapeHint' in s) ? (s.shapeHint || null) : orbState.serverShapeHint;
-    const want = effectiveShape();
-    if (want !== prevShape) {
-      orbState.shapeHint = want;
-      // when the STATE also changed, animate()'s state-change block owns the
-      // morph — morphing here too would restart the 600 ms ramp from scratch.
-      if (!poseLock && orbState.orbState === prevState) startMorphTo(want);
-    }
+    applyLatticeShape();
     // state-name text REMOVED (user: "text flashes when switching states") —
     // only explicit subtitles (spoken narration) are ever shown.
     if (s.subtitle) updateSubtitle(s.subtitle);
@@ -1148,15 +1217,27 @@ if (window.raphael) {
   });
   window.raphael.onSpeak((ev) => {
     traceRx('speak', ev);
-    if (ev && ev.seq !== undefined && ev.seq <= lastSpeakSeq) return;
-    if (ev && ev.seq !== undefined) lastSpeakSeq = ev.seq;
-    if (ev && ev.event === 'end') {
+    if (!ev) return;
+    // BUGS-WAVE2 Bug C (no pulse while she spoke): the old guard was
+    //   if (ev.seq <= lastSpeakSeq) return;
+    // and `lastSpeakSeq` survived across utterances, so a FRESH utterance that
+    // restarts seq at 0 was dropped wholesale (0 <= 8, 1 <= 8, ...) — the orb
+    // stopped pulsing after the first answer.
+    //
+    // The transport is an ORDERED WebSocket (PROTOCOL §1), so an out-of-order
+    // or replayed speak frame cannot exist; the guard therefore only ever
+    // dropped legitimate frames. Processing is idempotent (we just assign the
+    // amplitude), so nothing is dropped any more — `lastSpeakSeq` is kept as a
+    // high-water mark for diagnostics only.
+    if (ev.seq !== undefined && ev.seq > lastSpeakSeq) lastSpeakSeq = ev.seq;
+    if (ev.event === 'end') {
       speakAmp = 0;
       speakPitch = null;
+      lastSpeakSeq = -1;
       return;
     }
-    speakAmp = ev.amplitude || 0;
-    speakPitch = ev.pitch_hz || null;
+    speakAmp = ev.amplitude !== undefined ? ev.amplitude : 0;
+    speakPitch = ev.pitch_hz !== undefined ? ev.pitch_hz : null;
   });
 }
 

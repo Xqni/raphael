@@ -353,3 +353,81 @@ where the cursor happens to be:
 Also fixed: `--only=<phase>` runs returned exit code 0 even when their own
 checks failed — they now set `process.exitCode = 1`.
 Result: **interaction PASS 16/16**.
+
+---
+
+# Wave 3 — Bug C (P0) + Rule-15 speed
+
+**Verdict: three real bugs found in the orb's own renderer, all fixed and gated.**
+`docs/BUGS-WAVE2.md` pointed at the right area; two of the three were subtler
+than the dossier suggested, and one was being **masked by the pose-lock
+screenshots**.
+
+### C-1 — no pulse while she spoke
+`renderer.js` guarded with `if (ev.seq <= lastSpeakSeq) return;` and
+`lastSpeakSeq` survived across utterances. Every fresh utterance restarts `seq`
+at 0, so after the first answer the guard rejected the **whole run**
+(`0 ≤ 8, 1 ≤ 8, …`) — the orb simply stopped pulsing.
+
+Fix: the transport is an **ordered WebSocket** (PROTOCOL §1), so a replayed or
+out-of-order `speak` frame cannot exist and the guard could only ever drop
+legitimate frames. Processing is idempotent (it just assigns the amplitude), so
+**nothing is dropped any more**; `lastSpeakSeq` is kept as a high-water mark for
+diagnostics. `event: end` still clears amplitude, and the mirror in
+`tests/state-machine.js` matches byte-for-byte.
+
+> Note: my first attempt kept the guard and reset it on `start`/lower-seq. The
+> phase still failed (`amp1=0.15 → amp2=0.15`) because two short utterances can
+> legitimately land on the **same** seq — indistinguishable from a duplicate.
+> That is when it became clear the guard had no safe form at all.
+
+`testStaleSeqDrop` encoded the broken contract and was replaced by
+`testRepeatedSeqIsNotDropped`.
+
+### C-2 — cages/lattice stuck in a weird shape (two bugs, not one)
+1. **Length mismatch.** `makeMorphTarget('octagram')` returned **48 points
+   (144 floats)** while every other target returns **60 (180)**. `updateMorph`
+   lerps only `Math.min(from.length, to.length)`, so indices 144–179 were
+   **never written again** — a permanent stale tail that `startMorphTo` then
+   re-captured as the next `from`. Fixed: the star is now sampled *along its
+   outline* to exactly `n` points, plus a defensive cycle in `startMorphTo`
+   that logs loudly if a target is ever mis-sized.
+2. **The morph never fired on a state change.** `onOrbState` assigned
+   `orbState.shapeHint = want` *before* `animate` checked
+   `if (want !== orbState.shapeHint)` — so that condition was **always false**
+   exactly when the state changed, and the lattice kept its previous shape.
+   Fixed with one owner, `applyLatticeShape()`, guarded by `lastMorphShape` and
+   called from the IPC path, the per-frame path and the pose lock.
+
+**Why no screenshot gate caught #2:** `__orbLockPose()` snapped the lattice
+straight to the target before every capture, so all 104 distinctness pairs and
+every matrix shot looked correct while the live orb never morphed. The new
+`window.__orbMorphDiff()` probe measures it **without** the lock — that is what
+turned a masked bug into a failing check.
+
+### C-15 speed (Rule 15)
+State-flip delivery, mock-Brain send → renderer applied (includes the
+harness's own evaluate round-trip, so it is an upper bound):
+
+```
+mean=1ms  worst=2ms   listening:1 thinking:2 confirm:1 error:2 idle:1
+```
+The 300–600 ms **crossfade is by design** and is not what this measures.
+
+### Evidence
+
+```
+$ npm run orb:trace -- --only=bugc
+Bug C + speed: PASS (6/6)
+  ok pulse_follows_fresh_utterance: amp1=0.15 -> amp2=0.95
+  ok renderer_received_every_speak_frame: 9 -> 10
+  ok morph_targets_share_one_length: [180,180,180,180,180,180] (octagram was 144)
+  ok morph_settles_after_interruption: maxErr=0 (was 0.134)
+  ok cage_shape_settles_after_interruption: maxErr=0 shape=hexagon (was 0.253/'circle')
+  ok state_flip_latency: mean=1ms worst=2ms
+EXIT=0
+
+$ node tests/state-machine.test.js
+All state machine tests passed        (11 test functions, 4 new for Bug C)
+```
+`docs/orb/trace/bugc.json` holds the full check table.

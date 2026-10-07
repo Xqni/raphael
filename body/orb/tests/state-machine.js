@@ -35,11 +35,18 @@ class StateMachine {
 
   onSpeak(ev) {
     if (!ev) return this.state;
-    if (ev.seq !== undefined && ev.seq <= this.state.lastSpeakSeq) return this.state;
-    if (ev.seq !== undefined) this.state.lastSpeakSeq = ev.seq;
+    // BUGS-WAVE2 Bug C: a fresh utterance restarts `seq` at 0 and the WS is
+    // ordered (PROTOCOL §1), so an out-of-order/replayed speak frame cannot
+    // exist — the old `seq <= lastSpeakSeq` dropped every utterance after the
+    // first (0 <= 8) and the orb stopped pulsing. Nothing is dropped any more;
+    // lastSpeakSeq is a high-water mark for diagnostics. Mirrors renderer.js.
+    if (ev.seq !== undefined && ev.seq > this.state.lastSpeakSeq) {
+      this.state.lastSpeakSeq = ev.seq;
+    }
     if (ev.event === 'end') {
       this.state.speakAmp = 0;
       this.state.speakPitch = null;
+      this.state.lastSpeakSeq = -1;   // next utterance starts a fresh run
       if (this.state.orbState === 'speaking') this.transitionTo('idle');
       return this.state;
     }

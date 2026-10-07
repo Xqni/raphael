@@ -334,6 +334,91 @@ async function runInteraction(cdp, brain, rec) {
   return out;
 }
 
+/**
+ * BUGS-WAVE2 Bug C — the two P0 render bugs, both reproduced then fixed:
+ *   (1) no pulse: a fresh utterance restarts `seq` at 0 and the stale-seq guard
+ *       dropped the whole utterance;
+ *   (2) stuck shape: the octagram target had a different vertex count, so an
+ *       interrupted morph left a permanently stale tail.
+ * Plus the Wave-3 SPEED check (Rule 15): how long a state flip takes to land.
+ */
+async function runBugC(cdp, brain, rec) {
+  const checks = [];
+  const add = (name, ok, detail) => checks.push({ name, ok, detail, pass: !!ok });
+  const amp = async () => (await cdp.evaluateJson('JSON.stringify(window.__orbTrace())')).amp.speak;
+  const speakRx = async () => {
+    const t = await cdp.evaluateJson('JSON.stringify(window.__orbTrace())');
+    return (t.rx || []).filter((r) => r.kind === 'speak').length;
+  };
+
+  // (1) PULSE — utterance 1 low, then a FRESH utterance (seq restarts) high.
+  //     Old guard: seq 1 <= 8 -> dropped -> amp2 stays 0.15.
+  await cdp.evaluate(`document.body.style.background = ${JSON.stringify(BG_STYLES.dark)}`);
+  brain.step('speaking');
+  await sleep(1400);
+  brain.speakReset(); brain.speakAt(0.15);
+  await sleep(600);
+  const amp1 = await amp();
+  const rx1 = await speakRx();
+  brain.speakReset(); brain.speakAt(0.95);
+  await sleep(600);
+  const amp2 = await amp();
+  const rx2 = await speakRx();
+  add('pulse_follows_fresh_utterance', Math.abs(amp2 - 0.95) < 0.08,
+      `amp1=${amp1} (seq run A) -> amp2=${amp2} (fresh run restarting at seq 0, expect ~0.95)`);
+  add('renderer_received_every_speak_frame', rx2 > rx1,
+      `renderer rx speak frames: ${rx1} -> ${rx2} (a dropped run would not grow)`);
+
+  // (2) STUCK SHAPE — reproduce Bug E's flicker: restart the morph mid-ramp,
+  //     over and over, then let it settle on one shape.
+  for (let i = 0; i < 5; i++) {
+    brain.step('listening'); await sleep(140);
+    brain.step('speaking'); await sleep(140);
+  }
+  brain.step('speaking');
+  await sleep(1600);
+  const md = await cdp.evaluateJson('window.__orbMorphDiff()');
+  add('morph_targets_share_one_length',
+      !!md && new Set(md.targetLengths).size === 1,
+      md ? `target lengths = ${JSON.stringify(md.targetLengths)} (octagram used to be 144 vs 180)` : 'probe missing');
+  add('morph_settles_after_interruption',
+      !!md && md.lattice && md.lattice.lengthMismatch === false &&
+      md.morphActive === false && md.lattice.maxErr < 0.01,
+      md ? `lattice=${JSON.stringify(md.lattice)} morphActive=${md.morphActive} shape=${md.shape}` : 'no probe');
+  add('cage_shape_settles_after_interruption',
+      !!md && md.cage && md.cage.active === false && md.cage.maxErr < 0.01,
+      md && md.cage ? `cage=${JSON.stringify(md.cage)}` : 'no cage probe');
+
+  // (3) SPEED (Rule 15): how long from "Brain sends orb_state" to the renderer
+  //     applying it. This includes the harness's own evaluate round-trip, so it
+  //     is an upper bound. The 300-600ms visual crossfade is BY DESIGN and is
+  //     not what this measures.
+  const flips = [];
+  for (const s of ['listening', 'thinking', 'confirm', 'error', 'idle']) {
+    const t0 = Date.now();
+    brain.step(s);
+    let seen = null;
+    while (Date.now() - t0 < 3000) {
+      seen = await cdp.evaluate('window.__orbDebug.state');
+      if (seen === s) break;
+      await sleep(10);
+    }
+    flips.push({ state: s, ms: Date.now() - t0, seen });
+  }
+  const worst = Math.max(...flips.map((f) => f.ms));
+  const mean = flips.reduce((a, b) => a + b.ms, 0) / flips.length;
+  add('state_flip_latency', flips.every((f) => f.seen === f.state) && worst <= 150,
+      `mean=${mean.toFixed(0)}ms worst=${worst}ms (delivery only; 300-600ms crossfade is by design) — ` +
+      flips.map((f) => `${f.state}:${f.ms}`).join(' '));
+
+  const out = { pass: checks.every((c) => c.ok), checks, morph: md };
+  rec('bugc', out);
+  fs.writeFileSync(path.join(OUT, 'bugc.json'), JSON.stringify(out, null, 2) + '\n');
+  log(`Bug C + speed: ${out.pass ? 'PASS' : 'FAIL'} (${checks.filter((c) => c.ok).length}/${checks.length})`);
+  for (const c of checks) log(`  ${c.ok ? 'ok  ' : 'FAIL'} ${c.name}: ${c.detail}`);
+  return out;
+}
+
 async function runStartupPhase(cdp, brain, rec) {
   // §1 evidence: drive a FULL starting -> idle sequence and sample omega,
   // angle, core brightness and layer weights every 50 ms through it, plus a
@@ -479,6 +564,7 @@ async function main() {
       else if (ONLY_PHASE === 'transparency') await runTransparency(cdp, brain, rec);
       else if (ONLY_PHASE === 'perf') await runBlurPerf(cdp, brain, rec);
       else if (ONLY_PHASE === 'interaction') await runInteraction(cdp, brain, rec);
+      else if (ONLY_PHASE === 'bugc') await runBugC(cdp, brain, rec);
       else throw new Error('unknown --only phase: ' + ONLY_PHASE);
       fs.writeFileSync(path.join(OUT, 'trace-partial.jsonl'), lines.join('\n') + '\n');
       const only = lines.map((l) => { try { return JSON.parse(l); } catch (e) { return null; } })
@@ -567,6 +653,15 @@ async function main() {
       rec('sec4_error', { message: String(e && e.message) });
     }
 
+    // --- Bug C (P0) + Rule-15 flip latency ---------------------------------
+    let bugc = null;
+    try {
+      bugc = await runBugC(cdp, brain, rec);
+    } catch (e) {
+      log('Bug C phase FAILED:', e && e.message);
+      rec('bugc_error', { message: String(e && e.message) });
+    }
+
     // --- W2.3 interaction (menu / hit-testing / typed command) -------------
     let interaction = null;
     try {
@@ -649,6 +744,10 @@ async function main() {
     }
     if (transparency && !transparency.pass) {
       console.error('[orb-trace] FAIL: transparency check — a box/fringe is visible at the window edge');
+      failed = true;
+    }
+    if (bugc && !bugc.pass) {
+      console.error('[orb-trace] FAIL: Bug C (pulse / stuck shape) or flip latency did not hold');
       failed = true;
     }
     if (interaction && !interaction.pass) {
