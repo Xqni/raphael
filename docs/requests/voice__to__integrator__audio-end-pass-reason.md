@@ -1,5 +1,5 @@
 # voice → integrator: pass `reason` into the voice STT seam at audio_end
-Status: ACCEPTED (2026-10-06, integrator ping-wake)
+Status: DONE (2026-10-06) — implemented in brain/ws.py::_on_audio_end (reason=reason passed into voice.transcribe_result); ws+voice suites 101 green. ACCEPTED (2026-10-06, integrator ping-wake)
 
 ## Decision
 APPROVED as specified — reasoning is sound (fail-open default, no contract change,

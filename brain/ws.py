@@ -704,8 +704,13 @@ class WsHub:
             # ARCHITECTURE §4: no blocking calls on the loop; HARD timeout so
             # a stuck whisper can never hang the session ("don't get stuck" —
             # TimeoutError falls into the generic except -> error frame + ack).
+            # reason= (voice request docs/requests/voice__to__integrator__
+            # audio-end-pass-reason.md, APPROVED): feeds the pre-STT cloud gate
+            # (activation.py) — wake/ptt/silence decisions; fail-open default
+            # kept in transcribe_result for other callers.
             res = await asyncio.wait_for(
-                asyncio.to_thread(voice.transcribe_result, buf), timeout=120)
+                asyncio.to_thread(voice.transcribe_result, buf, reason=reason),
+                timeout=120)
             
             # 1. Broadcast transcript to Body and UI
             self.broadcast(stt_final_frame(res.text, res.lang, res.rtf), roles={'body', 'ui'})
