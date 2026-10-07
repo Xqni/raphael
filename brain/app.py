@@ -50,6 +50,15 @@ async def lifespan(app: FastAPI):
         hub.refresh_orb_state()
 
     engine.on_state = _on_job_state
+    # INTERFACES §b: re-run tool auto-discovery at lifespan so subpackages
+    # (e.g. brain/tools/pc) that landed after the first import register on a
+    # LIVE Brain without touching any shared file. Idempotent; failures are
+    # recorded in brain.tools.load_errors(), never fatal.
+    try:
+        tool_reg.discover()
+    except Exception as _e:  # noqa: BLE001 — discovery must never block boot
+        print(f'[tools] lifespan discovery failed: {type(_e).__name__}: {_e}',
+              flush=True)
     # boot snapshot while the engine is not ready (INTERFACES §e `starting`)
     orbstate.emit('starting', hub=hub, engine=engine)
     start_loop(hub=hub)            # wires runner, starts workers, marks interrupted

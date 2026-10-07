@@ -50,7 +50,6 @@ fastpath.register_builtin_intents()
 import os as _os
 _NO_BINARY_TTS = _os.environ.get('RAPHAEL_DISABLE_BINARY_TTS') == '1'
 
-_TOOL_CALL_RE = re.compile(r'\{[^{}]*"tool"[^{}]*\}', re.S)
 _SENT_END_RE = re.compile(r'[.!?…]["\')\]]?(?=\s|$)')
 
 PRIVATE_NOTICE = ('Private mode is on — cloud models are disabled. '
@@ -64,15 +63,41 @@ class _JobAborted(Exception):
 
 
 def _extract_tool_call(text: str):
-    """Fallback: plans may embed a structured tool call {"tool": ..., "args"}."""
-    m = _TOOL_CALL_RE.search(text or '')
-    if m:
-        try:
-            obj = json.loads(m.group(0))
-            if isinstance(obj.get('tool'), str):
-                return obj['tool'], obj.get('args') or {}
-        except (TypeError, ValueError):
-            pass
+    """Fallback channel: plans may embed {"tool": ..., "args": {...}}.
+
+    Balanced-brace scanner with nested-object support — the old `[^{}]*`
+    regex stopped at the first inner brace, so any nested args object made
+    the textual prompt_block() fallback silently unusable."""
+    if not text:
+        return None, {}
+    key_at = text.find('"tool"')
+    while key_at != -1:
+        start = text.rfind('{', 0, key_at)
+        while start != -1:
+            depth = 0
+            obj_text = None
+            for i in range(start, len(text)):
+                ch = text[i]
+                if ch == '{':
+                    depth += 1
+                elif ch == '}':
+                    depth -= 1
+                    if depth == 0:
+                        obj_text = text[start:i + 1]
+                        break
+            if obj_text is not None:
+                try:
+                    obj = json.loads(obj_text)
+                    if isinstance(obj, dict) and isinstance(obj.get('tool'), str):
+                        return obj['tool'], obj.get('args') or {}
+                except (TypeError, ValueError):
+                    pass
+                # candidate failed: try the next-outer '{' (key may sit inside
+                # an object whose "args" opened first)
+                start = text.rfind('{', 0, start)
+            else:
+                break
+        key_at = text.find('"tool"', key_at + 1)
     return None, {}
 
 
@@ -135,11 +160,20 @@ def _trim_history(max_messages: int, max_chars: int) -> None:
         _history.pop(0)
 
 
-def _build_messages(user_text: str) -> List[Dict[str, Any]]:
+def _build_messages(user_text: str,
+                    specs: Optional[List[Dict[str, Any]]] = None
+                    ) -> List[Dict[str, Any]]:
     max_msgs = int(_agent_setting('history_max_messages', 24))
     max_chars = int(_agent_setting('history_max_chars', 8000))
     _trim_history(max_msgs, max_chars)
-    return ([{'role': 'system', 'content': persona_system_prompt()}]
+    system = persona_system_prompt()
+    # prompt_block fallback (pc-control item 2, decision 2026-10-06): native
+    # chat(tools=...) is preferred; the textual catalog keeps providers that
+    # ignore `tools` able to reach tools via _extract_tool_call.
+    block = llm.prompt_block(specs)
+    if block:
+        system = f'{system}\n\n{block}'
+    return ([{'role': 'system', 'content': system}]
             + list(_history)
             + [{'role': 'user', 'content': user_text}])
 
@@ -389,9 +423,13 @@ def build_runner(hub=None):
             except tool_reg.BadToolArgs as e:
                 return (False, f'invalid arguments: {e}')
             meta = tool_reg.describe(tool_name)
-            # dispatch-time confirm: a model-picked risky tool must clear the
-            # gate even when the user's TEXT was benign (Wave 2 task 3).
+            # dispatch-time confirm (pc-control item 3, Core Guard §8): the
+            # model-picked tool must clear the gate even when the user's TEXT
+            # was benign — pattern+RISKY_TOOLS first, then registry `risky`
+            # metadata for tools outside confirm.RISKY_TOOLS.
             decision = confirm_mod.classify(text, tool=tool_name)
+            if not decision.needs and meta.get('risky'):
+                decision = confirm_mod.tool_decision(tool_name, text)
             if decision.needs and decision.action not in confirmed_actions:
                 await _ask_confirm(decision)
             needs_lock = bool(lock_hint or meta.get('needs_lock'))
@@ -440,7 +478,7 @@ def build_runner(hub=None):
             max_steps = int(_agent_setting('max_tool_steps', 6))
             result_chars = int(_agent_setting('tool_result_max_chars', 4000))
             specs = tool_reg.tool_specs()
-            messages = _build_messages(text)
+            messages = _build_messages(text, specs)
             try:
                 spoken_max = int((appcfg.cfg_get(appcfg.get_config(),
                                                  'voice_personality', {}) or {})
@@ -454,8 +492,11 @@ def build_runner(hub=None):
                 orbstate.set_task('llm')
                 orbstate.refresh(hub=hub, engine=engine)
 
+                # native tools preferred (decision 2026-10-06); purpose='tool'
+                # tags tool-capable turns per INTERFACES §a
                 stream = await llm.chat(messages, tools=specs or None,
-                                        stream=True, purpose='chat')
+                                        stream=True,
+                                        purpose='tool' if specs else 'chat')
                 buffer = ''
                 full_text = ''
                 final: Optional[Dict[str, Any]] = None

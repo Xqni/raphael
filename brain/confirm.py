@@ -151,6 +151,22 @@ def classify(text: str, tool: Optional[str] = None) -> RiskDecision:
                         risk='high' if is_high else 'low')
 
 
+def tool_decision(tool: str, text: str = '') -> RiskDecision:
+    """Dispatch-time gate for a tool whose REGISTRY metadata says `risky`
+    (pc-control item 3) even when its name is not in RISKY_TOOLS and the
+    user's text matched no pattern — e.g. a namespace registering a risky
+    action under a new name. Risk follows the same config-list authority."""
+    name = str(tool or '').strip()
+    action = TOOL_ACTION.get(name.lower(), name.lower() or 'tool')
+    risk = 'high' if action in high_risk_actions() else 'low'
+    snippet = ' '.join((text or '').split())[:80]
+    question = (f"About to run tool `{name}`: “{snippet}”. Confirm?"
+                if snippet else f"About to run tool `{name}`. Confirm?")
+    return RiskDecision(needs=True, question=question, actions=['yes', 'no'],
+                        reason=f'tool `{name}` (risky metadata)',
+                        action=action, risk=risk)
+
+
 def parse_free_text(answer: str) -> str:
     """§9: free text goes through a small yes/no/modify intent check.
     Anything not clearly affirmative FAILS CLOSED (treated as deny)."""

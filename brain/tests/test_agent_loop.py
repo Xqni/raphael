@@ -181,8 +181,12 @@ def test_persona_streamed_reply_and_multi_turn_history(token_path, fake_chat):
     assert 'raphael_great_sage' in sys_msg['content']
     assert 'Never say or act like' in sys_msg['content']
     assert 'calm, precise, analytical' in sys_msg['content']
-    # streamed + tools offered
+    # prompt_block fallback (pc-control item 2) rides in the system prompt
+    assert 'Tool calling:' in sys_msg['content']
+    assert '- shell:' in sys_msg['content']
+    # streamed + tools offered natively, tool-capable turns tagged purpose=tool
     assert calls[0]['stream'] is True
+    assert calls[0]['purpose'] == 'tool'
     tool_names = {t['function']['name'] for t in (calls[0]['tools'] or [])}
     assert 'shell' in tool_names
     assert calls[0]['messages'][-1] == {'role': 'user',
@@ -587,3 +591,106 @@ def test_audio_path_listening_and_voice_confirm(token_path, fake_chat,
                         and m.get('job') == job2
                         and m.get('status') in ('running', 'failed', 'done'))
                     assert st2['status'] != 'awaiting_confirm'
+
+
+# ---- pc-control items 2 + 3 (approved 2026-10-06) ---------------------------
+def test_textual_fallback_extracts_embedded_tool_call(token_path, fake_chat):
+    """Provider WITHOUT native tools: the prompt_block JSON the model echoes
+    back is parsed (incl. nested args) and executed."""
+    from brain import tools as reg
+
+    reg.register('t_fb_nested',
+                 lambda q, opts: f'{q}/{opts["depth"]}',
+                 description='nested-args tool',
+                 schema={'type': 'object',
+                         'properties': {
+                             'q': {'type': 'string', 'description': 'query'},
+                             'opts': {'type': 'object',
+                                      'description': 'options'},
+                         },
+                         'required': ['q', 'opts'],
+                         'additionalProperties': False})
+    try:
+        calls = fake_chat([
+            {'text': 'Looking it up: {"tool": "t_fb_nested", '
+                     '"args": {"q": "hi", "opts": {"depth": 2}}}'},
+            {'text': 'All done.'},
+        ])
+        with TestClient(app) as client:
+            with client.websocket_connect('/ws') as ws_cli:
+                assert _auth(ws_cli, 'cli')['type'] == 'auth_ok'
+                job = _command(ws_cli, 'nested fallback please')
+                done, _ = _recv_until(
+                    ws_cli, lambda m: m.get('type') == 'job_event'
+                    and m.get('status') == 'done' and m.get('job') == job)
+                assert done['text'] == 'All done.'
+        # the embedded call actually executed and was fed back
+        tool_msg = [m for m in calls[1]['messages'] if m.get('role') == 'tool']
+        assert tool_msg and 'hi/2' in tool_msg[0]['content']
+        assert tool_msg[0]['content'].startswith('[UNTRUSTED t_fb_nested output')
+    finally:
+        reg._registry.pop('t_fb_nested', None)
+        reg._META.pop('t_fb_nested', None)
+
+
+def test_extract_tool_call_handles_nested_args_unit():
+    text = 'x {"tool": "a", "args": {"b": {"c": 1}, "d": [1, 2]}} y'
+    name, args = loop_mod._extract_tool_call(text)
+    assert name == 'a' and args == {'b': {'c': 1}, 'd': [1, 2]}
+    # args object appearing BEFORE the tool key still parses
+    text2 = '{"args": {"x": 1}, "tool": "b"}'
+    name, args = loop_mod._extract_tool_call(text2)
+    assert name == 'b' and args == {'x': 1}
+    assert loop_mod._extract_tool_call('no call here') == (None, {})
+
+
+def test_registry_risky_metadata_gates_dispatch(token_path, fake_chat):
+    """Item 3: a tool flagged risky=True in the REGISTRY but NOT in
+    confirm.RISKY_TOOLS still prompts for confirmation at dispatch."""
+    from brain import tools as reg
+
+    reg.register('t_registry_risky', lambda q: f'ran {q}',
+                 description='risky by registry metadata', risky=True,
+                 schema={'type': 'object',
+                         'properties': {'q': {'type': 'string',
+                                              'description': 'query'}},
+                         'required': ['q'], 'additionalProperties': False})
+    try:
+        calls = fake_chat([
+            {'text': '', 'tool_calls': [{
+                'id': 'c1', 'type': 'function',
+                'function': {'name': 't_registry_risky',
+                             'arguments': json.dumps({'q': 'x'})}}]},
+            {'text': 'Finished.'},
+        ])
+        with TestClient(app) as client:
+            with client.websocket_connect('/ws') as ws_cli:
+                assert _auth(ws_cli, 'cli')['type'] == 'auth_ok'
+                job = _command(ws_cli, 'do the benign thing')
+                conf, _ = _recv_until(
+                    ws_cli, lambda m: m.get('type') == 'needs_confirm'
+                    and m.get('job') == job)
+                assert 't_registry_risky' in conf['question']
+                ws_cli.send_text(json.dumps({'type': 'confirm_resp', 'v': 1,
+                                             'job': job, 'answer': 'yes'}))
+                _recv_until(ws_cli, lambda m: m.get('type') == 'ack'
+                            and m.get('accepted') is True)
+                done, _ = _recv_until(
+                    ws_cli, lambda m: m.get('type') == 'job_event'
+                    and m.get('status') == 'done' and m.get('job') == job)
+                assert done['text'] == 'Finished.'
+        # tool ran only AFTER the grant (result present in the feedback turn)
+        tool_msg = [m for m in calls[1]['messages'] if m.get('role') == 'tool']
+        assert tool_msg and 'ran x' in tool_msg[0]['content']
+    finally:
+        reg._registry.pop('t_registry_risky', None)
+        reg._META.pop('t_registry_risky', None)
+
+
+def test_tool_decision_helper_maps_risk():
+    from brain import confirm as confirm_mod
+    d = confirm_mod.tool_decision('powershell')
+    assert d.needs and d.action == 'system_command' and d.risk == 'low'
+    d = confirm_mod.tool_decision('files_delete', 'delete the thing')
+    assert d.needs and d.action == 'delete_files' and d.risk == 'high'
+    assert 'files_delete' in d.question and 'delete the thing' in d.question

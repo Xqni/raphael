@@ -20,6 +20,33 @@ os.environ.setdefault('RAPHAEL_CONFIRM_TIMEOUT_S', '2')
 import pytest  # noqa: E402
 
 
+# ---- hermetic TTS: a lane test must NEVER touch or spawn a real Fish server
+# (INTERFACES §d: "voice tests mock TTS"). A live fish on :8777 made speak-
+# bound tests slow/flaky (real GPU synthesis) and without one, warmup would
+# SPAWN it (up to 240 s) — a hard rules violation. Mock at the VoiceStack
+# seam so fanout/frame-shape assertions still run against the real loop.
+async def _fake_speak(self, text, *, job=None, cancel=None,
+                      force_fallback=False):
+    rate = int(getattr(getattr(self, 'cfg', None), 'tts_sample_rate', 24000))
+    yield {"type": "speak", "v": 1, "job": job, "seq": 0, "event": "start",
+           "sample_rate": rate, "text": text, "cached": True, "engine": "mock"}
+    yield {"type": "speak", "v": 1, "job": job, "seq": 1, "event": "end",
+           "sample_rate": rate, "cached": True, "engine": "mock"}
+
+
+async def _fake_warmup(self):
+    return None
+
+
+try:
+    from brain.voice import VoiceStack
+    VoiceStack.speak = _fake_speak
+    VoiceStack.warmup = _fake_warmup
+except Exception as _e:  # noqa: BLE001 — loud: hermeticity must not fail silent
+    print(f'[conftest] TTS mock NOT installed: {type(_e).__name__}: {_e}',
+          flush=True)
+
+
 @pytest.fixture(scope='session', autouse=True)
 def _cleanup_db():
     yield

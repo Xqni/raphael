@@ -76,6 +76,40 @@ def _stub(reason: str) -> LLMResult:
     return LLMResult(ok=False, code='E_OFFLINE', error=reason)
 
 
+def prompt_block(specs: Optional[List[Dict[str, Any]]]) -> str:
+    """Textual tool catalog for providers WITHOUT native tool calling.
+
+    Appended to the system prompt by the agent loop: native `chat(tools=...)`
+    stays the preferred channel, but a provider that ignores `tools` can still
+    answer with the single-line `{"tool": name, "args": {...}}` JSON that
+    brain.loop._extract_tool_call parses (pc-control request item 2, the
+    prompt_block() fallback — decision 2026-10-06)."""
+    if not specs:
+        return ''
+    lines = [
+        'Tool calling: to use a tool, reply with ONLY one single-line JSON '
+        'object of the form {"tool": "<name>", "args": {...}} and nothing '
+        'else; otherwise reply normally. One tool call per reply.',
+    ]
+    for s in specs or []:
+        fn = (s or {}).get('function') or {}
+        name = fn.get('name')
+        if not name:
+            continue
+        desc = fn.get('description') or ''
+        params = fn.get('parameters') or {}
+        props = params.get('properties') or {}
+        required = set(params.get('required') or [])
+        args = []
+        for pname, pspec in props.items():
+            ptype = (pspec or {}).get('type', '?')
+            star = '*' if pname in required else ''
+            pdesc = (pspec or {}).get('description', '')
+            args.append(f'{pname}{star}: {ptype} — {pdesc}')
+        lines.append(f'- {name}: {desc} | args: {"; ".join(args) or "none"}')
+    return '\n'.join(lines)
+
+
 def _normalize(res: Any) -> LLMResult:
     """chat() returns a dict per INTERFACES §a — normalize leniently so a
     partially-shaped facade result still degrades instead of raising."""

@@ -126,14 +126,26 @@ def validate_args(name: str, args: Any) -> Dict[str, Any]:
     return dict(args)
 
 
+def _skip_module(fullname: str) -> bool:
+    """Never import test/conftest modules during discovery (live brain must
+    not pull pytest into its process)."""
+    return any(part in ('tests', 'conftest') for part in fullname.split('.'))
+
+
 # ---- registration ----------------------------------------------------------
 def register(name: str, func: Callable, *, risky: bool = False,
              needs_lock: bool = False, description: str = '',
              category: str = 'local', schema: Optional[Dict[str, Any]] = None):
     # category='gui' -> loop.py routes the call to the BODY over act_req
     # (PROTOCOL §7) instead of executing locally in WSL.
+    # Load-time REJECTION of non-conforming entries (INTERFACES §b, defense in
+    # depth on top of each namespace's own self-validation):
+    if not isinstance(name, str) or not name.strip():
+        raise BadToolSpec('tool name must be a non-empty string')
     if not str(description or '').strip():
         raise BadToolSpec(f'tool {name!r}: description is required')
+    if not isinstance(category, str) or not category.strip():
+        raise BadToolSpec(f'tool {name!r}: category must be a non-empty string')
     if schema is not None:
         validate_schema(name, schema)
     _registry[name] = func
@@ -210,6 +222,8 @@ def discover(force: bool = False) -> Dict[str, str]:
     try:
         for info in pkgutil.walk_packages(__path__, prefix=__name__ + '.',
                                           onerror=_onerror):
+            if _skip_module(info.name):
+                continue
             if info.name in _discovered and not force:
                 continue
             try:
