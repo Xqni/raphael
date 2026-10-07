@@ -11,3 +11,5 @@ brain/config.py =brain-core  # 2026-10-07 integrator decision named this file ex
 brain/ws.py =brain-core  # 2026-10-07 voice__to__brain-core STT-outage APPROVED + IMPLEMENTED (broadcast in _on_audio_end, both except branches)
 brain/formats.py =brain-core  # 2026-10-07 integrator APPROVED contract (brain-core__to__integrator__output-formats-and-job-kinds.md): answer+report emitters
 tests/conformance/test_protocol.py =integrator  # 2026-10-07 atomic pair with my §3 hand-edit (answer/report rows): whitelist+doc must land together or conformance goes red — qa notified to rebase
+brain/analysis.py =brain-core  # 2026-10-07 integrator P0 assignment (analysis/sim privacy gates tripwire) + evolution approved contract: Analysis job type + 3 gates
+brain/simulation.py =brain-core  # 2026-10-07 same P0 batch: Simulation sandbox dry-run job type
