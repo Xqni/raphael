@@ -1,6 +1,38 @@
 # router — status
 
-Updated: 2026-10-07 (Wave 4 lane task complete — 144 router / 152 brain / 197 root tests green)
+Updated: 2026-10-07 (Wave 5 Analysis routing complete — 154 router / 167 brain / 203 root green + 1 known pre-existing root failure, already filed)
+
+## Wave 5 (current_wave: 5 — gate-open after wave-4; my position: 1)
+
+Rebased on `main` first (brain-core's batch merged ahead — recorded deviation noted
+in PROGRESS). Live stack still UP → no spawns; all tests on ephemeral loopback.
+
+**Assigned task — DONE: Analysis-mode routing (tier-aware model policy + usage accounting)**
+- **`deep` role** (`brain/router/roles.py`): hints for the biggest tier
+  (`120b/90b/70b/48b/32b/27b/24b/plus/pro/max/ultra/large`); among equally-scored
+  candidates the **BIGGEST id wins** (unlike `strong`, which keeps first-seen —
+  pinned by test so the two tiers stay distinguishable); deny-hints apply →
+  `grok`/`kimi` (MODEL_POLICY "never") unreachable in *every* tier.
+- **Policy wiring:** `purpose_roles` maps `analysis → deep`, `simulation → deep`
+  (code defaults in `roles.py` + explicit lines in `config.d/router.yaml`); the tier
+  map stays pure config, so future purposes need one YAML line, no code.
+- **`_role_for`:** a purpose mapped to `deep` **outranks the tools→strong rule**
+  (depth is the point of Analysis); `chat`/`ack` → fast and tools → strong are
+  untouched → Rule 15 speed mandate intact (pinned by `test_normal_turns_stay_fast`).
+- **Usage accounting:** new purposes bucket automatically —
+  `usage_status().by_purpose["analysis"|"simulation"]` (calls/errors/tokens),
+  `usage.jsonl` `task_kind`, including FAILED lines from the Wave-4 failure logging.
+- **Contract:** `docs/requests/router__to__integrator__interfaces-purpose-enum-analysis.md`
+  (OPEN) — INTERFACES §a `purpose` enum gains `analysis|simulation` (doc-only for the
+  integrator; router accepts them already and unknown purposes still default to fast).
+- **Tests:** `brain/router/tests/test_tiered_analysis_routing.py` — 10, mock only.
+
+**Known unrelated failure (not mine):** `tests/regression/test_instance_isolation.py::test_interfaces_instance_table_is_collision_free`
+expects 11 §d rows; the APPROVED shadow row (8911) makes 12. Reproduces with my work
+stashed (clean `main`), and brain-core already filed
+`brain-core__to__qa-security__shadow-row-count.md` — no duplicate request filed.
+
+Commits: `a175d4e` (policy) · `0906948` (tests) · `1123b59` (contract request).
 
 ## Wave 4 (current_wave: 4; wave-3 gate PASSED before open)
 
@@ -210,6 +242,15 @@ Commits on `agent/router` (Wave 2 merged in `main` at `1a8c2f6`; paid slot pendi
   Private Mode + blocklist + `router.vision_max_bytes` and never logs the image.
 
 ## Test output (real runs only)
+**Wave 5 verification, 2026-10-07** (sequential, AGENT_RULES §14):
+```
+brain/router/tests : 154 passed in 36.00s   (+10 tier-routing)
+brain/tests        : 167 passed, 1 warning in 14.39s
+tests/ (root)      : 203 passed, 7 xfailed, 1 failed
+                     (failure = pre-existing shadow-row count, reproduced on clean
+                      main; already filed by brain-core → qa-security)
+```
+
 **Wave 4 verification, 2026-10-07** (sequential per AGENT_RULES §14, stack untouched):
 ```
 brain/router/tests : 144 passed in 35.94s
