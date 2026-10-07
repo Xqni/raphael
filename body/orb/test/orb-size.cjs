@@ -114,7 +114,15 @@ async function once(size, scale, verbose) {
     for (const state of STATES) {
       brain.step(state);
       await sleep(SETTLE);
+      // POSE LOCK: the orb keeps rotating while we shoot, and `idle` has only
+      // ~2k lit pixels (vs ~14k for speaking) so its 97th-percentile radius
+      // swung by several pixels with the phase — measured drift wandered
+      // 4.7% -> 12.0% across runs and sat exactly on the limit. Freezing the
+      // pose makes coverage a pure function of (size, scale, state).
+      await cdp.evaluate('window.__orbLockPose && window.__orbLockPose()');
+      await sleep(600);
       const png = await cdp.screenshot();
+      await cdp.evaluate('window.__orbUnlockPose && window.__orbUnlockPose()');
       const m = measure(decode(png));
       const file = `size-${size}x${scale.replace('.', '')}-${state}.png`;
       fs.writeFileSync(path.join(OUT, file), png);

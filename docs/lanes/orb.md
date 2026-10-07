@@ -142,6 +142,11 @@ Wave 2 is MERGED; live gate was 3/5 — evidence + bug dossiers: `docs/BUGS-WAVE
       (`listening:1 thinking:2 confirm:1 error:2 idle:1`), harness round-trip
       included so it is an upper bound. The 300–600 ms crossfade is by design.
 
+- [x] **`notice` frame (coord nudge, PROTOCOL §3)** — accepted on ui, rendered
+      as a level-tinted banner (info/warn/error, 4 s), never as an `orb_state`.
+      **interaction PASS 19/19** incl. `notice_reaches_renderer`,
+      `notice_shown_as_banner`, `notice_never_changes_state`.
+
 ## Later waves
 - Per docs/WAVES.md — do not start early (AGENT_RULES §11).
 

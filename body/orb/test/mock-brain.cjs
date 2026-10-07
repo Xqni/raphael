@@ -162,6 +162,10 @@ class MockBrain {
         return this.broadcast({ type: 'orb_state', ...base, ...INFO, state: 'thinking', jobs_active: 6, mode: 'normal', shape_hint: 'hexagon', task_kind: 'media' });
       case 'subtitle':
         return this.broadcast({ type: 'subtitle', ...base, text: 'subtitle frame', fade_ms: 4000 });
+      case 'notice':
+        // PROTOCOL §3 notice: text/level/ts/job — no state change, ever
+        return this.broadcast({ type: 'notice', ...base, text: 'Notice: disk almost full',
+                                level: 'warn', ts: Date.now() });
       case 'needs_confirm':
         return this.broadcast({ type: 'needs_confirm', ...base, job: 'j_mock_1', question: 'Open YouTube?', actions: ['yes', 'no'], expires_at: Date.now() + 30000 });
       default:

@@ -5,6 +5,7 @@ contextBridge.exposeInMainWorld('raphael', {
   onSubtitle: (cb) => ipcRenderer.on('subtitle', (_e, t) => cb(t)),
   onSpeak: (cb) => ipcRenderer.on('speak', (_e, ev) => cb(ev)),
   onConfirm: (cb) => ipcRenderer.on('confirm', (_e, c) => cb(c)),
+  onNotice: (cb) => ipcRenderer.on('notice', (_e, n) => cb(n)),
   onJobList: (cb) => ipcRenderer.on('job-list', (_e, jobs) => cb(jobs)),
   onGlide: (cb) => ipcRenderer.on('orb-glide', (_e, g) => cb(g)), // velocity feed for lag/blur
   sendOrbInput: (msg) => ipcRenderer.send('orb-input', msg),

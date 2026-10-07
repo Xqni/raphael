@@ -431,3 +431,27 @@ $ node tests/state-machine.test.js
 All state machine tests passed        (11 test functions, 4 new for Bug C)
 ```
 `docs/orb/trace/bugc.json` holds the full check table.
+
+---
+
+# Wave 3 — `notice` frame (coord nudge, PROTOCOL §3, integrator-approved)
+
+Contract: Brain→Client `notice`, roles **ui+cli**, fields `text / level / ts /
+job?`, **no state change**. Rendered as a banner; "never as an orb_state".
+
+| layer | change |
+|---|---|
+| `ws-status.js` | new `case 'notice'` → `emit('notice', …)` (and `_rx` records it); **no** `orbState` write |
+| `main.js` | forwards `notice` → renderer (alongside subtitle/speak/confirm) |
+| `preload.js` | `onNotice(cb)` |
+| `renderer.js` | `updateNotice()` → reuses the subtitle element as a banner, tinted per `level` (`info` / `warn` / `error`), 4 s instead of 1.2 s, `force:true` so it is **not** suppressed by Private Mode (a notice is a local system message, not cloud content) |
+
+Deliberately **not** wired into `setState`/state machine — the contract says the
+state must not move.
+
+**Evidence** (`orb:trace --only=interaction`, now **PASS 19/19**):
+```
+ok notice_reaches_renderer:        renderer rx notice frames: 0 -> 1
+ok notice_shown_as_banner:         banner={"text":"Notice: disk almost full","shown":true}
+ok notice_never_changes_state:     state idle -> idle, applied=idle (must be unchanged)
+```

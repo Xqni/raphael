@@ -910,22 +910,42 @@ function animate(now) {
   }
 }
 
-function updateSubtitle(text) {
+const NOTICE_TINT = {
+  info: 'rgba(214, 240, 255, 0.98)',
+  warn: 'rgba(255, 214, 102, 0.99)',
+  error: 'rgba(255, 122, 112, 0.99)',
+};
+/** PROTOCOL §3 `notice` — a Brain->ui banner. It deliberately bypasses the
+ *  Private-Mode subtitle suppression (notices are local system messages, not
+ *  cloud content) and, per the contract, NEVER changes the orb state. */
+function updateNotice(n) {
+  if (!subtitleEl || !n || !n.text) return;
+  updateSubtitle(String(n.text).slice(0, 240), {
+    force: true,
+    color: NOTICE_TINT[n.level] || NOTICE_TINT.info,
+    duration: 4000,
+  });
+}
+
+function updateSubtitle(text, opts) {
   if (!subtitleEl) return; // demo page has no subtitle element
   const isPrivate = orbState.private || orbState.mode === 'private' || orbState.orbState === 'private_overlay';
-  if (isPrivate || !text) {
+  const force = !!(opts && opts.force);
+  if (!text || (isPrivate && !force)) {
     subtitleEl.classList.remove('show');
     subtitleEl.classList.add('hide');
     return;
   }
+  subtitleEl.style.color = (opts && opts.color) || 'rgba(255, 255, 255, 0.95)';
   subtitleEl.textContent = text;
   subtitleEl.classList.remove('hide');
   subtitleEl.classList.add('show');
   if (subtitleTimer) clearTimeout(subtitleTimer);
+  const duration = (opts && opts.duration) || 1200;
   subtitleTimer = setTimeout(() => {
     subtitleEl.classList.remove('show');
     subtitleEl.classList.add('hide');
-  }, 1200);
+  }, duration);
 }
 
 // --- Demo harness wiring (these elements exist only on demo.html) ---
@@ -1210,6 +1230,10 @@ if (window.raphael) {
     // state-name text REMOVED (user: "text flashes when switching states") —
     // only explicit subtitles (spoken narration) are ever shown.
     if (s.subtitle) updateSubtitle(s.subtitle);
+  });
+  window.raphael.onNotice((n) => {
+    traceRx('notice', n);          // recorded, but orbState is never touched
+    updateNotice(n);
   });
   window.raphael.onSubtitle((t) => {
     traceRx('subtitle', t);

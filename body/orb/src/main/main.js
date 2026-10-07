@@ -576,6 +576,9 @@ function startStatusWS() {
       win.webContents.send('speak', ev);
     }
   });
+  statusWS.on('notice', (n) => {
+    if (win && !win.isDestroyed()) win.webContents.send('notice', n);
+  });
   statusWS.on('confirm', (c) => {
     if (win && !win.isDestroyed()) win.webContents.send('confirm', c);
   });

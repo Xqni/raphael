@@ -326,6 +326,28 @@ async function runInteraction(cdp, brain, rec) {
   // leave the window click-through again so later phases are unaffected
   await cdp.evaluate("window.dispatchEvent(new MouseEvent('mousemove', { clientX: 4, clientY: 4 }))");
 
+  // --- PROTOCOL §3 `notice`: renders as a banner, NEVER moves the orb state -
+  brain.step('idle');
+  await sleep(600);
+  const stateBefore = await cdp.evaluate('window.__orbDebug.state');
+  const traceBefore = await cdp.evaluateJson('JSON.stringify(window.__orbTrace())');
+  const rxBefore = (traceBefore.rx || []).filter((r) => r.kind === 'notice').length;
+  brain.step('notice');
+  await sleep(700);
+  const stateAfter = await cdp.evaluate('window.__orbDebug.state');
+  const traceAfter = await cdp.evaluateJson('JSON.stringify(window.__orbTrace())');
+  const rxAfter = (traceAfter.rx || []).filter((r) => r.kind === 'notice').length;
+  const banner = await cdp.evaluate(
+    "JSON.stringify({text: (document.getElementById('subtitle')||{}).textContent, " +
+    "shown: !!(document.getElementById('subtitle')||{}).classList.contains('show')})");
+  const bannerObj = JSON.parse(banner);
+  add('notice_reaches_renderer', rxAfter > rxBefore,
+      `renderer rx notice frames: ${rxBefore} -> ${rxAfter}`);
+  add('notice_shown_as_banner', bannerObj.shown && /disk almost full/.test(bannerObj.text || ''),
+      `banner=${JSON.stringify(bannerObj)}`);
+  add('notice_never_changes_state', stateAfter === stateBefore && traceAfter.applied.state === stateBefore,
+      `state ${stateBefore} -> ${stateAfter}, applied=${traceAfter.applied.state} (must be unchanged)`);
+
   const out = { pass: checks.every((c) => c.ok), checks, menuSpec: spec };
   rec('interaction', out);
   fs.writeFileSync(path.join(OUT, 'interaction.json'), JSON.stringify(out, null, 2) + '\n');
