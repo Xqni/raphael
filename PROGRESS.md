@@ -533,3 +533,7 @@ live_e2e=false) when wanted.
   Positions 1-10 ALL MERGED. ONE KNOWN RED on main (attributed, deliberate):
   qa's armed analysis/sim privacy tripwire — missing gates = brain-core's P0 next batch
   (assigned + pinged); wave-5 tag waits on it.
+- **WAVE-5 GATE PASSED — tag `wave-5-gate` pushed.** brain-core P0 merged (5262845:
+  Analysis/Simulation + all 3 privacy gates, tripwire GREEN), full sweep 346 rc=0,
+  root 313 zero failures. current_wave stays 5 — wave 6 (local-model cutover) is
+  human-gated on the RAM upgrade; attention posted with options.

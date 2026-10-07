@@ -101,6 +101,15 @@ Raphael features (Answer/Notice/Report formats, Analysis, Simulation, parallel-m
 
 ## Wave 6 — NOT NOW
 
+**WAVE-5 GATE PASSED 2026-10-07 — tag `wave-5-gate`:** all 10 lanes merged; mock sweep
+346 passed rc=0; root 313 zero failures; armed Analysis/Simulation privacy tripwire GREEN
+(the one deliberate red — brain-core's P0 gates batch, merged 5262845). Contracts
+decided-first throughout (answer/report/kinds/minds/report-act/purpose-enum/privacy).
+**current_wave NOT bumped** — wave 6 needs the human's RAM upgrade decision first
+(WAVES: local-model cutover NOT NOW); attention posted.
+
+
+
 Local-model cutover **after the RAM upgrade** (re-enable local models/profile `local`, restore the PROTOCOL §7/§11 screenshot invariant, verify on real hardware).
 
 ## Gate procedure (integrator, when all lanes meet the current wave's exit criteria)
