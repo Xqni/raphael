@@ -9,7 +9,7 @@
  "stall_heartbeat_s": 1200,
  "failure_backoff_base_s": 30,
  "failure_backoff_max_s": 900,
- "model": "opencode/mimo-v2.6-flash-free",
+ "model": "opencode-go/mimo-v2.5",
  "dry_run": false,
  "api_check": true,
  "priority": [
@@ -72,5 +72,6 @@
  "lane_prompt": "prompts/lane_continue.md",
  "ping_msg": "coord wake: read ~/.raphael-coord/inbox/{lane}.jsonl (your inbox) and ~/.raphael-coord/prompts/lane_continue.md, then continue your work loop from docs/WAVES.md + docs/lanes/{lane}.md. Rebase on main first. Report via coord.",
  "sweep_s": 600,
- "_sweep": "stranded-lane backstop: adopted + wave-active + empty inbox + no pending events -> board-review wake"
+ "_sweep": "stranded-lane backstop: adopted + wave-active + empty inbox + no pending events -> board-review wake",
+ "_model_note": "user directive 2026-10-06: Go models for anything needing an LLM (nothing local until RAM upgrade)"
 }

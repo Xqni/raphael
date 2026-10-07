@@ -30,3 +30,13 @@ Rules: paid Zen models + Go models beyond the Go limits both draw on the same **
 - **Model:** Go-tier vision (discovered id `opencode-go/deepseek-v4-flash-vision-exp`).
 - **Cap:** `vision_paid_daily_cap_usd: 1.00` — router enforces daily; exceed -> E_OFFLINE + attention.
 - Implementation: router lane (brain/router/**); gate = config.yaml (integrator).
+
+## 2026-10-06 — user directive: Go models for LLM needs (overnight session)
+- **Verbatim:** "use opencode go models for anyhting that needs an LLM since we are not using
+  anything local for that" + "both voice and vision goes into cloud until i upgrade my RAM".
+- Applied: conductor headless runs model = `opencode-go/mimo-v2.5` (was mimo-v2.6-flash-free);
+  interactive sessions already default to `opencode-go/mimo-v2.5` (global config).
+- Raphael runtime under cloud_temp unchanged beyond vision: chat/tools = Groq -> Zen free,
+  STT = Groq Whisper, vision = approved Go slot ($1/day cap), TTS = LOCAL Fish-Speech (kept —
+  Fish-Speech has no cloud API; swapping TTS to cloud would mean a different paid provider and
+  losing the local Zira reference voice unless it supports cloning).
