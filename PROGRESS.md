@@ -387,3 +387,11 @@ land, the integrator re-runs the full six-criterion live gate for `wave-2-gate`.
 - CI CONFIRMED GREEN: run 37576160561 (be6814a) = success; ownership step printed
   `lane=integrator ref=main` → ownership OK. The "fails every time" era is over —
   evidence in `.opencode/research/ci-green-check.md`.
+- Wave-3 merge loop: **brain-core merged (18744b3)** — Bug E speaking-hold, fastpath
+  open+search (Bug B router half), /status router block; OWNERSHIP amended (brain-core
+  += brain/orbstate.py, was unlisted gap); ws.py audio_start comment corrected. qa's
+  precedence request adjudicated SUPERSEDED by the merge (its parked xfail flips on
+  branch sync). Merge queue: router ✓ → brain-core ✓ → **pc-control NEXT (pinged)** →
+  voice → computer-use → orb → infra → qa-security (wave_done's queued: infra@7, qa@8,
+  voice@4 once pc-control lands). voice's live `prove_reference.py` proof added to the
+  wave-3-close gate checklist (BUGS-WAVE2 Bug D).

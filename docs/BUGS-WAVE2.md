@@ -92,6 +92,10 @@ User observed while she spoke: (1) orb did not pulse with her voice,
   2. brain phrase cache (tts.py `PhraseCache`, keyed by TEXT only) replaying old
      Zira-era wavs for repeated texts.
   3. fish-side `use_memory_cache: on` keyed by text across different references.
+- **Live-proof step (wave-3 close gate checklist, voice request ACCEPTED 2026-10-07):**
+  at the next user-gated bring-up run
+  `brain/.venv/bin/python brain/voice/scripts/prove_reference.py` — PASS = exit 0 +
+  `[tts] ref sent: path=.../assets/raphael_reference_jp.wav bytes=751686 sha1=f64bd512ea1e`.
 - **Task:** make ref-loading LOUD (log ref path + bytes sent per synthesis; a
   missing ref must fail or warn), clear/namespace the phrase cache after ref
   changes, verify live speak uses the JP ref (log evidence), then re-run the
