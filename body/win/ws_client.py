@@ -13,7 +13,6 @@ without side effects (AGENT_RULES §5: prefer mocks).
 """
 import asyncio
 import json
-import os
 import pathlib
 import sys
 from typing import Any
