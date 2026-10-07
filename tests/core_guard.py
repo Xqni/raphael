@@ -66,11 +66,11 @@ def main(argv):
         note = (' (approval: ' + '; '.join(approvals) + ')') if approvals else \
             ' !! NO APPROVAL REFERENCE — integrator review expected !!'
         MANIFEST.write_text(json.dumps(hashes(), indent=2, sort_keys=True)
-                            + '\n')
+                            + '\n', encoding='utf-8')
         print(f'manifest updated{note}')
         return 0
     current = hashes()
-    stored = json.loads(MANIFEST.read_text()) if MANIFEST.exists() else {}
+    stored = json.loads(MANIFEST.read_text(encoding='utf-8')) if MANIFEST.exists() else {}
     drift = {k: (stored.get(k), v) for k, v in current.items()
              if stored.get(k) != v}
     if drift:

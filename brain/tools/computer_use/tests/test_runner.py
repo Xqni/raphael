@@ -15,8 +15,12 @@ from brain.tools.computer_use.runner import (ALLOWED_ACTIONS, Observation,
                                              wrap_observation)
 from brain.vision.config import VisionConfig
 
-from .harness import (CHANGED_TREE, DEFAULT_TREE, ScriptedChat,
-                      ScriptedGateway, action_reply, final_reply, make_deps)
+try:
+    from .harness import (CHANGED_TREE, DEFAULT_TREE, ScriptedChat,
+                          ScriptedGateway, action_reply, final_reply, make_deps)
+except ImportError:  # bare-module collection (no tests/__init__.py)
+    from harness import (CHANGED_TREE, DEFAULT_TREE, ScriptedChat,
+                          ScriptedGateway, action_reply, final_reply, make_deps)
 
 INJECT_TREE = (
     'window ShopFast\n'

@@ -55,52 +55,66 @@ def test_gui_tools_never_execute_locally():
             tool_reg.get(name)()      # called with no args → must raise anyway
 
 
-# ---- §b strict specs (tripwire: not implemented yet) ----------------------
-def _spec_of(name: str):
-    return tool_reg.describe(name).get('spec')
-
-
-@pytest.mark.xfail(reason='INTERFACES §b: strict JSON-Schema tool specs '
-                   '(type/object, typed properties, required, '
-                   'additionalProperties:false) are not in the registry yet '
-                   '(brain-core owns brain/tools/__init__.py)', strict=False)
+# ---- §b strict specs — pinned against the LANDED registry API -------------
+# (was xfail against a guessed `spec` key; the registry landed as
+#  `schema=` + BadToolSpec at load time + validate_args/BadToolArgs —
+#  PROMOTED TO STRICT 2026-10-07 during the wave-4 audit-fix verification)
 def test_every_tool_declares_a_strict_json_schema():
+    tool_reg.discover()          # walk the full brain.tools.* tree first
+    assert tool_reg.load_errors() == {}, tool_reg.load_errors()
+    assert tool_reg.names(), 'registry empty after discover()'
     for name in tool_reg.names():
-        spec = _spec_of(name)
-        assert spec, f'{name}: no JSON Schema spec'
-        assert spec.get('type') == 'object'
-        assert spec.get('additionalProperties') is False
-        assert 'properties' in spec and 'required' in spec
+        schema = tool_reg.describe(name).get('schema')
+        assert schema, f'{name}: no JSON Schema spec'
+        assert schema.get('type') == 'object', (name, schema.get('type'))
+        assert schema.get('additionalProperties') is False, name
+        props, required = schema.get('properties'), schema.get('required')
+        assert isinstance(props, dict), name          # {} = valid zero-arg tool
+        assert isinstance(required, list), name
+        assert set(required) <= set(props), (name, required, list(props))
+        for pname, pspec in props.items():
+            assert isinstance(pspec, dict) and pspec.get('type'), (name, pname)
 
 
-@pytest.mark.xfail(reason='INTERFACES §b: the registry must reject '
-                   'non-conforming specs LOUDLY at load time; register() '
-                   'currently has no spec concept at all (brain-core)',
-                   strict=False)
 def test_registry_rejects_bad_spec():
     import inspect
-    assert 'spec' in inspect.signature(tool_reg.register).parameters, \
-        'register() accepts no spec yet'
-    bad = {'type': 'array'}          # not an object schema
+    assert 'schema' in inspect.signature(tool_reg.register).parameters, \
+        'register() accepts schema= (§b load-time validation)'
+    probe = 'qa_bad_spec_probe'
+
+    def _clean():
+        tool_reg._registry.pop(probe, None)
+        tool_reg._META.pop(probe, None)
+
     try:
-        with pytest.raises((ValueError, TypeError)):
-            tool_reg.register('qa_bad_spec_probe', lambda: None, spec=bad)
+        with pytest.raises(tool_reg.BadToolSpec):
+            tool_reg.register(probe, lambda: None, description='probe',
+                              schema={'type': 'array'})     # not an object
+        with pytest.raises(tool_reg.BadToolSpec):
+            tool_reg.register(probe, lambda: None, description='probe',
+                              schema={'type': 'object', 'properties': {}})
+        with pytest.raises(tool_reg.BadToolSpec):
+            tool_reg.register(probe, lambda: None, description='   ',
+                              schema={'type': 'object',
+                                      'properties': {'a': {'type': 'string',
+                                                           'description': 'a'}},
+                                      'required': ['a'],
+                                      'additionalProperties': False})
+        assert probe not in tool_reg.names()   # rejected = never registered
     finally:
-        # never leave a probe tool in the shared registry
-        tool_reg._registry.pop('qa_bad_spec_probe', None)
-        tool_reg._META.pop('qa_bad_spec_probe', None)
+        _clean()
 
 
 # ---- §c configuration -----------------------------------------------------
 def test_base_profile_is_cloud_temp():
-    text = (REPO / 'config.yaml').read_text()
+    text = (REPO / 'config.yaml').read_text(encoding='utf-8')
     m = re.search(r'^profile:\s*(\S+)', text, re.M)
     assert m and m.group(1) == 'cloud_temp', m
 
 
 def test_cloud_temp_chain_has_no_local_providers():
     """§c/WAVES: chat/tools = Groq → Zen free; Go/ollama OFF under cloud_temp."""
-    text = (REPO / 'config.yaml').read_text()
+    text = (REPO / 'config.yaml').read_text(encoding='utf-8')
     m = re.search(r'^\s*chain:\s*\[([^\]]+)\]', text, re.M)
     assert m, 'providers.chain not found'
     chain = [c.strip() for c in m.group(1).split(',')]
@@ -115,7 +129,7 @@ def test_no_secrets_in_yaml_or_example_env():
         r'(sk-[A-Za-z0-9]{16,}|ghp_[A-Za-z0-9]{20,}|'
         r'AKIA[0-9A-Z]{12,}|xox[baprs]-[A-Za-z0-9-]{10,})')
     for rel in ('config.yaml', '.env.example'):
-        text = (REPO / rel).read_text()
+        text = (REPO / rel).read_text(encoding='utf-8')
         m = pattern.search(text)
         assert m is None, f'key-shaped secret in {rel}: {m.group(0)[:8]}...'
 
@@ -159,7 +173,7 @@ def test_tool_results_wrapped_untrusted_before_models():
     assert wrapped.startswith('[UNTRUSTED shell output'), wrapped[:60]
     assert 'never instructions' in wrapped
     assert evil in wrapped          # body preserved as DATA, not stripped
-    loop_src = (REPO / 'brain' / 'loop.py').read_text()
+    loop_src = (REPO / 'brain' / 'loop.py').read_text(encoding='utf-8')
     assert 'as_untrusted(' in loop_src, \
         'agent loop no longer wraps tool results before the model sees them'
 

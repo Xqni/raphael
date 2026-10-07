@@ -15,6 +15,31 @@ on:
   workflow_dispatch:
 
 jobs:
+  # Windows-first conformance line (integrator glue d9915fc: cp1252 decode of
+  # the UTF-8 PROTOCOL marker red-flagged every push while Ubuntu stayed
+  # green — this matrix runs the docs-parsing conformance on BOTH OSes as a
+  # small, fast, unmistakable signal; Windows catches what Linux can't).
+  conformance:
+    name: Protocol conformance (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: tests/requirements.txt
+      - name: Install suite deps (no secrets)
+        shell: bash
+        run: python -m pip install --upgrade pip && pip install -r tests/requirements.txt
+      - name: Conformance (PROTOCOL docs parsers — encoding-sensitive)
+        run: python -m pytest -q tests/conformance
+
   brain-and-mocks:
     name: Ubuntu — brain + mock suites
     runs-on: ubuntu-latest
@@ -44,6 +69,13 @@ jobs:
         env:
           RAPHAEL_INSTANCE: qa-security
         run: python -m pytest -q brain/tests brain/router/tests
+      - name: full brain suite (import-hygiene + order-dependent guards)
+        # catches the classes unit runs can't: the tools.* double-import
+        # registry pollution (e16ca0f) and cross-suite state leaks — the
+        # same reason the Windows conformance line exists.
+        env:
+          RAPHAEL_INSTANCE: qa-security
+        run: python -m pytest -q brain
       - name: ownership self-check (lane-derived vs OWNERSHIP.md)
         # Lane derivation (coord decision 2026-10-07 — hardcoding
         # `--lane qa-security` broke every non-qa push; evidence run
@@ -86,8 +118,8 @@ jobs:
           cache-dependency-path: tests/requirements.txt
       - name: Install suite deps (no secrets)
         run: python -m pip install --upgrade pip; pip install -r tests/requirements.txt
-      - name: Body unit tests + conformance
+      - name: Body unit tests (no GUI)
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
-          python -m pytest -q tests/body_win tests/conformance
+          python -m pytest -q tests/body_win

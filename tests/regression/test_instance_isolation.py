@@ -27,7 +27,7 @@ BOOT = REPO / 'tests' / 'harness' / 'brain_boot.py'
 
 # ---- (1) table contract ---------------------------------------------------
 def _interfaces_rows():
-    text = (REPO / 'docs' / 'INTERFACES.md').read_text()
+    text = (REPO / 'docs' / 'INTERFACES.md').read_text(encoding='utf-8')
     rows = []
     for line in text.splitlines():
         if not line.startswith('|'):
@@ -99,102 +99,19 @@ def test_runtime_code_derives_from_raphael_instance():
                REPO / 'supervisor' / 'main.py', REPO / 'body' / 'win' / 'main.py',
                REPO / 'body' / 'win' / 'ws_client.py']
     missing = [str(p.relative_to(REPO)) for p in checked
-               if p.exists() and 'RAPHAEL_INSTANCE' not in p.read_text()]
+               if p.exists() and 'RAPHAEL_INSTANCE' not in p.read_text(encoding='utf-8')]
     assert not missing, f'RAPHAEL_INSTANCE not referenced in: {missing}'
 
 
 # ---- (3) two real instances ----------------------------------------------
-def _free_port() -> int:
-    s = socket.socket()
-    s.bind(('127.0.0.1', 0))
-    port = s.getsockname()[1]
-    s.close()
-    return port
-
-
-def _spawn(name: str, port: int) -> tuple[subprocess.Popen, dict]:
-    db_fd, db_path = tempfile.mkstemp(prefix=f'qa-{name}-db-')
-    os.close(db_fd)
-    tok_fd, tok_path = tempfile.mkstemp(prefix=f'qa-{name}-tok-')
-    os.close(tok_fd)
-    log_fd, log_path = tempfile.mkstemp(prefix=f'qa-{name}-log-', suffix='.txt')
-    token = f'{name}-token-{os.urandom(6).hex()}'
-    with open(tok_path, 'w') as f:
-        f.write(token)
-    env = dict(os.environ)
-    env.update({
-        'RAPHAEL_INSTANCE': name,
-        'RAPHAEL_PORT': str(port),
-        'RAPHAEL_BIND': '127.0.0.1',
-        'RAPHAEL_DB_PATH': db_path,
-        'RAPHAEL_TOKEN_PATH': tok_path,
-        'RAPHAEL_DISABLE_ROUTER': '1',
-        'RAPHAEL_DISABLE_BINARY_TTS': '1',
-        'RAPHAEL_FISH_PORT': '1',
-        'RAPHAEL_CONFIRM_TIMEOUT_S': '2',
-        'RAPHAEL_JOBS_MAX_CONCURRENT': '4',
-        'PYTHONPATH': str(REPO),
-    })
-    logf = open(log_fd, 'w')  # noqa: SIM115 — lives with the subprocess
-    proc = subprocess.Popen(
-        [sys.executable, str(BOOT)], cwd=str(REPO), env=env,
-        stdout=logf, stderr=subprocess.STDOUT, text=True)
-    meta = {'token': token, 'db': db_path, 'tok_path': tok_path,
-            'log': log_path, 'logf': logf}
-    return proc, meta
-
-
-def _log_tail(meta: dict, limit: int = 2000) -> str:
-    try:
-        meta['logf'].flush()
-        return Path(meta['log']).read_text(errors='replace')[-limit:]
-    except OSError:
-        return '<no log>'
-
-
-def _health(port: int, token: str, meta: dict | None = None,
-            timeout: float = 30.0) -> int:
-    deadline = time.monotonic() + timeout
-    last = None
-    while time.monotonic() < deadline:
-        req = urllib.request.Request(
-            f'http://127.0.0.1:{port}/health',
-            headers={'X-Raphael-Token': token})
-        try:
-            with urllib.request.urlopen(req, timeout=2) as r:
-                return r.status
-        except Exception as e:  # noqa: BLE001 — boot polling
-            last = e
-            time.sleep(0.25)
-    raise AssertionError(
-        f'instance on :{port} never became healthy: {last}\n'
-        f'log tail:\n{_log_tail(meta) if meta else "<no meta>"}')
-
-
-def _rest(port: int, path: str, token: str, body: dict | None = None,
-          method: str = 'GET'):
-    data = None
-    headers = {'X-Raphael-Token': token}
-    if body is not None:
-        import json as _json
-        data = _json.dumps(body).encode()
-        headers['Content-Type'] = 'application/json'
-        method = 'POST'
-    req = urllib.request.Request(f'http://127.0.0.1:{port}{path}',
-                                 data=data, headers=headers, method=method)
-    with urllib.request.urlopen(req, timeout=5) as r:
-        import json as _json
-        return r.status, _json.loads(r.read() or b'{}')
-
-
-def _stop(proc: subprocess.Popen):
-    if proc.poll() is None:
-        proc.send_signal(signal.SIGTERM)
-        try:
-            proc.wait(timeout=10)
-        except subprocess.TimeoutExpired:
-            proc.kill()
-            proc.wait(timeout=5)
+# Shared spawn/health/rest/stop helpers live in the harness (used by the
+# crash-recovery resilience drill too).
+from harness.instance_proc import (free_port as _free_port,  # noqa: F401
+                                   spawn as _spawn,
+                                   log_tail as _log_tail,
+                                   health as _health,
+                                   rest as _rest,
+                                   stop as _stop)
 
 
 def test_two_instances_run_without_collision():

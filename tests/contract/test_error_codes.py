@@ -16,7 +16,7 @@ from starlette.websockets import WebSocketDisconnect
 
 from harness.wssession import WSSession, recv_frame, ws_auth
 
-PROTOCOL = Path('docs/PROTOCOL.md').read_text()
+PROTOCOL = Path('docs/PROTOCOL.md').read_text(encoding='utf-8')
 
 
 def _catalog() -> set:

@@ -16,12 +16,12 @@ def _privacy() -> dict:
     # NOTE: PyYAML, NOT the router's naive _simple_yaml_load — that loader
     # mis-parses config.yaml (see contract/test_config_loader.py); tests
     # parse the real document correctly.
-    cfg = yaml.safe_load((REPO / 'config.yaml').read_text()) or {}
+    cfg = yaml.safe_load((REPO / 'config.yaml').read_text(encoding='utf-8')) or {}
     return cfg.get('privacy') or {}
 
 
 def test_privacy_config_gates_present():
-    cfg = yaml.safe_load((REPO / 'config.yaml').read_text()) or {}
+    cfg = yaml.safe_load((REPO / 'config.yaml').read_text(encoding='utf-8')) or {}
     privacy, vision = cfg.get('privacy') or {}, cfg.get('vision') or {}
     assert privacy.get('debug_capture') is False, \
         'debug_capture must stay false (no screenshot persistence/logging)'
@@ -33,7 +33,7 @@ def test_privacy_config_gates_present():
 
 
 def test_redact_patterns_cover_secret_shapes():
-    cfg = yaml.safe_load((REPO / 'config.yaml').read_text()) or {}
+    cfg = yaml.safe_load((REPO / 'config.yaml').read_text(encoding='utf-8')) or {}
     privacy = cfg.get('privacy') or {}
     redact = {str(p).lower() for p in privacy['redact']}
     for needed in ('api_key', 'token', 'password', 'card', 'email'):
