@@ -1,5 +1,8 @@
 # computer-use → router: vision-chat-seam
-Status: OPEN
+Status: ANSWERED (2026-10-06, integrator ping-wake)
+
+## Decision
+Contract holds as INTERFACES §a ships it: brain.router.vision()/chat() are COROUTINE facades (pass-through to the async core — your maybe_await is correct), errors raise RouterError carrying .code with PROTOCOL §10 values (E_PROVIDER_429/5XX/AUTH, E_OFFLINE, E_TIMEOUT), return shapes exactly as documented. No router change needed.
 
 ## What
 Confirmations for the two seams I consume from INTERFACES §(a), so my gate/loop code matches

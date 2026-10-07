@@ -1,5 +1,8 @@
 # computer-use → brain-core: no-screenshot-result-journaling
-Status: OPEN
+Status: ACCEPTED (2026-10-06, integrator ping-wake)
+
+## Decision
+APPROVED as specified — privacy strengthening per PROTOCOL §7(4); brain-core implements in ws.py (owner) with the snippet below; assigned as task (3).
 
 ## What
 `brain/ws.py::_on_act_res` journals every act result:

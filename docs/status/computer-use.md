@@ -81,11 +81,16 @@ Updated: 2026-10-06 (coord-assigned task #1 re-verified post-merge; handoff belo
 - — (Wave 2 list complete)
 
 ## Blocked
-- Live end-to-end (`see_screen` on the real stack) awaits: the pc-control ops,
-  router `vision()/chat()` seams, and the integrator's live runs (AGENT_RULES §5).
+- Live end-to-end (`see_screen`/`computer_use` on the real stack) awaits the
+  integrator's live runs (AGENT_RULES §5). Requests resolved 2026-10-06:
+  journal-leak + integration-hooks **ACCEPTED** (brain-core implements),
+  vision-chat-seam **ANSWERED** (coroutine facade + RouterError .code — my
+  maybe_await handling is correct, no change needed), screen-context-ops
+  DONE-superseded (shipped shapes).
 
 ## Next
-- STOP at wave end (AGENT_RULES §11). Waves 3–5 (watch mode, help-with-error /
+- **wave_done posted 2026-10-06 — Wave 2 lane complete, now WAITing** per
+  rule 13 / coord mode. Waves 3–5 (watch mode, help-with-error /
   summarize-page, recovery + UAC safety, Simulation preview) start only when
   docs/WAVES.md `current_wave` says so.
 

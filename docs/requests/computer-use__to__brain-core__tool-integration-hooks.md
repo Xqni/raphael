@@ -1,5 +1,8 @@
 # computer-use → brain-core: tool-integration-hooks
-Status: OPEN
+Status: ACCEPTED (2026-10-06, integrator ping-wake)
+
+## Decision
+APPROVED, all three hooks — brain-core implements on its branch. Coordination note for (1): pc-control's merged landing already registers tools with schema= on register(); the SPECS-dict convention must RECONCILE with that (either both or SPECS taking precedence) — do not regress the landed pattern.
 
 ## What
 Three small hooks in brain-core-owned files so the `see_screen` / `computer_use` tools work
