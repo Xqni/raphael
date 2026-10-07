@@ -29,6 +29,10 @@ class StatusWS extends EventEmitter {
     this.authSent = false;
     this.fatalAuth = false;
     this.seq = 0;
+    // Wave 5: job_event's additive `kind`/`parent` (PROTOCOL §5) are STYLING
+    // hints for the renderer — parallel-minds fan-out + Analysis/Simulation
+    // looks. Tracked here, never turned into an orb_state.
+    this.jobs = [];
     // Frame trace (W2.1): every WS frame the orb RECEIVES, bounded ring.
     // Read over IPC by test/orb-trace.cjs — this is the "frames received"
     // half of the end-to-end evidence.
@@ -51,6 +55,21 @@ class StatusWS extends EventEmitter {
       // a future evolution flourish must not need a protocol change.
       evolveStage: null,
     };
+  }
+
+  /** Job table for parallel-minds / kind styling (idempotent; terminal rows drop out). */
+  _trackJob(msg) {
+    const id = msg.job;
+    if (!id) return;
+    const TERMINAL = ['done', 'failed', 'cancelled', 'interrupted'];
+    let j = this.jobs.find((x) => x.job === id);
+    if (!j) { j = { job: id, status: null, kind: null, parent: null, text: null }; this.jobs.push(j); }
+    if (msg.status) j.status = msg.status;
+    if (msg.kind) j.kind = msg.kind;             // chat | analysis | simulation | act
+    if (msg.parent) j.parent = msg.parent;       // parallel-minds fan-out tag
+    if (msg.text) j.text = msg.text;
+    if (TERMINAL.includes(j.status)) this.jobs = this.jobs.filter((x) => x.job !== id);
+    this.emit('jobs', this.jobs);
   }
 
   _rx(frame) {
@@ -174,6 +193,19 @@ class StatusWS extends EventEmitter {
         this.state.subtitle = msg.question || this.state.subtitle;
         this.emit('state', this.state);
         this.emit('confirm', msg);
+        break;
+      case 'job_event':
+        this._trackJob(msg);
+        this.emit('job_event', msg);
+        break;
+      case 'answer':
+        // PROTOCOL §3: the final conversational reply (additive 2026-10-07).
+        // Rendered as a banner — NOT as an orb_state.
+        this.emit('answer', msg);
+        break;
+      case 'report':
+        // PROTOCOL §3: long-form on-screen artifact. Banner only.
+        this.emit('report', msg);
         break;
       case 'job_list':
         this.emit('job_list', msg.jobs || []);

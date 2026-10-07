@@ -21,7 +21,10 @@ const RAPHAEL = {
 
 // `ciel` is currently an ALIAS of raphael (THEMES.md §4) — same tokens, so a
 // persona change cannot fork the design.
-const THEMES = { raphael: RAPHAEL, ciel: RAPHAEL };
+// `great_sage` is the IDENTITY tier (docs/evolution/04-tier-switch-test-plan.md
+// A2: it changes nothing) — so it renders exactly like Raphael today. Adding a
+// Ciel look later means editing this map, not the renderer.
+const THEMES = { great_sage: RAPHAEL, raphael: RAPHAEL, ciel: RAPHAEL };
 
 // --- tiny hex<->hsl helpers (no THREE dependency) ---------------------------
 function hexToRgb(hex) {
@@ -79,8 +82,13 @@ function vibrance(hex, v) {
  * @returns {object} flat hex token map, vibrance applied, every key present
  */
 function resolvePalette(cfg) {
-  const named = THEMES[cfg && cfg.theme] || RAPHAEL;
-  const raw = (cfg && cfg.theme === 'custom')
+  // `auto` (the Wave-5 default) follows persona.tier so a tier switch is a
+  // config change; an explicit theme name pins it and wins over the tier.
+  const wanted = (cfg && cfg.theme === 'auto')
+    ? (cfg.personaTier || 'great_sage')
+    : (cfg && cfg.theme);
+  const named = THEMES[wanted] || RAPHAEL;
+  const raw = (cfg && wanted === 'custom')
     ? { ...named, ...(cfg.themeTokens || {}) }
     : { ...named };
   const v = (cfg && Number.isFinite(cfg.vibrance)) ? cfg.vibrance : 1.15;

@@ -612,6 +612,35 @@ function runDemo(now) {
 // state is live, so a mode tint must never be reachable through `s` alone.
 // Private deliberately keeps the BASE look (ORB_REBUILD §3.5 — only the teal
 // ring says "cloud is off"); only paused/offline desaturate.
+// Wave 5: `job_event.kind` (chat|analysis|simulation|act) drives a LOOK only —
+// it is deliberately NOT an orb_state (PROTOCOL §5/§e). The lattice carries the
+// state's signature shape, so it is also what carries the kind accent.
+const KIND_TINT = {
+  analysis: 0x7fd4ff,   // cool cyan — reading/reasoning
+  simulation: 0x9d8cff, // violet — running a what-if
+  act: 0xffb000,        // amber — doing something to the machine
+  chat: 0x58c4f2,       // default cyan
+};
+const DEFAULT_LATTICE_TINT = 0x58c4f2;
+const TERMINAL_JOB = ['done', 'failed', 'cancelled', 'interrupted'];
+/**
+ * Which `job_event.kind` should style the orb (null when none).
+ *
+ * The contract says `kind` exists for "Analysis/Simulation styling", so a live
+ * `analysis`/`simulation` job wins over a `chat` root that happens to be first
+ * in the list — otherwise a parallel-minds fan-out (root=chat, children
+ * analysis+simulation) would style as plain chat and the accent would never
+ * appear in exactly the case it was added for.
+ */
+function activeJobKind() {
+  if (!orbJobs.length) return null;
+  const live = orbJobs.filter((j) => !TERMINAL_JOB.includes(j.status));
+  const pool = live.length ? live : orbJobs;
+  const special = pool.find((j) => j.kind && j.kind !== 'chat' && j.kind !== 'act');
+  const j = special || pool[0];
+  return (j && j.kind) || null;
+}
+
 function getStateTint(s) {
   if (orbState.mode === 'paused') return 0x9fb6d8; // steel grey (spec §3)
   if (s === 'error') return 0xff3b3d;
@@ -760,11 +789,16 @@ function animate(now) {
   halo.scale.setScalar(breath * (1 + reactiveAmp * 0.15));
   halo.material.opacity = 0.25 * layerWeights.haloOpacity;
   lattice.material.opacity = 0.35 * layerWeights.latticeOpacity;
+  // kind accent on the signature shape (Analysis / Simulation / act)
+  {
+    const k = activeJobKind();
+    lattice.material.color.setHex((k && KIND_TINT[k]) || DEFAULT_LATTICE_TINT);
+  }
   const mode = orbState.mode;
   updateSageCore(sage, { t, dt, state: orbState.orbState, mode, lock: poseLock, shape: effectiveShape(), amp: reactiveAmp, coreU: core.material.uniforms, ballScale, core, tint: getStateTint(orbState.orbState), glide: { x: GLX, y: GLY, blur: GLB } });
   if (AM) updateAnswerMode(AM, { t, dt, state: orbState.orbState, mode, lock: poseLock, amp: reactiveAmp, glide: { x: GLX, y: GLY } });
   if (DR) updateDataRings(DR, { t, dt, state: orbState.orbState, mode, lock: poseLock, amp: reactiveAmp, glide: { x: GLX, y: GLY } });
-  if (JD) updateJobDots(JD, { t, dt, jobs: orbState.jobsActive, lock: poseLock });
+  if (JD) updateJobDots(JD, { t, dt, jobs: orbState.jobsActive, jobList: orbJobs, lock: poseLock });
   if (AM && maskMat) maskMat.uniforms.uCA.value = AM.wFull; // chromatic aberration at outer edge (Answer Mode)
   if (!poseLock) {
     // dt-based, never per-tick (§1): the old fixed `+= 0.01` style scaled with
@@ -867,6 +901,8 @@ function animate(now) {
 }
 
 const NOTICE_TINT = {
+  answer: 'rgba(255, 208, 122, 0.99)',   // warm gold — the reply that landed
+  report: 'rgba(167, 139, 250, 0.99)',   // violet — a long-form artifact
   info: 'rgba(214, 240, 255, 0.98)',
   warn: 'rgba(255, 214, 102, 0.99)',
   error: 'rgba(255, 122, 112, 0.99)',
@@ -883,6 +919,26 @@ function updateNotice(n) {
   });
 }
 
+/** PROTOCOL §3 `answer` — the final reply: provenance + head of the text (the
+ *  full reply is what she speaks; this confirms it landed and from where).
+ *  Never an orb_state. */
+function updateAnswer(a) {
+  if (!a || !a.text) return;
+  const prov = a.provider ? ` · ${a.provider}${a.model ? '/' + a.model : ''}` : '';
+  const head = String(a.text).slice(0, 60);
+  updateSubtitle(`Answer · ${head}${a.text.length > 60 ? '…' : ''}${prov}`,
+    { force: true, color: NOTICE_TINT.answer, duration: 6000, banner: true });
+}
+
+/** PROTOCOL §3 `report` — long-form artifact: title + summary, wrapped. */
+function updateReport(r) {
+  if (!r || (!r.title && !r.summary)) return;
+  const title = String(r.title || 'Report').slice(0, 70);
+  const sum = r.summary ? String(r.summary).slice(0, 220) : '';
+  updateSubtitle(sum ? `${title} — ${sum}` : title,
+    { force: true, color: NOTICE_TINT.report, duration: 9000, banner: true });
+}
+
 function updateSubtitle(text, opts) {
   if (!subtitleEl) return; // demo page has no subtitle element
   const isPrivate = orbState.private || orbState.mode === 'private' || orbState.orbState === 'private_overlay';
@@ -893,6 +949,7 @@ function updateSubtitle(text, opts) {
     return;
   }
   subtitleEl.style.color = (opts && opts.color) || 'rgba(255, 255, 255, 0.95)';
+  subtitleEl.classList.toggle('banner', !!(opts && opts.banner));
   subtitleEl.textContent = text;
   subtitleEl.classList.remove('hide');
   subtitleEl.classList.add('show');
@@ -955,7 +1012,7 @@ window.__orbLockPose = () => {
   if (sage) lockSageCore(sage, st, mode, { tint: getStateTint(st), amp: la, shape: effectiveShape() });
   if (AM) lockAnswerMode(AM, st, { amp: la });
   if (DR) lockDataRings(DR, st, { amp: la });
-  if (JD) lockJobDots(JD, orbState.jobsActive);
+  if (JD) lockJobDots(JD, orbState.jobsActive, orbJobs);
   return window.__orbTrace ? window.__orbTrace().applied : null;
 };
 window.__orbUnlockPose = () => { poseLock = false; };
@@ -1117,6 +1174,12 @@ window.__orbTrace = () => ({
     drop: sage ? sage.polyMat.uniforms.uDrop.value : null,
   } : null,
   amp: { speak: speakAmp, pitch: speakPitch, mic: orbState.amplitude },
+  jobs: orbJobs,                 // {job, status, kind, parent} — parallel-minds styling
+  jobKind: activeJobKind(),
+  jobFan: JD ? !!JD.fan : false,
+  jobGroups: JD ? JD.groups : 0,
+  jobSpokes: JD ? (JD.spokes.geometry.drawRange.count || 0) : 0,
+  theme: { requested: cfg.theme, personaTier: cfg.personaTier },
   poseLocked: poseLock,
   rx: TRACE_RX.slice(-50),
   stats: window.__orbStats ? window.__orbStats() : null,
@@ -1186,6 +1249,9 @@ if (window.raphael) {
     // only explicit subtitles (spoken narration) are ever shown.
     if (s.subtitle) updateSubtitle(s.subtitle);
   });
+  window.raphael.onAnswer((a) => { traceRx('answer', a); updateAnswer(a); });
+  window.raphael.onReport((r) => { traceRx('report', r); updateReport(r); });
+  window.raphael.onJobs((j) => { orbJobs = Array.isArray(j) ? j : []; traceRx('jobs', { n: orbJobs.length }); });
   window.raphael.onNotice((n) => {
     traceRx('notice', n);          // recorded, but orbState is never touched
     updateNotice(n);
@@ -1235,6 +1301,8 @@ const typedEl = document.getElementById('typed');
 const typedInput = document.getElementById('typedInput');
 let pointerInside = false;
 let typedOpen = false;
+// Wave 5: job_event table (PROTOCOL §5 `kind`/`parent`) — styling only.
+let orbJobs = [];
 
 function pointerOverOrb(ev) {
   const w = window.innerWidth, h = window.innerHeight;

@@ -701,3 +701,107 @@ interaction 19/19, transparency) · `orb:size` PASS (drift 4.6% of 12%) ·
 
 **Next for this lane:** wait for `wave_open` / an inbox assignment
 (AGENT_RULES §11/§13). No unblocked work remains here.
+
+---
+
+# WAVE 5 — Answer/Report + parallel-minds + persona-tier themes (orb)
+
+All of it is **renderer-side**; no new `orb_state`, no shared-contract change.
+`docs/PROTOCOL.md` §3 already carries the three additive frames (`answer`,
+`report`, `job_event += kind|parent`), so nothing needed an integrator request.
+
+## 1. Persona-tier visuals — `orb.theme: auto`
+
+The Wave-2 theme hook now **follows `persona.tier`** instead of being pinned:
+
+```
+config.d/orb.yaml   theme: auto            (was: raphael)
+config.js           reads persona.tier from config.d/evolution-persona.yaml
+palette.js          THEMES = { great_sage, raphael, ciel }  + auto resolution
+```
+
+`great_sage` is the identity tier (per `docs/evolution/04-tier-switch-test-plan.md`
+A2) so it renders exactly like Raphael today; `ciel` is still an alias. An
+explicit `theme:` pins it and wins over the tier, and an unknown tier falls
+back to the Raphael palette rather than rendering blank.
+
+**Verified:** `orb:trace --only=wave5` →
+`theme_follows_persona_tier: orb.theme=auto persona.tier=great_sage`.
+A tier switch is now a config edit, never a renderer change — `docs/orb/THEMES.md`
+updated.
+
+## 2. Parallel-minds visuals (`job_event.parent`)
+
+`ws-status` now tracks the additive `job_event` fields into a job table
+(`{job, status, kind, parent}`) on its own channel — **deliberately not folded
+into `orb_state`**. The renderer lays the beads out as a **fan**:
+
+- no parent info → the original single evenly-spaced tilted ring (unchanged);
+- parent present → each parent gets a wedge, its children sit on an inner ring
+  inside that wedge, and a **spoke links parent → child** (one
+  `LineSegments` buffer with a per-frame `drawRange`), so "N children of one
+  mind" reads at a glance and two parents read as two clusters.
+
+**Verified:** `parallel_minds_fan_layout: jobs=3 fan=true groups=2 spokes=6`
+(6 = drawRange = 3 spokes × 2 verts).
+
+## 3. `kind` styling (Analysis / Simulation)
+
+`job_event.kind` drives a **look only** — the lattice carries each state's
+signature shape, so it also carries the kind accent:
+
+| kind | lattice accent |
+|---|---|
+| `analysis` | `#7FD4FF` cool cyan |
+| `simulation` | `#9D8CFF` violet |
+| `act` | `#FFB000` amber |
+| `chat` / none | `#58C4F2` (unchanged default) |
+
+Design note worth keeping: a **live `analysis`/`simulation` job wins over a
+`chat` root that happens to be first in the list** — otherwise a fan-out
+(root=chat, children=analysis+simulation) would style as plain chat and the
+accent would never appear in exactly the case it was added for. That was caught
+by the test (`kind_accent_analysis` first failed with `kind=chat`).
+
+## 4. `answer` / `report` banners
+
+Both render through the same banner element as `notice`, but they are **wrapped
+cards** (new `#subtitle.banner` style — the plain subtitle is `white-space:
+nowrap`, so a paragraph would have been clipped off the 280px window):
+
+- `answer` → `Answer · <first 60 chars>… · <provider>/<model>` — gold, 6 s
+- `report` → `<title> — <summary≤220>` — violet, 9 s
+
+Both `force: true` (a local system message, not cloud content, so Private Mode
+does not suppress them) and **neither touches `orbState`**.
+
+**Evidence:** `docs/orb/trace/wave5.json`
+
+```
+$ npm run orb:trace -- --only=wave5
+Wave 5: PASS (7/7)
+  ok parallel_minds_fan_layout   jobs=3 fan=true groups=2 spokes=6
+  ok kind_accent_analysis        foreground kind=analysis
+  ok answer_renders_as_banner    "Answer · The quick brown fox… · groq/llama-3.3-70b-versatile"
+  ok answer_does_not_change_state  thinking -> thinking
+  ok report_renders_as_banner    "Weekly pipeline report — 4 jobs run, 0 failures…"
+  ok report_does_not_change_state  thinking -> thinking
+  ok theme_follows_persona_tier  orb.theme=auto persona.tier=great_sage
+EXIT=0
+```
+
+### Wave-5 full gate (after the job-count + memoisation fixes)
+
+```
+npm run test:unit   PASS  (7 morph + 4 gl-recovery + 5 morph-clock + 8 port-safety + state-machine)
+npm run orb:trace   PASS  distinctness 104 pairs (noise 4.3e-6) · wave5 7/7 · bugc 6/6
+                     · interaction 19/19 · transparency border alpha 0 · startup 7/7
+npm run orb:size    PASS  worst drift 4.6% of a 12% limit, 12 combos, edge margin 3px
+node test/orb-diff.cjs  PASS (exit 0)
+orphans: none · ports 8906/9406 free · live stack (8765/8777) untouched
+```
+
+One correctness fix landed with it: bead count now derives from
+**`orb_state.jobs_active`** (the §8 authority) with `job_event` supplying only
+the fan *structure* — deriving the count from the job table could leave stale
+beads on screen after jobs finished.

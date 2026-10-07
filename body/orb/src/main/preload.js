@@ -6,6 +6,9 @@ contextBridge.exposeInMainWorld('raphael', {
   onSpeak: (cb) => ipcRenderer.on('speak', (_e, ev) => cb(ev)),
   onConfirm: (cb) => ipcRenderer.on('confirm', (_e, c) => cb(c)),
   onNotice: (cb) => ipcRenderer.on('notice', (_e, n) => cb(n)),
+  onJobs: (cb) => ipcRenderer.on('orb-jobs', (_e, j) => cb(j)),
+  onAnswer: (cb) => ipcRenderer.on('answer', (_e, a) => cb(a)),
+  onReport: (cb) => ipcRenderer.on('report', (_e, r) => cb(r)),
   onJobList: (cb) => ipcRenderer.on('job-list', (_e, jobs) => cb(jobs)),
   onGlide: (cb) => ipcRenderer.on('orb-glide', (_e, g) => cb(g)), // velocity feed for lag/blur
   sendOrbInput: (msg) => ipcRenderer.send('orb-input', msg),
@@ -40,6 +43,7 @@ contextBridge.exposeInMainWorld('orbConfig', {
   instance: cfg.instance,
   cdpPort: cfg.cdpPort,
   theme: cfg.theme,
+  personaTier: cfg.personaTier,
   vibrance: cfg.vibrance,
   motionBlur: cfg.motionBlur,
   startupSpinTauMs: cfg.startupSpinTauMs,

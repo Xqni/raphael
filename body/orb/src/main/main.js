@@ -585,6 +585,15 @@ function startStatusWS() {
       win.webContents.send('speak', ev);
     }
   });
+  statusWS.on('jobs', (jobs) => {
+    if (win && !win.isDestroyed()) win.webContents.send('orb-jobs', jobs);
+  });
+  statusWS.on('answer', (a) => {
+    if (win && !win.isDestroyed()) win.webContents.send('answer', a);
+  });
+  statusWS.on('report', (r) => {
+    if (win && !win.isDestroyed()) win.webContents.send('report', r);
+  });
   statusWS.on('notice', (n) => {
     if (win && !win.isDestroyed()) win.webContents.send('notice', n);
   });
