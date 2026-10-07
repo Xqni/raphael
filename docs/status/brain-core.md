@@ -46,6 +46,7 @@ Updated: 2026-10-07 (Wave 3: goals 1+2 DONE and rebased on main; goal 3 Notice B
 - — (live providers only: router lane's `brain.router.chat` facade; tests mock at the seam)
 
 ## Next
+- voice `speak-warn-notices` request ([42] nudge: review with next batch) — reviewed: small `brain/notice.py` spoken-delivery wiring (speak_notice + level phrasing + actionable_only guard); implementing with the next batch after this P0 merges.
 - Wave 3 (only when docs/WAVES.md `current_wave` = 3): job concurrency polish (input-lock fairness, per-job cancel), conversation-memory hooks to tools-memory, proactive Notice events.
 
 ## Requests — all DECIDED (coord round 2)
@@ -57,6 +58,7 @@ Updated: 2026-10-07 (Wave 3: goals 1+2 DONE and rebased on main; goal 3 Notice B
 - Nudge: PROTOCOL §7 act_req gained `list_windows`/`foreground_info`/`list_running_apps` — auto-covered once pc's tools register through discovery; no change needed from me.
 
 ## Test output (real runs only — never claim unrun tests)
+- (P0 analysis/sim batch) brain 192 / router 154 / voice 115+1skip / pc 11 / computer_use 60+3skip = **532 passed, 4 skipped** (sequential, Rule 14); root **214 passed, 7 xfailed** (qa stale count ALSO fixed upstream — no failures)
 - (authority-guard batch) brain 184 / router 154 / voice 104+1skip / pc 11 / computer_use 60+2skip = **513 passed, 3 skipped** (sequential, Rule 14); root **203 passed, 1 known-fail** (qa's approved `==11`→12 fix still pending on their side), 7 xfailed
 - (emitters batch) brain 181 / router 144 / voice 104+1skip / pc 11 / computer_use 60+2skip = **500 passed, 3 skipped** (sequential Rule 14; computer_use default-mode fixed by integrator c60c23c — verified in my tree); root **203 passed, 1 known-fail** (qa stale count, approved fix pending), 7 xfailed
 - (formats batch) brain 172 / router 144 / voice 104+1skip / pc 11 = green; computer_use 60+2skipped **under --import-mode=importlib** (default-mode collection broken by their test_hardening — request filed); root **203 passed, 1 failed** (qa stale count `==11`, fix approved+pending), 7 xfailed

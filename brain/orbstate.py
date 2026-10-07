@@ -76,7 +76,9 @@ def set_provider(provider: Optional[str], model: Optional[str] = None):
 def set_task(kind: Optional[str]):
     """Foreground task kind (fastpath/loop) -> shape_hint via orb.shape_map."""
     global _task_kind
-    allowed = ('system', 'files', 'web', 'media', 'llm', 'gui', 'none')
+    # analysis/simulation added by the APPROVED task-kind contract (2026-10-07)
+    allowed = ('system', 'files', 'web', 'media', 'llm', 'gui', 'analysis',
+               'simulation', 'none')
     _task_kind = kind if kind in allowed else 'none'
 
 

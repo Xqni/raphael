@@ -33,7 +33,9 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from . import confirm as confirm_mod
 from . import config as appcfg
+from . import analysis as analysis_mod
 from . import fastpath, formats, llm, orbstate, tools as tool_reg
+from . import simulation as simulation_mod
 from .jobs import store
 from .jobs.engine import JobEngine, get_engine
 from .mode import get_mode
@@ -228,11 +230,15 @@ class _SentenceSpeaker:
     subtitle-only (config voice_personality.spoken_reply_max_sentences).
     """
 
-    def __init__(self, hub, job_id, voice, max_sentences: Optional[int] = None):
+    def __init__(self, hub, job_id, voice, max_sentences: Optional[int] = None,
+                 sanitize=None):
         self.hub = hub
         self.job_id = job_id
         self.voice = voice
         self.max_sentences = max_sentences
+        # qa privacy contract point 2: Analysis/Simulation sentences are
+        # redacted BEFORE subtitle + speech (never spoken unscrubbed)
+        self.sanitize = sanitize
         self.queue: asyncio.Queue = asyncio.Queue()
         self.task: Optional[asyncio.Task] = None
         self.cancel: Optional[Any] = None
@@ -248,6 +254,11 @@ class _SentenceSpeaker:
         s = (sentence or '').strip()
         if not s:
             return
+        if self.sanitize is not None:
+            try:
+                s = self.sanitize(s) or s
+            except Exception:  # noqa: BLE001 — redactor must never fail speech
+                pass
         if self.hub is not None:              # subtitle carries the FULL text
             self.hub.broadcast({'type': 'subtitle', 'v': 1,
                                 'job': self.job_id, 'text': s[:200],
@@ -506,10 +517,39 @@ def build_runner(hub=None):
             max_steps = int(_agent_setting('max_tool_steps', 6))
             result_chars = int(_agent_setting('tool_result_max_chars', 4000))
             kind = engine.kind_of(rowid) or 'chat'
-            # Simulation jobs NEVER get tools (Wave-5: no side effects are
-            # possible in a simulation; prompt block suppressed with specs).
-            specs = [] if kind == 'simulation' else tool_reg.tool_specs()
+            feature = {'analysis': analysis_mod,
+                       'simulation': simulation_mod}.get(kind)
+            # qa privacy contract point 1 — refuse BEFORE any model call
+            # (race-safe: private may flip after the run_job §3 gate).
+            if feature is not None:
+                refusal = feature.gate(mode)
+                if refusal:
+                    narrate(refusal)
+                    formats.answer(hub, jid, refusal)
+                    store.transition(rowid, 'done', stage='done',
+                                     progress=1.0, result=refusal)
+                    emit('done', stage='done', progress=1.0,
+                         t=refusal[:160])
+                    return
+            # point 2: redaction fn for this kind's output (None = chat/act)
+            sanitize = feature.redact if feature is not None else None
+            sandbox = (simulation_mod.Sandbox()
+                       if kind == 'simulation' else None)
+            if kind == 'simulation':
+                # cond 4 of the formats contract: native tools OFF — plans
+                # come from the hypothetical-action instruction instead
+                specs = []
+            elif kind == 'analysis':
+                # read-only guarantee: risky/lock tools never offered
+                specs = analysis_mod.readonly_specs(tool_reg.tool_specs())
+            else:
+                specs = tool_reg.tool_specs()
             messages = _build_messages(text, specs)
+            if kind == 'simulation':
+                catalog = simulation_mod.hypothetical_action_catalog()
+                if catalog:
+                    messages[0]['content'] = (messages[0]['content']
+                                              + '\n\n' + catalog)
             try:
                 spoken_max = int((appcfg.cfg_get(appcfg.get_config(),
                                                  'voice_personality', {}) or {})
@@ -533,7 +573,8 @@ def build_runner(hub=None):
                 final: Optional[Dict[str, Any]] = None
 
                 async with _SentenceSpeaker(hub, jid, voice,
-                                            max_sentences=spoken_max) as spk:
+                                            max_sentences=spoken_max,
+                                            sanitize=sanitize) as spk:
                     async for frame in stream:
                         if not isinstance(frame, dict):
                             continue
@@ -596,18 +637,27 @@ def build_runner(hub=None):
                     # final answer: streamed to subtitle + speech above
                     if not assistant_text:
                         assistant_text = 'Done.'
-                    _remember(text, assistant_text, job=jid)
+                    # point 2: Analysis/Simulation output is scrubbed BEFORE
+                    # remember/answer/report/journal (spoken text was already
+                    # scrubbed in the speaker)
+                    safe_text = (sanitize(assistant_text) if sanitize
+                                 else assistant_text) or assistant_text
+                    _remember(text, safe_text, job=jid)
                     # APPROVED answer/report frames (ui+cli only)
-                    formats.answer(hub, jid, assistant_text,
+                    formats.answer(hub, jid, safe_text,
                                    provider=final.get('provider'),
                                    model=final.get('model'))
                     if kind == 'analysis':
-                        formats.report(hub, jid, assistant_text,
+                        formats.report(hub, jid, safe_text,
                                        title=f'Analysis — {text[:80]}')
+                    elif kind == 'simulation':
+                        suffix = simulation_mod.redact(sandbox.report_suffix())
+                        formats.report(hub, jid, safe_text + suffix,
+                                       title=f'Simulation — {text[:80]}')
                     store.transition(rowid, 'done', stage='done',
-                                     progress=1.0, result=assistant_text[:500])
+                                     progress=1.0, result=safe_text[:500])
                     emit('done', stage='done', progress=1.0,
-                         t=assistant_text[:160])
+                         t=safe_text[:160])
                     return
 
                 # tool step: execute every call, feed results back (§9)
@@ -624,9 +674,28 @@ def build_runner(hub=None):
                             t_args = json.loads(t_args) if t_args.strip() else {}
                     except (TypeError, ValueError) as e:
                         t_args = {'_parse_error': str(e)}
+                    if kind == 'simulation':
+                        # contract: NEVER the real input path — the action is
+                        # RECORDED as a prediction + canned dry-run result
+                        emit('running', stage='tool', progress=0.7,
+                             t=f'Simulated {t_name}', tool=t_name)
+                        sim_out = sandbox.run(t_name, t_args)
+                        content = simulation_mod.sandbox_feedback(
+                            t_name, sim_out)[:result_chars]
+                        messages.append({
+                            'role': 'tool',
+                            'tool_call_id': tc.get('id') or f'call_{i}',
+                            'name': t_name,
+                            'content': content,
+                        })
+                        continue
                     emit('running', stage='tool', progress=0.7,
                          t=f'Running {t_name}', tool=t_name)
                     ok, out = await _execute_tool(t_name, t_args)
+                    if kind == 'analysis':
+                        # point 2 (prompted output) + lock:false belt
+                        out = analysis_mod.redact(out)
+                        analysis_mod.assert_no_lock(engine, rowid)
                     content = tool_reg.as_untrusted(
                         (out if ok else f'ERROR: {out}')[:result_chars], t_name)
                     messages.append({
@@ -702,13 +771,20 @@ def build_runner(hub=None):
 
             # ---- 3. Private Mode: NO LLM calls, fast path only (task 4) ----
             if mode.private:
-                narrate(PRIVATE_NOTICE)     # spoken + subtitled
+                # feature-specific refusal when kind is already known
+                # (qa contract point 1 — never a silent cloud call either way)
+                _kind_now = engine.kind_of(rowid) or 'chat'
+                _fmod = {'analysis': analysis_mod,
+                         'simulation': simulation_mod}.get(_kind_now)
+                notice = ((_fmod.gate(mode) if _fmod else None)
+                          or PRIVATE_NOTICE)
+                narrate(notice)     # spoken + subtitled
                 # uniform answer rule (APPROVED condition 2) — provider/model
                 # omitted naturally here: Private Mode makes no router hop
-                formats.answer(hub, jid, PRIVATE_NOTICE)
+                formats.answer(hub, jid, notice)
                 store.transition(rowid, 'done', stage='done', progress=1.0,
-                                 result=PRIVATE_NOTICE)
-                emit('done', stage='done', progress=1.0, t=PRIVATE_NOTICE)
+                                 result=notice)
+                emit('done', stage='done', progress=1.0, t=notice)
                 return
 
             # ---- 4. conversational agent loop (task 2) ---------------------

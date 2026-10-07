@@ -188,6 +188,10 @@ class JobEngine:
         if rowid is None or kind not in self.KINDS:
             return False
         self._kinds[rowid] = kind
+        # Analysis = background priority (evolution contract, assigned): the
+        # store row is reprioritized so the echo/journal agree with the kind.
+        if kind == 'analysis':
+            store.set_priority(rowid, 'background')
         return True
 
     def kind_of(self, ref) -> Optional[str]:
@@ -231,6 +235,10 @@ class JobEngine:
                      input_lock: bool = False, session: Optional[str] = None,
                      task: Optional[str] = None, kind: Optional[str] = None,
                      parent: Optional[str] = None) -> Dict[str, Any]:
+        if kind == 'analysis':
+            # Analysis jobs ADMISSION-rank as background (contract); force it
+            # before the row exists so queued order reflects the kind.
+            priority = 'background'
         snap = store.create_job(text=text, priority=priority, source=source,
                                 input_lock=input_lock, session=session, task=task)
         if kind:

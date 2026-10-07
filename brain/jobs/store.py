@@ -163,6 +163,29 @@ def transition(job_id, status: str, stage: Optional[str] = None,
     return ok
 
 
+def set_priority(job_id, priority) -> bool:
+    """Reprioritize a live job (Wave-5 Analysis = background). Terminal
+    rows are immutable — returns False there."""
+    rowid = parse_job_ref(job_id)
+    if rowid is None:
+        return False
+    label, rank = normalize_priority(priority)
+    conn = get_conn()
+    try:
+        cur = conn.execute(
+            "UPDATE jobs SET priority=?, priority_label=?, updated_at=CURRENT_TIMESTAMP "
+            "WHERE id=? AND status NOT IN ('done','failed','cancelled','interrupted')",
+            (rank, label, rowid),
+        )
+        conn.commit()
+        ok = cur.rowcount > 0
+    finally:
+        conn.close()
+    if ok:
+        _log_event(rowid, {'event': 'reprioritized', 'priority': label})
+    return ok
+
+
 def set_pending_confirm(job_id, pending: bool):
     rowid = parse_job_ref(job_id)
     if rowid is None:
