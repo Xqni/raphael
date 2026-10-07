@@ -364,3 +364,15 @@ hand off designated work to correct agent lanes".
 **NEXT (user):** send the CONTINUE prompt to the lane sessions — wave 3 P0s are
 Bug B (open YouTube), D (live JP voice), F (vision foreground) first; when they
 land, the integrator re-runs the full six-criterion live gate for `wave-2-gate`.
+
+## Coord loop 2026-10-07 (wave 3, intake → hand-off)
+- router: Bug A regression VERIFIED (13/13 + my own rerun) — landed `test_vision_paid_slot.py`;
+  usage/rate `/status` slice DONE (8/8, `brain.router.usage_status()`); two requests to
+  brain-core APPROVED (fastpath open+search mapping = Bug B router half; additive
+  surface-usage wiring). Next assigned: schema-normalization edge cases.
+- infra: Bug G started (heartbeat). brain-core: two approved requests + Bug E assigned, pinged.
+- **CI bug found (run 37574556616, also breaks branch pushes):** `.github/workflows/ci.yml`
+  ownership step hardcodes `--lane qa-security` for every push — non-qa pushes fail by
+  construction; `ownership_check --lane integrator` passes by design (merge-loop does real
+  enforcement). File is qa-security-owned → assigned as its urgent NEXT TASK (suggested fix
+  shape in its inbox). Main CI stays red until that lands — known, not silent.
