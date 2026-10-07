@@ -169,3 +169,34 @@ async def test_plan_compat_uses_chat(monkeypatch):
     assert res.ok and res.text == 'planned'
     assert seen['messages'][0] == {'role': 'user', 'content': 'do the thing'}
     assert seen['purpose'] == 'plan'
+
+
+# ---- pc-control item 2: prompt_block fallback -------------------------------
+def test_prompt_block_renders_catalog_in_extractable_format():
+    from brain import llm as llm_mod
+    specs = [{
+        'type': 'function',
+        'function': {
+            'name': 'search_youtube',
+            'description': 'search YouTube and open results',
+            'parameters': {
+                'type': 'object',
+                'properties': {
+                    'query': {'type': 'string', 'description': 'search terms'},
+                    'limit': {'type': 'integer', 'description': 'max results'},
+                },
+                'required': ['query'],
+                'additionalProperties': False,
+            },
+        },
+    }]
+    block = llm_mod.prompt_block(specs)
+    assert block
+    # format line matches brain.loop._extract_tool_call
+    assert '{"tool": "<name>", "args": {...}}' in block
+    assert '- search_youtube:' in block
+    assert 'query*: string — search terms' in block     # * = required
+    assert 'limit: integer — max results' in block
+    # empty/None -> no block (nothing to append)
+    assert llm_mod.prompt_block(None) == ''
+    assert llm_mod.prompt_block([]) == ''

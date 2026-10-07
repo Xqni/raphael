@@ -182,3 +182,63 @@ def test_builtins_still_registered():
     assert reg.get('shell') is not None
     for name in ('launch_url', 'open_app', 'screenshot', 'uia', 'clipboard'):
         assert reg.describe(name)['category'] == 'gui'
+
+
+# ---- pc-control request items 1 + 4 (approved 2026-10-06) ------------------
+def test_register_rejects_bad_name_and_category():
+    with pytest.raises(reg.BadToolSpec):
+        reg.register('', lambda: None, description='x')          # empty name
+    with pytest.raises(reg.BadToolSpec):
+        reg.register(123, lambda: None, description='x')         # non-str name
+    with pytest.raises(reg.BadToolSpec):
+        reg.register('t_badcat', lambda: None, description='x',
+                     category='')                                # empty category
+    with pytest.raises(reg.BadToolSpec):
+        reg.register('t_badcat', lambda: None, description='x',
+                     category=None)
+    reg._registry.pop('t_badcat', None)
+    reg._META.pop('t_badcat', None)
+
+
+def test_skip_module_hides_tests_and_conftest():
+    assert reg._skip_module('brain.tools.pc.tests.test_pc_tool_specs')
+    assert reg._skip_module('brain.tools.pc.tests')
+    assert reg._skip_module('brain.tools.conftest')
+    assert not reg._skip_module('brain.tools.pc')
+    assert not reg._skip_module('brain.tools.pc.tools.send_keys')
+
+
+def test_lifespan_rediscovers_subpackage_registered_later(tmp_path):
+    """Item 1: a subpackage that lands after the first import registers on a
+    LIVE Brain when app lifespan re-runs discover()."""
+    from fastapi.testclient import TestClient
+    from brain.app import app
+
+    pkg = tmp_path / 't_late_pkg'
+    pkg.mkdir()
+    (pkg / '__init__.py').write_text(
+        'from brain.tools import register as _r\n'
+        'def register():\n'
+        '    _r("t_late_tool", lambda q: q, description="late tool",\n'
+        '      schema={"type": "object",\n'
+        '             "properties": {"q": {"type": "string",\n'
+        '                                  "description": "query"}},\n'
+        '             "required": ["q"], "additionalProperties": False})\n',
+        encoding='utf-8')
+    import brain.tools
+    brain.tools.__path__.append(str(tmp_path))
+    try:
+        assert brain.tools.get('t_late_tool') is None   # not yet discovered
+        with TestClient(app):                           # lifespan -> discover()
+            pass
+        assert brain.tools.get('t_late_tool') is not None, brain.tools.load_errors()
+        spec_names = {s['function']['name'] for s in brain.tools.tool_specs()}
+        assert 't_late_tool' in spec_names
+    finally:
+        brain.tools.__path__.remove(str(tmp_path))
+        import sys as _sys
+        _sys.modules.pop('brain.tools.t_late_pkg', None)
+        reg._discovered.discard('brain.tools.t_late_pkg')
+        reg._registry.pop('t_late_tool', None)
+        reg._META.pop('t_late_tool', None)
+        reg._load_errors.clear()
