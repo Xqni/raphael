@@ -1,7 +1,9 @@
 # 01 — Self-evolution infrastructure (Wave 4 design notes)
 
-Status: **DESIGN ONLY — not implemented.** `current_wave: 2`; per AGENT_RULES §11 no Wave 4 code
-starts until WAVES.md says so. Written as the Wave 2 lane task (docs/lanes/evolution-persona.md).
+Status: **DESIGN ONLY — not implemented.** `current_wave: 3`; per AGENT_RULES §11 no Wave 4 code
+starts until WAVES.md says so. Written as the Wave 2 lane task, refreshed for Wave 3 (2026-10-07):
+aligned with what the Wave 2 merge actually shipped (qa-security's Core Guard manifest tool,
+brain-core's instance-derivation enforcement).
 Owner: evolution-persona lane (`brain/evolution/**`, `docs/evolution/**`).
 
 Authority basis: REQUIREMENTS_ADDENDUM §13 (three-tier self-evolution) and §14 (capability growth).
@@ -13,14 +15,13 @@ This document is the concrete design those tiers map onto. Hard rules below over
 brain/evolution/
 ├─ controller.py        # orchestrates one evolution cycle (detect→patch→test→compare→promote/propose)
 ├─ zones.py             # Core Guard manifest + mutable-zone classification (fail-closed)
-├─ manifest.py          # sha256 hash-lock load/verify of the Core Guard set
+├─ manifest.py          # loads/verifies the EXISTING manifest (tests/core_guard_manifest.json)
 ├─ worktree.py          # isolated git worktree + branch creation (never touches main checkout)
 ├─ shadow.py            # RAPHAEL_INSTANCE=shadow run harness (tests + golden transcripts)
 ├─ baseline.py          # baseline capture + diff/compare of shadow run vs baseline
 ├─ promote.py           # promote/tag/probation/rollback bookkeeping
 ├─ journal.py           # evolution journal entries + weekly spoken-summary builder
 ├─ config.py            # mode (off|propose|auto_safe), budget counters, idle-only gate
-├─ core_guard.json      # the hash manifest itself (path → sha256, recorded tag, recorded at)
 ├─ golden/              # golden transcripts (inputs + expected outputs, deterministic mocks)
 └─ tests/               # unit tests for everything above (lane-owned, mirrors brain/tests pattern)
 docs/evolution/
@@ -35,6 +36,14 @@ Classification is **path-glob based and fail-closed**: a path that matches no zo
 treated as **Core Guard** (never auto-promoted). Unknown ⇒ most restrictive.
 
 ### 1.1 Core Guard set (hash-locked; changes = PROPOSAL, user/integrator approval only)
+
+**The hash manifest already exists (shipped by qa-security in the Wave 2 merge):**
+`tests/core_guard.py` verifies sha256 against `tests/core_guard_manifest.json`
+(`brain/auth.py`, `brain/confirm.py`, `brain/control.py`, `brain/mode.py`), exit 1 on drift;
+`--update` is only legitimate with an integrator-approved request. **That is THE manifest** —
+the evolution controller calls it (never maintains a second copy), and the controller refuses
+to run when verification fails. Widening `CORE_GUARD_FILES` is a change to `tests/**`
+(qa-security's file) → request, see §7.
 
 | Path / semantic | Why guarded |
 |---|---|
@@ -119,7 +128,11 @@ detect ──► plan ──► patch (worktree branch) ──► verify (shadow
   in the gate — cloud_temp keys are not spent by tests).
 - **Known contract gap:** INTERFACES (d) has no `shadow` row (only lane instances + `main`).
   Instance derivation must produce a real port/pidfile/lock/datadir for `shadow` — request written:
-  `docs/requests/evolution-persona__to__brain-core__shadow-instance-row.md`.
+  `docs/requests/evolution-persona__to__brain-core__shadow-instance-row.md` (**Status: OPEN**).
+  Enforcement now exists: `brain/config.py::_instance_index` raises loudly for any instance
+  name not in the §d table ("ask the integrator to add it") — so shadow runs are hard-blocked
+  until the row lands. This is exactly the fail-closed behavior we want; no workarounds
+  (never hardcode a port, INTERFACES (d)).
 
 ## 4. Journal
 
@@ -172,11 +185,12 @@ evolution:
 
 ## 7. Dependencies / contract gaps to resolve at Wave 4 start (write requests, keep working)
 
-| Gap | Owner | Request |
+| Gap | Owner | Status / next step |
 |---|---|---|
-| `shadow` row missing from instance-derivation table | brain-core | `evolution-persona__to__brain-core__shadow-instance-row.md` (written 2026-10-05) |
+| `shadow` row missing from instance-derivation table | brain-core | **OPEN** — `evolution-persona__to__brain-core__shadow-instance-row.md` (2026-10-05); `brain/config.py` now raises loudly for unknown instances, so this hard-blocks shadow runs until done |
+| Extend `tests/core_guard.py → CORE_GUARD_FILES` to the full §1.1 set (supervisor/**, brain/evolution/**, PROTOCOL §7 allow-list artifact, tests/**) | qa-security | to write at Wave 4 start (today's manifest covers only the 4 core files — keep it as the single source of truth and grow it, do not fork one) |
 | Out-of-band rollback hook: what exactly does supervisor expose (command/endpoint) for LKG re-point? | infra | to write at Wave 4 start |
-| Test-suite entry point + golden-transcript harness seam (mock router fixture) | qa-security / brain-core | to write at Wave 4 start |
+| Test-suite entry point + golden-transcript harness seam (mock router fixture) — root `tests/` now has `run_all`, `harness/`, `conformance/`, `contract/` to reuse | qa-security | to write at Wave 4 start |
 | Router "weights" (benchmark ranking) file path ownership for the mutable zone | router | to write at Wave 4 start |
 
 ## 8. Test plan (lane tests, `brain/evolution/tests/`)

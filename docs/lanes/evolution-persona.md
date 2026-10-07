@@ -14,6 +14,14 @@ Wave 2 is MERGED; live gate was 3/5 — evidence + bug dossiers: `docs/BUGS-WAVE
 
 - [CONTEXT] Wave 2 merged; live gate 3/5 — gate bugs assigned in docs/BUGS-WAVE2.md (P0s belong to other lanes). Your wave-3 goals below stand.
 - [SPEED] Persona responses stay fast cloud defaults (Rule 15).
+- [x] Wave 3 lane task: refresh `docs/evolution/` design notes against the merged Wave 2 reality —
+  (a) `01`: adopt qa-security's `tests/core_guard.py` + `tests/core_guard_manifest.json` as THE single
+  Core Guard manifest (controller calls it, never forks one); dependency table updated (shadow row still
+  OPEN and now hard-blocked by `brain/config.py` loud failure; requests queued for qa-security/infra/router
+  at Wave 4 start); (b) `02`: Notice format aligned to brain-core's concrete `notice` frame proposal,
+  caps tied to existing `voice_personality` keys, tier switch settled on config.d deep-merge (no
+  shared-file edits). Verified: `python3 tests/core_guard.py` → "Core Guard OK (4 files byte-stable)".
+- [ ] Wait for next coord ping (mode: exit) — check `docs/requests/*__to__evolution-persona__*.md` at task start.
 
 ## Later waves
 - Per docs/WAVES.md — do not start early (AGENT_RULES §11).

@@ -1,6 +1,8 @@
 # 02 — Persona tiers and Ciel (Wave 5 design notes)
 
 Status: **DESIGN ONLY — not implemented.** Do not start before `current_wave: 5` (AGENT_RULES §11).
+Refreshed for Wave 3 (2026-10-07) against the merged Wave 2 contracts (`voice_personality` in
+`config.yaml`, brain-core's proposed `notice` frame).
 Owner: evolution-persona lane (`brain/persona/**`, `docs/evolution/**`).
 Basis: REQUIREMENTS_ADDENDUM §10 (Great Sage character), §14 (persona profiles = tier 3, crown
 user-placed), WAVES.md Wave 5, PROTOCOL.md §3/§5/§8.
@@ -19,6 +21,15 @@ config.d/evolution-persona.yaml  # persona.tier + format/palette tunables (lane 
 
 Tier is a **config switch, not a model decision**: `persona.tier` in config; the model never
 self-grants a tier (addendum §14 — "the crown stays user-placed").
+
+**Switch mechanism (Wave 3 refinement — zero shared-file edits):** tier lives in our lane
+fragment `config.d/evolution-persona.yaml`; the merged profile's deep-merge (INTERFACES §c,
+later fragments win) lets each tier overlay its `voice_personality` fields
+(`character`, `style`, `speech_forms`, `banned`, `proactive_warnings`) — base
+`config.yaml → voice_personality.character: raphael_great_sage` (integrator-owned) stays
+untouched, and `great_sage` is by definition the tier that changes nothing. `persona.tier` is
+on the §1.1 Core Guard-adjacent list: a self-produced diff that raises it is always a proposal,
+never auto-promoted (01-self-evolution-infra.md §6 rule 1).
 
 ## 2. Tiers
 
@@ -59,9 +70,14 @@ Notice; terminal `job_event(done)` for analysis/report jobs → Report) with LLM
 misclassification degrades to Answer (never fabricates a proactive Notice). Private mode still
 suppresses subtitles; paused mode still queues.
 
-**Contract note:** `speak`/`subtitle`/`job_event` frames already carry text — formats are shaping
-rules inside the Brain, so no PROTOCOL change is needed for §3 itself. (Proactive Notices do need
-the Wave 3 `Notice` event from brain-core — dependency, see §6.)
+**Contract status (Wave 3 refresh):** the Notice carrier is now a concrete proposal —
+`docs/requests/brain-core__to__integrator__notice-events.md` (Status: OPEN) adds an additive
+Brain→Client `notice` frame `{text, level: info|warn, ts, job?}` broadcast to `ui`+`cli`, with
+`brain/notice.py::emit()` ratelimited and fail-silent; **not** an orb state, INTERFACES (e)
+untouched. Our `formats.py` Notice path consumes exactly that frame once approved — no
+competing frame of our own. Length/style caps are already config, not new knobs:
+`voice_personality.spoken_reply_max_sentences: 2` and `proactive_warnings: actionable_only`
+(merged in `config.yaml`), so formats enforce against those keys rather than redefining them.
 
 ## 4. Job types: `Analysis` and `Simulation`
 
@@ -96,14 +112,14 @@ the state machine in PROTOCOL §8/INTERFACES (e) is unchanged; only the `task_ki
 
 ## 6. Dependencies to resolve at Wave 5 start (write requests, keep working)
 
-| Gap | Owner | When |
+| Gap | Owner | Status |
 |---|---|---|
-| Wave 3 proactive `Notice` event (basis for the Notice format) | brain-core | at Wave 5 start |
-| `task_kind` enum + `orb.shape_map` entries for `analysis`/`simulation` | brain-core + orb | at Wave 5 start |
-| `minds[]` field on `orb_state` (parallel-minds) | integrator (PROTOCOL) + orb | at Wave 5 start |
-| Ciel voice reference slot behavior | voice | at Wave 5 start |
-| Gold palette swatches + delivery payload | orb | at Wave 5 start |
-| `persona.tier` unlock evaluation + proposal plumbing | evolution-persona (us) | own work |
+| Wave 3 proactive `Notice` events (basis for the Notice format) | brain-core → integrator | **concrete proposal exists**: `docs/requests/brain-core__to__integrator__notice-events.md` (OPEN) — formats.py consumes it as-is once approved |
+| `task_kind` enum + `orb.shape_map` entries for `analysis`/`simulation` | brain-core + orb | to request at Wave 5 start |
+| `minds[]` field on `orb_state` (parallel-minds) | integrator (PROTOCOL) + orb | to request at Wave 5 start |
+| Ciel voice reference slot behavior (`assets/ciel_reference.wav` + §10-style fallback) | voice | to request at Wave 5 start |
+| Gold palette swatches + delivery payload | orb | to request at Wave 5 start |
+| `persona.tier` unlock evaluation + proposal plumbing | evolution-persona (us) | own work; mechanism settled above (config.d deep-merge, no shared-file edits) |
 
 ## 7. Test plan (lane tests, `brain/persona/tests/`)
 
