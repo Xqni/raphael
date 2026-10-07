@@ -1,0 +1,1 @@
+{"name": "open-youtube", "steps": [{"type": "fastpath", "name": "search_youtube", "target": "lo-fi"}, {"type": "act_req", "name": "launch_url", "target": "youtube.com"}]}
