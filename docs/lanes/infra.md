@@ -50,6 +50,12 @@ Wave 3 is MERGED + **GATE PASSED** (tag `wave-3-gate`, all six criteria live, ac
       • **zero-orphan**: 5 spawn/teardown cycles → ZERO marker-scoped leftovers each cycle, while an untagged control process survives every cycle (teardown scoping proven; bracket-pattern self-match guard; full cleanup in `finally`).
       → `supervisor/tests/test_resilience_drills.py` (6 tests, 4.1 s).
 
+## Wave 5 (start only when WAVES.md says so — current_wave: 5)
+
+Wave 4 is MERGED + **GATE PASSED** (tag `wave-4-gate`, 10/10 lanes, mock 308 green). Wave-5 theme per WAVES.md: Raphael features — Answer/Notice/Report formats, Analysis, Simulation, parallel-minds visuals, persona tiers. Rule 15 speed mandate binds; shared-contract changes go through integrator requests. Carried items are noted in WAVES.md gate record (shadow row; C1+C2 residual).
+
+- [ ] Tier/simulation rollout plumbing: config.d tier switching at runtime (safe restart semantics), simulation job scheduling/supervision, shadow-instance row support WHEN brain-core lands it (port 8911).
+
 ## Later waves
 - Per docs/WAVES.md — do not start early (AGENT_RULES §11).
   - Wave 3 (after integrator bumps `current_wave`): log rotation audit + crash reports with last-known state. NOTE: `supervisor/main.py` already ships size-cap rotation (5 MB × 3, selfcheck-verified); Wave 3 extends it to the other stack logs + adds last-known-state crash reports.

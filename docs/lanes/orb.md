@@ -176,6 +176,12 @@ Wave 3 is MERGED + **GATE PASSED** (tag `wave-3-gate`, all six criteria live, ac
       8765** (now lane-derived, refuses `main` without `--allow-main`) — 8/8
       pure tests.
 
+## Wave 5 (start only when WAVES.md says so — current_wave: 5)
+
+Wave 4 is MERGED + **GATE PASSED** (tag `wave-4-gate`, 10/10 lanes, mock 308 green). Wave-5 theme per WAVES.md: Raphael features — Answer/Notice/Report formats, Analysis, Simulation, parallel-minds visuals, persona tiers. Rule 15 speed mandate binds; shared-contract changes go through integrator requests. Carried items are noted in WAVES.md gate record (shadow row; C1+C2 residual).
+
+- [ ] Parallel-minds visuals + persona-tier visuals (great_sage -> raphael -> ciel themes per docs/evolution/04-tier-switch-test-plan.md) — renderer only, orb_state contract via integrator request if new states needed.
+
 ## Later waves
 - Per docs/WAVES.md — do not start early (AGENT_RULES §11).
 

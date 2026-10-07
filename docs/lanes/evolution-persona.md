@@ -42,5 +42,11 @@ Wave 3 is MERGED + **GATE PASSED** (tag `wave-3-gate`, all six criteria live, ac
   (`shadow.py`/`baseline.py` + controller) **carried into Wave 5** — note it at wave-5 start.
 - [ ] Wait for next coord ping (mode: exit) — at task start: `ls docs/requests/*__to__evolution-persona__*.md`.
 
+## Wave 5 (start only when WAVES.md says so — current_wave: 5)
+
+Wave 4 is MERGED + **GATE PASSED** (tag `wave-4-gate`, 10/10 lanes, mock 308 green). Wave-5 theme per WAVES.md: Raphael features — Answer/Notice/Report formats, Analysis, Simulation, parallel-minds visuals, persona tiers. Rule 15 speed mandate binds; shared-contract changes go through integrator requests. Carried items are noted in WAVES.md gate record (shadow row; C1+C2 residual).
+
+- [ ] PERSONA TIER IMPLEMENTATION (primary): great_sage -> raphael -> ciel tier behavior behind the wave-4 deep-merge switch (docs/evolution/04 = test plan), tier probation/probation-rollback semantics; shadow verification runs the moment brain-core's row lands.
+
 ## Later waves
 - Per docs/WAVES.md — do not start early (AGENT_RULES §11).

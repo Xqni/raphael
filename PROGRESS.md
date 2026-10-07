@@ -507,3 +507,10 @@ live_e2e=false) when wanted.
   brain-core's approved row). All suites green at every gate (286/145/63 + core guard).
   NOTE: GitHub receive-pack returning 500 on push (reads+REST+status green) — background
   watcher retrying; batch pending = 11 commits. Verdict → research/push-recovery.md.
+- **WAVE-4 GATE PASSED — tag `wave-4-gate` pushed.** 10/10 lanes merged; mock sweep
+  308 passed rc=0; GitHub receive-pack 500s recovered (all 15 commits landed
+  a61c801..d841a3a); watcher false-success corrected in research/push-recovery.md.
+- **WAVE 5 OPEN** (current_wave=5): Raphael features — Answer/Notice/Report formats,
+  Analysis, Simulation, parallel-minds visuals, persona tiers (great_sage→raphael→ciel).
+  wave_open to all 10 lanes with Wave-5 sections; carried: brain-core shadow row,
+  voice C1+C2 confirm residual (qa re-audit).

@@ -24,6 +24,12 @@ Wave 3 is MERGED + **GATE PASSED** (tag `wave-3-gate`, all six criteria live, ac
 
 - [x] Observation hardening: UIA crash recovery, blocklist bypass attempt suite (privacy audit), foreground-probe failure matrix (locked/hidden/vanished windows), screenshot redaction re-verify. — `test_hardening.py` ×2 (19 tests): UIA crash → gated-vision recovery (+ debug-capture/body-gone variants); **process-field bypass closed** (`foreground_window()` now returns `title | process` composite, zero-identity window = fail-closed None); probe matrix (timeout/no-session/malformed/vanished → E_UNREACHABLE vs E_NO_FOREGROUND at runner AND service level); redaction re-verify (all 6 kinds in vision answers, UIA trees, action feedback). Plus qa-security vision-gate item 4: `gate.check_debug_capture()` (§7(4) enforced in code) — request flipped DONE with evidence.
 
+## Wave 5 (start only when WAVES.md says so — current_wave: 5)
+
+Wave 4 is MERGED + **GATE PASSED** (tag `wave-4-gate`, 10/10 lanes, mock 308 green). Wave-5 theme per WAVES.md: Raphael features — Answer/Notice/Report formats, Analysis, Simulation, parallel-minds visuals, persona tiers. Rule 15 speed mandate binds; shared-contract changes go through integrator requests. Carried items are noted in WAVES.md gate record (shadow row; C1+C2 residual).
+
+- [ ] Analysis-mode context gathering (screen + foreground + window history for deep-dive requests), redaction discipline extended to Simulation/Analysis payloads.
+
 ## Later waves
 - Per docs/WAVES.md — do not start early (AGENT_RULES §11).
   (Wave 3: watch mode, help-with-error, summarize-page, window-aware context.

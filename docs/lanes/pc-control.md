@@ -33,6 +33,12 @@ Wave 3 is MERGED + **GATE PASSED** (tag `wave-3-gate`, all six criteria live, ac
 - [x] Act-layer hardening: timeout/kill recovery per tool, partial-failure matrix (act_res always truthful under crash), Windows E2E failure injection (each pc tool: happy/missing-denied/locked).
       → `body/win/failure_cases.py` = single source (INVALID_ARGS + CRASH_CASES for all 17 tools), shared by unit + e2e. Dispatcher now audit-logs `E_CANCELLED` on kill/disconnect mid-action (outer finally still releases the lock — PROTOCOL §5). Matrix: every tool × {E_BAD_MSG with zero OS calls, E_LOCK_BUSY side-effect-free, E_INTERNAL truthful + recovery dispatch} + timeout-release + cancel-release tests → `test_pc_failure_matrix.py` 54 passed. E2E injection phase: 123 checks PASS (0 fail). FakeWin gained a `delays` knob for timeout drills.
 
+## Wave 5 (start only when WAVES.md says so — current_wave: 5)
+
+Wave 4 is MERGED + **GATE PASSED** (tag `wave-4-gate`, 10/10 lanes, mock 308 green). Wave-5 theme per WAVES.md: Raphael features — Answer/Notice/Report formats, Analysis, Simulation, parallel-minds visuals, persona tiers. Rule 15 speed mandate binds; shared-contract changes go through integrator requests. Carried items are noted in WAVES.md gate record (shadow row; C1+C2 residual).
+
+- [ ] Report-format delivery acts (save/share report outputs) + any GUI affordances the Answer/Report formats need; failure-matrix discipline from wave 4 applies to every new act.
+
 ## Later waves
 - Per docs/WAVES.md — do not start early (AGENT_RULES §11). Wave 5 (Answer/Notice/Report, Analysis, Simulation, persona tiers) starts only at `current_wave: 5`.
 

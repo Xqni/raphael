@@ -31,6 +31,12 @@ Wave 3 is MERGED + **GATE PASSED** (tag `wave-3-gate`, all six criteria live, ac
 
 - [x] Orchestrate the wave-4 resilience matrix (owns the suite): kill/recovery drills green across brain/body/orb/supervisor, audit-fix verification passes, secret/redaction re-audit, encoding-class regression guard in CI matrix.  (2026-10-07: `tests/resilience/` provider-storm+recovery + crash-recovery interrupted drills; §b/429/orb/vision/ollama/loopback fixes verified strict; matrix + re-review in `docs/reviews/2026-10-07-wave4.md`; full-brain import-hygiene CI step added)
 
+## Wave 5 (start only when WAVES.md says so — current_wave: 5)
+
+Wave 4 is MERGED + **GATE PASSED** (tag `wave-4-gate`, 10/10 lanes, mock 308 green). Wave-5 theme per WAVES.md: Raphael features — Answer/Notice/Report formats, Analysis, Simulation, parallel-minds visuals, persona tiers. Rule 15 speed mandate binds; shared-contract changes go through integrator requests. Carried items are noted in WAVES.md gate record (shadow row; C1+C2 residual).
+
+- [ ] Wave-5 gate tests: format contract conformance (new frames vs §3), tier-switch safety (deep-merge cannot touch safety/privacy/providers — extend evolution's 14 tests), Analysis/Simulation privacy tripwires.
+
 ## Later waves (do not start early — AGENT_RULES §11; beyond current_wave 3)
 - [ ] Wave 3: golden job transcripts (replayable recorded conversations/tool traces as regression baseline).
 - [x] Wave 4: resilience test suites (with infra) + security re-review after fixes.  (`tests/resilience/` 3 drills green + `docs/reviews/2026-10-07-wave4.md`; matrix orchestration bullet above)

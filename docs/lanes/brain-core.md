@@ -53,6 +53,12 @@ Wave 3 is MERGED + **GATE PASSED** (tag `wave-3-gate`, all six criteria live, ac
 
 - [x] Crash-recovery: interrupted-job journal replay hardening (post-restart task resume), engine kill-safety matrix, Notice emitter outage-storm drill (Wave-3 addition), input-lock arbitration stress. DONE 2026-10-07 — see `brain/tests/test_resilience.py` (8) + storm drills in `test_notice.py` (+4); fixes: stale `pending_confirm` cleared on interrupted rows, `engine.shutdown()` now fires the per-job kill hook (speech stops on engine kill), TestClient never writes live pidfiles (`_pidfile_targets()` empty under pytest). NOTE: actual auto-RESUME of interrupted jobs stays forbidden by PROTOCOL §5 — journal is verified fully replayable for explicit resume only.
 
+## Wave 5 (start only when WAVES.md says so — current_wave: 5)
+
+Wave 4 is MERGED + **GATE PASSED** (tag `wave-4-gate`, 10/10 lanes, mock 308 green). Wave-5 theme per WAVES.md: Raphael features — Answer/Notice/Report formats, Analysis, Simulation, parallel-minds visuals, persona tiers. Rule 15 speed mandate binds; shared-contract changes go through integrator requests. Carried items are noted in WAVES.md gate record (shadow row; C1+C2 residual).
+
+- [ ] Output-format engine: Answer/Notice/Report format emitters per WAVES wave 5 (notice frame already in §3 — extend the contract for Report/Answer shapes via integrator request first), Analysis + Simulation job kinds (fastpath + engine), parallel-minds job fan-out seams.
+
 ## Later waves
 - Per docs/WAVES.md — do not start early (AGENT_RULES §11).
 - Wave 3 (when current_wave=3): job concurrency polish (input-lock fairness, per-job cancel), conversation-memory hooks to tools-memory, proactive Notice events.

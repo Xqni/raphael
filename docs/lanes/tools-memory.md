@@ -267,5 +267,11 @@ Wave 3 is MERGED + **GATE PASSED** (tag `wave-3-gate`, all six criteria live, ac
 - [x] Session-brief wave-4 scope: skill dedup/aging + memory export/delete controls. **✅ DONE 2026-10-07** — `audit_skills()` (stale-unused-published → draft, file+index in sync; `find_duplicates()` report-only), `export.py` (`export_all` 0600 JSONL owner-scoped; `wipe('all'|'memories'|'conversations')` surgical + owner-filtered; deliberately NOT model tools — destructive power stays with the user). 10 tests; `skills.audit_grace_days: 30` in config fragment.
 - **Wave 4 COMPLETE → wave_done posted (merge-ready).**
 
+## Wave 5 (start only when WAVES.md says so — current_wave: 5)
+
+Wave 4 is MERGED + **GATE PASSED** (tag `wave-4-gate`, 10/10 lanes, mock 308 green). Wave-5 theme per WAVES.md: Raphael features — Answer/Notice/Report formats, Analysis, Simulation, parallel-minds visuals, persona tiers. Rule 15 speed mandate binds; shared-contract changes go through integrator requests. Carried items are noted in WAVES.md gate record (shadow row; C1+C2 residual).
+
+- [ ] Memory-context feeding for Analysis/Simulation (retrieval budgets per kind) + Report caching; injection probes extended to the new format outputs.
+
 ## Later waves
 - Per docs/WAVES.md — do not start early (AGENT_RULES §11).
