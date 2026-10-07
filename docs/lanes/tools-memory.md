@@ -20,12 +20,12 @@ Wave 2 is MERGED; live gate was 3/5 — evidence + bug dossiers: `docs/BUGS-WAVE
 Execution order (each = implement → test → commit → update docs/status/tools-memory.md; stop after 2 failed attempts on one problem, §11):
 
 0. **Prep:** ✅ DONE 2026-10-07 — rebased on origin/main (lane-doc conflict resolved: integrator Wave-3 intro + my plan both kept); registry/loop/confirm re-read (confirm-gate request LANDED at loop.py:430-431; `register(schema=)`+SPECS+`as_untrusted`+`validate_args` all landed; discovery skips tests); `config.d/tools-memory.yaml` created; conversation-hook request ACCEPTED + answered on the bus; no BUGS-WAVE2 P0s assigned to this lane (all A–G belong to others). Seam request #2 (memory/skills injection) still OPEN with brain-core.
-1. **Memory core** (task 1): store + FTS5/BM25 retrieval + untrusted block wrapper + user-profile view + conversation summaries → §4 schema, §5 tests. **IN PROGRESS — done: conversation-turn capture (`brain/memory/conversation.py`, the ACCEPTED brain-core producer seam) + `conversation_turns` schema + 10 tests. Remaining: memories/FTS5/store/retrieval/block/profile/summary.**
+1. **Memory core** (task 1): store + FTS5/BM25 retrieval + untrusted block wrapper + user-profile view + conversation summaries → §4 schema, §5 tests. **✅ DONE 2026-10-07**
 2. **Skills/plugins** (task 2): SKILL.md loader (draft + confidence gate + usage counters + dedup) + plugin manifest loader → §7, tests in §5. **✅ DONE 2026-10-07** — `skills.py` (parse/gate/dedup/publish no-drift/delete), `plugins.py` (scan-never-imports, fail-closed, no shadowing), index tables, 25 tests.
-3. **Tools** (task 3): files → shell → schedule → github → web (smallest-risk first, MCP last because it is the largest) → §3 specs, §5 tests.
-4. **MCP adapter** (task 4): allow-list fail-closed, confirm categories, untrusted-output → §3.6, tests.
-5. **Integration:** verify brain-core landed the two seam requests (confirm gate + memory/skills injection). If still open at wave end → status `blocked` on those items only, handoff, STOP. Never edit loop.py / confirm.py myself (§8).
-6. **Wave end:** handoff in docs/status/tools-memory.md, STOP (§11).
+3. **Tools** (task 3): files → shell → schedule → github → web (smallest-risk first, MCP last because it is the largest) → §3 specs, §5 tests. **✅ DONE 2026-10-07**
+4. **MCP adapter** (task 4): allow-list fail-closed, confirm categories, untrusted-output → §3.6, tests. **✅ DONE 2026-10-07**
+5. **Integration:** verify brain-core landed the two seam requests (confirm gate + memory/skills injection). If still open at wave end → status `blocked` on those items only, handoff, STOP. Never edit loop.py / confirm.py myself (§8). **✅ DONE 2026-10-07 — #1 verified landed (origin/main loop.py:450 + conversation hook :187); #2 STILL OPEN → recorded as the one blocked item in docs/status. Chrome/CDP = pc-control's wave-3 list (not this lane's paths). Rebase stopped by rule 4 (PROGRESS.md) → request filed.**
+6. **Wave end:** handoff in docs/status/tools-memory.md, STOP (§11). **✅ handoff written 2026-10-07 → wave_done posted → STOP.**
 
 Wave 4 items (skill dedup aging, memory export/delete) and Wave 5 (predator-style acquisition) live in plan §8 — do not start early.
 
