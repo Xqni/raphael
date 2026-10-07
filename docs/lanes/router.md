@@ -18,14 +18,36 @@ Merge-order position: see docs/WAVES.md
 - [x] Unit tests with mocked HTTP only (no network, no keys in output) + placeholder-text guard that fails on any `[provider:model] response`.
 - [x] ~~**BLOCKED → request sent:** `vision()` has no FREE vision model to select~~ **BLOCKED — HUMAN DECISION PENDING** (amended decision, inbox 2026-10-06): Wave 2 exit criterion 3 stays on the exit list in docs/WAVES.md annotated *BLOCKED — human decision pending* (options: defer to Wave 6 / approve a spend-capped vision slot; ATTENTION posted to the user — exit criteria are the human's to change, authority rule `340398b`). **No code change:** `vision()` keeps refusing with `E_OFFLINE`/`no_model` — never send an image to a model that never claimed the capability (Groq 11 ids / Zen 14 `-free` ids, none vision; Zen's only vision id is paid, spend is human-only per AGENT_RULES §7). **`E_BLOCKED` DECLINED for Wave 2** — `reason` stays the discriminator (`private_mode` / `blocked_window` / `cloud_vision_disabled` / `chain_exhausted`); no PROTOCOL §10 edit, zero consumer churn.
 
-## Wave 3 (start only when WAVES.md says so — current_wave: 3)
+## Wave 3 (start only when WAVES.md says so — current_wave: 3 — opened via coord inbox `wave_open`)
+
+(start only when WAVES.md says so — current_wave: 3)
 
 Wave 2 is MERGED; live gate was 3/5 — full evidence + bug dossiers: `docs/BUGS-WAVE2.md`. SPEED MANDATE: cloud is paid now — near-instant responses, fast model defaults (AGENT_RULES Rule 15, WAVES.md constraints).
 
-- [P0-BugA] Regression test: EVERY `go_vision` HTTP request carries `x-opencode-session` (fixed by integrator glue in `brain/router/zen.py` — a missing header = Go `HTTP 400 MissingSessionID`; see docs/BUGS-WAVE2.md Bug A). Also verify the live WS vision path end-to-end next stack-up.
-- [P0-BugB] Intent→tool mapping: "open YouTube and search lo-fi" must route to `search_youtube`/`launch_url`, NOT `open_app` (router half of BUGS-WAVE2 Bug B; body half is pc-control's).
-- [SPEED] Fast cloud ids by default in the chain (Rule 15) — near-instant replies; free-tier scarcity is no longer a reason to wait.
-- Usage/rate tracking surfaced in `/status`; schema-normalization edge cases; Go provider code kept but off (already gated).
+## Wave 3 (docs/WAVES.md current_wave: 3 — opened via coord inbox `wave_open`)
+- [x] **Usage/rate tracking surfaced in `/status`** — `brain.router.usage_status()`
+      (`brain/router/status.py`): 24 h `usage.jsonl` aggregation (calls/tokens/
+      by_provider/by_purpose/error codes) + live RPM/TPM/cooldown/circuit state per
+      provider + `vision_paid` budget; no network, no keys, survives missing/corrupt
+      logs (8 tests). Endpoint is brain-core's → request
+      `router__to__brain-core__surface-usage-in-status.md` **APPROVED**, brain-core wires it.
+- [x] **Schema-normalization edge cases** — 18 mock tests pinning provider dialects
+      (`test_normalization_edge.py`) + 3 real fixes they caught: non-list `choices`
+      no longer yields a silent empty success, non-numeric `usage` tokens coerce to 0
+      (was a raw `ValueError`), non-dict `message`/`usage` guarded.
+- [x] **Go provider code kept but off** — `GoProvider` still gated by
+      `allow_go_runtime: false` (regression: `test_go_provider_stays_gated_off`).
+- [x] **Speed mandate** (PAID_USAGE broad approval 2026-10-07): `mimo` added to fast
+      role hints (opencode-go/mimo-v2.5 / flash-class defaults) + MODEL_POLICY `never`
+      models (`grok`, `kimi`) denied for chat/vision in code defaults AND the
+      `config.d/router.yaml` fragment — cost hygiene stays in force.
+- [x] **BUGS-WAVE2 Bug A** — regression test: every Go-endpoint request carries
+      `x-opencode-session` (stable per process) + router User-Agent; proven failing
+      without the hotfix.
+- [x] **BUGS-WAVE2 Bug B (router half)** — intent→tool mapping lives in brain-core's
+      `brain/fastpath.py` → request filed and **APPROVED**
+      (`router__to__brain-core__fastpath-open-search-mapping.md`); pc-control owns the
+      body `open_app` half.
 
 ## Later waves
 - Per docs/WAVES.md — do not start early (AGENT_RULES §11).

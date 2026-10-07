@@ -6,13 +6,13 @@ router:
   # (brain/router/roles.py). NEVER exact model IDs: providers always fetch
   # GET /models first and this only scores what came back.
   role_hints:
-    fast: [instant, flash, small, tiny, lite, mini, 1b, 1.7b, 3b, 4b, 7b, 8b]
+    fast: [instant, flash, small, tiny, lite, mini, 1b, 1.7b, 3b, 4b, 7b, 8b, mimo]
     strong: [large, plus, pro, max, ultra, 9b, 12b, 24b, 27b, 32b, 70b, 90b, 120b]
     vision: [vision, llava, multimodal, "-vl", "vl-", maverick, scout]
     stt: [whisper, distil-whisper, speech-to-text]
   # NEVER chat/vision: safety classifiers, TTS voices, embedders (Groq's live
   # list carries llama-prompt-guard, gpt-oss-safeguard, orpheus TTS).
-  deny_hints: [prompt-guard, safeguard, guard, orpheus, tts, embed, moderation, rerank, whisper]
+  deny_hints: [prompt-guard, safeguard, guard, orpheus, tts, embed, moderation, rerank, whisper, grok, kimi]
   # Zen returns NO free flag (verified 2026-10-06) → free tier = id contains
   # one of these; anything else is treated as PAID (money gate, AGENT_RULES §7).
   # Add a confirmed-free id here ONLY after the integrator verifies it.

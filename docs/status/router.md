@@ -1,6 +1,44 @@
 # router — status
 
-Updated: 2026-10-06 (vision-only PAID slot implemented per new coord task — 211 tests green, re-posting `wave_done`)
+Updated: 2026-10-07 (Wave 3 lane goals complete — 247 tests green, `wave_done` posted)
+
+## Wave 3 (opened via coord `wave_open`; task list: docs/lanes/router.md)
+
+Rebased on `main` first (AGENTS rule). Work this wave, in assignment order:
+
+1. **Bug A regression test** (BUGS-WAVE2, P0) — `test_go_vision_requests_carry_session_header`
+   asserts EVERY Go-endpoint request (discovery + completion) carries
+   `x-opencode-session` (stable `raphael-brain-<pid>` per process) and the httputil
+   User-Agent, and that free providers never send that header. **Proven valid:** fails
+   with the integrator's `zen.py` hotfix removed, green with it. Conductor: VERIFIED.
+2. **Usage/rate tracking for `/status`** (assigned goal #1) — `brain.router.usage_status()`
+   in `brain/router/status.py` + `Router.usage_status()`: 24 h `usage.jsonl` aggregation
+   (calls/tokens/by_provider/by_purpose/error codes) + live RPM/TPM/cooldown/circuit
+   state per provider + `vision_paid` budget. No network, no keys, survives
+   missing/corrupt logs (8 tests). Wiring request
+   `router__to__brain-core__surface-usage-in-status.md` **APPROVED** (brain-core edits
+   `brain/app.py` — I have no write authority there). Conductor: VERIFIED.
+3. **Schema-normalization edge cases** (assigned goal #2) — `test_normalization_edge.py`
+   (18 tests): multi-part content, flat tool-call objects, legacy `function_call`,
+   dict/string/truncated/unrecoverable arguments, null `finish_reason`, missing
+   `usage`, empty **and non-list** `choices`, provider-reported `cost`, deterministic
+   call ids. **Three real fixes they caught:** non-list `choices` used to silently
+   return an empty "success"; non-numeric `usage` tokens raised a raw `ValueError`
+   (should be 0); non-dict `message`/`usage` unguarded.
+4. **Go kept but off** — already gated (`allow_go_runtime: false`,
+   `test_go_provider_stays_gated_off`); no change needed.
+5. **Speed mandate** (PAID_USAGE broad approval 2026-10-07) — `mimo` added to fast role
+   hints (picks `opencode-go/mimo-v2.5`/flash-class when a paid chain is enabled) and
+   MODEL_POLICY `never` models (`grok` 2/6, `kimi` 3/15) added to deny-hints for
+   chat/vision, in code defaults **and** `config.d/router.yaml` (cost hygiene stays in
+   force). Unit test pins both behaviors.
+6. **Bug B (router half)** — mapping lives in brain-core's `brain/fastpath.py`; exact
+   patch proposed in `router__to__brain-core__fastpath-open-search-mapping.md`,
+   **APPROVED** and posted to brain-core (pc-control owns the body `open_app` half).
+
+Commits this wave: `6107f8e` (Bug A test) · fastpath request · usage-status +
+tests · usage /status request · `f541bbd` (normalization + fixes) · `c9e319b`
+(speed-mandate hints).
 
 ## Done (Wave 2 + the new user-approved vision paid slot)
 
@@ -129,7 +167,23 @@ Commits on `agent/router` (Wave 2 merged in `main` at `1a8c2f6`; paid slot pendi
 - Computer-use: caller pre-gates (profile, redaction, downscale); router re-checks
   Private Mode + blocklist + `router.vision_max_bytes` and never logs the image.
 
-## Test output (real runs only — 2026-10-06, `RAPHAEL_INSTANCE=router`)
+## Test output (real runs only)
+**Wave 3 verification, 2026-10-07** (`RAPHAEL_INSTANCE=router`, run one suite at a
+time per AGENT_RULES §14, no orphan processes left):
+```
+$ brain/.venv/bin/python -m pytest -q brain/router/tests
+120 passed in 28.10s
+
+$ brain/.venv/bin/python -m pytest -q brain/tests
+125 passed, 1 warning in 9.82s        # warning = fastapi/starlette deprecation, unrelated
+
+$ brain/.venv/bin/python -m pytest -q tests/conformance
+2 passed in 0.19s
+
+TOTAL: 247 passed
+```
+
+**Wave 2 verification, 2026-10-06** (`RAPHAEL_INSTANCE=router`):
 ```
 $ brain/.venv/bin/python -m pytest -q brain/router/tests        # includes 12 paid-slot tests
 92 passed in 27.60s

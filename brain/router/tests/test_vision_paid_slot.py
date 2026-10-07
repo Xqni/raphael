@@ -278,3 +278,39 @@ def test_daily_spend_resets_on_new_date(tmp_path) -> None:
     assert total == 1.1 and crossed is True
     assert spend.exhausted is True
     assert spend.snapshot()["cap_usd"] == 1.0
+
+
+# --------------------------------------------------------------------------- #
+# Bug A regression (BUGS-WAVE2.md): Go endpoint needs x-opencode-session
+# --------------------------------------------------------------------------- #
+@pytest.mark.asyncio
+async def test_go_vision_requests_carry_session_header(tmp_path, make_server,
+                                                       keys, attention) -> None:
+    """Regression for Bug A: missing `x-opencode-session` → HTTP 400
+    MissingSessionID killed every LIVE vision call (in-process probe worked,
+    WS path failed). EVERY request to the Go endpoint — discovery AND
+    completion — must carry it, plus the httputil User-Agent (Cloudflare)."""
+    free = make_server(models=[{"id": "allam-2-7b"}], free_suffix=False)
+    paid = make_server(models=[{"id": PAID_VISION_ID}], free_suffix=False)
+    cfg = _paid_cfg(tmp_path, groq_url=free.url, go_url=paid.url)
+    router.reset_router()
+    rt = router.init_router(cfg)
+
+    out = await rt.vision(_image(), "what am I looking at?")
+    assert out["provider"] == "go_vision"
+    await rt.health()                                   # hits /models on both
+
+    assert paid.requests, "paid endpoint must have been called"
+    session_ids = set()
+    for req in paid.requests:
+        headers = req["headers"]
+        session = headers.get("x-opencode-session", "")
+        assert session.startswith("raphael-brain-"), (
+            f"missing x-opencode-session on {req['method']} {req['path']}")
+        assert "raphael-router" in headers.get("user-agent", ""), (
+            "missing router User-Agent (Cloudflare blocks the urllib default)")
+        session_ids.add(session)
+    assert len(session_ids) == 1, "session id must be stable per process"
+    # the header is Go-specific — free providers must not send it
+    assert free.requests
+    assert all("x-opencode-session" not in r["headers"] for r in free.requests)
