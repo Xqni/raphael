@@ -28,8 +28,10 @@ from __future__ import annotations
 from typing import Any, AsyncIterator, Dict, Optional
 
 from .config import REPO_ROOT, VoiceConfig, load_voice_config
-from .stt import (STT_SAMPLE_RATE, Segment, TranscribeResult, Transcriber,
-                  VoiceSTTError, get_transcriber, transcribe,
+from .stt import (STT_SAMPLE_RATE, CloudTranscriber, Segment,
+                  SttEngine, TranscribeResult, Transcriber, VoiceSTTError,
+                  get_stt, get_transcriber, is_effectively_silent,
+                  pcm_to_wav_bytes, reset_stt, transcribe,
                   transcribe_result)
 from .tts import (TTS_SAMPLE_RATE_DEFAULT, FishSpeechServer, PhraseCache,
                   TTSEngine, TTSError, encode_binary_frame, error_frame,
@@ -44,7 +46,7 @@ class VoiceStack:
 
     def __init__(self, cfg: Optional[VoiceConfig] = None):
         self.cfg = cfg or load_voice_config()
-        self.stt = Transcriber(self.cfg)
+        self.stt = SttEngine(self.cfg)     # cloud (groq) or local per profile
         self.tts = TTSEngine(self.cfg)
         self.wake = get_wake_gate(self.cfg.wake_word)
         self.interrupts = get_interrupts()
@@ -96,6 +98,8 @@ __all__ = [
     "REPO_ROOT", "VoiceConfig", "load_voice_config",
     "STT_SAMPLE_RATE", "TTS_SAMPLE_RATE_DEFAULT",
     "VoiceSTTError", "Transcriber", "TranscribeResult", "Segment",
+    "SttEngine", "CloudTranscriber", "get_stt", "reset_stt",
+    "is_effectively_silent", "pcm_to_wav_bytes",
     "transcribe", "transcribe_result", "get_transcriber",
     "TTSError", "TTSEngine", "FishSpeechServer", "PhraseCache",
     "speak", "speak_frame", "speak_payload", "encode_binary_frame",
