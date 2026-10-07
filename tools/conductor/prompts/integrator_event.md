@@ -20,18 +20,23 @@ Advance with `coord cursor --lane <L>` ONLY after that lane's batch is fully han
 
 - **task_done / test_result** → note it in `PROGRESS.md`, then **review + assign the next
   task** (this is the hand-off loop — lanes never wonder what's next):
-  1. light review: does `docs/status/<lane>.md` reflect it (real test output, honest claims)?
-     Anything suspicious → `coord attention`, and do NOT assign yet.
-  2. pick the lane's NEXT unblocked task — the first unchecked item in
-     `docs/lanes/<lane>.md` for the current wave that doesn't depend on an unmerged lane or
-     an undecided request — and assign it: `coord reply --lane <L> --type decision --msg
-     "reviewed: <summary>. NEXT TASK: <checkbox text> (source: docs/lanes/<L>.md)"`.
-  3. **wake the lane with it**: `coord ping --lane <L> --msg "coord: reviewed — next task
+  0. **checkbox source of truth = the lane's WORKTREE copy**
+     (`~/raphael-wt/<lane>/docs/lanes/<lane>.md`, fallback to main's copy) — main's copy is
+     stale until the lane merges. Also read `~/raphael-wt/<lane>/docs/status/<lane>.md`
+     (the lane's own handoff) — prose there can be AHEAD of the event you are handling.
+  1. light review: real test output, honest claims? Anything suspicious → `coord attention`,
+     and do NOT assign yet.
+  2. if the lane's worktree status says its WAVE list is complete but no `wave_done` event
+     exists: the next task IS **"post wave_done"** (rule 13) — assign exactly that.
+  3. otherwise pick the lane's NEXT unblocked task — first unchecked item in its worktree
+     `docs/lanes/<lane>.md` for the current wave — and assign it:
+     `coord reply --lane <L> --type decision --msg "reviewed: <summary>. NEXT TASK: <text>"`.
+  4. **wake the lane with it**: `coord ping --lane <L> --msg "coord: reviewed — next task
      in your inbox"`. The ping IS the hand-off (skip if the lane is mid-run; steer queues it).
-  4. nothing unblocked left (wave list exhausted, or blocked on someone's merge): reply
-     `--type answer` with exactly: **"WAIT: your wave tasks are done — go idle
-     (coord mode=exit); you will be pinged at wave_open when every lane finishes."**
-     Do NOT ping for a pure wait — an idle session is already free.
+  5. nothing unblocked left AND `wave_done` already posted/merged: reply `--type answer`
+     with exactly: **"WAIT: your wave tasks are done — go idle (coord mode=exit); you will
+     be pinged at wave_open when every lane finishes."** Do NOT ping for a pure wait — an
+     idle session is already free.
 - When a merge or an adjudicated request **resolves an earlier `blocked`**, ping that lane:
   `coord ping --lane <L> --msg "your dependency/request is resolved — read your inbox"`.
 - **request** → decide per `docs/INTERFACES.md` / `docs/PROTOCOL.md`. Write the decision to
@@ -48,7 +53,7 @@ Advance with `coord cursor --lane <L>` ONLY after that lane's batch is fully han
      are already merged), then `coord reply --lane <lane> --type decision
      --msg "decision: merged <sha>"`. If not clean: reject with the exact fix list.
   4. after a merged wave_done the lane has no further work this wave — send the WAIT reply
-     (wording from task_done step 4); it idles until wave_open wakes everyone.
+     (wording from task_done step 5); it idles until wave_open wakes everyone.
 
 ## Citation & authority rules (hard)
 
