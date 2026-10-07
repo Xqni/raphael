@@ -140,18 +140,41 @@ function modeTarget(state, mode) {
   return STATE_LAYER_TARGETS[state] || STATE_LAYER_TARGETS.idle;
 }
 
+// ---------------------------------------------------------------------------
+// USER DIRECTIVE (2026-10-07) — shape morphing is OFF.
+//
+//   "revert back the shape change — the color change (+ the speaking state) is
+//    the only thing we are okay with. i have other plans for shape changing
+//    for future."
+//
+// The lattice and the cage hold ONE stable base shape (the plain ball) at all
+// times: no per-state morph, no task-kind morph, no kind accents. Everything
+// else stays — colour/theme per state, the speaking pulse/amplitude animation,
+// banners, the parallel-minds fan-out.
+//
+// The machinery is deliberately NOT deleted, only not applied: STATE_SHAPE,
+// MORPH_SHAPES, orb.shape_map, the morph engine, startMorphTo and the kind
+// map are all still here. Setting the two flags below re-enables it.
+//
+// Bonus: with morphs off the lattice/cage can never wedge again — this closes
+// the "cages stuck in weird shape" complaint for good.
+// ---------------------------------------------------------------------------
+const BASE_SHAPE = 'circle';
+const SHAPE_MORPHS_ENABLED = false;
+const KIND_ACCENTS_ENABLED = false;
+
 /**
  * Effective lattice shape (PROTOCOL §8 + ORB_REBUILD §3).
- * Each state owns a signature shape; the server's `shape_hint` wins only while
+ * Below the flag is the original mapping, kept intact for the future:
+ * each state owns a signature shape; the server's `shape_hint` wins only while
  * a foreground task is running (task_kind !== 'none'), which is exactly the
- * "morph by task kind" case from config orb.shape_map. This keeps the per-state
- * signature visible even though brain-core currently hardcodes `shape_hint:
- * 'circle'` on every frame (docs/requests/orb__to__brain-core__…).
+ * "morph by task kind" case from config orb.shape_map.
  */
 function effectiveShape() {
+  if (!SHAPE_MORPHS_ENABLED) return BASE_SHAPE;
   const taskOwned = !!orbState.taskKind && orbState.taskKind !== 'none';
   if (taskOwned && orbState.serverShapeHint) return orbState.serverShapeHint;
-  return STATE_SHAPE[orbState.orbState] || orbState.serverShapeHint || 'circle';
+  return STATE_SHAPE[orbState.orbState] || orbState.serverShapeHint || BASE_SHAPE;
 }
 // State -> morph shape (600ms vertex morph, existing machinery). 'acting' is
 // owned by the task-kind map (config orb.shape_map / shapeHint, spec §3).
@@ -588,11 +611,10 @@ function runDemo(now) {
         orbState.orbState = ev.state;
         updateSubtitle(`${ev.state}`);
       }
-      if (ev.shapeHint && ev.shapeHint !== orbState.shapeHint) {
-        orbState.shapeHint = ev.shapeHint;
-        orbState.serverShapeHint = ev.shapeHint;
-        startMorphTo(ev.shapeHint);
-      }
+      if (ev.shapeHint) orbState.serverShapeHint = ev.shapeHint;
+      // Route through the single owner so the shape-morph flag (user directive
+      // 2026-10-07) governs this path too — runDemo must not be able to morph.
+      applyLatticeShape();
       if (ev.taskKind) orbState.taskKind = ev.taskKind;
       if (ev.jobsActive !== undefined) orbState.jobsActive = ev.jobsActive;
       if (ev.speak) {
@@ -789,8 +811,12 @@ function animate(now) {
   halo.scale.setScalar(breath * (1 + reactiveAmp * 0.15));
   halo.material.opacity = 0.25 * layerWeights.haloOpacity;
   lattice.material.opacity = 0.35 * layerWeights.latticeOpacity;
-  // kind accent on the signature shape (Analysis / Simulation / act)
-  {
+  // Kind accent on the signature shape (Analysis / Simulation / act) — OFF by
+  // the same user directive as the shape morphs (KIND_ACCENTS_ENABLED). Kept
+  // behind the flag, not deleted, and not evaluated per frame while disabled
+  // (ORB_REBUILD §5: no per-frame allocation). Kind is still TRACKED and
+  // reported by __orbTrace().jobKind for observability.
+  if (KIND_ACCENTS_ENABLED) {
     const k = activeJobKind();
     lattice.material.color.setHex((k && KIND_TINT[k]) || DEFAULT_LATTICE_TINT);
   }

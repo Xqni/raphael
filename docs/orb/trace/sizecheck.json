@@ -9,7 +9,7 @@
     {
       "name": "has_content",
       "ok": true,
-      "detail": "min coverage 62.1% (must be > 50%)"
+      "detail": "min coverage 62.2% (must be > 50%)"
     },
     {
       "name": "size_matches_spec",
@@ -32,18 +32,18 @@
       "height": 160,
       "bbox": [
         7,
-        5,
+        10,
         154,
-        149
+        156
       ],
-      "coverage": 0.8628169707417674,
-      "edgeMargin": 5,
-      "litPx": 7492,
+      "coverage": 0.8629980446096038,
+      "edgeMargin": 3,
+      "litPx": 7487,
       "dpr": 1,
-      "stats": "{\"frame\":93,\"calls\":32,\"tris\":3308,\"dpr\":1,\"w\":160,\"h\":160,\"gl\":\"ANGLE (Microsoft Corporation, D3D12 (Intel(R) Iris(R) Xe Graphics), OpenGL 4.1)\",\"gov\":{\"on\":true,\"dpr\":1,\"ceiling\":1,\"ema\":0,\"acted\":0,\"slow\":0,\"fast\":0}}",
+      "stats": "{\"frame\":96,\"calls\":32,\"tris\":3308,\"dpr\":1,\"w\":160,\"h\":160,\"gl\":\"ANGLE (Microsoft Corporation, D3D12 (Intel(R) Iris(R) Xe Graphics), OpenGL 4.1)\",\"gov\":{\"on\":true,\"dpr\":1,\"ceiling\":1,\"ema\":0,\"acted\":0,\"slow\":0,\"fast\":0}}",
       "orbPx": 138,
       "targetPx": 138,
-      "err": 0.0032755473741482295
+      "err": 0.003486098383260285
     },
     {
       "size": 160,
@@ -55,17 +55,17 @@
       "bbox": [
         3,
         3,
-        154,
+        155,
         155
       ],
-      "coverage": 0.8974355826464651,
+      "coverage": 0.8974355826464648,
       "edgeMargin": 3,
-      "litPx": 11471,
+      "litPx": 12136,
       "dpr": 1,
-      "stats": "{\"frame\":357,\"calls\":66,\"tris\":22160,\"dpr\":1,\"w\":160,\"h\":160,\"gl\":\"ANGLE (Microsoft Corporation, D3D12 (Intel(R) Iris(R) Xe Graphics), OpenGL 4.1)\",\"gov\":{\"on\":true,\"dpr\":1,\"ceiling\":1,\"ema\":0,\"acted\":0,\"slow\":0,\"fast\":0}}",
+      "stats": "{\"frame\":363,\"calls\":66,\"tris\":22160,\"dpr\":1,\"w\":160,\"h\":160,\"gl\":\"ANGLE (Microsoft Corporation, D3D12 (Intel(R) Iris(R) Xe Graphics), OpenGL 4.1)\",\"gov\":{\"on\":true,\"dpr\":1,\"ceiling\":1,\"ema\":0,\"acted\":0,\"slow\":0,\"fast\":0}}",
       "orbPx": 144,
       "targetPx": 138,
-      "err": 0.0435297472633315
+      "err": 0.0435297472633313
     },
     {
       "size": 160,
@@ -76,18 +76,18 @@
       "height": 240,
       "bbox": [
         10,
-        13,
+        15,
         231,
-        231
+        224
       ],
-      "coverage": 0.8742655647901144,
+      "coverage": 0.8739477800316345,
       "edgeMargin": 8,
-      "litPx": 14456,
+      "litPx": 14449,
       "dpr": 1.5,
-      "stats": "{\"frame\":90,\"calls\":32,\"tris\":3308,\"dpr\":1.5,\"w\":240,\"h\":240,\"gl\":\"ANGLE (Microsoft Corporation, D3D12 (Intel(R) Iris(R) Xe Graphics), OpenGL 4.1)\",\"gov\":{\"on\":true,\"dpr\":1.5,\"ceiling\":1.5,\"ema\":0,\"acted\":0,\"slow\":0,\"fast\":0}}",
+      "stats": "{\"frame\":93,\"calls\":32,\"tris\":3308,\"dpr\":1.5,\"w\":240,\"h\":240,\"gl\":\"ANGLE (Microsoft Corporation, D3D12 (Intel(R) Iris(R) Xe Graphics), OpenGL 4.1)\",\"gov\":{\"on\":true,\"dpr\":1.5,\"ceiling\":1.5,\"ema\":0,\"acted\":0,\"slow\":0,\"fast\":0}}",
       "orbPx": 140,
       "targetPx": 138,
-      "err": 0.016587866035016725
+      "err": 0.016218348873993715
     },
     {
       "size": 160,
@@ -99,17 +99,17 @@
       "bbox": [
         5,
         4,
-        232,
+        233,
         232
       ],
-      "coverage": 0.896308013774035,
+      "coverage": 0.8959205383911629,
       "edgeMargin": 4,
-      "litPx": 23661,
+      "litPx": 24778,
       "dpr": 1.5,
-      "stats": "{\"frame\":354,\"calls\":66,\"tris\":22160,\"dpr\":1.5,\"w\":240,\"h\":240,\"gl\":\"ANGLE (Microsoft Corporation, D3D12 (Intel(R) Iris(R) Xe Graphics), OpenGL 4.1)\",\"gov\":{\"on\":true,\"dpr\":1.5,\"ceiling\":1.5,\"ema\":0,\"acted\":0,\"slow\":0,\"fast\":0}}",
+      "stats": "{\"frame\":366,\"calls\":66,\"tris\":22160,\"dpr\":1.5,\"w\":240,\"h\":240,\"gl\":\"ANGLE (Microsoft Corporation, D3D12 (Intel(R) Iris(R) Xe Graphics), OpenGL 4.1)\",\"gov\":{\"on\":true,\"dpr\":1.5,\"ceiling\":1.5,\"ema\":0,\"acted\":0,\"slow\":0,\"fast\":0}}",
       "orbPx": 143,
       "targetPx": 138,
-      "err": 0.042218620667482644
+      "err": 0.04176806789670104
     },
     {
       "size": 200,
@@ -119,19 +119,19 @@
       "width": 200,
       "height": 200,
       "bbox": [
-        5,
-        13,
+        9,
+        4,
         193,
-        185
+        188
       ],
-      "coverage": 0.8681301745706113,
-      "edgeMargin": 5,
-      "litPx": 10735,
+      "coverage": 0.8689361311396827,
+      "edgeMargin": 4,
+      "litPx": 10738,
       "dpr": 1,
-      "stats": "{\"frame\":90,\"calls\":32,\"tris\":3308,\"dpr\":1,\"w\":200,\"h\":200,\"gl\":\"ANGLE (Microsoft Corporation, D3D12 (Intel(R) Iris(R) Xe Graphics), OpenGL 4.1)\",\"gov\":{\"on\":true,\"dpr\":1,\"ceiling\":1,\"ema\":0,\"acted\":0,\"slow\":0,\"fast\":0}}",
+      "stats": "{\"frame\":99,\"calls\":32,\"tris\":3308,\"dpr\":1,\"w\":200,\"h\":200,\"gl\":\"ANGLE (Microsoft Corporation, D3D12 (Intel(R) Iris(R) Xe Graphics), OpenGL 4.1)\",\"gov\":{\"on\":true,\"dpr\":1,\"ceiling\":1,\"ema\":0,\"acted\":0,\"slow\":0,\"fast\":0}}",
       "orbPx": 174,
       "targetPx": 175,
-      "err": 0.00785122906215861
+      "err": 0.0069301358403626116
     },
     {
       "size": 200,
@@ -143,17 +143,17 @@
       "bbox": [
         4,
         4,
-        193,
+        194,
         193
       ],
-      "coverage": 0.896799866190891,
+      "coverage": 0.8964652809785777,
       "edgeMargin": 4,
-      "litPx": 17022,
+      "litPx": 17929,
       "dpr": 1,
-      "stats": "{\"frame\":366,\"calls\":66,\"tris\":22160,\"dpr\":1,\"w\":200,\"h\":200,\"gl\":\"ANGLE (Microsoft Corporation, D3D12 (Intel(R) Iris(R) Xe Graphics), OpenGL 4.1)\",\"gov\":{\"on\":true,\"dpr\":1,\"ceiling\":1,\"ema\":0,\"acted\":0,\"slow\":0,\"fast\":0}}",
+      "stats": "{\"frame\":360,\"calls\":66,\"tris\":22160,\"dpr\":1,\"w\":200,\"h\":200,\"gl\":\"ANGLE (Microsoft Corporation, D3D12 (Intel(R) Iris(R) Xe Graphics), OpenGL 4.1)\",\"gov\":{\"on\":true,\"dpr\":1,\"ceiling\":1,\"ema\":0,\"acted\":0,\"slow\":0,\"fast\":0}}",
       "orbPx": 179,
       "targetPx": 175,
-      "err": 0.02491413278958979
+      "err": 0.024531749689803064
     },
     {
       "size": 200,
@@ -164,18 +164,18 @@
       "height": 300,
       "bbox": [
         14,
-        19,
+        8,
         289,
         266
       ],
-      "coverage": 0.8774837763615791,
-      "edgeMargin": 10,
-      "litPx": 20992,
+      "coverage": 0.8777369892070301,
+      "edgeMargin": 8,
+      "litPx": 20967,
       "dpr": 1.5,
-      "stats": "{\"frame\":87,\"calls\":32,\"tris\":3308,\"dpr\":1.5,\"w\":300,\"h\":300,\"gl\":\"ANGLE (Microsoft Corporation, D3D12 (Intel(R) Iris(R) Xe Graphics), OpenGL 4.1)\",\"gov\":{\"on\":true,\"dpr\":1.5,\"ceiling\":1.5,\"ema\":0,\"acted\":0,\"slow\":0,\"fast\":0}}",
-      "orbPx": 175,
+      "stats": "{\"frame\":93,\"calls\":32,\"tris\":3308,\"dpr\":1.5,\"w\":300,\"h\":300,\"gl\":\"ANGLE (Microsoft Corporation, D3D12 (Intel(R) Iris(R) Xe Graphics), OpenGL 4.1)\",\"gov\":{\"on\":true,\"dpr\":1.5,\"ceiling\":1.5,\"ema\":0,\"acted\":0,\"slow\":0,\"fast\":0}}",
+      "orbPx": 176,
       "targetPx": 175,
-      "err": 0.00283860155609042
+      "err": 0.0031279876651772805
     },
     {
       "size": 200,
@@ -187,17 +187,17 @@
       "bbox": [
         6,
         5,
-        290,
+        292,
         291
       ],
-      "coverage": 0.8951846488605328,
+      "coverage": 0.8942905319612612,
       "edgeMargin": 5,
-      "litPx": 35477,
+      "litPx": 36929,
       "dpr": 1.5,
-      "stats": "{\"frame\":348,\"calls\":66,\"tris\":22160,\"dpr\":1.5,\"w\":300,\"h\":300,\"gl\":\"ANGLE (Microsoft Corporation, D3D12 (Intel(R) Iris(R) Xe Graphics), OpenGL 4.1)\",\"gov\":{\"on\":true,\"dpr\":1.5,\"ceiling\":1.5,\"ema\":0,\"acted\":0,\"slow\":0,\"fast\":0}}",
+      "stats": "{\"frame\":369,\"calls\":66,\"tris\":22160,\"dpr\":1.5,\"w\":300,\"h\":300,\"gl\":\"ANGLE (Microsoft Corporation, D3D12 (Intel(R) Iris(R) Xe Graphics), OpenGL 4.1)\",\"gov\":{\"on\":true,\"dpr\":1.5,\"ceiling\":1.5,\"ema\":0,\"acted\":0,\"slow\":0,\"fast\":0}}",
       "orbPx": 179,
       "targetPx": 175,
-      "err": 0.023068170126323204
+      "err": 0.022046322241441367
     },
     {
       "size": 280,
@@ -207,19 +207,19 @@
       "width": 280,
       "height": 280,
       "bbox": [
-        27,
-        7,
-        263,
-        268
+        38,
+        20,
+        272,
+        272
       ],
-      "coverage": 0.6214080456380279,
+      "coverage": 0.621654310394976,
       "edgeMargin": 7,
-      "litPx": 10975,
+      "litPx": 10973,
       "dpr": 1,
       "stats": "{\"frame\":90,\"calls\":32,\"tris\":3308,\"dpr\":1,\"w\":280,\"h\":280,\"gl\":\"ANGLE (Microsoft Corporation, D3D12 (Intel(R) Iris(R) Xe Graphics), OpenGL 4.1)\",\"gov\":{\"on\":true,\"dpr\":1,\"ceiling\":1,\"ema\":0,\"acted\":0,\"slow\":0,\"fast\":0}}",
       "orbPx": 174,
       "targetPx": 175,
-      "err": 0.00574712697915548
+      "err": 0.005353103368038481
     },
     {
       "size": 280,
@@ -229,19 +229,19 @@
       "width": 280,
       "height": 280,
       "bbox": [
-        27,
-        7,
-        255,
-        268
+        28,
+        20,
+        261,
+        272
       ],
-      "coverage": 0.6536592446858419,
+      "coverage": 0.6538153330994299,
       "edgeMargin": 7,
-      "litPx": 17884,
+      "litPx": 18644,
       "dpr": 1,
-      "stats": "{\"frame\":354,\"calls\":66,\"tris\":22160,\"dpr\":1,\"w\":280,\"h\":280,\"gl\":\"ANGLE (Microsoft Corporation, D3D12 (Intel(R) Iris(R) Xe Graphics), OpenGL 4.1)\",\"gov\":{\"on\":true,\"dpr\":1,\"ceiling\":1,\"ema\":0,\"acted\":0,\"slow\":0,\"fast\":0}}",
+      "stats": "{\"frame\":342,\"calls\":66,\"tris\":22160,\"dpr\":1,\"w\":280,\"h\":280,\"gl\":\"ANGLE (Microsoft Corporation, D3D12 (Intel(R) Iris(R) Xe Graphics), OpenGL 4.1)\",\"gov\":{\"on\":true,\"dpr\":1,\"ceiling\":1,\"ema\":0,\"acted\":0,\"slow\":0,\"fast\":0}}",
       "orbPx": 183,
       "targetPx": 175,
-      "err": 0.04585479149734705
+      "err": 0.046104532959087695
     },
     {
       "size": 280,
@@ -251,19 +251,19 @@
       "width": 420,
       "height": 420,
       "bbox": [
-        23,
-        10,
-        402,
-        393
+        13,
+        26,
+        407,
+        383
       ],
-      "coverage": 0.6267379464455134,
-      "edgeMargin": 10,
-      "litPx": 21490,
+      "coverage": 0.6257965445675965,
+      "edgeMargin": 12,
+      "litPx": 21551,
       "dpr": 1.5,
-      "stats": "{\"frame\":84,\"calls\":32,\"tris\":3308,\"dpr\":1.5,\"w\":420,\"h\":420,\"gl\":\"ANGLE (Microsoft Corporation, D3D12 (Intel(R) Iris(R) Xe Graphics), OpenGL 4.1)\",\"gov\":{\"on\":true,\"dpr\":1.5,\"ceiling\":1.5,\"ema\":0,\"acted\":0,\"slow\":0,\"fast\":0}}",
+      "stats": "{\"frame\":90,\"calls\":32,\"tris\":3308,\"dpr\":1.5,\"w\":420,\"h\":420,\"gl\":\"ANGLE (Microsoft Corporation, D3D12 (Intel(R) Iris(R) Xe Graphics), OpenGL 4.1)\",\"gov\":{\"on\":true,\"dpr\":1.5,\"ceiling\":1.5,\"ema\":0,\"acted\":0,\"slow\":0,\"fast\":0}}",
       "orbPx": 175,
       "targetPx": 175,
-      "err": 0.002780714312821471
+      "err": 0.0012744713081544237
     },
     {
       "size": 280,
@@ -273,19 +273,19 @@
       "width": 420,
       "height": 420,
       "bbox": [
-        23,
-        34,
-        402,
-        393
+        13,
+        26,
+        407,
+        383
       ],
-      "coverage": 0.6502136401043721,
-      "edgeMargin": 17,
-      "litPx": 37181,
+      "coverage": 0.65010900882545,
+      "edgeMargin": 12,
+      "litPx": 38421,
       "dpr": 1.5,
       "stats": "{\"frame\":354,\"calls\":66,\"tris\":22160,\"dpr\":1.5,\"w\":420,\"h\":420,\"gl\":\"ANGLE (Microsoft Corporation, D3D12 (Intel(R) Iris(R) Xe Graphics), OpenGL 4.1)\",\"gov\":{\"on\":true,\"dpr\":1.5,\"ceiling\":1.5,\"ema\":0,\"acted\":0,\"slow\":0,\"fast\":0}}",
       "orbPx": 182,
       "targetPx": 175,
-      "err": 0.04034182416699537
+      "err": 0.04017441412072003
     }
   ],
   "results": [
@@ -298,15 +298,15 @@
       "height": 160,
       "bbox": [
         7,
-        5,
+        10,
         154,
-        149
+        156
       ],
-      "coverage": 0.8628169707417674,
-      "edgeMargin": 5,
-      "litPx": 7492,
+      "coverage": 0.8629980446096038,
+      "edgeMargin": 3,
+      "litPx": 7487,
       "dpr": 1,
-      "stats": "{\"frame\":93,\"calls\":32,\"tris\":3308,\"dpr\":1,\"w\":160,\"h\":160,\"gl\":\"ANGLE (Microsoft Corporation, D3D12 (Intel(R) Iris(R) Xe Graphics), OpenGL 4.1)\",\"gov\":{\"on\":true,\"dpr\":1,\"ceiling\":1,\"ema\":0,\"acted\":0,\"slow\":0,\"fast\":0}}"
+      "stats": "{\"frame\":96,\"calls\":32,\"tris\":3308,\"dpr\":1,\"w\":160,\"h\":160,\"gl\":\"ANGLE (Microsoft Corporation, D3D12 (Intel(R) Iris(R) Xe Graphics), OpenGL 4.1)\",\"gov\":{\"on\":true,\"dpr\":1,\"ceiling\":1,\"ema\":0,\"acted\":0,\"slow\":0,\"fast\":0}}"
     },
     {
       "size": 160,
@@ -318,14 +318,14 @@
       "bbox": [
         3,
         3,
-        154,
+        155,
         155
       ],
-      "coverage": 0.8974355826464651,
+      "coverage": 0.8974355826464648,
       "edgeMargin": 3,
-      "litPx": 11471,
+      "litPx": 12136,
       "dpr": 1,
-      "stats": "{\"frame\":357,\"calls\":66,\"tris\":22160,\"dpr\":1,\"w\":160,\"h\":160,\"gl\":\"ANGLE (Microsoft Corporation, D3D12 (Intel(R) Iris(R) Xe Graphics), OpenGL 4.1)\",\"gov\":{\"on\":true,\"dpr\":1,\"ceiling\":1,\"ema\":0,\"acted\":0,\"slow\":0,\"fast\":0}}"
+      "stats": "{\"frame\":363,\"calls\":66,\"tris\":22160,\"dpr\":1,\"w\":160,\"h\":160,\"gl\":\"ANGLE (Microsoft Corporation, D3D12 (Intel(R) Iris(R) Xe Graphics), OpenGL 4.1)\",\"gov\":{\"on\":true,\"dpr\":1,\"ceiling\":1,\"ema\":0,\"acted\":0,\"slow\":0,\"fast\":0}}"
     },
     {
       "size": 160,
@@ -336,15 +336,15 @@
       "height": 240,
       "bbox": [
         10,
-        13,
+        15,
         231,
-        231
+        224
       ],
-      "coverage": 0.8742655647901144,
+      "coverage": 0.8739477800316345,
       "edgeMargin": 8,
-      "litPx": 14456,
+      "litPx": 14449,
       "dpr": 1.5,
-      "stats": "{\"frame\":90,\"calls\":32,\"tris\":3308,\"dpr\":1.5,\"w\":240,\"h\":240,\"gl\":\"ANGLE (Microsoft Corporation, D3D12 (Intel(R) Iris(R) Xe Graphics), OpenGL 4.1)\",\"gov\":{\"on\":true,\"dpr\":1.5,\"ceiling\":1.5,\"ema\":0,\"acted\":0,\"slow\":0,\"fast\":0}}"
+      "stats": "{\"frame\":93,\"calls\":32,\"tris\":3308,\"dpr\":1.5,\"w\":240,\"h\":240,\"gl\":\"ANGLE (Microsoft Corporation, D3D12 (Intel(R) Iris(R) Xe Graphics), OpenGL 4.1)\",\"gov\":{\"on\":true,\"dpr\":1.5,\"ceiling\":1.5,\"ema\":0,\"acted\":0,\"slow\":0,\"fast\":0}}"
     },
     {
       "size": 160,
@@ -356,14 +356,14 @@
       "bbox": [
         5,
         4,
-        232,
+        233,
         232
       ],
-      "coverage": 0.896308013774035,
+      "coverage": 0.8959205383911629,
       "edgeMargin": 4,
-      "litPx": 23661,
+      "litPx": 24778,
       "dpr": 1.5,
-      "stats": "{\"frame\":354,\"calls\":66,\"tris\":22160,\"dpr\":1.5,\"w\":240,\"h\":240,\"gl\":\"ANGLE (Microsoft Corporation, D3D12 (Intel(R) Iris(R) Xe Graphics), OpenGL 4.1)\",\"gov\":{\"on\":true,\"dpr\":1.5,\"ceiling\":1.5,\"ema\":0,\"acted\":0,\"slow\":0,\"fast\":0}}"
+      "stats": "{\"frame\":366,\"calls\":66,\"tris\":22160,\"dpr\":1.5,\"w\":240,\"h\":240,\"gl\":\"ANGLE (Microsoft Corporation, D3D12 (Intel(R) Iris(R) Xe Graphics), OpenGL 4.1)\",\"gov\":{\"on\":true,\"dpr\":1.5,\"ceiling\":1.5,\"ema\":0,\"acted\":0,\"slow\":0,\"fast\":0}}"
     },
     {
       "size": 200,
@@ -373,16 +373,16 @@
       "width": 200,
       "height": 200,
       "bbox": [
-        5,
-        13,
+        9,
+        4,
         193,
-        185
+        188
       ],
-      "coverage": 0.8681301745706113,
-      "edgeMargin": 5,
-      "litPx": 10735,
+      "coverage": 0.8689361311396827,
+      "edgeMargin": 4,
+      "litPx": 10738,
       "dpr": 1,
-      "stats": "{\"frame\":90,\"calls\":32,\"tris\":3308,\"dpr\":1,\"w\":200,\"h\":200,\"gl\":\"ANGLE (Microsoft Corporation, D3D12 (Intel(R) Iris(R) Xe Graphics), OpenGL 4.1)\",\"gov\":{\"on\":true,\"dpr\":1,\"ceiling\":1,\"ema\":0,\"acted\":0,\"slow\":0,\"fast\":0}}"
+      "stats": "{\"frame\":99,\"calls\":32,\"tris\":3308,\"dpr\":1,\"w\":200,\"h\":200,\"gl\":\"ANGLE (Microsoft Corporation, D3D12 (Intel(R) Iris(R) Xe Graphics), OpenGL 4.1)\",\"gov\":{\"on\":true,\"dpr\":1,\"ceiling\":1,\"ema\":0,\"acted\":0,\"slow\":0,\"fast\":0}}"
     },
     {
       "size": 200,
@@ -394,14 +394,14 @@
       "bbox": [
         4,
         4,
-        193,
+        194,
         193
       ],
-      "coverage": 0.896799866190891,
+      "coverage": 0.8964652809785777,
       "edgeMargin": 4,
-      "litPx": 17022,
+      "litPx": 17929,
       "dpr": 1,
-      "stats": "{\"frame\":366,\"calls\":66,\"tris\":22160,\"dpr\":1,\"w\":200,\"h\":200,\"gl\":\"ANGLE (Microsoft Corporation, D3D12 (Intel(R) Iris(R) Xe Graphics), OpenGL 4.1)\",\"gov\":{\"on\":true,\"dpr\":1,\"ceiling\":1,\"ema\":0,\"acted\":0,\"slow\":0,\"fast\":0}}"
+      "stats": "{\"frame\":360,\"calls\":66,\"tris\":22160,\"dpr\":1,\"w\":200,\"h\":200,\"gl\":\"ANGLE (Microsoft Corporation, D3D12 (Intel(R) Iris(R) Xe Graphics), OpenGL 4.1)\",\"gov\":{\"on\":true,\"dpr\":1,\"ceiling\":1,\"ema\":0,\"acted\":0,\"slow\":0,\"fast\":0}}"
     },
     {
       "size": 200,
@@ -412,15 +412,15 @@
       "height": 300,
       "bbox": [
         14,
-        19,
+        8,
         289,
         266
       ],
-      "coverage": 0.8774837763615791,
-      "edgeMargin": 10,
-      "litPx": 20992,
+      "coverage": 0.8777369892070301,
+      "edgeMargin": 8,
+      "litPx": 20967,
       "dpr": 1.5,
-      "stats": "{\"frame\":87,\"calls\":32,\"tris\":3308,\"dpr\":1.5,\"w\":300,\"h\":300,\"gl\":\"ANGLE (Microsoft Corporation, D3D12 (Intel(R) Iris(R) Xe Graphics), OpenGL 4.1)\",\"gov\":{\"on\":true,\"dpr\":1.5,\"ceiling\":1.5,\"ema\":0,\"acted\":0,\"slow\":0,\"fast\":0}}"
+      "stats": "{\"frame\":93,\"calls\":32,\"tris\":3308,\"dpr\":1.5,\"w\":300,\"h\":300,\"gl\":\"ANGLE (Microsoft Corporation, D3D12 (Intel(R) Iris(R) Xe Graphics), OpenGL 4.1)\",\"gov\":{\"on\":true,\"dpr\":1.5,\"ceiling\":1.5,\"ema\":0,\"acted\":0,\"slow\":0,\"fast\":0}}"
     },
     {
       "size": 200,
@@ -432,14 +432,14 @@
       "bbox": [
         6,
         5,
-        290,
+        292,
         291
       ],
-      "coverage": 0.8951846488605328,
+      "coverage": 0.8942905319612612,
       "edgeMargin": 5,
-      "litPx": 35477,
+      "litPx": 36929,
       "dpr": 1.5,
-      "stats": "{\"frame\":348,\"calls\":66,\"tris\":22160,\"dpr\":1.5,\"w\":300,\"h\":300,\"gl\":\"ANGLE (Microsoft Corporation, D3D12 (Intel(R) Iris(R) Xe Graphics), OpenGL 4.1)\",\"gov\":{\"on\":true,\"dpr\":1.5,\"ceiling\":1.5,\"ema\":0,\"acted\":0,\"slow\":0,\"fast\":0}}"
+      "stats": "{\"frame\":369,\"calls\":66,\"tris\":22160,\"dpr\":1.5,\"w\":300,\"h\":300,\"gl\":\"ANGLE (Microsoft Corporation, D3D12 (Intel(R) Iris(R) Xe Graphics), OpenGL 4.1)\",\"gov\":{\"on\":true,\"dpr\":1.5,\"ceiling\":1.5,\"ema\":0,\"acted\":0,\"slow\":0,\"fast\":0}}"
     },
     {
       "size": 280,
@@ -449,14 +449,14 @@
       "width": 280,
       "height": 280,
       "bbox": [
-        27,
-        7,
-        263,
-        268
+        38,
+        20,
+        272,
+        272
       ],
-      "coverage": 0.6214080456380279,
+      "coverage": 0.621654310394976,
       "edgeMargin": 7,
-      "litPx": 10975,
+      "litPx": 10973,
       "dpr": 1,
       "stats": "{\"frame\":90,\"calls\":32,\"tris\":3308,\"dpr\":1,\"w\":280,\"h\":280,\"gl\":\"ANGLE (Microsoft Corporation, D3D12 (Intel(R) Iris(R) Xe Graphics), OpenGL 4.1)\",\"gov\":{\"on\":true,\"dpr\":1,\"ceiling\":1,\"ema\":0,\"acted\":0,\"slow\":0,\"fast\":0}}"
     },
@@ -468,16 +468,16 @@
       "width": 280,
       "height": 280,
       "bbox": [
-        27,
-        7,
-        255,
-        268
+        28,
+        20,
+        261,
+        272
       ],
-      "coverage": 0.6536592446858419,
+      "coverage": 0.6538153330994299,
       "edgeMargin": 7,
-      "litPx": 17884,
+      "litPx": 18644,
       "dpr": 1,
-      "stats": "{\"frame\":354,\"calls\":66,\"tris\":22160,\"dpr\":1,\"w\":280,\"h\":280,\"gl\":\"ANGLE (Microsoft Corporation, D3D12 (Intel(R) Iris(R) Xe Graphics), OpenGL 4.1)\",\"gov\":{\"on\":true,\"dpr\":1,\"ceiling\":1,\"ema\":0,\"acted\":0,\"slow\":0,\"fast\":0}}"
+      "stats": "{\"frame\":342,\"calls\":66,\"tris\":22160,\"dpr\":1,\"w\":280,\"h\":280,\"gl\":\"ANGLE (Microsoft Corporation, D3D12 (Intel(R) Iris(R) Xe Graphics), OpenGL 4.1)\",\"gov\":{\"on\":true,\"dpr\":1,\"ceiling\":1,\"ema\":0,\"acted\":0,\"slow\":0,\"fast\":0}}"
     },
     {
       "size": 280,
@@ -487,16 +487,16 @@
       "width": 420,
       "height": 420,
       "bbox": [
-        23,
-        10,
-        402,
-        393
+        13,
+        26,
+        407,
+        383
       ],
-      "coverage": 0.6267379464455134,
-      "edgeMargin": 10,
-      "litPx": 21490,
+      "coverage": 0.6257965445675965,
+      "edgeMargin": 12,
+      "litPx": 21551,
       "dpr": 1.5,
-      "stats": "{\"frame\":84,\"calls\":32,\"tris\":3308,\"dpr\":1.5,\"w\":420,\"h\":420,\"gl\":\"ANGLE (Microsoft Corporation, D3D12 (Intel(R) Iris(R) Xe Graphics), OpenGL 4.1)\",\"gov\":{\"on\":true,\"dpr\":1.5,\"ceiling\":1.5,\"ema\":0,\"acted\":0,\"slow\":0,\"fast\":0}}"
+      "stats": "{\"frame\":90,\"calls\":32,\"tris\":3308,\"dpr\":1.5,\"w\":420,\"h\":420,\"gl\":\"ANGLE (Microsoft Corporation, D3D12 (Intel(R) Iris(R) Xe Graphics), OpenGL 4.1)\",\"gov\":{\"on\":true,\"dpr\":1.5,\"ceiling\":1.5,\"ema\":0,\"acted\":0,\"slow\":0,\"fast\":0}}"
     },
     {
       "size": 280,
@@ -506,14 +506,14 @@
       "width": 420,
       "height": 420,
       "bbox": [
-        23,
-        34,
-        402,
-        393
+        13,
+        26,
+        407,
+        383
       ],
-      "coverage": 0.6502136401043721,
-      "edgeMargin": 17,
-      "litPx": 37181,
+      "coverage": 0.65010900882545,
+      "edgeMargin": 12,
+      "litPx": 38421,
       "dpr": 1.5,
       "stats": "{\"frame\":354,\"calls\":66,\"tris\":22160,\"dpr\":1.5,\"w\":420,\"h\":420,\"gl\":\"ANGLE (Microsoft Corporation, D3D12 (Intel(R) Iris(R) Xe Graphics), OpenGL 4.1)\",\"gov\":{\"on\":true,\"dpr\":1.5,\"ceiling\":1.5,\"ema\":0,\"acted\":0,\"slow\":0,\"fast\":0}}"
     }

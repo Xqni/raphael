@@ -825,6 +825,25 @@ async function main() {
       ? verdict.weakest.pair.join(' vs ') + ' = ' + verdict.weakest.diff.toFixed(2) : 'n/a'}`);
 
     let failed = false;
+
+    // USER DIRECTIVE 2026-10-07: shape morphing is OFF — every captured scene
+    // must report the same base shape (circle). Re-scans the `applied` records
+    // written above, so this fails if any state or task kind sneaks a morph in.
+    const shapesSeen = new Set();
+    for (const l of lines) {
+      try {
+        const e = JSON.parse(l);
+        if (e.ev === 'applied' && e.applied && e.applied.shapeHint) shapesSeen.add(e.applied.shapeHint);
+      } catch (e) { /* not JSON we care about */ }
+    }
+    const shapeOk = shapesSeen.size <= 1 && (!shapesSeen.size || shapesSeen.has('circle'));
+    rec('shape_directive', { ok: shapeOk, seen: [...shapesSeen], expected: ['circle'] });
+    log(`shape directive: ${shapeOk ? 'ok' : 'FAIL'} shapeHint values seen = ${JSON.stringify([...shapesSeen])}`);
+    if (!shapeOk) {
+      console.error('[orb-trace] FAIL: a shape morph slipped through — expected only "circle"');
+      failed = true;
+    }
+
     if (!verdict.pass) {
       console.error('[orb-trace] FAIL: two or more states render near-identical');
       failed = true;

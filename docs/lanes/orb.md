@@ -149,7 +149,20 @@ Wave 2 is MERGED; live gate was 3/5 — evidence + bug dossiers: `docs/BUGS-WAVE
 
 ## USER DIRECTIVE 2026-10-07 — shape-morph revert (do this FIRST)
 
-- [ ] **Revert ALL automatic shape morphing.** User: *"revert back the shape change — the
+- [x] **Revert ALL automatic shape morphing.** DONE + gated — implementation:
+      `effectiveShape()` now returns a constant `BASE_SHAPE = 'circle'` behind
+      `SHAPE_MORPHS_ENABLED = false`, and the kind accent behind
+      `KIND_ACCENTS_ENABLED = false`. **Nothing was deleted** — `STATE_SHAPE`,
+      `MORPH_SHAPES`, `orb.shape_map`, the morph engine and the kind map are all
+      still in the code; flipping the two booleans re-enables them.
+      `startMorphTo` now has exactly **one** call site (`applyLatticeShape`),
+      and `runDemo` was routed through it so the demo timeline cannot bypass
+      the flag. Colour/theme per state, the speaking pulse, banners and the
+      fan-out all untouched.
+      **Gate added:** `orb:trace` asserts `shapeHint values seen = ["circle"]`
+      across every captured scene — `shape directive: ok`.
+
+  User:  *"revert back the shape change — the
   color change (+ the speaking state) is the only thing we are okay with. i have other
   plans for shape changing for future."* The lattice/cage must hold ONE stable base shape
   (circle — the plain ball) always: NO per-state morph (STATE_SHAPE) and NO kind accents
