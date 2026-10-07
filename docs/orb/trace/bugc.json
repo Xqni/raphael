@@ -22,25 +22,25 @@
     {
       "name": "morph_settles_after_interruption",
       "ok": true,
-      "detail": "lattice={\"lengthMismatch\":false,\"maxErr\":0,\"points\":60} morphActive=false shape=hexagon",
+      "detail": "lattice={\"lengthMismatch\":false,\"maxErr\":0,\"points\":60} morphActive=false shape=circle",
       "pass": true
     },
     {
       "name": "cage_shape_settles_after_interruption",
       "ok": true,
-      "detail": "cage={\"maxErr\":0,\"active\":false,\"shape\":\"hexagon\"}",
+      "detail": "cage={\"maxErr\":0,\"active\":false,\"shape\":\"circle\"}",
       "pass": true
     },
     {
       "name": "state_flip_latency",
       "ok": true,
-      "detail": "mean=2ms worst=2ms (delivery only; 300-600ms crossfade is by design) — listening:1 thinking:2 confirm:1 error:2 idle:2",
+      "detail": "mean=1ms worst=2ms (delivery only; 300-600ms crossfade is by design) — listening:2 thinking:1 confirm:2 error:1 idle:1",
       "pass": true
     }
   ],
   "morph": {
-    "shape": "hexagon",
-    "shapeHintField": "hexagon",
+    "shape": "circle",
+    "shapeHintField": "circle",
     "morphActive": false,
     "targetLengths": [
       180,
@@ -58,7 +58,7 @@
     "cage": {
       "maxErr": 0,
       "active": false,
-      "shape": "hexagon"
+      "shape": "circle"
     }
   }
 }

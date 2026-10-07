@@ -805,3 +805,62 @@ One correctness fix landed with it: bead count now derives from
 **`orb_state.jobs_active`** (the §8 authority) with `job_event` supplying only
 the fan *structure* — deriving the count from the job table could leave stale
 beads on screen after jobs finished.
+
+---
+
+# USER DIRECTIVE 2026-10-07 — shape-morph revert
+
+> "revert back the shape change — the color change (+ the speaking state) is
+> the only thing we are okay with. i have other plans for shape changing for
+> future."
+
+## What changed
+
+Two booleans, both defaulting **off** — nothing deleted, machinery intact:
+
+```js
+const BASE_SHAPE = 'circle';
+const SHAPE_MORPHS_ENABLED = false;   // effectiveShape() -> always the plain ball
+const KIND_ACCENTS_ENABLED = false;   // analysis/simulation lattice tint off
+```
+
+- `effectiveShape()` returns `BASE_SHAPE` immediately; the original
+  per-state / task-kind mapping is kept **verbatim underneath** the flag.
+- The kind accent block is gated and **not evaluated while off** (no per-frame
+  work — ORB_REBUILD §5).
+- `startMorphTo` now has exactly **one** call site, inside `applyLatticeShape`;
+  `runDemo` was re-routed through that owner so the opt-in demo timeline can't
+  morph around the flag.
+
+**Kept, per the directive:** colour + theme per state, the speaking
+pulse/amplitude animation, answer/report/notice banners, the parallel-minds
+fan-out, mode overlays, jobs dots, startup spin, motion blur.
+
+**Side effect worth noting:** with morphs off the lattice/cage can never wedge
+again — this retires the "cages stuck in weird shape" complaint for good, on
+top of the two real bugs fixed in the Bug-C work.
+
+## Gate
+
+`orb:trace` now re-scans every `applied` record it wrote and fails if any
+`shapeHint` other than `circle` appears:
+
+```
+[orb-trace] shape directive: ok shapeHint values seen = ["circle"]
+```
+
+Full run after the revert (all green):
+
+```
+npm run test:unit   PASS  (7 morph + 4 gl-recovery + 5 morph-clock + 8 port-safety + state-machine)
+npm run orb:trace   startup 7/7 · transparency PASS (border alpha 0) · BugC 6/6 ·
+                     wave5 7/7 · interaction 19/19 · shape directive ok ["circle"] ·
+                     distinctness PASS (104 pairs) — weakest idle~private 0.73
+npm run orb:size    PASS (12 combos, worst drift 4.6% of 12%)
+node test/orb-diff.cjs  PASS
+```
+
+States remain distinguishable **without** shape morphing — colour, mode
+overlays, jobs dots, Data Rings and the amplitude pulse carry the whole
+distinctness gate on their own. Screenshots + `docs/orb/matrix/` regenerated
+by the same run.
