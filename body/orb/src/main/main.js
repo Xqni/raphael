@@ -363,6 +363,15 @@ function createWindow() {
   // (see docs/ORB_REBUILD_TASK.md appendix) — never auto-capture or auto-close
   // the app itself; `npm run orb:demo` must stay interactive.
 
+  // Wave-4: if the renderer reloads (GPU context loss recovery), re-push the
+  // current orb state so the orb comes back showing what it was showing —
+  // without this a recovered orb sits on `starting` until the next transition.
+  win.webContents.on('did-finish-load', () => {
+    if (statusWS && win && !win.isDestroyed()) {
+      win.webContents.send('orb-state', statusWS.getOrbState());
+    }
+  });
+
   win.on('close', (e) => {
     if (!isQuitting) {
       e.preventDefault();

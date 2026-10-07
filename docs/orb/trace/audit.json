@@ -1,0 +1,149 @@
+{
+  "when": "2026-10-07T13:36:52.652Z",
+  "instance": "orb",
+  "isolation": {
+    "wsPort": 8906,
+    "cdpPort": 9406,
+    "userData": "/home/dami/.raphael/orb/orb",
+    "mockBrainOnly": true
+  },
+  "gl": {
+    "gl": "ANGLE (Microsoft Corporation, D3D12 (Intel(R) Iris(R) Xe Graphics), OpenGL 4.1)",
+    "dpr": 1,
+    "gov": {
+      "on": true,
+      "dpr": 1,
+      "ceiling": 1,
+      "ema": 0,
+      "acted": 0,
+      "slow": 0,
+      "fast": 0
+    }
+  },
+  "glRecovery": {
+    "lost": false,
+    "restores": 0,
+    "reloads": 0,
+    "suppressed": 0,
+    "lastReload": null
+  },
+  "idle": {
+    "ft": {
+      "ema": 16.678155772751424,
+      "n": 180
+    },
+    "stats": {
+      "frame": 470,
+      "calls": 32,
+      "tris": 3308,
+      "dpr": 1,
+      "w": 280,
+      "h": 280,
+      "gl": "ANGLE (Microsoft Corporation, D3D12 (Intel(R) Iris(R) Xe Graphics), OpenGL 4.1)",
+      "gov": {
+        "on": true,
+        "dpr": 1,
+        "ceiling": 1,
+        "ema": 45,
+        "acted": 0,
+        "slow": 0,
+        "fast": 0
+      }
+    },
+    "rssKb": 307380,
+    "procs": 5
+  },
+  "speaking": {
+    "ft": {
+      "ema": 16.685502557225927,
+      "n": 180
+    },
+    "stats": {
+      "frame": 961,
+      "calls": 66,
+      "tris": 22160,
+      "dpr": 1,
+      "w": 280,
+      "h": 280,
+      "gl": "ANGLE (Microsoft Corporation, D3D12 (Intel(R) Iris(R) Xe Graphics), OpenGL 4.1)",
+      "gov": {
+        "on": true,
+        "dpr": 1,
+        "ceiling": 1,
+        "ema": 22,
+        "acted": 0,
+        "slow": 0,
+        "fast": 0
+      }
+    },
+    "rssKb": 307576,
+    "procs": 5
+  },
+  "storm": {
+    "ft": {
+      "ema": 16.67902849804281,
+      "n": 180
+    },
+    "stats": {
+      "frame": 2011,
+      "calls": 66,
+      "tris": 22160,
+      "dpr": 1,
+      "w": 280,
+      "h": 280,
+      "gl": "ANGLE (Microsoft Corporation, D3D12 (Intel(R) Iris(R) Xe Graphics), OpenGL 4.1)",
+      "gov": {
+        "on": true,
+        "dpr": 1,
+        "ceiling": 1,
+        "ema": 22,
+        "acted": 0,
+        "slow": 0,
+        "fast": 0
+      }
+    },
+    "rssKb": 309268,
+    "procs": 5
+  },
+  "stormFlips": 67,
+  "morphAfterStorm": {
+    "shape": "hexagon",
+    "shapeHintField": "hexagon",
+    "morphActive": false,
+    "targetLengths": [
+      180,
+      180,
+      180,
+      180,
+      180,
+      180
+    ],
+    "lattice": {
+      "lengthMismatch": false,
+      "maxErr": 0,
+      "points": 60
+    },
+    "cage": {
+      "maxErr": 0,
+      "active": false,
+      "shape": "hexagon"
+    }
+  },
+  "deltas": {
+    "rssIdleMb": 300.2,
+    "rssSpeakingMb": 300.4,
+    "rssStormMb": 302,
+    "rssDeltaMb": 1.8,
+    "vmHwmPeakMb": 150.6,
+    "processCount": 5
+  },
+  "vramNote": "GPU VRAM is not readable from WSL (no per-process GPU counter). VmRSS/VmHWM over the whole Electron tree plus renderer.info are the honest substitutes.",
+  "durationMs": 25684,
+  "killVerify": {
+    "clean": true,
+    "rootPid": 242852,
+    "survivorPids": [],
+    "portsStillListening": [],
+    "liveStackUntouched": true
+  }
+}

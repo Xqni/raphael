@@ -7,6 +7,9 @@ import { initAnswerMode, updateAnswerMode, lockAnswerMode } from './answermode.j
 import { initDataRings, updateDataRings, lockDataRings } from './datarings.js';
 import { initJobDots, updateJobDots, lockJobDots } from './jobdots.js';
 import { resolvePalette } from './palette.js';
+import { makeMorphTarget, MORPH_SHAPES, BASE_VERTEX_COUNT } from './morphtargets.js';
+import { createGlRecovery } from './glrecovery.js';
+import { nextMorphStart, morphProgress } from './morphclock.js';
 
 // Configuration injected via preload
 const cfg = window.orbConfig || {
@@ -45,6 +48,22 @@ let govApply = null; // bound inside initScene (closure over resizeEdgeRT)
 
 
 const canvas = document.getElementById('webgl');
+// Wave-4 hardening: recover from a lost GPU context. preventDefault() on
+// `webglcontextlost` is mandatory (Chromium only fires `restored` if it is
+// called); recovery reloads the page because Three.js cannot replay its
+// uploads into a new context, rate-limited so a dying context cannot loop.
+const glRecovery = createGlRecovery({ reload: () => window.location.reload() });
+if (canvas) {
+  canvas.addEventListener('webglcontextlost', (e) => {
+    console.warn('[orb] WEBGL CONTEXT LOST');
+    glRecovery.onLost(e);
+  }, false);
+  canvas.addEventListener('webglcontextrestored', () => {
+    const how = glRecovery.onRestored();
+    console.warn('[orb] WEBGL CONTEXT RESTORED ->', how);
+  }, false);
+}
+window.__orbGl = () => glRecovery.state();
 const subtitleEl = document.getElementById('subtitle');
 const params = new URLSearchParams(window.location.search);
 const DEMO = params.get('demo') === '1';
@@ -235,76 +254,6 @@ let edgeRT = null, maskScene = null, maskCam = null, maskMat = null;
 const sceneStats = { calls: 0, tris: 0 }; // cached AFTER the scene pass (mask pass resets renderer.info)
 
 // Geometry targets for morph
-const BASE_VERTEX_COUNT = 60;
-
-function circlePoints(n) {
-  const pts = [];
-  for (let i = 0; i < n; i++) {
-    const a = (i / n) * Math.PI * 2;
-    pts.push(Math.cos(a), Math.sin(a), 0);
-  }
-  return new Float32Array(pts);
-}
-function polygonPoints(nSides, n, radius = 1) {
-  const pts = [];
-  for (let i = 0; i < n; i++) {
-    const t = i / n;
-    const a = t * Math.PI * 2;
-    const s = Math.floor(t * nSides) % nSides;
-    const sa = (s / nSides) * Math.PI * 2;
-    const na = ((s + 1) / nSides) * Math.PI * 2;
-    const edgeT = (t * nSides) % 1;
-    const x = radius * (Math.cos(sa) * (1 - edgeT) + Math.cos(na) * edgeT);
-    const y = radius * (Math.sin(sa) * (1 - edgeT) + Math.sin(na) * edgeT);
-    pts.push(x, y, 0);
-  }
-  return new Float32Array(pts);
-}
-function octagramPoints(n) {
-  // BUGS-WAVE2 Bug C ("cages stuck in weird shape"): this used to emit one
-  // point per star vertex (48 floats/point-set = 144) while EVERY other target
-  // emitted 60 (180). updateMorph lerps only Math.min(from,to), so indices
-  // 144-179 were never written again — a permanent stale tail that startMorphTo
-  // then re-captured as the next `from`, wedging the lattice the first time an
-  // octagram morph was interrupted. Now: sample ALONG the star outline so the
-  // count always equals `n`, like every other shape.
-  const pts = [];
-  const r1 = 1.0, r2 = 0.4;
-  const V = 16;               // 8 outer + 8 inner star vertices
-  for (let i = 0; i < n; i++) {
-    const t = (i / n) * V;
-    const k = Math.floor(t);
-    const f = t - k;
-    const k0 = k % V, k1 = (k + 1) % V;
-    const a0 = (k0 / V) * Math.PI * 2, a1 = (k1 / V) * Math.PI * 2;
-    const r0 = k0 % 2 === 0 ? r1 : r2;
-    const rB = k1 % 2 === 0 ? r1 : r2;
-    const x0 = Math.cos(a0) * r0, y0 = Math.sin(a0) * r0;
-    const x1 = Math.cos(a1) * rB, y1 = Math.sin(a1) * rB;
-    pts.push(x0 + (x1 - x0) * f, y0 + (y1 - y0) * f, 0);
-  }
-  return new Float32Array(pts);
-}
-
-const LATTICE_DEPTH = 0.20; // world units of z the lattice gains (see below)
-function makeMorphTarget(name) {
-  let pts;
-  if (name === 'octagram') pts = octagramPoints(BASE_VERTEX_COUNT);
-  else if (name === 'triangle') pts = polygonPoints(3, BASE_VERTEX_COUNT);
-  else if (name === 'square') pts = polygonPoints(4, BASE_VERTEX_COUNT);
-  else if (name === 'pentagon') pts = polygonPoints(5, BASE_VERTEX_COUNT);
-  else if (name === 'hexagon') pts = polygonPoints(6, BASE_VERTEX_COUNT);
-  else pts = circlePoints(BASE_VERTEX_COUNT);
-  // USER FEEDBACK (2026-10-06) "nothing should feel 2d": the morph lattice was
-  // a perfectly flat card in the XY plane, so revolving it read as paper.
-  // Bend it into a shallow two-wave lens — same silhouette, real depth.
-  const n = pts.length / 3;
-  for (let i = 0; i < n; i++) {
-    pts[i * 3 + 2] = Math.sin((i / n) * Math.PI * 2 * 2) * LATTICE_DEPTH;
-  }
-  return pts;
-}
-
 function easeInOutCubic(x) {
   return x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2;
 }
@@ -562,14 +511,19 @@ function startMorphTo(targetName) {
   fromArr.set(posAttr.array);
   morphFrom = fromArr;
   morphTo = to;
-  morphStart = performance.now();
+  // Wave-4 reconnect-storm hardening: a RETARGET must not restart the ramp
+  // clock, or states flipping faster than MORPH_DURATION (Bug E's flicker, or
+  // any reconnect storm) leave progress pinned near 0 and the lattice parks at
+  // its start shape. Keeping the clock makes progress a function of wall time,
+  // so a storm still converges on the newest target. See morphclock.js.
+  morphStart = nextMorphStart({ active: morphActive, morphStart, now: performance.now() });
   morphActive = true;
 }
 
 function updateMorph(now) {
   if (!morphActive || !morphFrom || !morphTo) return;
   const elapsed = now - morphStart;
-  const t = Math.min(1, elapsed / MORPH_DURATION);
+  const t = morphProgress(elapsed, MORPH_DURATION);
   const et = easeInOutCubic(t);
   const posAttr = lattice.geometry.getAttribute('position');
   const arr = posAttr.array;
@@ -846,6 +800,8 @@ function animate(now) {
   frameInterval = 1000 / targetFps;
   // Pause rendering when window is hidden
   if (document.hidden) return;
+  // Wave-4: a lost context must not be hammered with draw calls
+  if (glRecovery.isLost()) return;
   if (now - lastFrame < frameInterval) return;
   lastFrame = now;
   if (!poseLock) updateMorph(now);
@@ -1047,7 +1003,6 @@ window.__orbSpin = () => ({
 // MORPH TARGET INVARIANT: every lattice target must share one vertex count.
 // Checked once at load so a regression is loud in the console, and reported by
 // __orbMorphDiff so the CDP gate can assert it.
-const MORPH_SHAPES = ['circle', 'triangle', 'square', 'pentagon', 'hexagon', 'octagram'];
 const MORPH_TARGET_LENGTHS = MORPH_SHAPES.map((s) => makeMorphTarget(s).length);
 if (new Set(MORPH_TARGET_LENGTHS).size !== 1) {
   console.error('[orb] MORPH TARGET LENGTH MISMATCH', MORPH_SHAPES, MORPH_TARGET_LENGTHS);

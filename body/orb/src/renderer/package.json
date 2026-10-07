@@ -1,0 +1,4 @@
+{
+  "type": "module",
+  "_comment": "Renderer sources are ES modules (loaded by the browser via <script type=\"module\">). Declaring it here lets plain Node import them for unit tests — see tests/morphtargets.test.mjs. Lives in src/renderer/ only; src/main stays CommonJS."
+}

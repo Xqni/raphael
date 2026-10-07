@@ -151,7 +151,30 @@ Wave 2 is MERGED; live gate was 3/5 — evidence + bug dossiers: `docs/BUGS-WAVE
 
 Wave 3 is MERGED + **GATE PASSED** (tag `wave-3-gate`, all six criteria live, acoustic voice included). Wave-4 theme per WAVES.md: hardening, resilience tests, audit fixes, crash recovery, evolution infrastructure. Rule 15 speed mandate still binds.
 
-- [ ] Renderer resilience: GPU context loss recovery, reconnect-storm visuals (state spam), fps/VRAM audit under load, pose-lock-vs-truth probe invariant (Wave-3 lesson) into CI.
+- [x] **Renderer resilience** — all four, verified (Wave-4):
+  - **GPU context loss recovery** — `webglcontextlost` cancels the event
+        (mandatory or `restored` never fires), skips GL work while lost,
+        rate-limited reload (no reload loop), and `main.js` re-pushes
+        `orb_state` on `did-finish-load`. Pure tests **4/4**.
+  - **Reconnect-storm / state spam** — the morph ramp clock no longer resets on
+        retarget, so states flipping faster than 600 ms converge instead of
+        parking. Pure simulation **5/5** (incl. "the old behaviour NEVER
+        converges"); confirmed live: `maxErr=0` after 67 flips/6 s.
+  - **fps/VRAM audit under load** — `npm run orb:audit`, all 5 spawn
+        conditions enforced. idle/speaking/storm all **16.7 ms** (no
+        degradation), RAM delta **+1.8 MB over 67 flips**, VmHWM peak
+        **150.6 MB**, governor `acted=0`. GPU VRAM is not readable from WSL —
+        reported as an explicit gap, not invented. `docs/orb/trace/audit.json`.
+  - **Pose-lock-vs-truth probe into CI** — morph-target builders extracted to a
+        pure module; `npm test:unit` now runs **7 morph invariants + 4
+        gl-recovery + 5 morph-clock + 8 port-safety + state-machine**, all with
+        **no Electron and no display**, before the screenshot gate. The unlocked
+        `__orbMorphDiff()` probe stays in `orb:trace`.
+  - Full gate re-run after the wiring: `orb:trace` PASS, `orb:size` PASS
+        (drift 4.6%), `npm run test:unit` PASS, zero orphans, ports free.
+- [x] **Safety:** `test/fake-brain.cjs` no longer binds the **live brain port
+      8765** (now lane-derived, refuses `main` without `--allow-main`) — 8/8
+      pure tests.
 
 ## Later waves
 - Per docs/WAVES.md — do not start early (AGENT_RULES §11).
