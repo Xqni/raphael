@@ -511,3 +511,136 @@ unlocked probe, not through a locked screenshot.
    is other lanes' — re-check `docs/lanes/orb.md` at the next `wave_open`.
 
 **Next for this lane:** wait for `wave_open` / an inbox assignment (AGENT_RULES §11/§13).
+
+---
+
+# WAVE 4 — renderer resilience (orb lane)
+
+Spawn permission: **APPROVED WITH CONDITIONS** (coord ts 1791379204, recorded
+in `docs/requests/orb__to__integrator__harness-spawn-while-live.md`). All five
+conditions were met and are enforced in code, not by convention.
+
+## 1. GPU context loss recovery
+
+`webglcontextlost` **must** call `preventDefault()` — Chromium only fires
+`webglcontextrestored` if it does, so without it the canvas is dead forever.
+Recovery is a page reload (Three.js cannot replay its uploads into a new
+context), **rate-limited** so a dying context cannot become a reload loop,
+which would be strictly worse than a frozen orb.
+
+- `src/renderer/glrecovery.js` — pure policy, injectable clock.
+- `renderer.js` wires it and **skips all GL work while the context is lost**.
+- `main.js` re-pushes the current `orb_state` on `did-finish-load`, so a
+  recovered orb comes back showing what it was showing instead of `starting`.
+
+```
+$ node tests/glrecovery.test.mjs        (pure — no GPU)
+All 4 gl-recovery tests passed
+  ok preventDefault called (restore can fire)
+  ok restore reloads exactly once
+  ok a context that keeps dying cannot cause a reload loop
+  ok 100 loss/restore cycles stay bounded (<=4 reloads, >=95 suppressed)
+```
+
+## 2. Reconnect-storm / state-spam visuals
+
+`startMorphTo` reset the ramp clock on **every** retarget. States flipping
+faster than the 600 ms ramp (Bug E's `speaking→listening→speaking`, or any
+reconnect storm) restart progress from 0 each time → the lattice parks at its
+start shape. Fixed by making progress a function of **wall-clock** time.
+
+```
+$ node tests/morphclock.test.mjs       (pure simulation)
+All 5 morph-clock tests passed
+  ok retarget keeps progress -> a storm CONVERGES on the newest target (<=700ms)
+  ok reset-on-retarget (the old behaviour) NEVER converges   <-- documents the bug
+  ok a calm ramp is untouched by the fix
+  ok progress is monotonic while nobody retargets
+  ok degenerate inputs cannot divide-by-zero
+```
+
+## 3. Pose-lock-vs-truth probe invariant → CI (the Wave-3 lesson)
+
+The bug that mattered was invisible to screenshots because `__orbLockPose()`
+snapped the lattice before every capture. Two halves now enforce it:
+
+- **pure half, no GPU at all** — the morph-target builders moved to
+  `src/renderer/morphtargets.js` and `tests/morphtargets.test.mjs` asserts the
+  exact invariant Bug C violated:
+  ```
+  $ npm run test:unit
+  All 7 morph target invariants passed        <-- "all targets share ONE vertex count"
+  ```
+  It even reconstructs the legacy 144-vs-180 failure and asserts the shipped
+  builder does not reproduce it.
+- **unlocked half, in the gate** — `window.__orbMorphDiff()` reports
+  `maxErr` / `lengthMismatch` **without** the pose lock, and `orb:trace`'s Bug-C
+  phase fails if either drifts.
+
+`npm test` now runs all five pure suites *before* the screenshot gate, so the
+invariants hold even on a machine with no display.
+
+## 4. fps/VRAM audit under load — MEASURED
+
+`npm run orb:audit` (`docs/orb/trace/audit.json`), isolated instance, mock
+Brain only, one Electron, hard 150 s bound:
+
+| condition | frame time (EMA) | tree RSS |
+|---|---|---|
+| idle | **16.7 ms** | 300.2 MB |
+| speaking (amp 0.95) | **16.7 ms** | 300.4 MB |
+| **storm** — 67 state flips in 6 s (faster than the 600 ms ramp) | **16.7 ms** | 302.0 MB |
+
+- **fps: no degradation** — vsync-locked 60 Hz in all three conditions, so the
+  storm costs nothing measurable.
+- **RAM delta over 67 flips: +1.8 MB** (300.2 → 302.0) — no per-flip leak.
+- Max single-process **VmHWM 150.6 MB**, 5 Electron processes in the tree.
+- **Morph converged after the storm: `maxErr = 0`, `lengthMismatch = false`,
+  60 points** — the `morphclock` fix holding under real spam.
+- Frame-time governor: `acted = 0`, `dpr` held at 1.0 — not regressed.
+- GL: `ANGLE (D3D12 (Intel(R) Iris(R) Xe Graphics), OpenGL 4.1)`, dpr 1.0.
+- `glRecovery`: `lost=false, restores=0` — no context loss occurred during the
+  run (the recovery *policy* is covered by the pure tests above).
+
+**Honest gap:** GPU VRAM is **not readable from WSL** — there is no
+per-process GPU counter on this path. Reported numbers are VmRSS over the whole
+Electron tree + VmHWM + `renderer.info`; they are explicitly *not* a VRAM
+figure and are labelled as such in `audit.json` (`vramNote`).
+
+## 5. Condition compliance (each enforced in code)
+
+| # | condition | how |
+|---|---|---|
+| 1 | separate instance + userData + CDP | `RAPHAEL_INSTANCE=orb` → ws 8906 / cdp 9406 / `~/.raphael/orb/orb/` |
+| 2 | mock Brain, never the live one | in-process `MockBrain` on 8906; zero live ui sessions |
+| 3 | never touch the live stack's processes | measurements walk **our pid's `/proc` descendant tree**; only our own child is ever signalled — no `pkill`, no path/cmd matching |
+| 4 | bounded + kill-verify + report | pidfile `~/.raphael/orb/orb-audit.pid`, 150 s hard timeout, `kill-verify: ZERO orphans, instance ports free`, pidfile removed, delta reported above |
+| 5 | one Electron max | pidfile pre-flight refuses a second run; instance ports checked free |
+
+> Two rule-14 pre-flights **false-positived** while building this — a `ps`
+> path match counted the invoking shell's own `cd <worktree>`, and then a
+> path+`electron` match counted my own command line. Replaced with an exact
+> pidfile + `/proc` descendant walk: no pattern matching, nothing to match
+> wrongly.
+
+## 6. Stale hazard fixed
+
+`test/fake-brain.cjs` hardcoded **port 8765 — the live brain's port** — and an
+absolute path into the old workspace. Inert (no script runs it) but exactly what
+must never be runnable against a live stack. Now derives from
+`RAPHAEL_INSTANCE` (defaulting to the **lane**), and refuses the main port
+unless `--allow-main` is passed.
+
+```
+$ node tests/fakebrain-port.test.cjs    (pure — binds nothing)
+All 8 fake-brain port safety tests passed
+```
+
+## 7. One more bug found while auditing (mine, fixed)
+
+The audit's first run wrote `audit.json` to **`body/docs/orb/trace/`** —
+`path.join(ROOT, '..', 'docs', …)` where `ROOT` here is `body/orb`, not the
+worktree. That is a path *outside* the orb lane's owned directories
+(`body/orb/**`, `docs/orb/**`). Caught because the expected file was missing
+from `docs/orb/trace/`, the stray directory was removed, and the path corrected
+to `ROOT/../../docs/orb/trace`. Re-run is clean (EXIT 0, correct location).
