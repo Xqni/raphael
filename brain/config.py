@@ -98,7 +98,9 @@ def load_config(path: Optional[Path] = None, force: bool = False) -> Dict[str, A
     d_dir = base_path.parent / 'config.d'
     if d_dir.is_dir():
         for frag in sorted(d_dir.glob('*.yaml')):
-            cfg = deep_merge(cfg, _read_yaml(frag))
+            # authority guard: fragments may not touch safety/privacy/
+            # providers/profiles (recorded + stripped, base values kept)
+            cfg = _merge_fragment(cfg, frag)
     # 3. profile overlay
     prof = os.environ.get('RAPHAEL_PROFILE') or cfg.get('profile') or DEFAULT_PROFILE
     overlay = (cfg.get('profiles') or {}).get(prof) or {}
@@ -115,6 +117,44 @@ def load_config(path: Optional[Path] = None, force: bool = False) -> Dict[str, A
         cfg.setdefault('server', {})['log_level'] = os.environ['RAPHAEL_LOG_LEVEL']
     _cache, _cache_key = cfg, key
     return cfg
+
+
+# ---- Core-Guard authority guard (qa request APPROVED 2026-10-07) ------------
+# Lane fragments (AGENT_RULES §3: every lane writes config.d/<lane>.yaml) may
+# NEVER touch these top-level authority keys — a buggy/hostile fragment could
+# empty safety.confirm_actions, strip privacy.redact, or pivot providers
+# (AGENTS §3/§8: even the owning lane needs an integrator-approved request).
+# Fragments get STRIPPED of these keys (base values kept, violation recorded
+# LOUDLY); the profile overlay stays integrator-owned and keeps working.
+AUTHORITY_KEYS = ('safety', 'privacy', 'providers')
+
+_authority_violations: list = []
+
+
+def authority_violations() -> list:
+    """Violations recorded during load (file + stripped keys) — surfaced for
+    tests/status; empty on a clean tree."""
+    return list(_authority_violations)
+
+
+def _merge_fragment(cfg: Dict[str, Any], frag_path: Path) -> Dict[str, Any]:
+    frag = _read_yaml(frag_path)
+    if not frag:
+        return cfg
+    stripped = [k for k in AUTHORITY_KEYS if k in frag]
+    # a fragment-injected `profiles:` is the pivot vector (it could override
+    # even the base profile after merge) -> strip it wholesale
+    if 'profiles' in frag:
+        stripped.append('profiles')
+    if stripped:
+        name = frag_path.name
+        _authority_violations.append({'file': name, 'keys': stripped})
+        print(f"[config] AUTHORITY VIOLATION in config.d/{name}: stripped "
+              f"{stripped} — safety/privacy/providers/profiles are "
+              f"integrator-only (AGENT_RULES §3/§8); base values kept",
+              flush=True)
+        frag = {k: v for k, v in frag.items() if k not in stripped}
+    return deep_merge(cfg, frag)
 
 
 _cache: Optional[Dict[str, Any]] = None
@@ -134,6 +174,7 @@ def reset_config_for_tests() -> None:
     global _cache, _cache_key
     with _lock:
         _cache, _cache_key = None, None
+    _authority_violations.clear()
 
 
 def cfg_get(cfg: Dict[str, Any], dotted: str, default: Any = None) -> Any:
