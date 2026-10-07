@@ -1,6 +1,6 @@
 # infra — status
 
-Updated: 2026-10-07 (Wave 3 open — P0 Bug G + SPEED implemented, suites green; coord rule §13)
+Updated: 2026-10-07 (Wave 4 open — resilience drills complete, queued for review; coord rule §13)
 
 ## Done (Wave 2 — all tasks, commits `0451dba..737e216` on `agent/infra`)
 
@@ -173,16 +173,51 @@ class on the next `raphael stop`). No orphans from this session (Rule 14).
   dfcc5a8 tool-discovery follow-up)
 - `python3 supervisor/main.py --selfcheck` → exit 0 · `scripts/secret-scan.sh` → exit 0
 
+## Wave 4 (current_wave=4 — open 2026-10-07, wave-3 GATE PASSED)
+
+### Done (2026-10-07, branch rebased onto origin/main `e56b9c4`, commit `4e833a2`)
+
+15. **[Resilience] crash recovery — supervisor watchdog.** Default run
+    entry spawns the real bring-up as a child and respawns it on
+    unexpected exit; crash-loop guard (5 rapid crashes → loud give-up,
+    `RAPHAEL_WATCHDOG=0` opt-out); SIGTERM/SIGINT forwarded for clean
+    stops. Child records the PARENT pid in `run/supervisor.pid` (tree-kill
+    root) so `raphael stop` takes out watchdog+child together; legacy
+    bare runs keep own-pid. Task Scheduler wiring untouched (Rule 12) —
+    watchdog engages at the supervisor's next natural start after merge;
+    the live stack (pre-Watchdog code) was NOT restarted (wake directive).
+    Honest boundary documented: a crash of the watchdog parent itself
+    still needs external relaunch (logon task).
+16. **[Resilience] drills** — `supervisor/tests/test_resilience_drills.py`
+    (6 synthetic tests, no servers, live stack untouched): kill storm
+    through the REAL health loop (capped restarts == max_attempts,
+    PERMANENT_ERROR latch holds, network-hook recovery, auto-resume,
+    clean loop stop); churn (resume hook lifts PERMANENT_ERROR + immediate
+    re-verify at 999 s poll interval — Rule 15); watchdog give-up /
+    clean-stop / child-env+parent-pidfile; zero-orphan invariant —
+    5 bring-up/teardown cycles with ZERO marker-scoped leftovers while an
+    untagged control process survives every cycle (scoping proven).
+
+### Wave 4 test output (real runs, sequential — Rule 14, 2026-10-07)
+
+- `pytest supervisor/tests -q` → **88 passed** (82 + 6 drills, 14 s)
+- `pytest tests -q` → **197 passed, 9 xfailed** (qa's ollama xfails now
+  plain-passed — flipped by qa-security)
+- `pytest body -q` → **85 passed**
+- `cd brain && pytest -q` → **578 passed, 4 skipped, 2 FAILED** — both
+  failures in `brain/memory/tests/` (tools-memory territory) under
+  FULL-suite order; isolated `pytest memory/tests` → **116/116 passed**;
+  zero `supervisor` imports anywhere in brain tests and this lane's diff
+  is supervisor/docs-only → cross-lane registry-order flake, reported to
+  the conductor, not infra's.
+- selfcheck exit 0 · secret-scan exit 0 · tree clean at `4e833a2`.
+
 ## Next
 
-- Wave 3 lane list complete (P0-BugG + SPEED + qa request replies).
-  Awaiting the conductor's next ping (`coord mode` → exit regime): post
-  `task_done` now; `wave_done` only when the wave's gate-level exit
-  criteria are called by the integrator (AGENT_RULES §11 — exit criteria
-  are the human's).
-- Carry-over notes for later waves: Wave 3+ rotation/crash-report goal from
-  the old list is superseded by the P0 rewrite above; Wave 4 (resilience
-  scripts, Creative Mode) and Wave 5 (out-of-band rollback) still ahead.
-- Merge-order position: infra merges after `orb`, before `qa-security`
-  (WAVES.md). Rebase on latest main at merge time; no conflicts expected
-  (only my own paths + docs/requests/* + docs/{lanes,status}/infra.md edited).
+- Wave 4 lane list complete (resilience drills + watchdog, commit
+  `4e833a2`). Post `task_done` + `test_result`; await review — `wave_done`
+  only on the conductor's call (exit criteria are the human's,
+  AGENT_RULES §11).
+- For the reviewer: brain-suite 2-failure flake detail above (tools-memory
+  order-dependent, passes isolated); watchdog engages at next supervisor
+  start — no live restart forced (live_e2e=true).

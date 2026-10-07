@@ -2308,9 +2308,12 @@ def _write_supervisor_pidfile():
 
     Written ONLY after the mutex is acquired (a second launch exits 0
     before this and must never clobber the live supervisor's pidfile).
-    Best effort: failure is logged, never fatal.
+    Under the watchdog (Wave 4 crash recovery) the CHILD records the
+    PARENT's pid — the tree-kill root — so `raphael stop` takes out the
+    whole watchdog+child tree in one go. Best effort: never fatal.
     """
-    return write_supervisor_pidfile(os.getpid())
+    pid = int(os.environ.get(_WATCHDOG_PARENT_ENV) or os.getpid())
+    return write_supervisor_pidfile(pid)
 
 
 def _remove_supervisor_pidfile(path):
@@ -2321,6 +2324,124 @@ def _remove_supervisor_pidfile(path):
             pass
 
 
+# --------------------------------------------------------------------------
+# Crash recovery — supervisor self-restart (Wave 4 resilience)
+# --------------------------------------------------------------------------
+# The default run entry becomes a thin WATCHDOG parent: it spawns the real
+# bring-up as its child and respawns the child if it ever dies. Wiring is
+# UNCHANGED (Task Scheduler still runs `pythonw supervisor/main.py` —
+# AGENT_RULES §12 forbids task edits; `raphael stop` still works because
+# the child's pidfile points at the parent/tree root). Opt out with
+# RAPHAEL_WATCHDOG=0 (CI, tests, degraded runs). A crash of the PARENT
+# itself still needs an external relaunch (logon task) — a watchdog cannot
+# resurrect itself; that boundary is documented, not hidden.
+_WATCHDOG_CHILD_ENV = "RAPHAEL_SUPERVISOR_CHILD"
+_WATCHDOG_PARENT_ENV = "RAPHAEL_SUPERVISOR_PARENT_PID"
+_WATCHDOG_NAP = 2.0            # Rule 15: respawn fast, no long limbo
+_WATCHDOG_RAPID_LIFE = 10.0    # child living < this counts as a crash
+_WATCHDOG_MAX_RAPID = 5        # crash-loop guard: give up loudly
+
+
+def _spawn_child(args):
+    """Spawn the real bring-up as our child (hidden, console-less)."""
+    exe = sys.executable
+    if IS_WINDOWS:
+        pyw = Path(sys.executable).with_name("pythonw.exe")
+        if pyw.is_file():
+            exe = str(pyw)
+    env = dict(os.environ)
+    env[_WATCHDOG_CHILD_ENV] = "1"
+    env[_WATCHDOG_PARENT_ENV] = str(os.getpid())
+    kwargs = {"cwd": str(REPO_ROOT), "stdin": subprocess.DEVNULL,
+              "stdout": subprocess.DEVNULL,
+              "stderr": subprocess.DEVNULL, "env": env}
+    if IS_WINDOWS:
+        kwargs["creationflags"] = 0x08000000      # CREATE_NO_WINDOW
+    try:
+        return subprocess.Popen(
+            [exe, str(Path(__file__).resolve()), "--config",
+             str(args.config)], **kwargs)
+    except OSError as exc:
+        sys.stderr.write("watchdog: child spawn failed: %s\n" % exc)
+        return None
+
+
+def _watchdog_loop(log, spawn, nap=None, stop=None,
+                   rapid_life=_WATCHDOG_RAPID_LIFE,
+                   max_rapid=_WATCHDOG_MAX_RAPID):
+    """Respawn the child on unexpected exit; give up after a crash loop.
+
+    `spawn()` -> child-like with .wait() (None = spawn failed, counted as
+    an instant crash). `stop()` -> True ends the loop cleanly (SIGTERM
+    forwarding). Returns 0 = clean stop, 1 = gave up (crash loop).
+    """
+    nap = nap if nap is not None else (lambda s: time.sleep(s))
+    stop = stop or (lambda: False)
+    rapid = 0
+    while not stop():
+        child = spawn()
+        t0 = time.monotonic()
+        if child is None:
+            rc, life = "spawn-failed", 0.0
+        else:
+            rc = child.wait()
+            life = time.monotonic() - t0
+        if stop():
+            log.info("watchdog: child stopped on request (rc=%s)" % rc)
+            return 0
+        rapid = rapid + 1 if life < rapid_life else 0
+        if rapid >= max_rapid:
+            log.error("watchdog: child crashed %d times in a row (each "
+                      "alive < %.0fs, rc=%s) — giving up; fix the cause "
+                      "then relaunch (RAPHAEL_WATCHDOG=0 runs bare)"
+                      % (rapid, rapid_life, rc))
+            return 1
+        log.warn("watchdog: child exited rc=%s after %.1fs — respawning "
+                 "in %.1fs (crash %d/%d)"
+                 % (rc, life, _WATCHDOG_NAP, rapid, max_rapid))
+        nap(_WATCHDOG_NAP)
+    return 0
+
+
+def watchdog_main(args):
+    """Watchdog parent: spawn + supervise the real bring-up child."""
+    log = Logger()
+    log.info("watchdog: crash-recovery parent pid=%d starting — child "
+             "runs the bring-up (RAPHAEL_WATCHDOG=0 disables)" % os.getpid())
+    state = {"child": None}
+    stop_flag = {"on": False}
+
+    def _on_term(signum, _frame):
+        stop_flag["on"] = True
+        child = state["child"]
+        if child is not None and child.poll() is None:
+            try:
+                child.terminate()               # child's own SIGTERM path
+            except OSError:
+                pass
+
+    try:
+        signal.signal(signal.SIGTERM, _on_term)
+        signal.signal(signal.SIGINT, _on_term)
+    except (ValueError, OSError, AttributeError):
+        pass
+
+    def spawn():
+        child = _spawn_child(args)
+        state["child"] = child
+        return child
+
+    rc = _watchdog_loop(log, spawn=spawn, stop=lambda: stop_flag["on"])
+    child = state["child"]
+    if child is not None and child.poll() is None:
+        try:
+            child.terminate()
+        except OSError:
+            pass
+    log.info("watchdog: exiting (rc=%d)" % rc)
+    return rc
+
+
 def main(argv=None):
     args = parse_args(argv)
     if args.selfcheck:
@@ -2329,6 +2450,13 @@ def main(argv=None):
         return once(args)
     if args.mutex_probe:
         return mutex_probe(args)
+
+    # Wave 4 crash recovery: the default run entry becomes the watchdog
+    # parent (spawns the real bring-up as its child). Child env set, or
+    # RAPHAEL_WATCHDOG=0 -> fall through to the real run below (unchanged).
+    if (not os.environ.get(_WATCHDOG_CHILD_ENV)
+            and os.environ.get("RAPHAEL_WATCHDOG", "1").strip() != "0"):
+        return watchdog_main(args)
 
     log = Logger()
     log.info("supervisor starting pid=%d python=%s platform=%s"

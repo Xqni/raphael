@@ -42,7 +42,13 @@ Wave 2 is MERGED; live gate was 3/5 — evidence + bug dossiers: `docs/BUGS-WAVE
 
 Wave 3 is MERGED + **GATE PASSED** (tag `wave-3-gate`, all six criteria live, acoustic voice included). Wave-4 theme per WAVES.md: hardening, resilience tests, audit fixes, crash recovery, evolution infrastructure. Rule 15 speed mandate still binds.
 
-- [ ] Supervisor resilience drills per WAVES wave-4: kill storms (brain/body/orb rapid-kill loops), WSL churn + network-change recovery, crash-recovery (supervisor self-restart), zero-orphan invariant under repeated bring-up/teardown cycles.
+- [x] Supervisor resilience drills per WAVES wave-4: kill storms (brain/body/orb rapid-kill loops), WSL churn + network-change recovery, crash-recovery (supervisor self-restart), zero-orphan invariant under repeated bring-up/teardown cycles.
+      → **All four drills + mechanism fixes, synthetic only** (live stack untouched per wake directive — no servers spawned, no request needed):
+      • **crash recovery**: default `main.py` run = watchdog parent spawning the real bring-up as child (`RAPHAEL_SUPERVISOR_CHILD`), respawns on unexpected exit, crash-loop guard gives up loudly after 5 rapid crashes, SIGTERM forwarded; **Task Scheduler wiring unchanged** (Rule 12); `RAPHAEL_WATCHDOG=0` opt-out. Child writes the PARENT pid (tree-kill root) into `run/supervisor.pid` so `raphael stop` kills watchdog+child together; parent self-crash needs external relaunch (documented boundary). **Active from the next supervisor start after merge** (live stack still runs pre-Watchdog code — no restart forced).
+      • **kill storm**: threaded run_health_loop with mocked probes/launchers — restarts cap exactly at `max_attempts`, PERMANENT_ERROR latch holds under continued failure, network hook recovers, auto-resume issues fresh restarts, loop stops on demand.
+      • **churn**: `resume` hook lifts PERMANENT_ERROR + immediate re-verify even with 999 s poll interval (Rule 15).
+      • **zero-orphan**: 5 spawn/teardown cycles → ZERO marker-scoped leftovers each cycle, while an untagged control process survives every cycle (teardown scoping proven; bracket-pattern self-match guard; full cleanup in `finally`).
+      → `supervisor/tests/test_resilience_drills.py` (6 tests, 4.1 s).
 
 ## Later waves
 - Per docs/WAVES.md — do not start early (AGENT_RULES §11).
