@@ -5,7 +5,7 @@ Read: docs/AGENT_RULES.md -> docs/WAVES.md -> this file. Status log: docs/status
 Merge-order position: see docs/WAVES.md
 
 ## Wave 2 tasks (docs/WAVES.md (current_wave: 2))
-- [ ] Wave 2 has no exit-criteria tasks for this lane: write docs/evolution/ design notes (shadow instance, rollback, journal — Wave 4) + persona tier design (great_sage->raphael->ciel — Wave 5).
+- [x] Wave 2 has no exit-criteria tasks for this lane: write docs/evolution/ design notes (shadow instance, rollback, journal — Wave 4) + persona tier design (great_sage->raphael->ciel — Wave 5). Done 2026-10-05: `docs/evolution/01-self-evolution-infra.md` + `docs/evolution/02-persona-tiers.md` + request `evolution-persona__to__brain-core__shadow-instance-row.md`.
 - [ ] Then: WAIT for current_wave to bump (AGENT_RULES §11) — check requests addressed to evolution-persona meanwhile.
 
 ## Wave 3 (start only when WAVES.md says so — current_wave: 3)
