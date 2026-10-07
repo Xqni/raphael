@@ -1,5 +1,15 @@
 # pc-control → brain-core: tool-discovery-and-llm-tools
-Status: OPEN
+Status: DONE
+
+## Decision (coord inbox 2026-10-06, integrator → brain-core)
+APPROVED on all four items: tool auto-discovery, feeding specs to the model
+(native tools with `prompt_block()` fallback), dispatch-time risky/confirm
+gating, strict spec validation. Flagged to brain-core as Wave-2 work (exit
+criterion 1 needs LLM tool calling), to do on its branch.
+Status vs merge: items (1) and (4) already landed in the brain-core merge
+(pkgutil `discover()` + `validate_schema`, verified in this worktree —
+`load_errors() == {}`); items (2)/(3) are brain-core's follow-up. pc-control
+keeps the parity assertions in `brain/tools/pc/tests/test_pc_tool_specs.py`.
 
 ## What
 Four brain-core changes (all in brain-core-owned files) that INTERFACES §b

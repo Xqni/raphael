@@ -1,5 +1,13 @@
 # pc-control → integrator: instance-token-path
-Status: OPEN
+Status: DONE
+
+## Decision (coord inbox 2026-10-06, integrator)
+APPROVED as specified and IMPLEMENTED on main — `brain/auth.py::
+default_token_path()`: `RAPHAEL_TOKEN_PATH` wins, unset/main resolves to
+`~/.raphael/token` byte-for-byte as before, a lane resolves to
+`~/.raphael/<instance>/token`, matching the Body `token_candidates()` table.
+Core Guard reviewed (isolation strengthens, live-stack semantics unchanged);
+root suite green (10 passed); qa-security owns the brain-side auth test.
 
 ## What
 Derive the token path from `RAPHAEL_INSTANCE` in `brain/auth.py` (integrator-

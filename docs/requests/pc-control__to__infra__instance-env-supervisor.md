@@ -1,5 +1,12 @@
 # pc-control → infra: instance-env-supervisor
-Status: OPEN
+Status: DONE
+
+## Decision (coord inbox 2026-10-06, integrator → infra)
+APPROVED (owner = infra, told in its inbox) — supervisor `MUTEX_NAME`
+derived from `RAPHAEL_INSTANCE` and `RAPHAEL_INSTANCE`/`RAPHAEL_PORT`/
+`RAPHAEL_TOKEN_PATH` passed through to children; `main` behavior unchanged.
+Infra implements it in `supervisor/**`; the Body-side derivation
+(`body/win/instance.py::supervisor_mutex()`) stays as is.
 
 ## What
 Two small supervisor changes (supervisor/ = infra lane):
