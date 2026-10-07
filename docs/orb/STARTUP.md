@@ -100,6 +100,33 @@ at the 60 fps design point), `SPIN_PEAK = 3.2 rad/s`, `SPIN_UP_MS = 400`.
 - Re-run: `npm run orb:trace` (the startup phase runs first, then the
   per-state scenes and the pixel-diff gate).
 
-## 6. AFTER numbers
+## 6. AFTER numbers (2026-10-06, `npm run orb:trace`, instance `orb`)
 
-Filled in by the verification run — see `docs/status/orb.md` §Test output.
+```
+startup: PASS over 148 samples (7985 ms), peak=2.043 rest=0.192 rad/s
+  ok   no_zero_crossing:       min omega = 0.1881 rad/s (must be > 0)
+  ok   monotonic_non_increasing: largest increase = 0.00000 rad/s (eps 0.002)
+  ok   no_velocity_jump:       max |d(omega)| = 0.0955 rad/s between samples (eps 0.35)
+  ok   exponential_like:       fit R^2 = 1.0000, implied tau = 1401 ms (config 1400, allowed 700-4200)
+  ok   no_early_flat_tail:     remaining delta: 21.8% at 1.5x tau, 7.6% at 3x tau (need >=10% and <=35%)
+  ok   settled:                last sample is 0.4% of the delta above rest (need <=15%)
+  ok   governor_quiet:         frame-time governor acted 0 time(s) during startup (must be 0)
+```
+
+| assertion | BEFORE | AFTER |
+|---|---|---|
+| monotonic non-increasing | **FAIL** +6.13 rad/s jump | **ok** 0.00000 rad/s |
+| no velocity jump at hand-off | **FAIL** 7.20 rad/s | **ok** 0.096 rad/s |
+| exponential-like fit | **FAIL** R² 0.89 / tau 977 ms | **ok** R² 1.0000 / tau 1401 ms |
+| no early flat tail (1.5τ) | **FAIL** 6.9% left | **ok** 21.8% left (22.3% is the ideal e^-1.5) |
+| settled by end of window | ok | ok 0.4% |
+| governor quiet during startup | ok 0 | ok 0 |
+| **overall** | **FAIL (4/7)** | **PASS (7/7)** |
+
+Peak 2.043 rad/s is the 400 ms spin-up reaching 63% of `SPIN_PEAK = 3.2`
+(`0.18 + 3.02·e^-1 ≈ 2.04`), which is exactly the model — measured, not asserted.
+Rest 0.192 rad/s vs the configured 0.18 (the residual is the cage's own
+state-rate rotation, which is separate from the assembly spin by design).
+
+Evidence: `docs/orb/startup-curve.png`, `docs/orb/startup-filmstrip.png`,
+`docs/orb/trace/startup-samples.json`, `docs/orb/trace/trace.jsonl` (`ev:"startup"`).

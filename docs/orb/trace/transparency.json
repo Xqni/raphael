@@ -1,0 +1,114 @@
+{
+  "alphaMax": 16,
+  "rgbMax": 24,
+  "minLitPixels": 200,
+  "pass": true,
+  "results": [
+    {
+      "scene": "idle",
+      "blur": {
+        "amount": 0.9,
+        "angle": 0.0030059999999968758,
+        "taps": 4,
+        "skipped": false,
+        "reason": "on",
+        "speed": 0.18000000000000113,
+        "reducedMotion": false,
+        "quality": "auto",
+        "config": "auto"
+      },
+      "w": 280,
+      "h": 280,
+      "maxBorderAlpha": 0,
+      "maxBorderRgb": 0,
+      "maxAlpha": 25,
+      "litPixels": 4830,
+      "blurOn": true
+    },
+    {
+      "scene": "speaking",
+      "blur": {
+        "amount": 0.9,
+        "angle": 0.009185000000006405,
+        "taps": 4,
+        "skipped": false,
+        "reason": "on",
+        "speed": 0.55,
+        "reducedMotion": false,
+        "quality": "auto",
+        "config": "auto"
+      },
+      "w": 280,
+      "h": 280,
+      "maxBorderAlpha": 0,
+      "maxBorderRgb": 0,
+      "maxAlpha": 25,
+      "litPixels": 9269,
+      "blurOn": true
+    },
+    {
+      "scene": "error",
+      "blur": {
+        "amount": 0.9,
+        "angle": 0.0030059999999968758,
+        "taps": 4,
+        "skipped": false,
+        "reason": "on",
+        "speed": 0.18000000000000113,
+        "reducedMotion": false,
+        "quality": "auto",
+        "config": "auto"
+      },
+      "w": 280,
+      "h": 280,
+      "maxBorderAlpha": 0,
+      "maxBorderRgb": 0,
+      "maxAlpha": 25,
+      "litPixels": 3935,
+      "blurOn": true
+    },
+    {
+      "scene": "paused",
+      "blur": {
+        "amount": 0.9,
+        "angle": 0.0030060000000021146,
+        "taps": 4,
+        "skipped": false,
+        "reason": "on",
+        "speed": 0.18000000000000113,
+        "reducedMotion": false,
+        "quality": "auto",
+        "config": "auto"
+      },
+      "w": 280,
+      "h": 280,
+      "maxBorderAlpha": 0,
+      "maxBorderRgb": 0,
+      "maxAlpha": 25,
+      "litPixels": 1719,
+      "blurOn": true
+    },
+    {
+      "scene": "reconnecting",
+      "blur": {
+        "amount": 0.9,
+        "angle": 0.0030239999999979237,
+        "taps": 4,
+        "skipped": false,
+        "reason": "on",
+        "speed": 0.18000000000000113,
+        "reducedMotion": false,
+        "quality": "auto",
+        "config": "auto"
+      },
+      "w": 280,
+      "h": 280,
+      "maxBorderAlpha": 0,
+      "maxBorderRgb": 0,
+      "maxAlpha": 23,
+      "litPixels": 2028,
+      "blurOn": true
+    }
+  ],
+  "failures": []
+}

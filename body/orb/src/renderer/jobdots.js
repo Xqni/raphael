@@ -2,38 +2,42 @@
 // 9). One small glowing bead per active job on an outer ring, count fading in
 // and out so nothing pops. Built once; per-frame work is transforms only.
 //
-// Rendered OUTSIDE every other layer (radius ~1.52 world = ~85-90% of
+// Rendered OUTSIDE every other layer (radius 1.35 world = ~90% of
 // content_px), so it reads as a constellation around the orb rather than as
 // more of the wireframe.
 const MAX_DOTS = 9;
-const RING_R = 1.52;
+const RING_R = 1.35;   // §3.6: outermost layer stays inside ~90% of content_px
 const DOT_R = 0.085;   // core bead — legible at 160 px too (spec §3.6)
 const HALO_R = 0.185;  // soft glow so a job-count change is a real pixel delta
 
-export function initJobDots(THREE, group) {
+export function initJobDots(THREE, group, pal) {
+  const accent = (pal && pal.accent) || 0x9ff0ff;
+  const halo = (pal && pal.haze_teal) || 0x2dd4bf;
   const J = { root: new THREE.Group(), dots: [], count: 0, vis: 0, jobs: 0 };
   const geo = new THREE.CircleGeometry(DOT_R, 16);
   const haloGeo = new THREE.CircleGeometry(HALO_R, 20);
   for (let i = 0; i < MAX_DOTS; i++) {
     const mat = new THREE.MeshBasicMaterial({
-      color: 0x9ff0ff, transparent: true, opacity: 0,
+      color: accent, transparent: true, opacity: 0,
       depthWrite: false, blending: THREE.AdditiveBlending,
     });
     const haloMat = new THREE.MeshBasicMaterial({
-      color: 0x2dd4bf, transparent: true, opacity: 0,
+      color: halo, transparent: true, opacity: 0,
       depthWrite: false, blending: THREE.AdditiveBlending,
     });
     const m = new THREE.Mesh(geo, mat);
-    const halo = new THREE.Mesh(haloGeo, haloMat);
+    // NB: NOT called `halo` — that would shadow (and hit the TDZ of) the
+    // palette token above; this broke initScene entirely when §5 landed.
+    const haloMesh = new THREE.Mesh(haloGeo, haloMat);
     const a = (i / MAX_DOTS) * Math.PI * 2 - Math.PI / 2;
     const x = Math.cos(a) * RING_R, y = Math.sin(a) * RING_R;
     m.position.set(x, y, 0.05);
-    halo.position.set(x, y, 0.045);
+    haloMesh.position.set(x, y, 0.045);
     m.visible = false;
-    halo.visible = false;
-    J.root.add(halo);
+    haloMesh.visible = false;
+    J.root.add(haloMesh);
     J.root.add(m);
-    J.dots.push({ m, mat, halo, haloMat, a, phase: i * 0.7 });
+    J.dots.push({ m, mat, halo: haloMesh, haloMat, a, phase: i * 0.7 });
   }
   group.add(J.root);
   return J;

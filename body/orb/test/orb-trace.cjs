@@ -29,6 +29,7 @@ const { MockBrain } = require('./mock-brain.cjs');
 const { connect } = require('./cdp.cjs');
 const { decode, encode, average } = require('./png.cjs');
 const { analyze: analyzeStartup, renderPlot: renderStartupPlot, renderFilmstrip: renderStartupFilmstrip } = require('./startup.cjs');
+const { filmstrip } = require('./gfx.cjs');
 const Instance = require('../src/main/instance');
 const { runDistinctness } = require('./orb-diff.cjs');
 
@@ -53,6 +54,10 @@ const STARTUP_SAMPLE_MS = 50;   // omega/angle sampling rate for §1
 const STARTUP_MS = 8000;        // window covering starting (5400ms) -> idle
 const STARTUP_FRAME_EVERY = 750; // filmstrip cadence across the startup
 const HANDOFF_MS = 5400;        // matches renderer's natural boot hand-off
+const ONLY_PHASE = (() => {
+  const a = process.argv.find((x) => x.startsWith('--only='));
+  return a ? a.slice('--only='.length) : null;
+})();
 const TRACE_TOKEN = 'trace-test-token'; // harness-only value, not a secret
 
 const log = (...a) => console.log('[orb-trace]', ...a);
@@ -119,6 +124,85 @@ async function runBlurPerf(cdp, brain, rec) {
   };
   rec('blur_perf', out);
   fs.writeFileSync(path.join(OUT, 'blur-perf.json'), JSON.stringify(out, null, 2) + '\n');
+  return out;
+}
+
+/**
+ * §4 evidence: contact sheets.
+ *   speaking-filmstrip.png — same state at LOW and HIGH TTS amplitude (proves
+ *                            amplitude reactivity is visible, not just wired)
+ *   thinking-filmstrip.png — several frames across the Data-Rings rotation
+ */
+async function runFilmstrips(cdp, brain, rec) {
+  // NB: a DARK backdrop, not transparent — `Page.captureScreenshot` returns an
+  // empty image for a transparent page in this environment (WSLg/ANGLE), which
+  // produced a filmstrip of blank cells on the first attempt.
+  await cdp.evaluate(`document.body.style.background = ${JSON.stringify(BG_STYLES.dark)}`);
+  const shoot = async (n, everyMs) => {
+    const frames = [], labels = [];
+    for (let i = 0; i < n; i++) {
+      frames.push(decode(await cdp.screenshot()));
+      if (i < n - 1) await sleep(everyMs);
+    }
+    return { frames, labels };
+  };
+
+  // thinking: the rings rotate, the wireframe pulses — 6 frames
+  brain.step('thinking');
+  await sleep(1600);
+  let s = await shoot(6, 700);
+  s.labels = s.frames.map((_, i) => 'F' + i);
+  fs.writeFileSync(path.join(DOCS_ORB, 'thinking-filmstrip.png'),
+    encode(filmstrip(s.frames, { labels: s.labels, cell: 132 })));
+
+  // speaking: LOW amplitude then HIGH amplitude (ORB_REBUILD §6)
+  brain.step('speaking');
+  await sleep(1500);
+  brain.speakAt(0.12);
+  await sleep(700);
+  const low = await shoot(3, 400);
+  brain.speakAt(0.95);
+  await sleep(700);
+  const high = await shoot(3, 400);
+  const frames = [...low.frames, ...high.frames];
+  frames.labels = ['AMP 0.12', 'AMP 0.12', 'AMP 0.12', 'AMP 0.95', 'AMP 0.95', 'AMP 0.95'];
+  fs.writeFileSync(path.join(DOCS_ORB, 'speaking-filmstrip.png'),
+    encode(filmstrip(frames, { labels: frames.labels, cell: 132 })));
+  rec('filmstrips', { thinking: 6, speakingLow: 3, speakingHigh: 3 });
+  log('filmstrips written: thinking, speaking (amp 0.12 / 0.95)');
+}
+
+/**
+ * §4 transparency check: no box, fringe or clipping at the window edge, WITH
+ * the motion blur forced on (the worst case for a trail/feedback approach).
+ * The edge mask fades the outer 6%, so the outermost 2 px must stay near zero
+ * in both alpha and RGB — a visible rectangle would show up as alpha ~255.
+ */
+async function runTransparency(cdp, brain, rec) {
+  await cdp.evaluate("window.__orbSetMotionBlur && window.__orbSetMotionBlur('force')");
+  const results = [];
+  for (const scene of ['idle', 'speaking', 'error', 'paused', 'reconnecting']) {
+    brain.step(scene);
+    if (scene === 'speaking') brain.speakAt(0.9);
+    await cdp.evaluate(`document.body.style.background = ${JSON.stringify(BG_STYLES.dark)}`);
+    await sleep(1500);
+    // real alpha comes from gl.readPixels on the canvas (a screenshot of a
+    // transparent page is empty here, which made the old check vacuous)
+    const edge = await cdp.evaluateJson('JSON.stringify(window.__orbEdgeStats())');
+    const shot = await cdp.screenshot();
+    fs.writeFileSync(path.join(OUT, `transparency-${scene}.png`), shot);
+    results.push({ scene, blur: await cdp.evaluateJson('JSON.stringify(window.__orbMotionBlur && window.__orbMotionBlur())'), ...edge });
+  }
+  await cdp.evaluate("window.__orbSetMotionBlur && window.__orbSetMotionBlur(null)");
+  const ALPHA_MAX = 16, RGB_MAX = 24, MIN_LIT = 200;
+  const failures = results.filter(
+    (r) => r.maxBorderAlpha > ALPHA_MAX || r.maxBorderRgb > RGB_MAX || r.litPixels < MIN_LIT);
+  const out = { alphaMax: ALPHA_MAX, rgbMax: RGB_MAX, minLitPixels: MIN_LIT,
+                pass: failures.length === 0, results, failures };
+  rec('transparency', out);
+  fs.writeFileSync(path.join(OUT, 'transparency.json'), JSON.stringify(out, null, 2) + '\n');
+  log(`transparency (blur forced): ${out.pass ? 'PASS' : 'FAIL'} — ` +
+      results.map((r) => `${r.scene} borderA${r.maxBorderAlpha}/rgb${r.maxBorderRgb} lit${r.litPixels}`).join(' '));
   return out;
 }
 
@@ -211,11 +295,15 @@ async function main() {
   // Clear stale deliverables first: a state we no longer capture on a given
   // background would otherwise linger from an older build and be diffed
   // against fresh images (it did — 4 old offline/reconnecting shots survived).
-  for (const f of fs.readdirSync(DOCS_ORB)) {
-    if (/^[a-z_]+-(dark|light|busy)\.png$/.test(f)) fs.unlinkSync(path.join(DOCS_ORB, f));
-  }
-  for (const f of fs.readdirSync(OUT)) {
-    if (/^[a-z_]+--(dark|light|busy)(--r\d+)?\.png$/.test(f)) fs.unlinkSync(path.join(OUT, f));
+  // Skipped for a partial `--only=` phase: it regenerates only its own output
+  // and would otherwise destroy the rest of the evidence set.
+  if (!ONLY_PHASE) {
+    for (const f of fs.readdirSync(DOCS_ORB)) {
+      if (/^[a-z_]+-(dark|light|busy)\.png$/.test(f)) fs.unlinkSync(path.join(DOCS_ORB, f));
+    }
+    for (const f of fs.readdirSync(OUT)) {
+      if (/^[a-z_]+--(dark|light|busy)(--r\d+)?\.png$/.test(f)) fs.unlinkSync(path.join(OUT, f));
+    }
   }
   const cdpPort = Instance.cdpPort();
   const wsPort = Instance.wsPort();
@@ -247,6 +335,21 @@ async function main() {
     // let the natural boot story (starting -> idle @5.4s) finish first, so a
     // scripted `starting` is not raced by the boot timeout.
     await sleep(6500);
+
+    // `--only=<phase>` runs a single evidence phase against a fresh instance
+    // (cheap iteration instead of a full ~8 min trace).
+    if (ONLY_PHASE) {
+      log(`--only=${ONLY_PHASE}`);
+      if (ONLY_PHASE === 'filmstrip') await runFilmstrips(cdp, brain, rec);
+      else if (ONLY_PHASE === 'transparency') await runTransparency(cdp, brain, rec);
+      else if (ONLY_PHASE === 'perf') await runBlurPerf(cdp, brain, rec);
+      else throw new Error('unknown --only phase: ' + ONLY_PHASE);
+      fs.writeFileSync(path.join(OUT, 'trace-partial.jsonl'), lines.join('\n') + '\n');
+      return;
+    }
+    // ^ NB: the stale-PNG cleanup at the top of main() must NOT run for a
+    // partial phase — it would delete the per-state screenshots this phase
+    // does not regenerate. That already happened once.
 
     // --- §1 startup spin-down evidence --------------------------------------
     let startupReport = null;
@@ -305,11 +408,21 @@ async function main() {
       for (const bg of BGS) await capture(scene, bg);
     }
 
+    // --- §4 filmstrips + transparency (blur forced, transparent backdrop) ---
+    let transparency = null;
+    try {
+      await runFilmstrips(cdp, brain, rec);
+      transparency = await runTransparency(cdp, brain, rec);
+    } catch (e) {
+      log('§4 evidence FAILED:', e && e.message);
+      rec('sec4_error', { message: String(e && e.message) });
+    }
+
     // --- §2 performance: blur cost with it OFF vs ON, plus the idle proof ---
     try {
       const blurPerf = await runBlurPerf(cdp, brain, rec);
       log(`blur perf: idle=${blurPerf.idle.reason} active off=${blurPerf.off.ema.toFixed(1)}ms ` +
-          `on=${blurPerf.on.ema.toFixed(1)}ms (+${blurPerf.pctOverhead.toFixed(1)}%)`);
+          `on=${blurPerf.on.ema.toFixed(1)}ms (${blurPerf.pctOverhead >= 0 ? '+' : ''}${blurPerf.pctOverhead.toFixed(1)}%)`);
     } catch (e) {
       log('blur perf FAILED:', e && e.message);
       rec('blur_perf_error', { message: String(e && e.message) });
@@ -374,6 +487,10 @@ async function main() {
     }
     if (startupReport && !startupReport.pass) {
       console.error('[orb-trace] FAIL: startup spin-down assertions did not hold');
+      failed = true;
+    }
+    if (transparency && !transparency.pass) {
+      console.error('[orb-trace] FAIL: transparency check — a box/fringe is visible at the window edge');
       failed = true;
     }
     if (failed) process.exitCode = 1;

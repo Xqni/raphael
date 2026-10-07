@@ -6,9 +6,20 @@ import { initSageCore, updateSageCore, lockSageCore } from './sagecore.js';
 import { initAnswerMode, updateAnswerMode, lockAnswerMode } from './answermode.js';
 import { initDataRings, updateDataRings, lockDataRings } from './datarings.js';
 import { initJobDots, updateJobDots, lockJobDots } from './jobdots.js';
+import { resolvePalette } from './palette.js';
 
 // Configuration injected via preload
-const cfg = window.orbConfig || { sizePx:280, contentPx:200, opacity:0.95, fpsCap:60, quality:'auto', backingDiscAlpha:0.0, reducedMotion:false };
+const cfg = window.orbConfig || {
+  sizePx: 280, contentPx: 200, opacity: 0.95, fpsCap: 60, quality: 'auto',
+  backingDiscAlpha: 0.0, reducedMotion: false,
+  theme: 'raphael', vibrance: 1.15, motionBlur: 'auto', startupSpinTauMs: 1400,
+};
+
+// §5 theme hook + §3.7 vibrance: resolved ONCE at page load (a design token,
+// not a runtime state) — see docs/orb/THEMES.md. MUST come after `cfg`.
+const PAL = resolvePalette(cfg);
+const palInt = (hex) => parseInt(String(hex).replace('#', ''), 16);
+
 let sizePx = cfg.sizePx;
 let fpsCap = cfg.fpsCap;
 let quality = cfg.quality;
@@ -93,7 +104,7 @@ function damp(current, target, tau, dt) {
 const STATE_LAYER_TARGETS = {
   idle: { coreScale:1, haloOpacity:0.25, latticeOpacity:0.14 },
   listening: { coreScale:1.1, haloOpacity:0.3, latticeOpacity:0.5 },
-  thinking: { coreScale:1.2, haloOpacity:0.35, latticeOpacity:0.85 },
+  thinking: { coreScale:1.2, haloOpacity:0.35, latticeOpacity:0.6 },  // §3.3: fewer lines, not yarn
   acting: { coreScale:1.3, haloOpacity:0.4, latticeOpacity:0.6 },
   speaking: { coreScale:1.2, haloOpacity:0.35, latticeOpacity:0.55 },
   error: { coreScale:0.9, haloOpacity:0.2, latticeOpacity:0.75 },
@@ -394,7 +405,12 @@ function initScene() {
   // at content_px (200) by zooming OUT — structured content then sits deep
   // inside the edge-safe zone; rays can never touch the mask (cut-proof).
   const contentPx = cfg.contentPx || 200;
-  const halfW = 1.5 * (sizePx / contentPx); // structured max world radius ~1.5
+  // §3.6 legibility: the orb must fill ~85-90% of content_px AND never be
+  // clipped by the 6% edge mask. `1.5 * size/content` breaks once the window
+  // is smaller than content_px (160 px -> halfW 1.2 -> the outer layers land
+  // OUTSIDE the window), so clamp to the outermost layer's safe radius.
+  const OUTER_R = 1.35;                      // job dots, the outermost layer
+  const halfW = Math.max(1.5 * (sizePx / contentPx), OUTER_R / 0.86);
   camera.position.z = halfW / Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
 
   clock = new THREE.Clock();
@@ -491,10 +507,10 @@ if (backingDiscAlpha > 0) {
   starsMesh = new THREE.Points(starGeo, starMat);
   scene.add(starsMesh);
 
-  sage = initSageCore(THREE, group, scene); // Sage Core layers (spec §2.1)
-  AM = initAnswerMode(THREE, group);        // Answer Mode gold look (spec §2.2)
-  DR = initDataRings(THREE, group);         // Data Rings thinking overlay (spec §2.3)
-  JD = initJobDots(THREE, group);           // jobs_active dots (PROTOCOL §8)
+  sage = initSageCore(THREE, group, scene, PAL); // Sage Core layers (spec §2.1)
+  AM = initAnswerMode(THREE, group, PAL);        // Answer Mode gold look (spec §2.2)
+  DR = initDataRings(THREE, group);              // Data Rings thinking overlay (spec §2.3)
+  JD = initJobDots(THREE, group, PAL);           // jobs_active dots (PROTOCOL §8)
   // User review fix: hide Phase-1 gold leftovers (halo/gold rings/orange ray
   // ring read as "a big flat golden 2D circle"). Sage Core supplies the glow
   // (core) + the white tilted orbit ring; later phases re-show what they need.
@@ -594,7 +610,7 @@ function getStateTint(s) {
   if (s === 'acting') return 0xffd700;
   if (s === 'speaking') return 0xffe9c0;          // gold-white core (spec §2.2)
   if (s === 'starting') return 0xfff4d6;
-  return 0xffffff;                                // idle / private_overlay
+  return palInt(PAL.core_tint);                   // idle / private_overlay (theme token)
 }
 
 /**
@@ -962,6 +978,39 @@ window.__orbMotionBlur = () => ({ ...blurState, reducedMotion: !!cfg.reducedMoti
 window.__orbSetMotionBlur = (m) => { motionBlurOverride = m || null; return window.__orbMotionBlur(); };
 window.__orbFrameTime = () => ({ ema: ft.ema, n: ft.n });
 window.__orbResetFrameTime = () => { ft.ema = 0; ft.n = 0; return true; };
+
+// --- §4 transparency probe --------------------------------------------------
+// `Page.captureScreenshot` returns an EMPTY image for a transparent page in
+// this environment (WSLg/ANGLE), so a screenshot-based edge check would pass
+// vacuously. Instead read the actual drawing buffer: re-composite the last
+// scene target through the edge mask, then gl.readPixels. The canvas alpha is
+// the orb's real premultiplied alpha — independent of the page backdrop.
+window.__orbEdgeStats = () => {
+  if (!renderer || !edgeRT || !maskScene) return null;
+  renderer.setRenderTarget(null);
+  renderer.render(maskScene, maskCam);   // fresh frame in the drawing buffer
+  const gl = renderer.getContext();
+  const w = gl.drawingBufferWidth, h = gl.drawingBufferHeight;
+  const px = new Uint8Array(w * h * 4);
+  gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, px);
+  const B = 2;
+  let maxBorderAlpha = 0, maxBorderRgb = 0, maxAlpha = 0, lit = 0;
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const i = (y * w + x) * 4;
+      const a = px[i + 3];
+      const rgb = Math.max(px[i], px[i + 1], px[i + 2]);
+      if (a > maxAlpha) maxAlpha = a;
+      if (a > 8) lit++;
+      if (x < B || x >= w - B || y < B || y >= h - B) {
+        if (a > maxBorderAlpha) maxBorderAlpha = a;
+        if (rgb > maxBorderRgb) maxBorderRgb = rgb;
+      }
+    }
+  }
+  return { w, h, maxBorderAlpha, maxBorderRgb, maxAlpha, litPixels: lit,
+           blurOn: !!(maskMat && maskMat.uniforms.uBlur.value > 0.001) };
+};
 
 
 // W2.1 trace probe: what the renderer RECEIVED + what it APPLIED (weights and

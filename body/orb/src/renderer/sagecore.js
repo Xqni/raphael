@@ -20,18 +20,18 @@ const TAU = 400; // blend time constant (ms) — inside the spec's 300-600ms win
 // are told apart by structure: paused is a MODE overlay (steel ring, lattice
 // still lit, 10% spin) while offline is a state with everything switched off.
 const S = {
-  idle:            { nebula: 0.55, speed: 0.85, poly: 1.00, node: 1.00, ring: 0.75, spark: 0.70, spin: 0.00013, bright: 1.00 },
-  listening:       { nebula: 0.80, speed: 1.35, poly: 1.10, node: 1.60, ring: 1.20, spark: 1.00, spin: 0.00017, bright: 1.45 },
-  thinking:        { nebula: 0.65, speed: 1.00, poly: 1.60, node: 1.80, ring: 0.95, spark: 1.20, spin: 0.00040, bright: 1.15 },
-  acting:          { nebula: 0.50, speed: 1.05, poly: 1.25, node: 1.35, ring: 0.90, spark: 0.80, spin: 0.00014, bright: 1.10 },
-  speaking:        { nebula: 0.60, speed: 1.20, poly: 1.00, node: 1.20, ring: 1.00, spark: 0.90, spin: 0.00016, bright: 1.05 },
-  confirm:         { nebula: 0.40, speed: 0.75, poly: 0.95, node: 1.10, ring: 0.70, spark: 0.50, spin: 0.00013, bright: 1.15 },
-  error:           { nebula: 0.35, speed: 0.50, poly: 0.80, node: 0.80, ring: 0.50, spark: 0.30, spin: 0.00012, bright: 1.45 },
-  starting:        { nebula: 0.35, speed: 0.50, poly: 0.70, node: 0.70, ring: 0.40, spark: 0.35, spin: 0.00006, bright: 0.72 },
-  reconnecting:    { nebula: 0.45, speed: 0.55, poly: 0.85, node: 0.90, ring: 0.55, spark: 0.45, spin: 0.00008, bright: 0.75 },
-  offline:         { nebula: 0.00, speed: 0.00, poly: 0.30, node: 0.30, ring: 0.00, spark: 0.00, spin: 0.000006, bright: 0.30 },
-  paused:          { nebula: 0.16, speed: 0.00, poly: 0.75, node: 0.70, ring: 0.40, spark: 0.10, spin: 0.000014, bright: 0.60 },
-  private_overlay: { nebula: 0.55, speed: 0.85, poly: 1.00, node: 1.00, ring: 0.75, spark: 0.70, spin: 0.00013, bright: 1.00 },
+  idle:            { nebula: 0.55, speed: 0.70, poly: 1.15, node: 1.30, ring: 0.80, spark: 0.70, spin: 0.00013, bright: 1.00, cage: 1.00 },
+  listening:       { nebula: 0.80, speed: 1.35, poly: 1.10, node: 1.60, ring: 1.20, spark: 1.00, spin: 0.00017, bright: 1.45, cage: 1.00 },
+  thinking:        { nebula: 0.65, speed: 1.00, poly: 1.60, node: 1.80, ring: 0.95, spark: 1.20, spin: 0.00040, bright: 1.15, cage: 0.15 },
+  acting:          { nebula: 0.50, speed: 1.05, poly: 1.25, node: 1.35, ring: 0.90, spark: 0.80, spin: 0.00014, bright: 1.10, cage: 1.00 },
+  speaking:        { nebula: 0.60, speed: 1.20, poly: 1.00, node: 1.20, ring: 1.00, spark: 0.30, spin: 0.00016, bright: 1.05, cage: 1.00 },
+  confirm:         { nebula: 0.40, speed: 0.75, poly: 0.95, node: 1.10, ring: 0.70, spark: 0.50, spin: 0.00013, bright: 1.15, cage: 1.00 },
+  error:           { nebula: 0.35, speed: 0.50, poly: 0.80, node: 0.80, ring: 0.50, spark: 0.30, spin: 0.00012, bright: 1.45, cage: 0.60 },
+  starting:        { nebula: 0.35, speed: 0.50, poly: 0.70, node: 0.70, ring: 0.40, spark: 0.35, spin: 0.00006, bright: 0.72, cage: 1.00 },
+  reconnecting:    { nebula: 0.45, speed: 0.55, poly: 0.85, node: 0.90, ring: 0.55, spark: 0.45, spin: 0.00008, bright: 0.75, cage: 0.80 },
+  offline:         { nebula: 0.00, speed: 0.00, poly: 0.30, node: 0.30, ring: 0.00, spark: 0.00, spin: 0.000006, bright: 0.30, cage: 0.25 },
+  paused:          { nebula: 0.16, speed: 0.00, poly: 0.75, node: 0.70, ring: 0.40, spark: 0.10, spin: 0.000014, bright: 0.60, cage: 0.50 },
+  private_overlay: { nebula: 0.55, speed: 0.70, poly: 1.15, node: 1.30, ring: 0.80, spark: 0.70, spin: 0.00013, bright: 1.00, cage: 1.00 },
 };
 const KEYS = Object.keys(S.idle);
 const FALLBACK = S.idle;
@@ -80,7 +80,8 @@ function makePaneTexture(THREE, kind) {
 }
 
 // --- Init -------------------------------------------------------------------
-export function initSageCore(THREE, group, scene) {
+export function initSageCore(THREE, group, scene, pal) {
+  pal = pal || { haze_lime: '#B8E02A', haze_teal: '#2DD4BF', haze_blue: '#3B82F6', haze_magenta: '#C026D3', ring_color: '#FFFFFF', accent: '#2DD4BF' };
   const L = { panes: [], ampS: 0 };
   L.w = Object.assign({}, S.idle);
 
@@ -90,10 +91,10 @@ export function initSageCore(THREE, group, scene) {
     fragmentShader: nebulaFrag,
     uniforms: {
       uTime: { value: 0 }, uOpacity: { value: S.idle.nebula },
-      cLime: { value: new THREE.Color(0xb8e02a) },
-      cTeal: { value: new THREE.Color(0x2dd4bf) },
-      cBlue: { value: new THREE.Color(0x3b82f6) },
-      cMagenta: { value: new THREE.Color(0xc026d3) },
+      cLime: { value: new THREE.Color(pal.haze_lime) },      // §5 tokens + §3.7 vibrance
+      cTeal: { value: new THREE.Color(pal.haze_teal) },
+      cBlue: { value: new THREE.Color(pal.haze_blue) },
+      cMagenta: { value: new THREE.Color(pal.haze_magenta) },
     },
     transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
   });
@@ -107,21 +108,21 @@ export function initSageCore(THREE, group, scene) {
   const texSoft = makePaneTexture(THREE, 'soft');
   const texCube = makePaneTexture(THREE, 'cube');
   const paneGeo = new THREE.PlaneGeometry(1, 1);
-  const N_PANES = 30;
+  const N_PANES = 18;   // §3.6: fewer, larger panes (was 30 small ones)
   for (let i = 0; i < N_PANES; i++) {
     const near = ((i * 7) % 10) / 9;                 // 0 far .. 1 near
-    const isCube = i % 5 === 0;
-    const soft = !isCube && near < 0.34;             // far ones blurred (DoF)
+    const isCube = i % 4 === 0;
+    const soft = !isCube && near < 0.30;             // far ones blurred (DoF)
     const mat = new THREE.MeshBasicMaterial({
       map: isCube ? texCube : (soft ? texSoft : texSharp),
       transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
-      opacity: 0.10 + near * 0.30, color: 0xdff2ff,
+      opacity: 0.12 + near * 0.32, color: 0xdff2ff,
     });
     const m = new THREE.Mesh(paneGeo, mat);
-    const s = 0.09 + near * 0.20;
+    const s = 0.13 + near * 0.30;   // §3.6: larger
     m.scale.set(s, s, 1);
     const ang = (i / N_PANES) * Math.PI * 2 + i * 0.618 * Math.PI * 2;
-    const rad = 0.55 + h01(i + 3) * 0.75;            // max ~1.30 (+half size < edge)
+    const rad = 0.50 + h01(i + 3) * 0.80;            // max ~1.30 (+half size < edge)
     const z = -0.35 + ((i * 13) % 9) / 8 * 0.75;
     m.position.set(Math.cos(ang) * rad, Math.sin(ang) * rad, z);
     m.rotation.z = (i % 4) * Math.PI * 4;            // axis-aligned squares
@@ -175,7 +176,7 @@ export function initSageCore(THREE, group, scene) {
     const k = ip[i].toFixed(3) + ',' + ip[i + 1].toFixed(3) + ',' + ip[i + 2].toFixed(3);
     if (!seen.has(k)) { seen.add(k); uniq.push([ip[i], ip[i + 1], ip[i + 2]]); }
   }
-  const SPOKES = 14;
+  const SPOKES = 10;   // §3.3: fewer stray spokes (wireframe reads cleaner)
   const lp = new Float32Array(ePos.length + SPOKES * 6);
   lp.set(ePos);
   const aT = new Float32Array((ePos.length / 3) + SPOKES * 2);
@@ -210,7 +211,8 @@ export function initSageCore(THREE, group, scene) {
 
   // Inner cage: the SAME polyhedron at smaller scale hugging the core ball
   // (user prescription: revolving polygon at smaller scale around the sphere).
-  L.cage = new THREE.LineSegments(polyGeo, L.polyMat);
+  L.cageMat = L.polyMat.clone();   // own material: per-state cage weight (§3.3)
+  L.cage = new THREE.LineSegments(polyGeo, L.cageMat);
   L.cage.scale.setScalar(0.56);           // 1.15 * 0.56 = 0.64 > ball 0.52
   L.cage.rotation.x = 0.30;
   group.add(L.cage);
@@ -239,7 +241,7 @@ export function initSageCore(THREE, group, scene) {
     vertexShader: nodeVert, fragmentShader: nodeFrag,
     uniforms: {
       uTime: { value: 0 }, uAlpha: { value: 1 },
-      uBoost: { value: 1 }, uSize: { value: 7.5 },
+      uBoost: { value: 1 }, uSize: { value: 8.5 },   // §3.6: slightly heavier node weight
       uTint: { value: new THREE.Color(0xffffff) },
     },
     transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
@@ -252,15 +254,18 @@ export function initSageCore(THREE, group, scene) {
   //    arc so it reads as passing BEHIND and IN FRONT of the core (spec §2.1.5)
   const ringBackMat = new THREE.ShaderMaterial({
     vertexShader: ringVert, fragmentShader: ringFrag,
-    uniforms: { uTime: { value: 0 }, uAlpha: { value: 0.35 }, uSeed: { value: 0.37 }, uTint: { value: new THREE.Color(0xffffff) } },
+    uniforms: { uTime: { value: 0 }, uAlpha: { value: 0.35 }, uSeed: { value: 0.37 }, uTint: { value: new THREE.Color(pal.ring_color) } }, // §5 token
     side: THREE.DoubleSide, transparent: true, depthWrite: false,
     blending: THREE.AdditiveBlending,
   });
   const ringFrontMat = ringBackMat.clone();
   ringFrontMat.uniforms.uSeed.value = 0.81;
   ringFrontMat.uniforms.uAlpha.value = 0.8;
-  const backGeo = new THREE.RingGeometry(1.24, 1.264, 72, 1, Math.PI, Math.PI);
-  const frontGeo = new THREE.RingGeometry(1.24, 1.274, 72, 1, 0.04, Math.PI - 0.08);
+  // §3.6 "slightly thicker line weights": these are real geometry (unlike the
+  // GL_LINES wireframe, whose width WebGL clamps to 1 device px), so the
+  // tilted orbit ring is the one line weight we can actually turn up.
+  const backGeo = new THREE.RingGeometry(1.238, 1.278, 72, 1, Math.PI, Math.PI);
+  const frontGeo = new THREE.RingGeometry(1.236, 1.298, 72, 1, 0.04, Math.PI - 0.08);
   L.ringBack = new THREE.Mesh(backGeo, ringBackMat);
   L.ringFront = new THREE.Mesh(frontGeo, ringFrontMat);
   const tilt = { x: 1.02, y: -0.10 };     // tilted until it crosses the core
@@ -281,7 +286,7 @@ export function initSageCore(THREE, group, scene) {
   L.privateMat = new THREE.ShaderMaterial({
     vertexShader: ringVert, fragmentShader: ringFrag,
     uniforms: { uTime: { value: 0 }, uAlpha: { value: 0 }, uSeed: { value: 0.63 },
-                uTint: { value: new THREE.Color(0x2dd4bf) } },
+                uTint: { value: new THREE.Color(pal.accent) } },   // §5 accent token
     side: THREE.DoubleSide, transparent: true, depthWrite: false,
     blending: THREE.AdditiveBlending,
   });
@@ -451,6 +456,13 @@ export function updateSageCore(L, ctx) {
     ? 0.3 + 0.18 * (0.5 + 0.5 * Math.sin(t * 7.3))
     : 0;
   L.polyMat.uniforms.uDrop.value = damp(L.polyMat.uniforms.uDrop.value || 0, dropTgt, TAU, dt);
+  // inner cage rides the same look but has its own weight (§3.3: fewer lines
+  // while thinking — it is the doubled-up cage that reads as "tangled yarn")
+  L.cageMat.uniforms.uTime.value = t;
+  L.cageMat.uniforms.uPulse.value = w.poly * (1 + errOn * 1.2);
+  L.cageMat.uniforms.uDrop.value = L.polyMat.uniforms.uDrop.value;
+  L.cageMat.uniforms.uAlpha.value = w.poly * w.cage * (0.9 + errOn * 0.7);
+  L.cageMat.uniforms.uTint.value = L.polyMat.uniforms.uTint.value;
   // state tint damped onto the cages + node dots (error = red cages/nodes)
   if (ctx.tint !== undefined) {
     L.tintTgt.setHex(state === 'error' ? 0xffffff : ctx.tint); // error: WHITE cages (red sun behind for contrast)
@@ -475,7 +487,7 @@ export function updateSageCore(L, ctx) {
   L.nodeMat.uniforms.uTime.value = t;
   L.nodeMat.uniforms.uAlpha.value = w.node;
   L.nodeMat.uniforms.uBoost.value = 1 + listening * L.ampS * 0.8;
-  L.nodeMat.uniforms.uSize.value = 7.5 + errOn * 5; // error: bigger glowing white dots
+  L.nodeMat.uniforms.uSize.value = 8.5 + errOn * 5 + (state === 'thinking' ? 2.0 : 0); // §3.3 thinking: bright node dots
   L.nodes.rotation.y = L.poly.rotation.y; // node dots track the lattice exactly
   L.nodes.rotation.x = L.poly.rotation.x;
 
@@ -520,7 +532,7 @@ export function updateSageCore(L, ctx) {
     p.m.position.y = Math.sin(a) * p.rad + Math.sin(t * 0.3 + p.phase) * 0.03 - gy * 2.2;
     let op = p.baseOp * (0.85 + 0.15 * Math.sin(t * (0.5 + i * 0.03) + p.phase));
     if (Math.sin(t * 0.9 + p.phase * 2.7) > 0.992) op *= 0.35; // rare flicker
-    p.mat.opacity = op * (0.4 + w.nebula * 0.9);
+    p.mat.opacity = op * (0.12 + w.nebula * 1.4);
   }
 
   // 6) core brightness/amp + state FX (warning pulse / reconnect flicker)

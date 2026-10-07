@@ -149,7 +149,8 @@ function mkLineSet(THREE, AM, segs, tint, pulse) {
   return { ls, mat };
 }
 
-export function initAnswerMode(THREE, group) {
+export function initAnswerMode(THREE, group, pal) {
+  const glyph0 = (pal && pal.glyph_color) || '#FFB000';
   const AM = { wFull: 0, wQuiet: 0, ampS: 0, root: new THREE.Group() };
   group.add(AM.root);
 
@@ -159,6 +160,7 @@ export function initAnswerMode(THREE, group) {
   // coplanar rings looked weird; bands must WRAP the sun/cage in 3D — tilt
   // makes them pass in front of AND behind the core, depth-tested).
   // Radii inside the edge-mask safe zone (world r < ~1.39).
+  const GOLD_TINTS = [glyph0, 0xff9a1f, 0xffe08a]; // spec §2.2 palette, ring0 = theme token
   const ringDefs = [
     { r: 0.79, tube: 0.085, row: 0, op: 0.85, dir: 0.00042, tx: 1.05, ty: 0.0 }, // wraps across the sun's face
     { r: 1.03, tube: 0.085, row: 1, op: 0.70, dir: -0.00031, tx: 0.50, ty: 0.30 },
@@ -170,7 +172,9 @@ export function initAnswerMode(THREE, group) {
       vertexShader: glyphVert, fragmentShader: glyphFrag,
       uniforms: {
         uAtlas: { value: atlas },
-        uAlpha: { value: 0 }, uTint: { value: new THREE.Color(0xffe08a) },
+        // §3.4 saturated gold palette: #FFB000 / #FF9A1F / highlight #FFE08A
+        uAlpha: { value: 0 },
+        uTint: { value: new THREE.Color(GOLD_TINTS[d.row % GOLD_TINTS.length]) },
         uCellX: { value: 40 }, uRow: { value: d.row }, uRows: { value: 3 },
       },
       transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
@@ -320,7 +324,7 @@ export function initAnswerMode(THREE, group) {
                  cx + Math.cos(b1) * 0.014, cy + Math.sin(b1) * 0.014, 0);
     }
   }
-  AM.ticks = mkLineSet(THREE, AM, tSegs, 0xffe08a, 0.5);
+  AM.ticks = mkLineSet(THREE, AM, tSegs, 0xff9a1f, 0.5); // deep-orange, spec §2.2
 
   // --- 6) DRIFTING PETAL/FEATHER FLAKES (texture once)
   const petalTex = makePetalTexture(THREE);

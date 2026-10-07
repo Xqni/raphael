@@ -50,11 +50,11 @@ export function initDataRings(THREE, group) {
   const DR = { w: 0, root: new THREE.Group(), rings: [], barsDir: -0.00012 };
   group.add(DR.root);
 
-  const N_RINGS = 6;
+  const N_RINGS = 4;   // §3.3: fewer, cleaner rings (6 read as clutter)
   for (let i = 0; i < N_RINGS; i++) {
     const hue = i / N_RINGS;                       // prismatic sweep
     const color = new THREE.Color().setHSL(hue, 0.95, 0.6);
-    const r = 0.86 + i * 0.105;                    // 0.86 .. 1.385 (edge-safe)
+    const r = 0.80 + i * 0.145;                    // 0.80 .. 1.235 (inside content_px)
     const segs = [];
 
     // dashes along the circle with deterministic gaps
@@ -86,7 +86,7 @@ export function initDataRings(THREE, group) {
     DR.rings.push({
       ls: line.ls, mat: line.mat,
       dir: (i % 2 ? -1 : 1) * (0.00016 + i * 0.00007), // own speed + direction
-      base: 0.85 - i * 0.05,
+      base: 1.25 - i * 0.07,   // §3.3: fewer rings, each carrying more weight
     });
   }
 
@@ -96,7 +96,7 @@ export function initDataRings(THREE, group) {
   for (let b = 0; b < BAR; b++) {
     if (((b * 5 + 1) % 7) < 2) continue;
     const a = (b / BAR) * Math.PI * 2;
-    const rr = 1.45;
+    const rr = 1.30;   // §3.6: keep the outermost layer inside 90% of content_px
     const halfLen = 0.017 + (((b * 13) % 5) / 5) * 0.028;
     const tx = -Math.sin(a), ty = Math.cos(a);   // tangent dir
     const rx = Math.cos(a), ry = Math.sin(a);    // radial dir
@@ -140,5 +140,5 @@ export function updateDataRings(DR, ctx) {
   }
   DR.bars.ls.rotation.z += DR.barsDir * spinDt;
   DR.bars.mat.uniforms.uTime.value = t;
-  DR.bars.mat.uniforms.uAlpha.value = 0.8 * DR.w * boost;
+  DR.bars.mat.uniforms.uAlpha.value = 1.05 * DR.w * boost;
 }

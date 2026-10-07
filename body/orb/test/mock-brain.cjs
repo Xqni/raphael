@@ -36,6 +36,7 @@ class MockBrain {
     this.closed = false;
     this.rejectAuth = false;   // set by the trace harness to reach 'offline'
     this.refuseConnections = false; // set by the trace harness to hold 'reconnecting'
+    this._seq = 0;             // monotonic `speak` sequence counter
     this._t0 = Date.now();
     this.server = http.createServer((req, res) => {
       res.writeHead(404); res.end('mock-brain');
@@ -156,18 +157,28 @@ class MockBrain {
 
   /** A short deterministic amplitude envelope (renderer smooths 30/150 ms). */
   speakBurst(peak = 0.8) {
-    const seqs = [];
-    let seq = (this._seq = (this._seq || 0));
-    const self = this;
     const pts = [0.1, 0.45, peak, 0.7, 0.9, 0.5, 0.62, 0.7]; // ends mid-high -> a settled, screenshot-stable amplitude
+    const self = this;
     pts.forEach((a, i) => {
       setTimeout(() => {
         if (self.closed) return;
-        self.broadcast({ type: 'speak', v: 1, event: 'chunk', seq: ++seq, amplitude: a, pitch_hz: 180 + a * 80, cached: false });
+        // increment at SEND time so `seq` is strictly monotonic against
+        // speakAt() — reserving it up front made later frames look stale and
+        // the renderer silently dropped them (seq <= lastSpeakSeq).
+        const s = ++self._seq;
+        self.broadcast({ type: 'speak', v: 1, event: 'chunk', seq: s,
+                         amplitude: a, pitch_hz: 180 + a * 80, cached: false });
       }, i * 90);
     });
-    this._seq = seq;
     return { type: 'speak', _burst: pts.length };
+  }
+
+  /** Drive TTS amplitude directly (§4: speaking filmstrip at low/high amp). */
+  speakAt(a, pitch) {
+    const s = ++this._seq;
+    this.broadcast({ type: 'speak', v: 1, event: 'chunk', seq: s,
+                     amplitude: a, pitch_hz: pitch || (170 + a * 60), cached: false });
+    return { type: 'speak', amplitude: a, seq: s };
   }
 
   async listen() {

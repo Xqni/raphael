@@ -95,9 +95,10 @@ Contract notes for whoever implements it later:
   the same stage value is a no-op).
 - It is NOT in `orb_state`'s required set, so no brain-core change is needed
   before the design work starts.
-- Nothing in `body/orb` reads it today. `ws-status.js` forwards unknown
-  `orb_state` fields untouched, so adding the renderer side later is a
-  renderer-only change.
+- Nothing in `body/orb` **renders** it today. `ws-status.js` receives it on the
+  `orb_state` frame and exposes it as `evolveStage`, and the renderer passes it
+  through into its state object untouched — so wiring the visual later is a
+  renderer-only change with no protocol or IPC edit.
 
 **Do not build the flourish now** (task §5, explicit).
 

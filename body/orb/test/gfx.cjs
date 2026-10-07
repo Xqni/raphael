@@ -50,12 +50,14 @@ function polyline(img, pts, c) {
   for (let i = 1; i < pts.length; i++) line(img, pts[i - 1][0], pts[i - 1][1], pts[i][0], pts[i][1], c);
 }
 
-/** Alpha-blit a decoded image (e.g. a screenshot) into another at (x,y). */
+/** Alpha-blit a decoded image (e.g. a screenshot) into another at (x,y).
+ *  NOTE the alpha convention: px() takes c[3] as 0-255 like the other channels;
+ *  passing a 0-1 fraction here made every filmstrip cell ~99.6% invisible. */
 function blit(dst, src, x0, y0) {
   for (let y = 0; y < src.height; y++) {
     for (let x = 0; x < src.width; x++) {
       const si = (y * src.width + x) * 4;
-      const a = src.data[si + 3] / 255;
+      const a = src.data[si + 3];
       if (a <= 0) continue;
       px(dst, x0 + x, y0 + y, [src.data[si], src.data[si + 1], src.data[si + 2], a]);
     }

@@ -47,6 +47,9 @@ class StatusWS extends EventEmitter {
       provider: null,
       model: null,
       amplitude: null,   // optional 0..1 on orb_state (listening reactivity)
+      // RESERVED (docs/orb/THEMES.md §5): forwarded but deliberately unused —
+      // a future evolution flourish must not need a protocol change.
+      evolveStage: null,
     };
   }
 
@@ -158,6 +161,8 @@ class StatusWS extends EventEmitter {
           ? msg.shape_hint : null;
         if (msg.task_kind) this.state.taskKind = msg.task_kind;
         this.state.amplitude = (typeof msg.amplitude === 'number') ? msg.amplitude : null;
+        // reserved + forwarded, never acted on (THEMES.md §5)
+        this.state.evolveStage = ('evolve_stage' in msg) ? msg.evolve_stage : null;
         this.updateOrbState(this.state.orbState);
         this.emit('state', this.state);
         break;

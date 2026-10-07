@@ -37,6 +37,10 @@ class Config {
       accent: '#2DD4BF',
     };
     this.loadFromRootConfig();
+    // Test hook only: lets the size-sweep harness (test/orb-size.cjs) render
+    // at 160 / 200 / 280 px without editing config.yaml. Unset = no change.
+    const envSize = parseInt(process.env.RAPHAEL_ORB_SIZE_PX || '', 10);
+    if (Number.isFinite(envSize) && envSize >= 160 && envSize <= 600) this.sizePx = envSize;
   }
 
   /**

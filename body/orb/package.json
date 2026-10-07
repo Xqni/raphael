@@ -12,7 +12,8 @@
     "test:unit": "node tests/state-machine.test.js",
     "orb:demo": "node test/run-demo.cjs",
     "orb:trace": "node test/orb-trace.cjs",
-    "orb:diff": "node test/orb-diff.cjs"
+    "orb:diff": "node test/orb-diff.cjs",
+    "orb:size": "node test/orb-size.cjs"
   },
   "dependencies": {
     "electron": "30.5.1",
