@@ -41,6 +41,12 @@ def test_kind1_mic_pcm_accumulates_and_transcribes(client, qa_token):
                   and m.get('audio') == 'start', timeout=5)
         body.send_bytes(_pcm_frame(1, 0, payload_a))
         body.send_bytes(_pcm_frame(1, 1, payload_b))
+        # ORDER-FLAKE QUARANTINE (2026-10-07): the mocked transcribe runs on a
+        # worker thread — a LATE to_thread from a previous test could append
+        # into STT_CALLS after install() cleared it, breaking a [-1] index
+        # assertion in full-suite order. Drain, then match by PAYLOAD (this
+        # test's byte pattern is unique), never by position.
+        voicespy.STT_CALLS.clear()
         body.send({'type': 'audio_end', 'v': 1})
         # both the ack and the broadcast stt_final must arrive (order is not
         # contract-guaranteed: broadcast is scheduled, ack is awaited)
@@ -61,7 +67,10 @@ def test_kind1_mic_pcm_accumulates_and_transcribes(client, qa_token):
         assert stt[0]['text'] == voicespy.CANNED_TRANSCRIPT
         assert any(a.get('audio') == 'end' for a in acks), seen
         assert voicespy.STT_CALLS, 'STT was never invoked'
-        assert voicespy.STT_CALLS[-1] == payload_a + payload_b
+        want = payload_a + payload_b
+        assert want in voicespy.STT_CALLS, \
+            f'exact PCM payload not transcribed (order-independent match): ' \
+            f'{[len(p) for p in voicespy.STT_CALLS]}'
 
 
 def test_bad_binary_magic_error_and_close(client, qa_token):

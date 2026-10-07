@@ -107,6 +107,9 @@ class MockOpenAI:
             'method': method, 'path': path,
             'auth': bool(headers.get('Authorization')
                          or headers.get('authorization')),
+            # case-insensitive copy — header assertions (e.g. Bug A's
+            # x-opencode-session) must not depend on casing
+            'headers': {str(k).lower(): v for k, v in headers.items()},
             'ts': time.time(),
         }
         try:
