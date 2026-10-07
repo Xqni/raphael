@@ -678,8 +678,10 @@ class WsHub:
         # Clear buffer for new utterance
         s.audio_buf = bytearray()
 
-        # INTERFACES §e: audio_start(reason wake|ptt) -> orb `listening`
-        # (takes precedence over any in-flight speaking).
+        # INTERFACES §e: audio_start(reason wake|ptt) -> orb `listening`.
+        # Bug E hold (merged 41bab93): orbstate.emit() guards this — while a
+        # speak pipeline is active it broadcasts `speaking` instead, so the
+        # always-listen mic opening mid-utterance never flickers the orb.
         from . import orbstate
         orbstate.listening_on()
         orbstate.emit('listening', hub=self, engine=self.engine)
