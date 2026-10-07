@@ -6,6 +6,7 @@ Handler signature: callable(text, ctx) -> IntentResult | None.
 `register_intent(keyword, handler)` and `match_intent(command)` keep their
 phase-1 signatures for external callers; `run_intent` is the loop entry.
 """
+import re
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, Optional
 
@@ -99,6 +100,17 @@ def register_builtin_intents():
         arg = text[5:].strip()  # after 'open '
         if not arg:
             return None
+        # Wave-2 Bug B (router request APPROVED 2026-10-06): "open youtube and
+        # search lo-fi" is a YOUTUBE SEARCH, not an app launch — open_app with
+        # the whole phrase spawned a blank cmd window and failed live.
+        m = re.match(r'^(?P<site>.+?)\s+and\s+search\s+(?P<query>.+)$', arg,
+                     re.IGNORECASE)
+        if m and 'youtube' in m.group('site').lower():
+            query = m.group('query').strip()
+            return IntentResult(text=f'Searching YouTube for {query}…',
+                                tool='search_youtube',
+                                tool_args={'query': query},
+                                task_kind='web')
         if ' ' not in arg and '.' in arg:
             url = arg if '://' in arg else 'https://' + arg
             return IntentResult(text=f'Opening {arg}…',
@@ -107,6 +119,17 @@ def register_builtin_intents():
         return IntentResult(text=f'Opening {arg}…',
                             tool='open_app', tool_args={'name': arg},
                             task_kind='system')
+
+    def _search(text, ctx):
+        # NEW intent — the fastpath docstring already promised YouTube search
+        q = re.sub(r'^(?:search(?:\s+for)?|youtube\s+search)\s+', '',
+                   text.strip(), flags=re.IGNORECASE)
+        q = re.sub(r'\s+on\s+youtube\.?$', '', q, flags=re.IGNORECASE).strip()
+        if not q:
+            return None
+        return IntentResult(text=f'Searching YouTube for {q}…',
+                            tool='search_youtube', tool_args={'query': q},
+                            task_kind='web')
 
     def _screenshot(text, ctx):
         return IntentResult(text='Taking a screenshot…', tool='screenshot',
@@ -139,6 +162,11 @@ def register_builtin_intents():
         register_intent(_kw, _now)
 
     register_intent('open ', _open)
+    # Bug B (router request APPROVED): explicit search intents — the
+    # docstring always promised YouTube search on the fast path.
+    register_intent('search ', _search)
+    register_intent('search for ', _search)
+    register_intent('youtube ', _search)
     register_intent('screenshot', _screenshot)
     register_intent('take a screenshot', _screenshot)
     # NOTE: wake-extracted commands are punctuation-NORMALIZED — both forms

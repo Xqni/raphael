@@ -32,8 +32,12 @@ Merge-order position: see docs/WAVES.md
 
 Wave 2 is MERGED; live gate was 3/5 — evidence + bug dossiers: `docs/BUGS-WAVE2.md`. SPEED MANDATE: cloud is paid now — near-instant responses, fast model defaults (AGENT_RULES Rule 15, WAVES.md constraints).
 
-- [P0-BugE] No `speaking → listening → speaking` flicker between sentence chunks: `orbstate.derive_state()` must hold `speaking` until the whole utterance ends (evidence: docs/BUGS-WAVE2.md Bug E). Unit test the exact frame sequence.
-- [SPEED] Near-instant command→ack→first-subtitle on the fast path (Rule 15) — trim any gratuitous waits you own.
+- [P0-BugE] No `speaking → listening → speaking` flicker between sentence chunks: `orbstate.derive_state()` must hold `speaking` until the whole utterance ends (evidence: docs/BUGS-WAVE2.md Bug E). Unit test the exact frame sequence. **[x] DONE 2026-10-07** — precedence speaking > listening in `derive_state()` + `emit('listening')` guarded while a speak pipeline is active; barge-in (speak_end) still reaches listening; confirm still beats speaking; exact-sequence unit tests in `brain/tests/test_orb_states.py`.
+- [SPEED] Near-instant command→ack→first-subtitle on the fast path (Rule 15) — trim any gratuitous waits you own. **[x] AUDITED 2026-10-07** — no gratuitous waits in brain-core: ack is a sync frame, queue put→get wakes immediately (the 0.5 s in `_worker_loop` is an empty-queue poll cap, not a delay), fastpath classify is sync regex, subtitle broadcast is sync; every timeout in loop/confirm/llm/ws is a failure deadline, never an initial delay. Documented in status.
+
+## Wave 3 — approved requests (both router)
+- [x] `fastpath open+search mapping` (Bug B router half, APPROVED): "open youtube and search lo-fi" → `search_youtube{query}`, new `search `/`search for `/`youtube ` intents, all existing open branches unchanged → `brain/fastpath.py` + `brain/tests/test_fastpath_open_search.py`.
+- [x] `surface-usage-in-status` (APPROVED): additive `router` key on `GET /status` via lazy `brain.router.usage_status()` — `{}` until router's branch merges, `{'error': 'unavailable'}` on failure, endpoint never goes down → `brain/app.py` + test.
 
 ## Later waves
 - Per docs/WAVES.md — do not start early (AGENT_RULES §11).

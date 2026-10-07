@@ -1,8 +1,14 @@
 # brain-core — status
 
-Updated: 2026-10-06 (coord round 3: 5-task batch resolved — 1 skipped (on main), 4 implemented; re-posting wave_done)
+Updated: 2026-10-07 (Wave 3 open: P0 Bug E + both approved router requests done — next: wave goals)
 
-## Done
+## Done (Wave 3, 2026-10-07)
+- **P0 Bug E — speaking→listening flicker KILLED** (`brain/orbstate.py`): precedence reordered (booting > confirm > **speaking > listening** > acting > thinking > error > idle) so an always-listen `audio_start` between sentence chunks can never flip the orb to `listening` mid-utterance; `emit('listening')` is additionally guarded while a speak pipeline is active (the ws audio_start path). Barge-in still reaches `listening` (hold is keyed on the speak pipeline, not the mic flag) and `confirm` still beats `speaking`. Exact renderer-sequence unit tests: `test_bug_e_no_flicker_speaking_holds_over_listening` (idle→speaking→speaking→speaking→listening→idle), `test_bug_e_barge_in_still_reaches_listening`, `test_bug_e_confirm_still_beats_speaking`.
+- **Approved request 1/2 — fastpath open+search mapping (Bug B router half)**: exact approved patch in `brain/fastpath.py` — `open <site> and search <q>` (youtube) → `search_youtube{query}` instead of the whole-phrase `open_app` that spawned the blank cmd window live; new `search `/`search for `/`youtube ` intents (query extraction strips `on youtube`); every pre-existing branch (`open chrome`→open_app, `open youtube.com`→launch_url, `open settings`→open_app, non-youtube "and search") asserted unchanged in `brain/tests/test_fastpath_open_search.py`. pc-control owns the body `open_app` half independently.
+- **Approved request 2/2 — surface-usage-in-status**: `GET /status` gains the additive `router` key from `brain.router.usage_status()` — lazy import (`{}` until router's `agent/router` branch merges, then it fills in automatically), `{'error': 'unavailable'}` if it raises; `/status` itself never fails (no network, no keys in that call). Tests cover all three states.
+- **[SPEED] Rule 15 audit — no gratuitous waits owned by brain-core**: ack = sync frame; job put→get wakes immediately (the `0.5` in `_worker_loop` is an empty-queue poll cap, not an insertion delay); fastpath classify = sync regex; subtitle broadcast = sync (speech is a scheduled task). Every timeout in loop/confirm/llm/ws is a failure deadline, never an initial delay. No code change needed; documented so it isn't re-audited blindly.
+
+## Done (Wave 2 rounds 1–3, merged)
 - (bootstrap) shared contracts read (AGENT_RULES/WAVES/OWNERSHIP/INTERFACES).
 - **Wave 2 task 0 — FOUNDATIONS (committed first, other lanes unblocked):**
   1. **Instance isolation** — `brain/config.py`: `RAPHAEL_INSTANCE` → port (§d table), CDP port, data-dir `~/.raphael/<instance>/`, body-lock/supervisor-mutex names, pidfile. Pidfile = `<data-dir>/brain.pid` (out of world-writable /tmp); instance `main` ALSO writes legacy `/tmp/raphael-brain.pid` so supervisor keeps working byte-identically → request `pidfile-out-of-tmp.md`.
@@ -46,6 +52,6 @@ Updated: 2026-10-06 (coord round 3: 5-task batch resolved — 1 skipped (on main
 - Nudge: PROTOCOL §7 act_req gained `list_windows`/`foreground_info`/`list_running_apps` — auto-covered once pc's tools register through discovery; no change needed from me.
 
 ## Test output (real runs only — never claim unrun tests)
-- `./brain/.venv/bin/python -m pytest -q brain/tests brain/router/tests brain/voice/tests brain/tools/pc/tests brain/tools/computer_use/tests` → **346 passed, 2 skipped** (round-3 new: confirm 18, tools 17, agent 19 — incl. voice_safe, SPECS, bind_loop, see_screen, b64-journal tests)
-- `cd tests && ./.venv/bin/python -m pytest -q .` → **10 passed**
-- Hermetic: no live providers, no real stack, **no Fish touched or spawned** (TTS mocked in `brain/tests/conftest.py`, path-scoped per main's 84e0154), no Ollama (AGENT_RULES §5/§7); router faked at the INTERFACES §a seam, STT faked at `voice.transcribe_result`.
+- `./brain/.venv/bin/python -m pytest -q brain/tests brain/router/tests brain/voice/tests brain/tools/pc/tests brain/tools/computer_use/tests` → **367 passed, 4 skipped** (wave-3 new: fastpath open/search 5, Bug E flicker 3, /status router block 1; round-3 was 346+2)
+- `cd tests && ./.venv/bin/python -m pytest -q .` → **187 passed, 9 xfailed, 2 xpassed** (xpasses = qa's ollama-gate xfails awaiting infra — unrelated to brain-core)
+- Hermetic: no live providers, no real stack, **no Fish touched or spawned** (path-scoped TTS mock), no Ollama (AGENT_RULES §5/§7); router faked at the INTERFACES §a seam, STT faked at `voice.transcribe_result`.
