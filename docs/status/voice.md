@@ -282,3 +282,26 @@ brain/.venv/bin/python brain/voice/scripts/prove_reference.py
 # expect exit 0 +: [tts] ref sent: path=.../assets/raphael_reference_jp.wav bytes=751686 sha1=f64bd512ea1e
 grep -m1 '\[tts\] ref sent' logs/*.log      # same line from a REAL live answer
 ```
+
+## Wave 3 pre-handoff verification (2026-10-07, post-rebase)
+
+Inbox [10]: live-proof request **ACCEPTED** — the integrator runs
+`prove_reference.py` at the next user-gated live bring-up and it is on the
+wave-3-close gate checklist (`docs/BUGS-WAVE2.md`). Lanes never spawn fish —
+the conductor confirmed the correct call.
+
+Rebased onto main (`43ea91b`, over brain-core's wave-3 merge) and re-verified
+ONE suite at a time (Rule 14):
+
+```
+$ brain/.venv/bin/python -m pytest brain/voice/tests -q
+93 passed, 2 skipped in 2.57s     # skips = fish down, deterministic, no spawn
+$ brain/.venv/bin/python -m pytest brain/tests -q
+152 passed, 1 warning in 11.45s, rc=0
+  (first attempt was killed by an external SIGKILL — no OOM, no parallel
+   suite found, no orphan left; immediate retry green, recorded honestly)
+orphans after runs: zero (ps: no tools.api_server)
+```
+
+Voice lane Wave 3 list = **DONE** (Bug D + spawn-kill-safe fixture + SPEED
+verified). Posting `wave_done`; queued at merge position 4 (after pc-control).
