@@ -215,6 +215,10 @@ def load_voice_config(config_path: Optional[Path] = None) -> VoiceConfig:
         stt_engine=str(section.get("stt_engine", "groq")),
         stt_model=str(section.get("stt_model", "small")),
         stt_device=str(section.get("stt_device", "auto")),
+        stt_language=(str(section.get("stt_language")).strip() or None)
+        if section.get("stt_language") else None,  # BUG-H fix: key was parsed
+        # into `known` but never wired — stt_language silently stayed None,
+        # whisper auto-detect mislabeled the wake word under the JP voice.
         tts_voice=str(section.get("tts_voice", "assets/raphael_reference_jp.wav")),
         tts_reference_required=_as_bool(section.get("tts_reference_required",
                                                      True), True),

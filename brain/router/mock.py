@@ -156,7 +156,8 @@ class MockProvider(Provider):
                           usage={"input": 8 + _tokens(question), "output": 8})
 
     async def transcribe(self, model: ModelInfo, audio: bytes, filename: str,
-                         mime: str, language: str | None, *,
+                         mime: str, language: str | None,
+                         prompt: str | None = None, *,
                          timeout: float) -> dict[str, Any]:
         self.calls.append({"kind": "transcribe", "model": model.id,
                            "bytes": len(audio), "language": language})

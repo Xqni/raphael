@@ -41,6 +41,7 @@ voice:
   stt_model: small                       # faster-whisper size (local profile)
   stt_device: auto
   tts_voice: assets/raphael_reference_jp.wav   # falls back to default voice + spoken notice if missing
+  stt_language: en   # pinned: auto-detect mislabels the wake word under the JP voice (live gate 2026-10-07: whisper returned hangul -> wake gate dropped)
   tts_sample_rate: 24000
   wake_word: raphael
   ptt_hotkey: "ctrl+alt+space"   # used only when always_listen: false

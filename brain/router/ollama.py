@@ -253,7 +253,8 @@ class OllamaLocalProvider(Provider):
         })
 
     async def transcribe(self, model: ModelInfo, audio: bytes, filename: str,
-                         mime: str, language: str | None, *,
+                         mime: str, language: str | None,
+                         prompt: str | None = None, *,
                          timeout: float) -> dict[str, Any]:
         # Local STT is faster-whisper — the voice lane registers it behind
         # Router.set_local_transcriber() (INTERFACES §a). Ollama has no STT

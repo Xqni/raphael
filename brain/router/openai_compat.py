@@ -301,13 +301,19 @@ class OpenAICompatProvider(Provider):
         return _parse_chat_response(data, headers)
 
     async def transcribe(self, model: ModelInfo, audio: bytes, filename: str,
-                         mime: str, language: str | None, *, timeout: float) -> dict[str, Any]:
+                         mime: str, language: str | None,
+                         prompt: str | None = None,
+                         *, timeout: float) -> dict[str, Any]:
         fields: dict[str, str] = {
             "model": model.id,
             "response_format": "json",
         }
         if language:
             fields["language"] = language
+        if prompt:
+            # Whisper prompt biasing (live gate 2026-10-07): steers decoding
+            # toward the wake word so accented/looped speech still transcribes it.
+            fields["prompt"] = prompt
         body, ctype = httputil.encode_multipart(
             fields, {"file": (filename, audio, mime)}
         )

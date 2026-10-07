@@ -89,12 +89,13 @@ class WakeGate:
         return i < len(words) and self._is_wake(words[i])
 
     def extract(self, transcript: str) -> str:
-        """Strip the wake word + filler prefix -> the command remainder."""
+        """Strip wake word(s) + filler prefix -> the command remainder.
+
+        Strips ALL leading wake/filler words (live gate 2026-10-07: a repeated
+        wake word left one copy in the command, which broke intent matching)."""
         words = normalize_text(transcript).split()
         i = 0
-        while i < len(words) and words[i] in self.FILLER:
-            i += 1
-        if i < len(words) and self._is_wake(words[i]):
+        while i < len(words) and (words[i] in self.FILLER or self._is_wake(words[i])):
             i += 1
         return " ".join(words[i:])
 

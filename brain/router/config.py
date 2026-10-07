@@ -240,6 +240,7 @@ class VoiceSettings:
     stt_engine: str = "groq"           # groq (cloud_temp) | local (profile local)
     stt_model: str = "small"           # faster-whisper size (local seam)
     stt_language: str = ""
+    wake_word: str = ""                # whisper prompt-bias hint (STT only)
 
 
 @dataclass(frozen=True)
@@ -382,6 +383,7 @@ def load_config(path: Path | None = None) -> RouterConfig:
         stt_engine=str(voice_data.get("stt_engine", "groq")),
         stt_model=str(voice_data.get("stt_model", "small")),
         stt_language=str(voice_data.get("stt_language", "") or ""),
+        wake_word=str(voice_data.get("wake_word", "") or ""),
     )
     return RouterConfig(
         providers=providers,

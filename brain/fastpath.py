@@ -100,6 +100,16 @@ def register_builtin_intents():
         arg = text[5:].strip()  # after 'open '
         if not arg:
             return None
+        # Voice commands carry politeness tails ("open notepad please") — strip
+        # trailing fillers so the app/site name stays clean (live gate 2026-10-07:
+        # 'notepad please' failed app resolution on the acoustic E2E).
+        _words = arg.split()
+        _tail_fillers = {"please", "pls", "thanks", "now", "quickly"}
+        while _words and _words[-1].lower().strip(".,!?") in _tail_fillers:
+            _words.pop()
+        arg = " ".join(_words)
+        if not arg:
+            return None
         # Wave-2 Bug B (router request APPROVED 2026-10-06): "open youtube and
         # search lo-fi" is a YOUTUBE SEARCH, not an app launch — open_app with
         # the whole phrase spawned a blank cmd window and failed live.

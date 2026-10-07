@@ -857,6 +857,8 @@ class Router:
                     lambda m, _p=provider: _p.transcribe(
                         m, audio, filename, mime,
                         language or self.config.voice.stt_language or None,
+                        prompt=(lambda ww: f"{ww}." if ww else None)(
+                            getattr(self.config.voice, "wake_word", None)),
                         timeout=self.config.providers.request_timeout_s,
                     ),
                     require_capability="stt",

@@ -171,6 +171,7 @@ class Provider:
         filename: str,
         mime: str,
         language: str | None,
+        prompt: str | None = None,
         *,
         timeout: float,
     ) -> dict[str, Any]:

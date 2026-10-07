@@ -23,6 +23,7 @@ VadSegmenter) — one segment = one transcribe call.
 """
 from __future__ import annotations
 
+import asyncio
 import time
 import wave
 from dataclasses import dataclass, field
@@ -320,6 +321,21 @@ class CloudTranscriber:
         self.calls += 1
         try:
             res = fn(audio, language=lang)
+            if asyncio.iscoroutine(res):
+                # BUG H fix (live gate 2026-10-07): Router.transcribe is async;
+                # this runs in brain/ws.py's asyncio.to_thread worker (no
+                # running loop in this thread) — previously the coroutine was
+                # never awaited, every wake transcript came back empty, and
+                # voice input silently died after audio_end. Bridge it here.
+                try:
+                    asyncio.get_running_loop()
+                except RuntimeError:
+                    res = asyncio.run(res)
+                else:
+                    raise VoiceSTTError(
+                        "E_INTERNAL",
+                        "async transcribe reached a running-loop thread — "
+                        "callers must run SttEngine.transcribe via to_thread")
         except VoiceSTTError:
             raise
         except Exception as e:  # noqa: BLE001 — router error types vary by lane
