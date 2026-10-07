@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# raphael — CLI entry point (WSL side). Thin wrapper; all logic lives in
+# scripts/raphael_cli.py (stdlib-only Python). Windows uses scripts/raphael.cmd.
+#
+# Usage: scripts/raphael status|start|stop|restart|pause|resume|private on|off|
+#                   logs [name] [-n N] [-f]|jobs [id]|cancel <id>|say <text>|
+#                   selftest
+# Instance/port derive from RAPHAEL_INSTANCE/RAPHAEL_PORT (INTERFACES §d).
+set -euo pipefail
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+if [ -n "${RAPHAEL_PY:-}" ]; then
+    PY="$RAPHAEL_PY"
+elif command -v python3 >/dev/null 2>&1; then
+    PY=python3
+elif command -v python >/dev/null 2>&1; then
+    PY=python
+else
+    echo "raphael: no python3/python on PATH (set RAPHAEL_PY to an interpreter)" >&2
+    exit 127
+fi
+exec "$PY" "$ROOT/scripts/raphael_cli.py" "$@"

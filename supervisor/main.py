@@ -6,10 +6,21 @@ Python 3.10+ (Windows target); degrades to selfcheck/health-probe mode when run
 on Linux so the WSL side can exercise it in CI.
 
 Contract honored (docs/PROTOCOL.md):
-  * Brain health  = HTTP GET http://127.0.0.1:8765/health  (port 8765)
+  * Brain health  = HTTP GET http://127.0.0.1:<port>/health  (main port 8765)
   * Auth header   = X-Raphael-Token: <token>   (Authorization: Bearer also valid)
   * Token file    = %APPDATA%\\Raphael\\token   (WSL copy: ~/.raphael/token)
   * The token VALUE is never logged — only its path.
+
+Instance isolation (docs/INTERFACES.md §d): every port/mutex/pidfile/lock/log
+name derives from RAPHAEL_INSTANCE via supervisor/instance.py — unset = main
+= historical defaults. Brain pidfile: ~/.raphael[/instance]/brain.pid (proper
+per-user location), legacy /tmp/raphael-brain*.pid kept as fallback while
+brain/app.py still writes it.
+
+Profile awareness: under `cloud_temp` this supervisor never starts Ollama,
+never pulls or warms local models — it still brings up Orb, Body, Brain and
+the keep-alive/relay (Fish TTS is spawned by the Brain's voice layer, never
+by the supervisor — INTERFACES §d forbids Fish spawns here).
 
 Usage:
   python supervisor/main.py                # full run (Task Scheduler entry point)
@@ -30,14 +41,26 @@ import json
 import os
 import shlex
 import shutil
+import signal
+import socket
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 import urllib.error
 import urllib.request
 from datetime import datetime
 from pathlib import Path
+
+# supervisor/instance.py — RAPHAEL_INSTANCE derivation (INTERFACES §d),
+# shared with the `raphael` CLI. Dual import: this file runs both as a
+# plain script (Task Scheduler: pythonw supervisor/main.py -> module
+# `instance` on sys.path) and as a package member (`import supervisor.main`).
+try:
+    from . import instance as inst_mod
+except ImportError:                     # pragma: no cover - script mode
+    import instance as inst_mod
 
 # pythonw.exe host (scheduled task) has no console: sys.stdout/sys.stderr
 # are None and print()/callback error reporting would crash. Route to devnull.
@@ -68,6 +91,7 @@ DEFAULT_CONFIG = {
         # body_cmd / orb_dir / distro / brain_unit are the four keys the
         # supervisor contract requires from config.yaml; everything has a default.
         "body_cmd": "python body/win/main.py",
+        "body_venv": "",            # optional override of the pinned Body venv
         "orb_dir": "body/orb",
         "distro": "Ubuntu-26.04",
         "wsl_user": "dami",
@@ -102,11 +126,15 @@ _OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}))
 # Logging with size-cap rotation
 # --------------------------------------------------------------------------
 class Logger:
-    """`[ts] LEVEL msg` lines -> logs/supervisor.log (5 MB cap, 3 backups)."""
+    """`[ts] LEVEL msg` lines -> logs/supervisor[_<instance>].log (5 MB, 3 backups)."""
 
-    def __init__(self, path=LOG_PATH, max_bytes=LOG_MAX_BYTES,
+    def __init__(self, path=None, max_bytes=LOG_MAX_BYTES,
                  backups=LOG_BACKUPS, echo=True):
-        self.path = Path(path)
+        # Default log file derives from RAPHAEL_INSTANCE (main keeps
+        # logs/supervisor.log byte for byte; lanes get logs/supervisor_<x>.log)
+        # so parallel instances never fight over one rotating file.
+        self.path = Path(path) if path is not None else inst_mod.log_path(
+            "supervisor")
         self.max_bytes = int(max_bytes)
         self.backups = int(backups)
         self.echo = bool(echo)
@@ -264,13 +292,26 @@ def parse_config_text(text):
     return root
 
 
+def _deep_copy(value):
+    """Structural copy for config trees (dicts/lists copied, scalars kept)."""
+    if isinstance(value, dict):
+        return {k: _deep_copy(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_deep_copy(v) for v in value]
+    return value
+
+
 def _deep_merge(base, over):
-    out = dict(base)
+    # Deep-copy base first: `out = dict(base)` left NESTED defaults (e.g.
+    # cfg["paths"]) SHARED with DEFAULT_CONFIG, so a single mutation
+    # (instance port override, a test tweak) silently corrupted every later
+    # load_config() in the same process. Found by supervisor instance tests.
+    out = _deep_copy(base)
     for key, val in over.items():
         if isinstance(val, dict) and isinstance(out.get(key), dict):
             out[key] = _deep_merge(out[key], val)
         else:
-            out[key] = val
+            out[key] = _deep_copy(val)
     return out
 
 
@@ -286,8 +327,8 @@ def _normalize(cfg, parsed):
     alt = parsed.get("supervisor") if isinstance(parsed.get("supervisor"),
                                                  dict) else {}
     for key in ("distro", "wsl_user", "brain_unit", "ollama_unit",
-                "body_cmd", "orb_dir", "token_win", "wsl_sudo",
-                "wsl_keepalive"):
+                "body_cmd", "body_venv", "orb_dir", "token_win",
+                "wsl_sudo", "wsl_keepalive"):
         if paths.get(key) in (None, "") and alt.get(key) not in (None, ""):
             paths[key] = alt[key]
     if "health_interval" not in alt and "health_interval_s" in alt:
@@ -311,17 +352,57 @@ def _normalize(cfg, parsed):
     return cfg
 
 
+def _apply_instance(cfg, note):
+    """INTERFACES §d: derive instance values into cfg (port + health URL).
+
+    main + no RAPHAEL_PORT = today's exact behavior (config-derived values
+    untouched). Any other instance — or an explicit RAPHAEL_PORT — overrides
+    paths.brain_port and supervisor.health_url from the derivation table.
+    """
+    raw = str(os.environ.get("RAPHAEL_INSTANCE", "")).strip()
+    inst = inst_mod.instance_name()
+    cfg["instance"] = inst
+    parts = [note]
+    if raw and raw != inst:
+        parts.append("RAPHAEL_INSTANCE sanitized to %s" % inst)
+    env_port = os.environ.get("RAPHAEL_PORT")
+    if inst != "main" or env_port:
+        port = inst_mod.instance_port(
+            inst, default=cfg["paths"].get("brain_port"))
+        cfg["paths"]["brain_port"] = port
+        cfg["supervisor"]["health_url"] = inst_mod.health_url(port)
+        parts.append("instance=%s port=%d mutex=%s"
+                     % (inst, port, inst_mod.mutex_name(inst)))
+        if not inst_mod.known_instance(inst) and not env_port:
+            parts.append("WARN unknown instance — config port kept; set "
+                         "RAPHAEL_PORT explicitly for real isolation")
+    else:
+        parts.append("instance=main port=%s" % cfg["paths"].get("brain_port"))
+    return cfg, "; ".join(parts)
+
+
 def load_config(path=CONFIG_PATH):
     """Return (cfg, note). Missing file -> defaults (never an error)."""
     path = Path(path)
     if not path.is_file():
-        return copy.deepcopy(DEFAULT_CONFIG), (
-            "config.yaml not found at %s — using built-in defaults" % path)
+        return _apply_instance(copy.deepcopy(DEFAULT_CONFIG),
+                               "config.yaml not found at %s — using "
+                               "built-in defaults" % path)
     text = path.read_text(encoding="utf-8", errors="replace")
     parsed = parse_config_text(text)
     cfg = _deep_merge(DEFAULT_CONFIG, parsed)
     _normalize(cfg, parsed)
-    return cfg, "config.yaml loaded from %s" % path
+    return _apply_instance(cfg, "config.yaml loaded from %s" % path)
+
+
+def active_profile(cfg):
+    """Active profile (INTERFACES §c): RAPHAEL_PROFILE wins -> config
+    top-level `profile:` -> default cloud_temp."""
+    env = os.environ.get("RAPHAEL_PROFILE")
+    if env and env.strip():
+        return env.strip()
+    profile = cfg.get("profile")
+    return str(profile) if profile else "cloud_temp"
 
 
 # --------------------------------------------------------------------------
@@ -498,23 +579,72 @@ def systemctl_action(cfg, log, verb, unit, timeout=60):
     return False
 
 
+def _kill_brain_shell(cfg):
+    """POSIX sh: cmdline-verified SIGTERM of the process-mode brain.
+
+    Reads every path from instance.wsl_pidfiles() — the derived
+    `<data-dir>/brain.pid` first (single source per INTERFACES §d =
+    brain/config.py::pidfile()), plus the legacy /tmp path for `main`
+    only (dual-write compat; lanes never touch /tmp). Never broad
+    `pkill -f`: the target's /proc cmdline must actually be uvicorn
+    brain.app before any kill. Exits 0 iff a kill was issued.
+    """
+    inst = cfg.get("instance") or inst_mod.instance_name()
+    pidfiles = " ".join(inst_mod.wsl_pidfiles(inst))   # tilde-safe: sanitized
+    return (
+        'killed=""; '
+        'for f in %s; do '
+        'p=$(cat "$f" 2>/dev/null); '
+        'if [ -n "$p" ] && [ -r "/proc/$p/cmdline" ] && '
+        'grep -qa "uvicorn brain.app" "/proc/$p/cmdline"; then '
+        'kill "$p" 2>/dev/null; killed=1; break; fi; done; '
+        'if [ -z "$killed" ]; then '
+        'for q in $(pgrep -f "uvicorn brain.app" 2>/dev/null); do '
+        'head=$(tr "\\0" " " < /proc/$q/cmdline 2>/dev/null | cut -d" " -f1); '
+        'case "$head" in brain/.venv/bin/python*) kill "$q"; killed=1;; esac; '
+        'done; fi; '
+        'rm -f %s; [ -n "$killed" ]' % (pidfiles, pidfiles)
+    )
+
+
+def stop_brain(cfg, log):
+    """Stop the brain (process mode: verified pidfile kill; systemd: stop).
+
+    Runs the kill shell through wsl.exe when available (Windows supervisor
+    / CLI), otherwise locally (the `raphael` CLI running inside WSL).
+    Returns True iff a stop/kill was actually issued.
+    """
+    if brain_run_mode(cfg) == "process":
+        shell = _kill_brain_shell(cfg)
+        # Windows supervisor/CLI: reach the brain through wsl.exe. Inside
+        # WSL (the raphael CLI's home turf) the brain is LOCAL — run the
+        # kill shell directly, never via a nested wsl.exe round-trip.
+        if IS_WINDOWS and find_wsl():
+            rc, out = wsl_run(cfg, "sh", "-c", shell, timeout=10)
+        else:
+            rc, out = run_cmd(["sh", "-c", shell], timeout=10)
+        killed = rc == 0
+        if killed:
+            log.info("brain process stopped (pidfile + cmdline verified)")
+        elif out:
+            log.info("brain process stop: nothing killable found (%s)"
+                     % _one_line(out))
+        else:
+            log.info("brain process stop: nothing killable found "
+                     "(pidfile empty or cmdline mismatch)")
+        return killed
+    unit = str(cfg["paths"]["brain_unit"])
+    log.info("stopping brain via wsl.exe: %s"
+             % " ".join(wsl_argv(cfg, "systemctl", "stop", unit,
+                                 sudo=bool(cfg["paths"].get("wsl_sudo")))))
+    return systemctl_action(cfg, log, "stop", unit)
+
+
 def restart_brain(cfg, log, procs=None):
     if brain_run_mode(cfg) == "process":
-        # Root-less recycle by pidfile, AFTER verifying the target's cmdline
-        # really is uvicorn (security fix: broad pkill -f false-positives).
+        # Root-less recycle: verified stop, then respawn (see _kill_brain_shell).
         log.info("brain process mode: recycling via pidfile + respawn")
-        wsl_run(cfg, "sh", "-c",
-                'p=$(cat /tmp/raphael-brain.pid 2>/dev/null); killed=""; '
-                'if [ -n "$p" ] && [ -r /proc/$p/cmdline ] && '
-                'grep -qa "uvicorn brain.app" /proc/$p/cmdline; then '
-                'kill $p; killed=1; fi; '
-                'if [ -z "$killed" ]; then '
-                'for q in $(pgrep -f "uvicorn brain.app" 2>/dev/null); do '
-                'head=$(tr "\\0" " " < /proc/$q/cmdline 2>/dev/null | cut -d" " -f1); '
-                'case "$head" in brain/.venv/bin/python*) kill $q; killed=1;; esac; '
-                'done; fi; '
-                'rm -f /tmp/raphael-brain.pid; [ -n "$killed" ]',
-                timeout=10)
+        stop_brain(cfg, log)
         time.sleep(1.5)
         if procs is not None:
             procs["brain"] = launch_brain(cfg, log)
@@ -533,6 +663,15 @@ def resolve_token(cfg):
     """Return (primary_path, token_or_None). Value is never logged."""
     paths = cfg["paths"]
     candidates = []
+    # Instance-specific token candidates first (best-effort: until brain-core
+    # derives tokens per instance, the shared main token below stays the
+    # effective fallback — a missing instance file must not break probes).
+    inst = cfg.get("instance") or inst_mod.instance_name()
+    if inst != "main":
+        appdata_i = os.environ.get("APPDATA")
+        if appdata_i:
+            candidates.append(Path(appdata_i) / "Raphael" / inst / "token")
+        candidates.append(Path.home() / ".raphael" / inst / "token")
     if paths.get("token_win"):
         candidates.append(_resolve(paths["token_win"]))
     appdata = os.environ.get("APPDATA")
@@ -604,11 +743,47 @@ class Backoff:
 # --------------------------------------------------------------------------
 # Phase 1 — orb + body launch (orb FIRST, per architecture)
 # --------------------------------------------------------------------------
-def _spawn(inner, cwd, log, label, log_file):
+def _child_env(env):
+    """Merge a constructed child env OVER os.environ — never a replace.
+
+    Approved pc-control request (2026-10-06): building an explicit env must
+    never UNSET anything, least of all RAPHAEL_INSTANCE — os.environ's value
+    survives unless the caller deliberately overrides it.
+    """
+    if not env:
+        return None
+    merged = dict(os.environ)
+    merged.update(env)
+    return merged
+
+
+def instance_env(cfg, extra=None):
+    """The instance triple every explicitly-constructed child env carries
+    (approved pc-control request, 2026-10-06): RAPHAEL_INSTANCE,
+    RAPHAEL_PORT, RAPHAEL_TOKEN_PATH — so a child derives the same instance
+    context without re-deriving it. Token path is the supervisor-resolved
+    primary (Windows-side for Windows children; WSL children get shell
+    exports instead — see launch_brain/launch_orb)."""
+    inst = cfg.get("instance") or inst_mod.instance_name()
+    port = int(cfg["paths"].get("brain_port") or 8765)
+    token_path, _token = resolve_token(cfg)
+    env = {
+        "RAPHAEL_INSTANCE": str(inst),
+        "RAPHAEL_PORT": str(port),
+        "RAPHAEL_TOKEN_PATH": str(token_path),
+    }
+    if extra:
+        env.update(extra)
+    return env
+
+
+def _spawn(inner, cwd, log, label, log_file, env=None):
     """Spawn a detached child. `inner` is an argv list or a raw command string.
 
     UNC cwd (repo lives on \\wsl.localhost\\...) is handled via `pushd`, since
-    cmd.exe refuses UNC working directories.
+    cmd.exe refuses UNC working directories. `env` (optional) is MERGED over
+    os.environ via _child_env — a wholesale replace is never done, so
+    RAPHAEL_INSTANCE and friends survive into every child.
     """
     if isinstance(inner, str):
         inner_str = inner
@@ -617,6 +792,7 @@ def _spawn(inner, cwd, log, label, log_file):
         as_list = list(inner)
         inner_str = (subprocess.list2cmdline(as_list) if IS_WINDOWS
                      else " ".join(shlex.quote(x) for x in as_list))
+    child_env = _child_env(env)
     cwd_str = str(cwd)
     out = None
     try:
@@ -651,7 +827,7 @@ def _spawn(inner, cwd, log, label, log_file):
                 target = ["sh", "-c", inner_str]
                 kwargs = {"shell": False, "cwd": cwd_str}
         kwargs.update(stdout=out, stderr=subprocess.STDOUT,
-                      stdin=subprocess.DEVNULL)
+                      stdin=subprocess.DEVNULL, env=child_env)
         proc = subprocess.Popen(target, **kwargs)
         log.info("%s launched pid=%d cmd=%s" % (label, proc.pid, inner_str))
         return proc
@@ -706,10 +882,24 @@ def launch_orb(cfg, log):
     # RAPHAEL_ORB_TOKEN: the orb refuses to connect without it (config.js
     # token=null -> silent offline ALL DAY in production). The $(cat ...) is
     # expanded INSIDE the inner shell — the token never appears in any argv.
+    # RAPHAEL_ORB_TOKEN: the orb refuses to connect without it (config.js
+    # token=null -> silent offline ALL DAY in production). The $(cat ...) is
+    # expanded INSIDE the inner shell — the token never appears in any argv.
+    # Instance triple (approved pc-control request): RAPHAEL_INSTANCE +
+    # RAPHAEL_PORT + RAPHAEL_TOKEN_PATH, the last picked by EXISTENCE
+    # (instance token first, shared main token fallback — WSL-side paths).
+    inst = cfg.get("instance") or inst_mod.instance_name()
+    port = int(cfg["paths"].get("brain_port") or 8765)
+    data_dir_home = inst_mod.wsl_data_dir(inst).replace("~", "$HOME", 1)
     inner = wsl_argv(cfg, "sh", "-lc",
-                     "export RAPHAEL_ORB_TOKEN=$(cat ~/.raphael/token 2>/dev/null); "
-                     "cd %s && exec %s" % (shlex.quote(wsl_dir), wsl_cmd))
-    return _spawn(inner, orb_dir, log, "orb", LOG_DIR / "orb.log")
+                     "export RAPHAEL_INSTANCE=%s RAPHAEL_PORT=%d; "
+                     "tp=%s/token; [ -f \"$tp\" ] || tp=$HOME/.raphael/token; "
+                     "export RAPHAEL_TOKEN_PATH=\"$tp\"; "
+                     "export RAPHAEL_ORB_TOKEN=$(cat \"$tp\" 2>/dev/null); "
+                     "cd %s && exec %s"
+                     % (shlex.quote(inst), port, data_dir_home,
+                        shlex.quote(wsl_dir), wsl_cmd))
+    return _spawn(inner, orb_dir, log, "orb", inst_mod.log_path("orb"))
 
 
 def _split_body_cmd(raw):
@@ -718,6 +908,46 @@ def _split_body_cmd(raw):
         return parts
     return [p[1:-1] if len(p) >= 2 and p[0] == p[-1] and p[0] in "\"'"
             else p for p in parts]
+
+
+def body_venv_python(cfg):
+    """Pinned Body venv interpreter, or None (system Python fallback).
+
+    System Python 3.10 is EOL around 2026-10 (Wave-2 task: the Body gets
+    its own pinned venv/Python). Lookup order: config paths.body_venv ->
+    %LOCALAPPDATA%\\Raphael\\body-venv (scripts/install-body-venv.ps1
+    default) -> repo .venv-body (dev). Missing -> caller degrades to its
+    own interpreter and selfcheck warns.
+    """
+    candidates = []
+    configured = str(cfg["paths"].get("body_venv") or "").strip()
+    if configured:
+        candidates.append(_resolve(configured))
+    localapp = os.environ.get("LOCALAPPDATA")
+    if localapp:
+        candidates.append(Path(localapp) / "Raphael" / "body-venv" /
+                          "Scripts" / "python.exe")
+    candidates.append(REPO_ROOT / ".venv-body" / "Scripts" / "python.exe")
+    for cand in candidates:
+        found = _venv_python_in(cand)
+        if found:
+            return found
+    return None
+
+
+def _venv_python_in(path):
+    """Accept either the interpreter file itself or a venv directory."""
+    try:
+        if path.is_file():
+            return path
+        if path.is_dir():
+            for sub in ("Scripts/python.exe", "bin/python", "bin/python3"):
+                cand = path / sub
+                if cand.is_file():
+                    return cand
+    except OSError:
+        pass
+    return None
 
 
 def body_script(cfg):
@@ -733,7 +963,10 @@ def body_script(cfg):
         return None, None, None, "paths.body_cmd empty"
     exe = parts[0]
     if exe.lower().replace(".exe", "") in ("python", "python3", "py"):
-        exe = sys.executable
+        # Pinned Body venv first; an EXPLICIT python path in body_cmd is
+        # respected as-is (deliberate pin by whoever wrote the config).
+        venv_py = body_venv_python(cfg)
+        exe = str(venv_py) if venv_py else sys.executable
     script_tok = None
     for tok in parts[1:]:
         if "/" in tok or "\\" in tok or tok.endswith(".py"):
@@ -771,16 +1004,41 @@ def launch_brain(cfg, log):
         log.warn("brain process mode: repo is not a WSL UNC path — cannot launch")
         return None
     port = int(cfg["paths"].get("brain_port") or 8765)
+    inst = cfg.get("instance") or inst_mod.instance_name()
+    pidfiles = inst_mod.wsl_pidfiles(inst)
+    data_dir = inst_mod.wsl_data_dir(inst)
     # $$ survives exec -> pidfile names uvicorn exactly (recycle by pid +
     # cmdline check instead of broad `pkill -f`, which can match unrelated
     # processes whose argv merely contains the string — e.g. dev shells).
+    # Pidfile = proper per-user location (~/.raphael[/instance]/brain.pid);
+    # the legacy /tmp path is left alone for brain/app.py's own write.
+    # RAPHAEL_INSTANCE/RAPHAEL_PORT are exported so brain-core derives the
+    # same instance values (INTERFACES §c/§d) it would get under systemd;
+    # RAPHAEL_PIDFILE lets brain/app.py write the SAME proper path ($HOME
+    # expands here so Python receives an absolute path — see docs/requests/
+    # infra__to__brain-core__pidfile-location.md).
+    pidfile_env = pidfiles[0]
+    if pidfile_env.startswith("~"):
+        pidfile_env = "$HOME" + pidfile_env[1:]
+    # RAPHAEL_TOKEN_PATH: point the Brain at a token file that EXISTS —
+    # instance token first, shared main token as fallback (mirrors
+    # resolve_token ordering; WSL-side paths only, never a Windows path).
+    data_dir_home = data_dir.replace("~", "$HOME", 1)
     inner = wsl_argv(
         cfg, "sh", "-lc",
-        "echo $$ > /tmp/raphael-brain.pid; cd %s && exec "
+        "export RAPHAEL_INSTANCE=%s RAPHAEL_PORT=%d "
+        "RAPHAEL_PIDFILE=\"%s\"; "
+        "tp=%s/token; [ -f \"$tp\" ] || tp=$HOME/.raphael/token; "
+        "export RAPHAEL_TOKEN_PATH=\"$tp\"; "
+        "mkdir -p %s; echo $$ > %s; cd %s && exec "
         "brain/.venv/bin/python -m uvicorn brain.app:app "
-        "--host 127.0.0.1 --port %d" % (shlex.quote(repo_wsl), port))
-    log.info("brain process: launching uvicorn (127.0.0.1:%d) under wsl" % port)
-    return _spawn(inner, REPO_ROOT, log, "brain", LOG_DIR / "brain.log")
+        "--host 127.0.0.1 --port %d"
+        % (shlex.quote(inst), port, pidfile_env, data_dir_home, data_dir,
+           pidfiles[0], shlex.quote(repo_wsl), port))
+    log.info("brain process: launching uvicorn (127.0.0.1:%d) instance=%s "
+             "pidfile=%s" % (port, inst, pidfiles[0]))
+    return _spawn(inner, REPO_ROOT, log, "brain",
+                  inst_mod.log_path("brain"))
 
 
 def launch_body(cfg, log):
@@ -792,16 +1050,22 @@ def launch_body(cfg, log):
         log.warn("body not ready — %s missing (owned by body-dev); "
                  "will retry when it appears" % script_path)
         return None
-    return _spawn(argv, REPO_ROOT, log, "body", LOG_DIR / "body.log")
+    # Instance triple for the child (approved pc-control request): the Body
+    # derives its single-instance lock from RAPHAEL_INSTANCE (INTERFACES §d:
+    # %TMP%\\raphael_body[_<instance>].lock) and gets the same port/token
+    # context the supervisor resolved. Merge never unsets anything.
+    return _spawn(argv, REPO_ROOT, log, "body",
+                  inst_mod.log_path("body"),
+                  env=instance_env(cfg))
 
 
 def _external_body_pid():
     """PID the body wrote into its single-instance lock (authoritative — the
     rc=0 bounce pid we used to store was always DEAD, so it could never be
-    used for liveness)."""
+    used for liveness). Lock name derives from RAPHAEL_INSTANCE (§d)."""
     try:
-        import tempfile
-        txt = (Path(tempfile.gettempdir()) / 'raphael_body.lock').read_text()
+        txt = (Path(tempfile.gettempdir()) /
+               inst_mod.body_lock_name()).read_text()
         return int(txt.strip())
     except (OSError, ValueError):
         return None
@@ -883,7 +1147,7 @@ def start_keepalive(cfg, log):
         return None
     inner = wsl_argv(cfg, "sh", "-c", "while :; do sleep 3600; done")
     return _spawn(inner, REPO_ROOT, log, "wsl-keepalive",
-                  LOG_DIR / "wsl-keepalive.log")
+                  inst_mod.log_path("wsl-keepalive"))
 
 
 def _wsl_ip(cfg):
@@ -897,22 +1161,70 @@ def _wsl_ip(cfg):
     return None
 
 
-def start_brain_relay(cfg, log, listen_port=8765, backend_port=8766):
-    """User-space TCP splice: Windows 127.0.0.1:8765 -> <wsl-ip>:8765.
+def _relay_listener(listen_port):
+    """Windows-side relay socket — binds 127.0.0.1 ONLY.
 
-    The built-in Windows->WSL localhost relay is blocked by the Hyper-V
-    firewall on this machine (verified 2026-10-05: win->127.0.0.1:8765 =
-    refused while win->172.x.x.x:8765 connects; NIC shows as "vEthernet
-    (WSL (Hyper-V firewall))"). The admin fix is a one-liner
-    (Set-NetFirewallHyperVVMSetting ... -DefaultInboundAction Allow) but
-    needs elevation; this relay keeps every client on the PROTOCOL's
-    localhost-only address with zero privileges. Remove when the firewall
-    setting is applied (config: paths.brain_relay: false).
+    This bind is deliberately NOT configurable: the PROTOCOL localhost
+    contract is the entire point of the relay (audited 2026-10-06 — no
+    0.0.0.0/any-interface bind exists anywhere in the relay chain except
+    the WSL helper leg, which MUST sit on the VM's NAT address because
+    Windows dials it over the vNIC — packets from Windows never arrive on
+    the VM's loopback. See scripts/NETWORK-SECURITY.md and
+    scripts/win/allow-brain-localhost.ps1 for the loopback-only end state).
+    Raises OSError if the port cannot be bound.
+    """
+    srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    srv.bind(("127.0.0.1", listen_port))   # 127.0.0.1 ONLY — never 0.0.0.0
+    srv.listen(64)
+    return srv
+
+
+def _wsl_networking_mode(cfg):
+    """'nat' | 'mirrored' | None (wslinfo unavailable/failed)."""
+    rc, out = wsl_run(cfg, "wslinfo", "--networking-mode", timeout=10)
+    if rc != 0:
+        return None
+    return out.strip().lower() or None
+
+
+def start_brain_relay(cfg, log, listen_port=None, backend_port=None):
+    """User-space TCP splice: Windows 127.0.0.1:<port> -> <wsl-ip>:<helper>.
+
+    Why this exists (verified 2026-10-05): Windows' built-in WSL localhost
+    forwarding is blocked by the Hyper-V firewall on this machine
+    (win->127.0.0.1:8765 = refused while win->172.x.x.x:8765 connects). The
+    admin fix is a NARROW per-port Hyper-V rule (optional user-run script
+    scripts/win/allow-brain-localhost.ps1) — NOT the blanket
+    -DefaultInboundAction Allow. Until that rule (or mirrored networking)
+    is in place, this relay keeps every Windows client on the PROTOCOL's
+    localhost-only address with zero privileges.
+
+    Legs (127.0.0.1 ONLY where the platform allows):
+      Windows leg  : bind 127.0.0.1:<port>        — loopback, never wildcard
+      WSL helper   : bind <vm NAT ip>:<helper>    — MUST be the NAT address:
+                     Windows dials it over the vNIC; loopback binds are
+                     unreachable from Windows while native forwarding is
+                     firewalled. Exactly one address — never 0.0.0.0.
+      Brain        : 127.0.0.1:<port>             — loopback (PROTOCOL §1)
+
+    Skip policy: mirrored networking serves localhost natively -> no relay
+    at all. Config: paths.brain_relay (leg), paths.brain_relay_helper
+    (helper leg; false = narrow-rule mode, pair with brain_relay: false).
     """
     if not IS_WINDOWS or not cfg["paths"].get("brain_relay", True):
         return None
-    import socket
-    import threading
+    if listen_port is None:
+        listen_port = int(cfg["paths"].get("brain_port") or 8765)
+    if backend_port is None:
+        backend_port = inst_mod.relay_backend_port(listen_port)
+
+    mode = _wsl_networking_mode(cfg)
+    if mode and "mirrored" in mode:
+        log.info("brain relay: WSL networking mode '%s' — native localhost "
+                 "forwarding applies, relay skipped (127.0.0.1 end-to-end)"
+                 % mode)
+        return None
 
     state = {"ip": None, "warned_at": 0.0}
 
@@ -977,16 +1289,13 @@ def start_brain_relay(cfg, log, listen_port=8765, backend_port=8766):
 
     def accept_loop():
         try:
-            srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            srv.bind(("127.0.0.1", listen_port))
-            srv.listen(64)
+            srv = _relay_listener(listen_port)   # 127.0.0.1 ONLY (raises OSError)
         except OSError as exc:
             log.warn("brain relay: cannot bind 127.0.0.1:%d (%s) — relay off"
                      % (listen_port, exc))
             return
         log.info("brain relay: listening 127.0.0.1:%d -> wsl:%d (localhost "
-                 "contract preserved)" % (listen_port, listen_port))
+                 "contract preserved)" % (listen_port, backend_port))
         while True:
             try:
                 client, _addr = srv.accept()
@@ -1005,17 +1314,28 @@ def start_brain_relay(cfg, log, listen_port=8765, backend_port=8766):
                     slots.release()
             threading.Thread(target=_serve, daemon=True).start()
 
-    # WSL helper leg: binds 0.0.0.0:8766 inside the VM (NAT-only), dials the
-    # Brain's loopback. Detached+hidden; outlives supervisor restarts (a
-    # duplicate spawn just exits on bind-conflict, logged to wsl-relay.log).
-    helper_unc = REPO_ROOT / "scripts" / "wsl-relay.py"
-    helper_wsl = _wsl_path(helper_unc)
-    if helper_wsl:
-        _spawn(wsl_argv(cfg, "python3", helper_wsl, str(backend_port),
-                        str(listen_port)),
-               helper_unc, log, "wsl-relay", LOG_DIR / "wsl-relay.log")
+    # WSL helper leg: binds EXACTLY ONE address inside the VM — the NAT IP
+    # (never 0.0.0.0; a loopback bind would be unreachable from Windows),
+    # then dials the Brain's loopback. Detached+hidden; outlives supervisor
+    # restarts (a duplicate spawn just exits on bind-conflict, logged to
+    # wsl-relay.log). Gated by paths.brain_relay_helper: false for the
+    # narrow-firewall-rule end state where the relay is disabled entirely.
+    if not cfg["paths"].get("brain_relay_helper", True):
+        log.warn("brain relay: paths.brain_relay_helper=false but the "
+                 "Windows leg needs the helper backend (wsl:%d) — set "
+                 "paths.brain_relay: false too unless native localhost "
+                 "forwarding is verified (scripts/win/allow-brain-"
+                 "localhost.ps1)" % backend_port)
     else:
-        log.warn("brain relay: cannot derive wsl path for scripts/wsl-relay.py")
+        helper_unc = REPO_ROOT / "scripts" / "wsl-relay.py"
+        helper_wsl = _wsl_path(helper_unc)
+        if helper_wsl:
+            _spawn(wsl_argv(cfg, "python3", helper_wsl, str(backend_port),
+                            str(listen_port)),
+                   helper_unc, log, "wsl-relay",
+                   inst_mod.log_path("wsl-relay"))
+        else:
+            log.warn("brain relay: cannot derive wsl path for scripts/wsl-relay.py")
 
     threading.Thread(target=accept_loop, daemon=True).start()
     return "relay"
@@ -1026,13 +1346,15 @@ def bring_up_wsl(cfg, log, procs=None):
     paths = cfg["paths"]
     unit = str(paths["brain_unit"])
     ollama_unit = str(paths.get("ollama_unit") or "ollama")
+    profile = active_profile(cfg)
     if not find_wsl():
         log.error("wsl.exe not found on PATH — WSL bring-up skipped; brain "
                   "health checks will fail until WSL is available")
         return False
-    log.info("phase 2: WSL bring-up distro=%s user=%s brain_unit=%s "
-             "ollama_unit=%s" % (paths["distro"], paths["wsl_user"], unit,
-                                 ollama_unit))
+    log.info("phase 2: WSL bring-up distro=%s user=%s profile=%s "
+             "brain_unit=%s ollama_unit=%s"
+             % (paths["distro"], paths["wsl_user"], profile, unit,
+                ollama_unit))
     timeout = float(S.get("bringup_timeout", 60.0))
     poll = float(S.get("bringup_poll", 5.0))
     deadline = time.monotonic() + timeout
@@ -1070,16 +1392,26 @@ def bring_up_wsl(cfg, log, procs=None):
                     log.info("brain unit '%s' started OK" % unit)
                     break
                 time.sleep(poll)
-    # ollama check
-    ostate = wsl_state(cfg, ollama_unit, timeout=30)
-    if ostate == "active":
-        log.info("ollama unit '%s' is active" % ollama_unit)
-    else:
-        log.warn("ollama unit '%s' state=%s — issuing 'systemctl start'"
-                 % (ollama_unit, ostate))
-        systemctl_action(cfg, log, "start", ollama_unit, timeout=60)
+    # ---- Ollama: ONLY for profile `local` (cloud_temp contract, WAVES.md) --
+    # Under cloud_temp the supervisor must never start Ollama, pull models,
+    # or warm local models — no systemctl call, no state probe at all.
+    # Fish TTS stays local in BOTH profiles but is spawned by the Brain's
+    # voice layer (brain/app.py warmup), never by the supervisor.
+    if profile == "local":
         ostate = wsl_state(cfg, ollama_unit, timeout=30)
-        log.info("ollama unit '%s' now %s" % (ollama_unit, ostate))
+        if ostate == "active":
+            log.info("ollama unit '%s' is active" % ollama_unit)
+        else:
+            log.warn("ollama unit '%s' state=%s — issuing 'systemctl start'"
+                     % (ollama_unit, ostate))
+            systemctl_action(cfg, log, "start", ollama_unit, timeout=60)
+            ostate = wsl_state(cfg, ollama_unit, timeout=30)
+            log.info("ollama unit '%s' now %s" % (ollama_unit, ostate))
+    else:
+        log.info("profile %s: Ollama skipped — no local models started, no "
+                 "model pulls, no warm (cloud chain: groq -> zen_free); "
+                 "Orb/Body/Brain unaffected, Fish TTS started by the Brain"
+                 % profile)
     if state not in ("active", "process"):
         log.error("brain unit '%s' NOT active (%s) — health watchdog will "
                   "keep retrying" % (unit, state))
@@ -1503,12 +1835,12 @@ def selfcheck(args):
     log = Logger()
     log.info("selfcheck requested (repo=%s)" % REPO_ROOT)
 
-    # 1 — single-instance mutex
+    # 1 — single-instance mutex (name derives from RAPHAEL_INSTANCE, §d)
     if IS_WINDOWS:
         try:
-            h1, acquired = create_mutex()
+            h1, acquired = create_mutex(inst_mod.mutex_name())
             if acquired:
-                h2, duplicate = create_mutex()  # same-process second Create
+                h2, duplicate = create_mutex(inst_mod.mutex_name())  # same-process second Create
                 ok = not duplicate
                 release_mutex(h2)
                 release_mutex(h1)
@@ -1516,7 +1848,8 @@ def selfcheck(args):
                                 "PASS" if ok else "FAIL",
                                 "CreateMutexW('%s') acquired; duplicate "
                                 "detection %s"
-                                % (MUTEX_NAME, "OK" if ok else "BROKEN")))
+                                % (inst_mod.mutex_name(),
+                                   "OK" if ok else "BROKEN")))
             else:
                 release_mutex(h1)
                 results.append(("single-instance mutex", "PASS",
@@ -1543,6 +1876,47 @@ def selfcheck(args):
         cfg = copy.deepcopy(DEFAULT_CONFIG)
         results.append(("config parse", "FAIL",
                         "%s: %s" % (type(exc).__name__, exc)))
+
+    # 2b — instance isolation (INTERFACES §d): port/mutex/lock/pidfile all
+    # derive from RAPHAEL_INSTANCE; main keeps the historical defaults.
+    inst = inst_mod.instance_name()
+    inst_port = inst_mod.instance_port(
+        inst, default=cfg["paths"].get("brain_port"))
+    inst_detail = ("instance=%s port=%d mutex=%s lock=%s pidfile=%s "
+                   "log=%s"
+                   % (inst, inst_port, inst_mod.mutex_name(inst),
+                      inst_mod.body_lock_name(inst),
+                      inst_mod.wsl_pidfiles(inst)[0],
+                      inst_mod.log_path("supervisor", inst).name))
+    if inst_mod.known_instance(inst) or os.environ.get("RAPHAEL_PORT"):
+        results.append(("instance isolation", "PASS", inst_detail))
+    else:
+        results.append(("instance isolation", "WARN",
+                        inst_detail + " | unknown instance — config port "
+                        "kept, set RAPHAEL_PORT for real isolation"))
+
+    # 2c — profile awareness: cloud_temp must skip Ollama/local models.
+    profile = active_profile(cfg)
+    if profile == "local":
+        results.append(("profile", "PASS",
+                        "%s — Ollama/local models ON (Wave 6 cutover)" % profile))
+    else:
+        results.append(("profile", "PASS",
+                        "%s — Ollama/model pulls/model warm SKIPPED; "
+                        "Orb/Body/Brain/Fish still started" % profile))
+
+    # 2d — pinned Body venv (system Python 3.10 EOL ~2026-10)
+    body_venv = body_venv_python(cfg)
+    if body_venv:
+        results.append(("body venv", "PASS",
+                        "pinned interpreter: %s" % body_venv))
+    else:
+        results.append(("body venv", "WARN",
+                        "pinned venv not found — body_cmd 'python' falls "
+                        "back to this interpreter (this host: %s); on "
+                        "Windows that is system Python 3.10, EOL ~2026-10 "
+                        "— run scripts/install-body-venv.ps1"
+                        % sys.version.split()[0]))
 
     # 3 — wsl.exe discovery
     wsl = find_wsl()
@@ -1629,18 +2003,19 @@ def mutex_probe(args):
     if not IS_WINDOWS:
         print("MUTEX_SKIP non-Windows runner — CreateMutexW unavailable")
         return 0
+    name = inst_mod.mutex_name()
     try:
-        handle, acquired = create_mutex()
+        handle, acquired = create_mutex(name)
     except Exception as exc:
         print("MUTEX_FAIL %s" % exc)
         return 1
     if not acquired:
         print("MUTEX_DUPLICATE another instance holds '%s' — this launch "
-              "exits 0" % MUTEX_NAME)
+              "exits 0" % name)
         release_mutex(handle)
         return 0
     print("MUTEX_ACQUIRED pid=%d name=%s hold=%.1fs"
-          % (os.getpid(), MUTEX_NAME, args.hold))
+          % (os.getpid(), name, args.hold))
     try:
         time.sleep(args.hold)
     finally:
@@ -1667,6 +2042,33 @@ def parse_args(argv=None):
     return parser.parse_args(argv)
 
 
+def _write_supervisor_pidfile():
+    """run/supervisor[_<instance>].pid — lets `raphael stop` find us.
+
+    Written ONLY after the mutex is acquired (a second launch exits 0
+    before this and must never clobber the live supervisor's pidfile).
+    Best effort: failure is logged, never fatal.
+    """
+    path = inst_mod.supervisor_pidfile()
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(str(os.getpid()), encoding="utf-8")
+        return path
+    except OSError as exc:
+        LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
+        sys.stderr.write("supervisor: pidfile %s not written: %s\n"
+                         % (path, exc))
+        return None
+
+
+def _remove_supervisor_pidfile(path):
+    if path:
+        try:
+            path.unlink()
+        except OSError:
+            pass
+
+
 def main(argv=None):
     args = parse_args(argv)
     if args.selfcheck:
@@ -1680,32 +2082,46 @@ def main(argv=None):
     log.info("supervisor starting pid=%d python=%s platform=%s"
              % (os.getpid(), sys.version.split()[0], sys.platform))
 
+    # SIGTERM = CLEAN shutdown (finally: keepalive terminate, supervisor
+    # pidfile removal, mutex release). Default SIGTERM would skip `finally`
+    # entirely — `raphael stop` sends SIGTERM on WSL/Linux.
+    try:
+        signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
+    except (ValueError, OSError, AttributeError):
+        pass
+
     # ---- single-instance guard (second launch exits 0) ------------------
+    mutex = inst_mod.mutex_name()          # Raphael_Supervisor[_<instance>]
     mutex_handle = None
     if IS_WINDOWS:
         try:
-            mutex_handle, acquired = create_mutex()
+            mutex_handle, acquired = create_mutex(mutex)
         except Exception as exc:
             log.error("CreateMutexW failed: %s" % exc)
             return 1
         if not acquired:
             log.info("another supervisor instance already running (mutex "
-                     "'%s') — second launch exits 0" % MUTEX_NAME)
+                     "'%s') — second launch exits 0" % mutex)
             release_mutex(mutex_handle)
             return 0
-        log.info("single-instance mutex acquired (%s)" % MUTEX_NAME)
+        log.info("single-instance mutex acquired (%s)" % mutex)
     else:
         log.warn("non-Windows runner — single-instance mutex unavailable; "
                  "continuing in degraded mode")
+
+    sup_pidfile = _write_supervisor_pidfile()
+    if sup_pidfile:
+        log.info("supervisor pidfile: %s" % sup_pidfile)
 
     cfg, note = load_config(args.config)
     log.info(note)
     paths = cfg["paths"]
     token_path, token = resolve_token(cfg)
-    log.info("config: distro=%s wsl_user=%s brain_unit=%s orb_dir=%s "
-             "body_cmd=%s token_path=%s"
-             % (paths["distro"], paths["wsl_user"], paths["brain_unit"],
-                paths["orb_dir"], paths["body_cmd"], token_path))
+    log.info("config: instance=%s profile=%s distro=%s wsl_user=%s "
+             "brain_unit=%s orb_dir=%s body_cmd=%s port=%s token_path=%s"
+             % (cfg.get("instance"), active_profile(cfg), paths["distro"],
+                paths["wsl_user"], paths["brain_unit"], paths["orb_dir"],
+                paths["body_cmd"], paths.get("brain_port"), token_path))
     if not token:
         log.warn("token file missing at %s — probes will omit the %s header "
                  "(run scripts/token-gen.sh)"
@@ -1739,6 +2155,7 @@ def main(argv=None):
                 log.info("wsl-keepalive terminated")
             except OSError:
                 pass
+        _remove_supervisor_pidfile(sup_pidfile)
         release_mutex(mutex_handle)
         log.info("supervisor exiting (code=%d)" % exit_code)
     return exit_code
