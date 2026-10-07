@@ -1,0 +1,64 @@
+{
+  "pass": true,
+  "checks": [
+    {
+      "name": "pulse_follows_fresh_utterance",
+      "ok": true,
+      "detail": "amp1=0.15 (seq run A) -> amp2=0.95 (fresh run restarting at seq 0, expect ~0.95)",
+      "pass": true
+    },
+    {
+      "name": "renderer_received_every_speak_frame",
+      "ok": true,
+      "detail": "renderer rx speak frames: 28 -> 29 (a dropped run would not grow)",
+      "pass": true
+    },
+    {
+      "name": "morph_targets_share_one_length",
+      "ok": true,
+      "detail": "target lengths = [180,180,180,180,180,180] (octagram used to be 144 vs 180)",
+      "pass": true
+    },
+    {
+      "name": "morph_settles_after_interruption",
+      "ok": true,
+      "detail": "lattice={\"lengthMismatch\":false,\"maxErr\":0,\"points\":60} morphActive=false shape=hexagon",
+      "pass": true
+    },
+    {
+      "name": "cage_shape_settles_after_interruption",
+      "ok": true,
+      "detail": "cage={\"maxErr\":0,\"active\":false,\"shape\":\"hexagon\"}",
+      "pass": true
+    },
+    {
+      "name": "state_flip_latency",
+      "ok": true,
+      "detail": "mean=1ms worst=1ms (delivery only; 300-600ms crossfade is by design) — listening:1 thinking:1 confirm:1 error:1 idle:1",
+      "pass": true
+    }
+  ],
+  "morph": {
+    "shape": "hexagon",
+    "shapeHintField": "hexagon",
+    "morphActive": false,
+    "targetLengths": [
+      180,
+      180,
+      180,
+      180,
+      180,
+      180
+    ],
+    "lattice": {
+      "lengthMismatch": false,
+      "maxErr": 0,
+      "points": 60
+    },
+    "cage": {
+      "maxErr": 0,
+      "active": false,
+      "shape": "hexagon"
+    }
+  }
+}

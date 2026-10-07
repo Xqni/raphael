@@ -67,7 +67,7 @@ function nGonScale(theta, n) {
  * src/out are Float32Array vertex sets of the SAME topology. `shape` is one of
  * the PROTOCOL §8 / config orb.shape_map values; anything unknown is the ball.
  */
-function projectShape(src, shape, out) {
+export function projectShape(src, shape, out) {
   for (let i = 0; i < src.length; i += 3) {
     const x = src[i], y = src[i + 1], z = src[i + 2];
     const len = Math.hypot(x, y, z) || 1;

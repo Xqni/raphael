@@ -178,6 +178,12 @@ class StatusWS extends EventEmitter {
       case 'job_list':
         this.emit('job_list', msg.jobs || []);
         break;
+      case 'notice':
+        // PROTOCOL §3 `notice` (integrator-approved): roles ui+cli, fields
+        // text/level/ts/job?. Explicitly NOT an orb_state — it must never move
+        // the orb off its current state, it only speaks.
+        this.emit('notice', msg);
+        break;
       case 'subtitle':
         this.emit('subtitle', { job: msg.job, text: msg.text, fade_ms: msg.fade_ms });
         break;

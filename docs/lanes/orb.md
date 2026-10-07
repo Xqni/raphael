@@ -115,8 +115,37 @@ Re-ticked against the item text as originally written, with real evidence
 
 Wave 2 is MERGED; live gate was 3/5 — evidence + bug dossiers: `docs/BUGS-WAVE2.md`. SPEED MANDATE: cloud is paid now — near-instant responses, fast model defaults (AGENT_RULES Rule 15, WAVES.md constraints).
 
-- [P0-BugC] Speaking visuals (docs/BUGS-WAVE2.md Bug C): (1) NO PULSE while she speaks — renderer `onSpeak` console lines never appeared although main received `speak chunk seq=N`; check preload 'speak' forwarding + the `ev.seq <= lastSpeakSeq` guard (fresh utterances start at seq 0). (2) "cages stuck in weird shape" — lattice morph wedges when interrupted by the Bug-E flicker (brain-core fixes the flicker; you make repeated `startMorphTo` interruption-safe). Delivery chain (brain→main→preload→renderer state apply) is VERIFIED — do not re-debug it; re-instrumentation guide in BUGS-WAVE2.md.
-- [SPEED] Orb flips states with no perceptible lag (Rule 15).
+- [x] **[P0-BugC] Speaking visuals** — fixed and gated (`orb:trace --only=bugc`
+      **PASS 6/6**, `docs/orb/trace/bugc.json`; also runs inside the full pipeline):
+  - **(1) no pulse** — `renderer.js` dropped any `speak` frame whose `seq` was
+        `<= lastSpeakSeq`, which survives across utterances; a fresh utterance
+        restarting at 0 was rejected wholesale (`0 ≤ 8`), so the orb stopped
+        pulsing after the first answer. The transport is an **ordered WS**, so
+        nothing needs dropping — the guard is gone, `lastSpeakSeq` is a
+        high-water mark. Mirror updated in `tests/state-machine.js`
+        (`testStaleSeqDrop` → `testRepeatedSeqIsNotDropped`).
+        **Verified: `amp1=0.15 → amp2=0.95` across a seq reset.**
+  - **(2) stuck shape** — two causes: `makeMorphTarget('octagram')` returned 48
+        points vs 60 for everything else, so `updateMorph` (which lerps
+        `min(from,to)`) never touched indices 144–179 and that stale tail was
+        re-captured as the next `from`; **and** `onOrbState` assigned
+        `orbState.shapeHint` before `animate`'s `want !== shapeHint` check, so
+        the morph never fired on a state change at all.
+        The pose lock snapped the lattice for every screenshot, which is why
+        all 104 distinctness pairs passed while the live orb never morphed.
+        Fixed with a single owner (`applyLatticeShape`) + equal-length targets.
+        **Verified: `maxErr = 0` for both lattice and cage after 5 interrupted
+        morphs (was 0.134 / 0.253).**
+  - Delivery chain was **not** re-debugged, per BUGS-WAVE2.md.
+- [x] **[SPEED] Orb flips states with no perceptible lag (Rule 15)**
+      — `mean=1ms worst=2ms` from mock-Brain send to renderer applied
+      (`listening:1 thinking:2 confirm:1 error:2 idle:1`), harness round-trip
+      included so it is an upper bound. The 300–600 ms crossfade is by design.
+
+- [x] **`notice` frame (coord nudge, PROTOCOL §3)** — accepted on ui, rendered
+      as a level-tinted banner (info/warn/error, 4 s), never as an `orb_state`.
+      **interaction PASS 19/19** incl. `notice_reaches_renderer`,
+      `notice_shown_as_banner`, `notice_never_changes_state`.
 
 ## Later waves
 - Per docs/WAVES.md — do not start early (AGENT_RULES §11).

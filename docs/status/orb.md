@@ -353,3 +353,161 @@ where the cursor happens to be:
 Also fixed: `--only=<phase>` runs returned exit code 0 even when their own
 checks failed — they now set `process.exitCode = 1`.
 Result: **interaction PASS 16/16**.
+
+---
+
+# Wave 3 — Bug C (P0) + Rule-15 speed
+
+**Verdict: three real bugs found in the orb's own renderer, all fixed and gated.**
+`docs/BUGS-WAVE2.md` pointed at the right area; two of the three were subtler
+than the dossier suggested, and one was being **masked by the pose-lock
+screenshots**.
+
+### C-1 — no pulse while she spoke
+`renderer.js` guarded with `if (ev.seq <= lastSpeakSeq) return;` and
+`lastSpeakSeq` survived across utterances. Every fresh utterance restarts `seq`
+at 0, so after the first answer the guard rejected the **whole run**
+(`0 ≤ 8, 1 ≤ 8, …`) — the orb simply stopped pulsing.
+
+Fix: the transport is an **ordered WebSocket** (PROTOCOL §1), so a replayed or
+out-of-order `speak` frame cannot exist and the guard could only ever drop
+legitimate frames. Processing is idempotent (it just assigns the amplitude), so
+**nothing is dropped any more**; `lastSpeakSeq` is kept as a high-water mark for
+diagnostics. `event: end` still clears amplitude, and the mirror in
+`tests/state-machine.js` matches byte-for-byte.
+
+> Note: my first attempt kept the guard and reset it on `start`/lower-seq. The
+> phase still failed (`amp1=0.15 → amp2=0.15`) because two short utterances can
+> legitimately land on the **same** seq — indistinguishable from a duplicate.
+> That is when it became clear the guard had no safe form at all.
+
+`testStaleSeqDrop` encoded the broken contract and was replaced by
+`testRepeatedSeqIsNotDropped`.
+
+### C-2 — cages/lattice stuck in a weird shape (two bugs, not one)
+1. **Length mismatch.** `makeMorphTarget('octagram')` returned **48 points
+   (144 floats)** while every other target returns **60 (180)**. `updateMorph`
+   lerps only `Math.min(from.length, to.length)`, so indices 144–179 were
+   **never written again** — a permanent stale tail that `startMorphTo` then
+   re-captured as the next `from`. Fixed: the star is now sampled *along its
+   outline* to exactly `n` points, plus a defensive cycle in `startMorphTo`
+   that logs loudly if a target is ever mis-sized.
+2. **The morph never fired on a state change.** `onOrbState` assigned
+   `orbState.shapeHint = want` *before* `animate` checked
+   `if (want !== orbState.shapeHint)` — so that condition was **always false**
+   exactly when the state changed, and the lattice kept its previous shape.
+   Fixed with one owner, `applyLatticeShape()`, guarded by `lastMorphShape` and
+   called from the IPC path, the per-frame path and the pose lock.
+
+**Why no screenshot gate caught #2:** `__orbLockPose()` snapped the lattice
+straight to the target before every capture, so all 104 distinctness pairs and
+every matrix shot looked correct while the live orb never morphed. The new
+`window.__orbMorphDiff()` probe measures it **without** the lock — that is what
+turned a masked bug into a failing check.
+
+### C-15 speed (Rule 15)
+State-flip delivery, mock-Brain send → renderer applied (includes the
+harness's own evaluate round-trip, so it is an upper bound):
+
+```
+mean=1ms  worst=2ms   listening:1 thinking:2 confirm:1 error:2 idle:1
+```
+The 300–600 ms **crossfade is by design** and is not what this measures.
+
+### Evidence
+
+```
+$ npm run orb:trace -- --only=bugc
+Bug C + speed: PASS (6/6)
+  ok pulse_follows_fresh_utterance: amp1=0.15 -> amp2=0.95
+  ok renderer_received_every_speak_frame: 9 -> 10
+  ok morph_targets_share_one_length: [180,180,180,180,180,180] (octagram was 144)
+  ok morph_settles_after_interruption: maxErr=0 (was 0.134)
+  ok cage_shape_settles_after_interruption: maxErr=0 shape=hexagon (was 0.253/'circle')
+  ok state_flip_latency: mean=1ms worst=2ms
+EXIT=0
+
+$ node tests/state-machine.test.js
+All state machine tests passed        (11 test functions, 4 new for Bug C)
+```
+`docs/orb/trace/bugc.json` holds the full check table.
+
+---
+
+# Wave 3 — `notice` frame (coord nudge, PROTOCOL §3, integrator-approved)
+
+Contract: Brain→Client `notice`, roles **ui+cli**, fields `text / level / ts /
+job?`, **no state change**. Rendered as a banner; "never as an orb_state".
+
+| layer | change |
+|---|---|
+| `ws-status.js` | new `case 'notice'` → `emit('notice', …)` (and `_rx` records it); **no** `orbState` write |
+| `main.js` | forwards `notice` → renderer (alongside subtitle/speak/confirm) |
+| `preload.js` | `onNotice(cb)` |
+| `renderer.js` | `updateNotice()` → reuses the subtitle element as a banner, tinted per `level` (`info` / `warn` / `error`), 4 s instead of 1.2 s, `force:true` so it is **not** suppressed by Private Mode (a notice is a local system message, not cloud content) |
+
+Deliberately **not** wired into `setState`/state machine — the contract says the
+state must not move.
+
+**Evidence** (`orb:trace --only=interaction`, now **PASS 19/19**):
+```
+ok notice_reaches_renderer:        renderer rx notice frames: 0 -> 1
+ok notice_shown_as_banner:         banner={"text":"Notice: disk almost full","shown":true}
+ok notice_never_changes_state:     state idle -> idle, applied=idle (must be unchanged)
+```
+
+---
+
+# WAVE 3 HANDOFF (orb lane) — 2026-10-07
+
+**Scope for this lane in Wave 3 is complete.** Every box in
+`docs/lanes/orb.md` is ticked; committing `3de9a54` / `8f94665`.
+
+## What shipped this wave
+
+| item | verdict | evidence |
+|---|---|---|
+| **P0 Bug C (1) no pulse** | fixed | speak `seq` guard dropped every fresh utterance restarting at 0 — removed (ordered WS ⇒ nothing needs dropping). Verified `amp1=0.15 → amp2=0.95` |
+| **P0 Bug C (2) stuck shape** | fixed | two causes: octagram target **144 floats vs 180** (stale tail forever) **and** `onOrbState` pre-setting `shapeHint` so the morph never fired on a state change. Verified `maxErr = 0` for lattice **and** cage after 5 interrupted morphs (was 0.134 / 0.253) |
+| **Rule 15 speed** | met | mock-Brain → renderer applied **mean 1 ms, worst 2 ms**; 300–600 ms crossfade is by design |
+| **`notice` frame** (§3 nudge) | done | level-tinted banner, **never** an `orb_state` (`notice_never_changes_state: idle → idle`) |
+| **size gate de-flaked** | done | worst drift **12.0% (on the line) → 8.0% / 7.7%** across consecutive runs; pose-locked captures |
+
+```
+$ npm run orb:trace            PASS  (distinctness 104 pairs, interaction 19/19,
+                                      BugC 6/6, transparency border alpha 0)
+$ npm run orb:trace --only=bugc PASS 6/6   -> docs/orb/trace/bugc.json
+$ npm run orb:size              PASS x2 (limit 12%, measured 8.0% / 7.7%)
+$ node tests/state-machine.test.js  All state machine tests passed (11)
+$ node test/orb-diff.cjs        PASS (exit 0)
+orphans: none · ports 8906/9406 free
+```
+
+## The one lesson worth carrying forward
+
+**The pose lock was hiding a real bug.** `__orbLockPose()` snaps the lattice
+straight to the target before every capture, so *every* screenshot-based gate
+(104 distinctness pairs, the whole matrix, `orb:size`) looked correct while the
+live orb never morphed at all. The fix was a probe that measures the same thing
+**unlocked** — `window.__orbMorphDiff()` (`maxErr`, `lengthMismatch`,
+`targetLengths`). Any future renderer invariant should be asserted through an
+unlocked probe, not through a locked screenshot.
+
+## Known gaps / still open (not started, not mine to start now)
+
+1. **Real-Brain re-run** of `npm run orb:trace` (replace the mock) — queued
+   behind brain-core's merge per decision `1791339926`.
+2. `docs/requests/orb__to__integrator__backing-disc-default-zero.md` — **OPEN**:
+   base `config.yaml` default + `ORB_REBUILD_TASK.md` §4 text still say 0.25;
+   live behaviour is already correct via `config.d/orb.yaml`.
+3. **Wireframe line weight** — WebGL clamps `gl.lineWidth` to 1 device px, so
+   "slightly thicker lines" is done only for layers that are real geometry
+   (orbit ring, private/paused rings, job dots, node size). Fat-line geometry
+   (`three/examples/jsm/lines`) remains the one open §3 item.
+4. **150% Windows scaling** is verified with `--force-device-scale-factor=1.5`
+   (identical to what Windows does to the renderer), not on the real desktop.
+5. Wave-3 orb scope has **no further checkbox**; the Wave-3 goals list in
+   `docs/WAVES.md` (memory, skills/plugins, tools, MCP, CDP, job concurrency)
+   is other lanes' — re-check `docs/lanes/orb.md` at the next `wave_open`.
+
+**Next for this lane:** wait for `wave_open` / an inbox assignment (AGENT_RULES §11/§13).

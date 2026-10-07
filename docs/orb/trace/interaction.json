@@ -34,7 +34,7 @@
     {
       "name": "mousemove_listener_wired",
       "ok": true,
-      "detail": "listener saw clientX=140 clientY=140 dist=0.0 inside=true seen=1 (expect inside == dist<=112)",
+      "detail": "listener saw clientX=51 clientY=101 dist=97.2 inside=true seen=2 (expect inside == dist<=112)",
       "pass": true
     },
     {
@@ -95,6 +95,24 @@
       "name": "menu_cancel_reaches_brain",
       "ok": true,
       "detail": "{\"type\":\"cancel\",\"v\":1,\"job\":\"j_mock_1\",\"scope\":\"full\"}",
+      "pass": true
+    },
+    {
+      "name": "notice_reaches_renderer",
+      "ok": true,
+      "detail": "renderer rx notice frames: 0 -> 1",
+      "pass": true
+    },
+    {
+      "name": "notice_shown_as_banner",
+      "ok": true,
+      "detail": "banner={\"text\":\"Notice: disk almost full\",\"shown\":true}",
+      "pass": true
+    },
+    {
+      "name": "notice_never_changes_state",
+      "ok": true,
+      "detail": "state idle -> idle, applied=idle (must be unchanged)",
       "pass": true
     }
   ],

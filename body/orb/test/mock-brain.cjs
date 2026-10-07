@@ -162,6 +162,10 @@ class MockBrain {
         return this.broadcast({ type: 'orb_state', ...base, ...INFO, state: 'thinking', jobs_active: 6, mode: 'normal', shape_hint: 'hexagon', task_kind: 'media' });
       case 'subtitle':
         return this.broadcast({ type: 'subtitle', ...base, text: 'subtitle frame', fade_ms: 4000 });
+      case 'notice':
+        // PROTOCOL §3 notice: text/level/ts/job — no state change, ever
+        return this.broadcast({ type: 'notice', ...base, text: 'Notice: disk almost full',
+                                level: 'warn', ts: Date.now() });
       case 'needs_confirm':
         return this.broadcast({ type: 'needs_confirm', ...base, job: 'j_mock_1', question: 'Open YouTube?', actions: ['yes', 'no'], expires_at: Date.now() + 30000 });
       default:
@@ -170,7 +174,14 @@ class MockBrain {
   }
 
   /** A short deterministic amplitude envelope (renderer smooths 30/150 ms). */
+  /** Begin a fresh utterance — the Brain restarts `seq` at 0 for each one. */
+  speakReset() { this._seq = 0; }
+
   speakBurst(peak = 0.8) {
+    // Each utterance is a NEW seq run (BUGS-WAVE2 Bug C). The old mock kept one
+    // monotonic counter forever, so it could never reproduce the bug: the real
+    // guard then dropped every utterance after the first.
+    this._seq = 0;
     const pts = [0.1, 0.45, peak, 0.7, 0.9, 0.5, 0.62, 0.7]; // ends mid-high -> a settled, screenshot-stable amplitude
     const self = this;
     pts.forEach((a, i) => {
