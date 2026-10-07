@@ -26,7 +26,13 @@ Cloud provider chain + tool calling; conversational loop with persona; orb state
 
 1. "Open YouTube and search lo-fi" works by voice **and** by text.
 2. A free-form question gets a real cloud answer in her voice.
-3. "What am I looking at" returns a real vision answer. **— BLOCKED, human decision pending (attention posted 2026-10-06 21:23).** No free vision-capable model exists in the chain today (verified live 2026-10-06: Groq 11 models, none vision; Zen 88 models / 14 `-free`, none vision; Zen's only vision id `deepseek-v4-flash-vision-exp` is PAID). Options for the user: **(a)** defer this criterion to Wave 6 (local vision) as a known gap — integrator proposal, already staged in review — or **(b)** approve ONE spend-capped paid vision slot for the live E2E (AGENT_RULES §7: paid pool is the user's call). Exit criteria are the human's to change: **this criterion stays on the list until they decide**; `router.vision()` keeps refusing with `E_OFFLINE/no_model` meanwhile (detail: `docs/requests/router__to__integrator__vision-free-model-gap.md`, branch: agent/router, not yet in main).
+3. "What am I looking at" returns a real vision answer. **— DECIDED 2026-10-06: DEFERRED to
+   Wave 6 (local vision) as a known gap** (user's blanket "go ahead with whatever needs to
+   be done" = the no-spend path; verified facts: no free vision-capable model exists — Groq 11
+   models none vision, Zen 88/14-free none vision, Zen's only vision id is PAID).
+   `router.vision()` keeps refusing `E_OFFLINE/no_model` until then. Reopens ONLY if the user
+   says "approve vision spend" (one spend-capped slot) or Wave 6 arrives
+   (detail: docs/requests/router__to__integrator__vision-free-model-gap.md, branch agent/router).
 4. Per-state orb screenshots prove distinct visuals.
 5. Pause / private / kill all work.
 6. Full mock test suite green.
