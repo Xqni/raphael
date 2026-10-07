@@ -27,21 +27,22 @@ Updated: 2026-10-07 (wave 3 COMPLETE — handoff, awaiting merge pos 9)
 
 **Chrome/CDP:** NOT this lane — `docs/lanes/pc-control.md` wave-3 claims "browser/CDP"; no `brain/tools/browser/` namespace in tools-memory's OWNERSHIP. (Coordinator's generic wave-3 echo; my lane list is the 4 tasks above.)
 
-**Rule-4 stop (rebase):** rebasing onto current origin/main conflicts in `PROGRESS.md` (integrator-owned; their commit `6d174f0` sits on my branch, content not on main). Rebase ABORTED untouched, request filed: `tools-memory__to__integrator__progress-md-rebase-conflict.md` (union resolution proposed). Branch intact at the handoff commit; no re-rebase attempts until answered.
+**Rule-4 stop (rebase): RESOLVED per integrator decision 2026-10-07** — option (a) taken: the `6d174f0` PROGRESS bullet was confirmed a cwd-drift mistake (content landed on main at `ff8a4c7`). Rebase REDONE onto `origin/main` (tip `3fab0a6`; merge-base == origin/main; tree clean): only the conversation-hook request file conflicted (my decision to own → kept `Status: ACCEPTED`), `6d174f0` replayed empty → `--skip`ped as instructed (nothing lost — verified on main first). Request file kept as audit trail.
 
 ## In progress
 - —
 
 ## Blocked
 - `docs/requests/tools-memory__to__brain-core__loop-memory-skills-injection.md` (Status OPEN) — loop-side injection of memory/skills as untrusted context + `schedule.arm_all(loop)` startup call + `plugins.load_enabled()` wiring. My side ships the exact API; integration needs brain-core. Until then memory is build-verified but not injected end-to-end.
-- Rebase blocked on the PROGRESS.md request above (work itself unblocked).
+- ~~Rebase blocked on the PROGRESS.md request~~ → RESOLVED 2026-10-07 (decision option a; rebase redone, `6d174f0` skipped, see Done section).
 
 ## Next
-- Post `wave_done` → idle (coord mode); merge at position 9; flip request statuses when owners do (request #1 code-verified as landed, awaiting brain-core's formal flip).
+- `wave_done` POSTED and rebase now clean → wave_done **stands** for merge position 9 (integrator's answer: "once synced+clean"); idle until pinged; flip request statuses when owners do (request #1 code-verified as landed, awaiting brain-core's formal flip).
 - Wave 4 (skill aging/audit, memory export/delete) and Wave 5 (predator-style acquisition) — only when WAVES.md says so.
 
 ## Test output (real runs only — never claim unrun tests)
-- `./brain/.venv/bin/python -m pytest -q brain/memory/tests` → **116 passed in 2.74s** (2026-10-07, task 4 final)
-- `./brain/.venv/bin/python -m pytest -q brain/tests` → **134 passed, 1 warning in 10.09s**
-- `cd tests && ./.venv/bin/python -m pytest -q .` → **187 passed, 9 xfailed, 2 xpassed, 1 warning in 34.04s** (= qa baseline)
-- Earlier in-wave runs (each after the task that produced them): 10 → 31 → 41 → 58 → 86 → 106 → 116 memory tests; brain 134 + root 187 re-verified green after every shared-schema/registry change.
+- **Post-rebase (2026-10-07, onto origin/main `3fab0a6` with voice/computer-use/orb/infra/qa merges):**
+  - `./brain/.venv/bin/python -m pytest -q brain/memory/tests` → **116 passed in 2.95s**
+  - `./brain/.venv/bin/python -m pytest -q brain/tests` → **152 passed, 1 warning in 12.00s** (= merged main baseline)
+  - `cd tests && ./.venv/bin/python -m pytest -q .` → **197 passed, 9 xfailed, 1 warning in 35.58s** (= post-qa-merge baseline)
+- In-wave runs (each after the task that produced them): memory 10 → 31 → 41 → 58 → 86 → 106 → 116; brain 134 and root 187 re-verified green after every shared-schema/registry change (pre-merge baselines).
