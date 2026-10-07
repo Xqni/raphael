@@ -43,9 +43,22 @@ def test_interfaces_instance_table_is_collision_free():
     rows = _interfaces_rows()
     instances = [r[0].split()[0].strip('`') for r in rows]
     assert len(instances) == len(set(instances)), instances
-    assert len(instances) == 11, instances   # main + 10 lane instances
+    assert len(instances) >= 11, instances   # main + every lane + sanctioned extras
     assert instances.count('main') == 1
     main = next(r for r in rows if r[0].startswith('main'))
+
+    # CROSS-SOURCE EQUALITY (approved brain-core request
+    # brain-core__to__qa-security__shadow-row-count, decision 2026-10-07):
+    # the §d doc table must list EXACTLY the instances the code derives from
+    # brain/config.py::_INSTANCES — sturdier than a count bump: any approved
+    # new row (e.g. `shadow`, port 8911) must land in BOTH or this goes red,
+    # and it is green across the merge boundary either way.
+    from brain.config import _INSTANCES
+    code_instances = {name for name, _port, _idx in _INSTANCES}
+    assert set(instances) == code_instances, (
+        f'doc/code instance mismatch: doc-only='
+        f'{sorted(set(instances) - code_instances)} code-only='
+        f'{sorted(code_instances - set(instances))}')
 
     # full-value columns: unique as written
     for col, name in ((1, 'port'), (6, 'CDP port'), (7, 'data-dir')):
@@ -71,6 +84,9 @@ def test_interfaces_instance_table_is_collision_free():
         pid_exp = f'~/.raphael/{inst}/brain.pid'
         lock_exp = f'%TMP%\\raphael_body_{inst}.lock'
         mutex_exp = f'Raphael_Supervisor_{inst}'
+        code_port = dict((n, p) for n, p, _i in _INSTANCES).get(inst)
+        assert code_port is not None and int(r[1]) == code_port, \
+            (inst, r[1], code_port)   # table port == code-derived port
         # cells must reference THEIR instance (doc self-consistency) —
         # full value (current table) or §d `…` shorthand
         assert cell_pid in (pid_exp, f'…_{inst}.pid',

@@ -35,7 +35,7 @@ Wave 3 is MERGED + **GATE PASSED** (tag `wave-3-gate`, all six criteria live, ac
 
 Wave 4 is MERGED + **GATE PASSED** (tag `wave-4-gate`, 10/10 lanes, mock 308 green). Wave-5 theme per WAVES.md: Raphael features — Answer/Notice/Report formats, Analysis, Simulation, parallel-minds visuals, persona tiers. Rule 15 speed mandate binds; shared-contract changes go through integrator requests. Carried items are noted in WAVES.md gate record (shadow row; C1+C2 residual).
 
-- [ ] Wave-5 gate tests: format contract conformance (new frames vs §3), tier-switch safety (deep-merge cannot touch safety/privacy/providers — extend evolution's 14 tests), Analysis/Simulation privacy tripwires.
+- [x] Wave-5 gate tests: format contract conformance (new frames vs §3), tier-switch safety (deep-merge cannot touch safety/privacy/providers — extend evolution's 14 tests), Analysis/Simulation privacy tripwires.  (2026-10-07: production-emitter ⊆ §3 scan strict; tier safety = per-TIERS authority property STRICT + adversarial-fragment xfail with loader-authority-guard request; Analysis/Sim tripwire armed — skip-until-lands, fails-if-ungated — with analysis-simulation-privacy-contract request filed)
 
 ## Later waves (do not start early — AGENT_RULES §11; beyond current_wave 3)
 - [ ] Wave 3: golden job transcripts (replayable recorded conversations/tool traces as regression baseline).
