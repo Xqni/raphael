@@ -53,7 +53,7 @@ Wave 2 is MERGED; live gate was 3/5 — full evidence + bug dossiers: `docs/BUGS
 
 Wave 3 is MERGED + **GATE PASSED** (tag `wave-3-gate`, all six criteria live, acoustic voice included). Wave-4 theme per WAVES.md: hardening, resilience tests, audit fixes, crash recovery, evolution infrastructure. Rule 15 speed mandate still binds.
 
-- [ ] Provider failure-injection resilience suite (429/5xx/network-drop storms, circuit-breaker transitions, failover ordering) + usage-log integrity audit + prompt-bias STT seam regression (Wave-3 live gate).
+- [x] Provider failure-injection resilience suite (429/5xx/network-drop storms, circuit-breaker transitions, failover ordering) + usage-log integrity audit + prompt-bias STT seam regression (Wave-3 live gate). **DONE 2026-10-07** — `test_resilience.py` (12: 429 storm + Retry-After cooldown, 5xx storm → breaker OPEN → half-open recovery, network-drop isolation, §10 exhaustion code matrix, failover ordering via request timestamps, bounded 10-call storm), `test_usage_log_integrity.py` (6: stable schema, FAILED lines carry §10 codes, no prompts/keys/images in the log, concurrent writes, torn-line crash recovery + crash-safe append fix in core), `test_stt_seam_prompt_bias.py` (6: wake_word → `prompt` field on the Groq multipart, STT-only, INTERFACES signature unchanged, repo config wiring). Failure-path usage logging added (per-provider error counts for `/status`). Also answered qa-security's 2 OPEN requests (both already DONE by Wave-2 → Status DONE with evidence); circuit-open tripwire stays with the integrator request. 144 router / 152 brain / 197 root tests green — mock only, live stack untouched.
 
 ## Later waves
 - Per docs/WAVES.md — do not start early (AGENT_RULES §11).

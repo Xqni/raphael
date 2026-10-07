@@ -1,6 +1,48 @@
 # router — status
 
-Updated: 2026-10-07 (Wave 3 lane goals complete — 247 tests green, `wave_done` posted)
+Updated: 2026-10-07 (Wave 4 lane task complete — 144 router / 152 brain / 197 root tests green)
+
+## Wave 4 (current_wave: 4; wave-3 gate PASSED before open)
+
+Rebased on `main` first. Note: live stack is UP by user directive — no servers
+spawned; every test below runs on 127.0.0.1 ephemeral ports (AGENTS rule from
+`wave_open`).
+
+**Assigned task (docs/lanes/router.md Wave 4) — DONE:**
+1. **Failure-injection resilience suite** — `tests/test_resilience.py` (12 tests):
+   - 429 storm: backoff + retry then failover, **ordering proven** via request
+     timestamps (every groq attempt before the zen attempt); long `Retry-After`
+     → cooldown + skip (no stall, no retry);
+   - 5xx storm → breaker OPEN after threshold → **zero new attempts** → cooldown →
+     half-open probe → recovery → CLOSED (injected fast breaker, default semantics);
+   - network drop (connection refused): single-provider isolation + all-down →
+     `E_OFFLINE` retryable with spoken detail;
+   - §10 exhaustion matrix: 401 → `E_PROVIDER_AUTH` (fatal, exactly 1 attempt),
+     429 → `E_PROVIDER_429`, 5xx → `E_PROVIDER_5XX`, dead net → `E_OFFLINE`;
+   - sustained 10-call storm: bounded by max_retries AND breaker (groq 10 requests
+     = 2×5 calls then breaker-open, not 20); capability misses never trip breakers.
+2. **Usage-log integrity audit** — `tests/test_usage_log_integrity.py` (6 tests):
+   every line parses with a stable schema; failed flows now log one FAILED line per
+   provider (new in core — powers `usage_status()` error counts); log contains **no
+   prompts, no key values, no Bearer headers, no image bytes/base64**; concurrent
+   `gather(8)` writes stay clean; a torn final line (crash mid-write) is isolated and
+   the next event survives — fixed by a crash-safe append in `core._append_line`.
+3. **Prompt-bias STT seam regression** (Wave-3 live gate glue `07cadcb`) —
+   `tests/test_stt_seam_prompt_bias.py` (6 tests): `config.voice.wake_word` →
+   `prompt="<wake>."` in the Groq multipart body, no prompt when wake_word is empty,
+   prompt never leaks into chat, INTERFACES §a signature unchanged
+   (`transcribe(audio, language)` — voice's call site keeps working), repo config
+   wiring pinned (`voice.wake_word=raphael`, `stt_engine=groq`).
+
+**Requests addressed to me:** `qa-security__to__router__fix-config-loader` +
+`provider-429-mapping` → both verified ALREADY DONE by the Wave-2 rewrite (their
+tests are pinned strict and pass); `Status: DONE` + evidence written into each file.
+Third tripwire (`E_CIRCUIT_OPEN` in §10) = shared-contract decision — their
+`qa-security__to__integrator__circuit-open-code.md` request already covers it; router
+maps circuit-open → `E_OFFLINE` today and switches in one commit if approved.
+
+Commits: `9faf427` (request answers) · `186dbfc` (failure logging + crash-safe append)
+· `a090360` (three Wave-4 suites).
 
 ## Wave 3 (opened via coord `wave_open`; task list: docs/lanes/router.md)
 
@@ -168,6 +210,13 @@ Commits on `agent/router` (Wave 2 merged in `main` at `1a8c2f6`; paid slot pendi
   Private Mode + blocklist + `router.vision_max_bytes` and never logs the image.
 
 ## Test output (real runs only)
+**Wave 4 verification, 2026-10-07** (sequential per AGENT_RULES §14, stack untouched):
+```
+brain/router/tests : 144 passed in 35.94s
+brain/tests        : 152 passed, 1 warning in 12.09s   (fastapi deprecation, unrelated)
+tests/ (root)      : 197 passed, 9 xfailed             (qa-security contract+supervisor; xfails = their open tripwires)
+```
+
 **Wave 3 verification, 2026-10-07** (`RAPHAEL_INSTANCE=router`, run one suite at a
 time per AGENT_RULES §14, no orphan processes left):
 ```
