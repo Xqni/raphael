@@ -644,3 +644,60 @@ worktree. That is a path *outside* the orb lane's owned directories
 (`body/orb/**`, `docs/orb/**`). Caught because the expected file was missing
 from `docs/orb/trace/`, the stray directory was removed, and the path corrected
 to `ROOT/../../docs/orb/trace`. Re-run is clean (EXIT 0, correct location).
+
+---
+
+# WAVE 4 HANDOFF (orb lane) — 2026-10-07
+
+**Wave-4 scope for this lane is complete.** Every box in `docs/lanes/orb.md` is
+ticked. Commits `8f94665` → `663b618` (Wave 3) and `663b618` (Wave 4).
+Integrator verified: *"Wave-4 renderer resilience VERIFIED (663b618 clean; npm
+test reran PASS …)"*.
+
+## Shipped this wave
+
+| item | verdict | evidence |
+|---|---|---|
+| GPU context-loss recovery | done | `preventDefault` + skip-GL-while-lost + rate-limited reload + `orb_state` re-push on `did-finish-load` · **4/4 pure** |
+| Reconnect-storm / state spam | done | morph ramp clock no longer resets on retarget · **5/5 pure** (incl. "old behaviour NEVER converges") · live `maxErr=0` after **67 flips/6 s** |
+| Probe invariant into CI | done | builders extracted pure → `npm run test:unit` runs **7+4+5+8+state-machine with no Electron and no display** before the screenshot gate |
+| fps/VRAM audit under load | **measured** | idle / speaking / storm **all 16.7 ms**, RAM **+1.8 MB over 67 flips**, VmHWM **150.6 MB**, governor `acted=0` |
+| (bonus) live-port hazard | fixed | `fake-brain.cjs` no longer binds **8765** · **8/8 pure** |
+
+Full-gate re-run after the wiring: `orb:trace` PASS (104 pairs, bugc 6/6,
+interaction 19/19, transparency) · `orb:size` PASS (drift 4.6% of 12%) ·
+`npm run test:unit` PASS · **kill-verify: ZERO orphans, ports free.**
+
+## Two process lessons worth keeping
+
+1. **Never pattern-match to decide whether you may spawn.** Two rule-14
+   pre-flights false-positived (a `ps` path match caught my own `cd <worktree>`;
+   a path+`electron` match caught my own command line). Replaced with an exact
+   **pidfile + `/proc` descendant walk** — it cannot match wrongly and it never
+   touches the live stack.
+2. **A locked screenshot cannot prove a visual invariant.** (Carried from Wave
+   3, now enforced.) The unlocked `__orbMorphDiff()` stays in `orb:trace`, and
+   the pure half runs with no display at all.
+
+## Carried forward (open, not started — need another lane or a user call)
+
+1. `docs/requests/orb__to__integrator__backing-disc-default-zero.md` —
+   **OPEN**: base `config.yaml` default and `ORB_REBUILD_TASK.md` §4 still say
+   `backing_disc_alpha: 0.25`; live behaviour is already correct via
+   `config.d/orb.yaml` (0.0). Text/base only.
+2. `docs/requests/orb__to__brain-core__orb-state-transitions.md` — the
+   **substance was answered in coord** (brain-core emits every INTERFACES §e
+   state on their branch) but the file's `Status:` line is still `OPEN`; the
+   owner (brain-core) flips it, not me.
+3. **Fat-line geometry** for the wireframe — WebGL clamps `gl.lineWidth` to 1
+   device px, so ORB_REBUILD §3.6 "slightly thicker lines" is still only done
+   for layers that are real geometry. The one open §3 item.
+4. **150% Windows scaling** is verified with `--force-device-scale-factor=1.5`
+   (identical to what Windows does to the renderer), never on the real desktop.
+5. **GPU VRAM is not measurable from WSL** — no per-process counter on this
+   path. `docs/orb/trace/audit.json` reports VmRSS/VmHWM + `renderer.info`
+   and says so in `vramNote`. If a real VRAM number is ever required it needs
+   Windows-side counters.
+
+**Next for this lane:** wait for `wave_open` / an inbox assignment
+(AGENT_RULES §11/§13). No unblocked work remains here.
