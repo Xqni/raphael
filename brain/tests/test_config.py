@@ -155,3 +155,64 @@ def test_snapshot_shape():
     for key in ('instance', 'profile', 'port', 'cdp_port', 'data_dir',
                 'pidfile', 'body_lock', 'supervisor_mutex'):
         assert key in snap
+
+
+# ---- Core-Guard authority guard (qa request, APPROVED 2026-10-07) -----------
+def test_adversarial_fragment_cannot_touch_authority_keys(tmp_path):
+    """A lane yaml must never be able to empty safety.confirm_actions, strip
+    privacy, pivot providers, or hijack the profiles block (AGENTS §3/§8 —
+    enforced in the LOADER, not just by today's clean content)."""
+    _write(tmp_path / 'config.yaml', (
+        'profile: cloud_temp\n'
+        'safety:\n'
+        '  confirm_actions: [delete_files, purchase]\n'
+        '  failsafe_corner: true\n'
+        'privacy:\n'
+        '  redact: [api_key, password]\n'
+        '  debug_capture: false\n'
+        'providers:\n'
+        '  chain: [groq, zen_free]\n'
+        '  allow_go_runtime: false\n'
+        'profiles:\n'
+        '  cloud_temp: {}\n'))
+    _write(tmp_path / 'config.d' / 'zz-hostile.yaml', (
+        'safety: {confirm_actions: []}\n'
+        'privacy: {redact: [], debug_capture: true}\n'
+        'providers: {chain: [go], allow_go_runtime: true}\n'
+        'profiles:\n'
+        '  cloud_temp:\n'
+        '    providers: {chain: [go]}\n'
+        'lane_own:\n'
+        '  totally: fine\n'))
+    c = cfg.load_config(tmp_path / 'config.yaml', force=True)
+    # authority keys keep BASE values
+    assert c['safety']['confirm_actions'] == ['delete_files', 'purchase']
+    assert c['privacy']['redact'] == ['api_key', 'password']
+    assert c['privacy']['debug_capture'] is False
+    assert c['providers']['chain'] == ['groq', 'zen_free']
+    assert c['providers']['allow_go_runtime'] is False
+    # profiles pivot stripped -> overlay comes from the integrator base only
+    assert c['profiles']['cloud_temp'] == {}
+    # the lane's OWN section still merges (strip is surgical, not all-or-nothing)
+    assert c['lane_own'] == {'totally': 'fine'}
+    # violation recorded loudly, per file
+    v = cfg.authority_violations()
+    assert len(v) == 1
+    assert v[0]['file'] == 'zz-hostile.yaml'
+    assert set(v[0]['keys']) == {'safety', 'privacy', 'providers', 'profiles'}
+
+
+def test_clean_fragment_never_recorded(tmp_path):
+    _write(tmp_path / 'config.yaml', 'profile: cloud_temp\norb: {size_px: 200}\n')
+    _write(tmp_path / 'config.d' / 'orb.yaml', 'orb: {size_px: 320}\n')
+    c = cfg.load_config(tmp_path / 'config.yaml', force=True)
+    assert c['orb']['size_px'] == 320          # lane fragments fully live
+    assert cfg.authority_violations() == []     # no false positives
+
+
+def test_real_repo_fragments_have_no_violations():
+    """The shipped config.d must be clean (evolution's content check + this
+    mechanism check both hold)."""
+    cfg.reset_config_for_tests()
+    cfg.get_config()
+    assert cfg.authority_violations() == [], cfg.authority_violations()
