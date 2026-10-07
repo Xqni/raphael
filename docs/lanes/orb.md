@@ -147,6 +147,21 @@ Wave 2 is MERGED; live gate was 3/5 — evidence + bug dossiers: `docs/BUGS-WAVE
       **interaction PASS 19/19** incl. `notice_reaches_renderer`,
       `notice_shown_as_banner`, `notice_never_changes_state`.
 
+## USER DIRECTIVE 2026-10-07 — shape-morph revert (do this FIRST)
+
+- [ ] **Revert ALL automatic shape morphing.** User: *"revert back the shape change — the
+  color change (+ the speaking state) is the only thing we are okay with. i have other
+  plans for shape changing for future."* The lattice/cage must hold ONE stable base shape
+  (circle — the plain ball) always: NO per-state morph (STATE_SHAPE) and NO kind accents
+  (analysis/simulation). KEEP: color/theme per state, the speaking pulse/amplitude
+  animation, banners, fan-out visuals, everything else. Machinery stays in code untouched
+  (morph engine, MORPH_SHAPES, shape_map config — future plans re-enable it); just stop
+  APPLYING it: effectiveShape() → constant 'circle', kind accent off. Update gates/matrix
+  expectations accordingly. Also: the user's "cage stuck in weird shape" complaint = this
+  scope (morphs off means the cage can never wedge again). Research pointers:
+  renderer.js effectiveShape() (line ~151), STATE_SHAPE map, startMorphTo call sites
+  (state-change block ~718, shapeHint ~594, kind accent ~792), config.yaml orb.shape_map.
+
 ## Wave 4 (start only when WAVES.md says so — current_wave: 4)
 
 Wave 3 is MERGED + **GATE PASSED** (tag `wave-3-gate`, all six criteria live, acoustic voice included). Wave-4 theme per WAVES.md: hardening, resilience tests, audit fixes, crash recovery, evolution infrastructure. Rule 15 speed mandate still binds.

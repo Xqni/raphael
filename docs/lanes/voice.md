@@ -29,6 +29,22 @@ Wave 2 is MERGED; live gate was 3/5 — evidence + bug dossiers: `docs/BUGS-WAVE
 - [x] [COORD] spawn-kill-safe fish test fixture (Rule 14 RAM): integration tests spawn ONLY with `RAPHAEL_FISH_SPAWN=1`, and anything spawned is registered + killed per-test (fixture) AND at process exit (atexit) — `_kill_spawned_fish`, unit-tested; a server we didn't spawn is never touched.
 - [x] [SPEED] Sentence-streamed fish TTS stays local and instant (Rule 15). Verified: `speak()` streams sentence N while N+1 generates (test_speak_frames_and_binary_audio asserts incremental chunk arrival), and there is no cloud-TTS code path at all — fish is the only synthesis engine (cache hit → fish → subtitle-only fallback).
 
+## TASK 2026-10-07 — lightweight TTS evaluation (PocketTTS vs fish)
+
+- [ ] Evaluate **PocketTTS (Kyutai)** as fish-speech replacement (research winner:
+  `.opencode/research/lightweight-tts-options.md` —100M params, ~1.1GB RAM CPU-only
+  (fish = 2GB GPU), zero-shot cloning from WAV reference, 24kHz streaming, MIT/CC-BY,
+  community OpenAI-compatible server). (a) measure REAL RSS on this box; (b) clone the
+  JP great-sage reference `assets/raphael_reference_jp.wav` once -> persisted state;
+  (c) A/B render the exact sample sentences from `assets/reference/samples/` (compare
+  against fish output — mind the caveat: accent transfer JP-reference -> English text is
+  partial per research); (d) map the streaming path onto brain/voice/tts.py seam
+  (community server = possible zero-change drop-in). (e) KittenTTS disqualified (no
+  cloning), Voicebox has no released weights — note in report. RULE 14: one-server rule
+  binds — prefer OFFLINE inference calls for the eval (no persistent server while fish
+  is up); if you need a server window, file a request to integrator first. Deliver a
+  recommendation: switch / keep fish / hybrid, with measured numbers.
+
 ## Wave 4 (start only when WAVES.md says so — current_wave: 4)
 
 Wave 3 is MERGED + **GATE PASSED** (tag `wave-3-gate`, all six criteria live, acoustic voice included). Wave-4 theme per WAVES.md: hardening, resilience tests, audit fixes, crash recovery, evolution infrastructure. Rule 15 speed mandate still binds.
