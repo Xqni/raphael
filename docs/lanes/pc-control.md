@@ -37,10 +37,11 @@ Wave 3 is MERGED + **GATE PASSED** (tag `wave-3-gate`, all six criteria live, ac
 
 Wave 4 is MERGED + **GATE PASSED** (tag `wave-4-gate`, 10/10 lanes, mock 308 green). Wave-5 theme per WAVES.md: Raphael features — Answer/Notice/Report formats, Analysis, Simulation, parallel-minds visuals, persona tiers. Rule 15 speed mandate binds; shared-contract changes go through integrator requests. Carried items are noted in WAVES.md gate record (shadow row; C1+C2 residual).
 
-- [ ] Report-format delivery acts (save/share report outputs) + any GUI affordances the Answer/Report formats need; failure-matrix discipline from wave 4 applies to every new act.
+- [x] Report-format delivery acts (save/share report outputs) + any GUI affordances the Answer/Report formats need; failure-matrix discipline from wave 4 applies to every new act.
+      → new `report{op: save|list}` act (`body/win/act_report.py`): FIXED `Documents\Raphael\reports` dir (model never chooses a path), slugified timestamped filenames (traversal-proof), atomic `.part`→replace writes, format md|txt|json (json validated), list newest-first cap 100; share/open composes from EXISTING acts (`open_path`/`clipboard`/`notify`). §7 enum change requested FIRST per wave-open rule (`pc-control__to__integrator__protocol-report-act.md`, tracked in `PENDING_PROTO_ADDITIONS=('report',)`, conformance test now checks ANY pc request file covers each pending name). Tool spec `brain/tools/pc/report.py` (18 tools, lock:false, no confirm). Report `body` logged length-only (content redaction extended). Wave-4 matrix auto-covers the new act: invalid/locked/crash+recovery params added to failure_cases (+3), dedicated `test_pc_report.py` (8), e2e injection now 130 checks PASS.
 
 ## Later waves
-- Per docs/WAVES.md — do not start early (AGENT_RULES §11). Wave 5 (Answer/Notice/Report, Analysis, Simulation, persona tiers) starts only at `current_wave: 5`.
+- Per docs/WAVES.md — do not start early (AGENT_RULES §11). Wave 6 is **NOT NOW** (local-model cutover after the RAM upgrade).
 
 ## Cross-lane requests addressed to pc-control
 - (none open — checked at session start and per task)

@@ -196,3 +196,43 @@ test_tools_shell}` (tools-memory lane): they PASS in isolation, and a
 throwaway worktree of clean `origin/main` (1485836) fails the same 2 PLUS
 `brain/vision` (3 failed there) → pre-existing on main, NOT pc-control.
 Worktree removed after the check.
+
+## 2026-10-07 — Wave 5: Report-format delivery acts — DONE
+
+**What shipped:**
+1. Integrator request FIRST (wave-open rule): `pc-control__to__integrator__
+   protocol-report-act.md` — adds `report{op}` to the §7 allow-list; the act
+   is implemented behind `PENDING_PROTO_ADDITIONS = ('report',)`.
+2. `body/win/act_report.py` — `report{op: save|list}`:
+   - save: FIXED `Documents\Raphael\reports` dir (backend-provided; the model
+     can NEVER choose a path), slugified title + timestamp (traversal-proof),
+     dedupe suffix, atomic `.part`→replace (crash-safe), format md|txt|json
+     (json body validated pre-write), truthful result {path,name,bytes,lines};
+   - list: newest-first, cap 100, ignores debris (.part/other exts);
+   - content redaction: report `body` logged length-only (`_CONTENT_KEYS`).
+3. `brain/tools/pc/report.py` — 18th pc tool (lock:false, no confirm),
+   shares/opening composed via existing open_path/clipboard/notify.
+4. Wave-4 failure-matrix discipline applied: `failure_cases` tables grew the
+   report row → the parametrized matrix (invalid/locked/crash+recovery)
+   covers it AUTOMATICALLY; plus dedicated `test_pc_report.py` (slug/atomic/
+   json/dedupe/list-order/cap/log-redaction).
+5. Conformance test generalized: every pending §7 name must be covered by
+   SOME `pc-control__to__*.md` request (was hardcoded to the 2026-10-06 file).
+
+**Tests (real, sequential per Rule 14):**
+```
+$ pytest body/win/tests/test_pc_report.py                8 passed
+$ pytest body/win/tests/test_pc_failure_matrix.py \
+         body/win/tests/test_pc_dispatch.py             70 passed
+$ pytest body/win/tests                                150 passed
+$ pytest brain/tools/pc/tests                           11 passed
+$ python3 body/win/e2e_control.py              130 PASS / 0 FAIL
+$ pytest tests                        203 passed, 1 failed (pre-existing)
+$ pytest brain                                768 passed, 3 skipped
+```
+The root failure is `tests/regression/test_instance_isolation.py::
+test_interfaces_instance_table_is_collision_free` — asserts the INTERFACES
+instance table has EXACTLY 11 rows; the table now has 12 (the APPROVED
+shadow-instance row, port 8911). Verified identical failure on a clean
+`origin/main` worktree (3996d31) → qa/integrator drift, NOT pc-control;
+worktree removed after the check. Reported to the bus with the exact cause.

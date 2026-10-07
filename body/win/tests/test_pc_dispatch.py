@@ -31,12 +31,14 @@ def test_registry_matches_protocol_enum_plus_requested_additions():
     # ...and the ONLY extras are the three documented additions.
     extra = reg - doc
     assert extra == set(actions.PENDING_PROTO_ADDITIONS), sorted(extra)
-    # The request for those three must exist (integrator adds them to §7).
-    req = REPO / 'docs' / 'requests' / 'pc-control__to__integrator__protocol-act-req-enum.md'
-    assert req.is_file(), 'missing PROTOCOL §7 enum-additions request'
-    body = req.read_text()
+    # Every pending name must be covered by an open request file (the
+    # integrator applies it to §7 — protocol-report-act.md for `report`).
+    requests = sorted((REPO / 'docs' / 'requests').glob('pc-control__to__*.md'))
+    assert requests, 'missing pc-control request files'
+    covered = '\n'.join(p.read_text() for p in requests)
     for name in actions.PENDING_PROTO_ADDITIONS:
-        assert name in body, '%s not covered by the request file' % name
+        assert name in covered, \
+            'pending action %s not covered by any pc-control request' % name
 
 
 def test_every_action_declares_metadata():
