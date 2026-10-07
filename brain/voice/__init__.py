@@ -30,6 +30,8 @@ from typing import Any, AsyncIterator, Dict, Optional
 from .activation import (ActivationGate, GateDecision, PlaybackEchoRegistry,
                          get_activation, get_playback_echoes,
                          reset_activation)
+from .confirmation import (VoiceAnswer, parse_voice_answer,
+                           to_confirm_answer, voice_confirmation_answer)
 from .config import REPO_ROOT, VoiceConfig, load_voice_config
 from .stt import (STT_SAMPLE_RATE, CloudTranscriber, Segment,
                   SttEngine, TranscribeResult, Transcriber, VoiceSTTError,
@@ -124,6 +126,8 @@ __all__ = [
     "is_effectively_silent", "pcm_to_wav_bytes",
     "ActivationGate", "GateDecision", "PlaybackEchoRegistry",
     "get_activation", "get_playback_echoes", "reset_activation",
+    "VoiceAnswer", "parse_voice_answer", "to_confirm_answer",
+    "voice_confirmation_answer",
     "transcribe", "transcribe_result", "get_transcriber",
     "TTSError", "TTSEngine", "FishSpeechServer", "PhraseCache",
     "speak", "speak_frame", "speak_payload", "encode_binary_frame",

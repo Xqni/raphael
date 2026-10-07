@@ -241,6 +241,7 @@ def test_tts_cancel_before_start():
 def _seed_cache_wav(eng, text, seconds=6.0, sr=24000):
     """Store a real wav in the phrase cache so the cache path streams chunks
     (used where the fallback no longer emits audio)."""
+    pytest.importorskip("soundfile")   # brain/.venv has it; lean venvs may not
     import soundfile as sf
 
     t = np.arange(int(sr * seconds), dtype=np.float32) / sr
