@@ -1,5 +1,13 @@
 # pc-control → brain-core: allow-empty-properties-schema
-Status: OPEN
+Status: ACCEPTED (2026-10-06, integrator ping-wake)
+
+## Decision
+APPROVED — empty `properties` is valid JSON Schema for no-arg tools and unblocks
+`foreground_info` in the Wave-2 privacy flow. This is spec-shape validation, NOT
+Core Guard security semantics (`additionalProperties: false` remains enforced), so
+AGENT_RULES §8 is untouched. brain-core implements `validate_schema` relaxation on
+their branch; pc-control flips the three zero-arg tools to `schema=s.schema()`
+after it merges. Decision mirrored to both inboxes.
 
 ## What
 Relax `brain/tools/__init__.py::validate_schema` to ACCEPT an empty
