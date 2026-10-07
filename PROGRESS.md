@@ -485,3 +485,6 @@ all 10 lanes with Wave-4 sections written. **Stack left ALIVE per user directive
 brain+body+orb+fish+relay up, live_e2e=true (watchdog exempt), scheduled task still
 Disabled, zero orphans, conductor running. Stop with `scripts/raphael stop` (+ set
 live_e2e=false) when wanted.
+- **router wave-4 merged** (position 1): resilience suite (429/5xx/breaker/network-drop/
+  exhaustion), crash-safe usage logging, 2 qa requests closed with evidence. 144 router
+  tests (+24), core guard OK.
