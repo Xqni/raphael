@@ -16,6 +16,13 @@ Read this at session start. Verbatim from the INTEGRATOR session brief (2026-10-
 12. Never re-enable the scheduled task, run elevated commands, or change .wslconfig/Task Scheduler without telling the user first.
 13. Report via coord; check the inbox at each task start; at wave end post wave_done then follow `coord mode`; never wait for the human on routine handoffs.
 
+14. **RAM frugality (user-mandated 2026-10-06):** this laptop is memory-strained. Run the
+    SMALLEST test target that answers your question (single files before full suites), ONE
+    suite at a time, NEVER suites in parallel. Spawned processes (fish api_server, pytest,
+    Electron/gates, headless runs) must be killed before your task ends — check with
+    `pgrep`/`ps` and leave zero orphans. Prefer mocks over real runtimes. Free what you
+    allocate as soon as you are done with it.
+
 (Rule 13 added 2026-10-06 with the coord bus — mechanics in `docs/COORD_PROTOCOL.md`;
 adoption/continuation texts in `~/.raphael-coord/prompts/`.)
 

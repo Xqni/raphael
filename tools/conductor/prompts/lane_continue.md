@@ -20,7 +20,10 @@ your existing session) or as the first message of a fresh headless run in your w
 3. **Rebase on main:** `git fetch origin && git rebase origin/main` (read-only against
    origin; NEVER push). A conflict in a file you don't own = a rule was broken: stop and
    write a `docs/requests/` file instead.
-4. **Continue the work loop** from the first unblocked task in `docs/lanes/<your-lane>.md:
+4. **RAM rule (AGENT_RULES §14):** smallest test target first, one suite at a time, never in
+   parallel; kill every process you spawn (fish api_server, pytest, Electron) before your
+   task ends — the user's laptop is memory-strained.
+   **Continue the work loop** from the first unblocked task in `docs/lanes/<your-lane>.md:
    implement → test (real output only) → `git commit -m "[lane] summary"` → update
    `docs/status/<your-lane>.md` → next task.
 5. **Report via coord** as you go:
