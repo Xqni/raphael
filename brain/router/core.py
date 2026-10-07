@@ -1,24 +1,55 @@
-"""Core router with circuit breakers, rate limits, health checks, and usage logging."""
+"""Router facade — `chat / vision / transcribe / health` (INTERFACES §a).
+
+**No lane may call a provider HTTP API directly.** Everything goes through
+this package; callers get a plain dict on success or a `RouterError` carrying
+a PROTOCOL §10 code on failure — never a crash (INTERFACES §a).
+
+Responsibilities layered here (Wave 2 tasks 1-4):
+
+- **chain failover** — walk `providers.chain` (profile-derived) and serve the
+  first provider that can answer; Go/paid gates enforced in code;
+- **resilience** — 429/5xx backoff with jitter, `Retry-After` + rate-limit
+  header honoring, per-provider RPM/TPM budgets, circuit breakers,
+  model-vanished → re-discover once;
+- **privacy gates** — Private Mode refusal, foreground-window blocklist for
+  vision, secret redaction of every outbound string, no image logging;
+- **usage log** — one JSON line per call in `brain/router/usage.jsonl`
+  (gitignored runtime data).
+
+Legacy seam (`brain/llm.py`, brain-core's side) keeps working:
+`acquire_model()` / `complete()` are still exported with their old shapes.
+"""
 from __future__ import annotations
 
 import asyncio
-import json
-import os
+import base64
+import logging
+import random
 import time
 from collections import deque
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
-from typing import Any, Callable, Optional
+from typing import Any, AsyncIterator, Awaitable, Callable
 
 from .config import RouterConfig, load_config
-from .ollama import OllamaProvider, OllamaUnavailable
-from .zen import ZenDiscovery, ZenDiscoveryError
+from .errors import RouterError, ProviderError, ProviderUnavailable, aggregate_code
+from .httputil import guess_audio_format, guess_image_mime
+from .privacy import (
+    blocklist_hit,
+    describe_image,
+    is_private_mode,
+    redact_secrets,
+    redact_messages,
+)
+from .provider import ChatResult, Provider, estimate_input_tokens
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
-USAGE_LOG_PATH = REPO_ROOT / "brain" / "router" / "usage.jsonl"
-BENCHMARK_RANKING_PATH = REPO_ROOT / "brain" / "router" / "benchmark_ranking.json"
+log = logging.getLogger("raphael.router")
+
+# --------------------------------------------------------------------------- #
+# legacy result types (brain/llm.py + older tests read these shapes)
+# --------------------------------------------------------------------------- #
 
 
 class Outcome(str, Enum):
@@ -26,6 +57,35 @@ class Outcome(str, Enum):
     RETRY = "retry"
     FAILED = "failed"
     UNAVAILABLE = "unavailable"
+
+
+@dataclass
+class UsageEvent:
+    timestamp: str
+    provider: str
+    model: str
+    tokens_input: int
+    tokens_output: int
+    latency_ms: float
+    outcome: Outcome
+    task_kind: str | None = None
+    error_code: str | None = None
+
+
+@dataclass
+class CallResult:
+    provider: str
+    model: str
+    ok: bool
+    text: str = ""
+    tool_calls: list[dict[str, Any]] = field(default_factory=list)
+    finish: str = "stop"
+    tokens_input: int = 0
+    tokens_output: int = 0
+    latency_ms: float = 0.0
+    outcome: Outcome = Outcome.FAILED
+    error: str | None = None
+    error_code: str | None = None
 
 
 class ProviderState(str, Enum):
@@ -48,13 +108,14 @@ class CircuitBreaker:
         if self.state == ProviderState.CLOSED:
             return True
         if self.state == ProviderState.OPEN:
-            if now - self.opened_at >= self.timeout_s:
+            # cooldown with jitter (ARCHITECTURE §4) — ±20% of timeout_s
+            jitter = self.timeout_s * 0.2 * random.random()
+            if now - self.opened_at >= self.timeout_s - jitter:
                 self.state = ProviderState.HALF_OPEN
                 self.success_count = 0
                 return True
             return False
-        # HALF_OPEN
-        return True
+        return True  # HALF_OPEN lets a probe through
 
     def record_success(self) -> None:
         if self.state == ProviderState.HALF_OPEN:
@@ -82,342 +143,856 @@ class CircuitBreaker:
 
 @dataclass
 class RateLimiter:
+    """Sliding-window RPM budget for one provider."""
+
     max_calls: int
-    window_s: float
+    window_s: float = 60.0
     calls: deque[float] = field(default_factory=deque)
 
     def allow(self, now: float) -> bool:
-        while self.calls and now - self.calls[0] > self.window_s:
-            self.calls.popleft()
+        self._prune(now)
         if len(self.calls) >= self.max_calls:
             return False
         self.calls.append(now)
         return True
 
-
-@dataclass
-class UsageEvent:
-    timestamp: str
-    provider: str
-    model: str
-    tokens_input: int
-    tokens_output: int
-    latency_ms: float
-    outcome: Outcome
-    task_kind: str | None = None
-    error_code: str | None = None
+    def _prune(self, now: float) -> None:
+        while self.calls and now - self.calls[0] > self.window_s:
+            self.calls.popleft()
 
 
 @dataclass
-class CallResult:
-    provider: str
-    model: str
-    ok: bool
-    text: str = ""
-    tokens_input: int = 0
-    tokens_output: int = 0
-    latency_ms: float = 0.0
-    outcome: Outcome = Outcome.FAILED
-    error: str | None = None
-    error_code: str | None = None
+class TokenBudget:
+    """Sliding-window TPM budget for one provider (estimated + actual usage)."""
 
+    max_tokens: int
+    window_s: float = 60.0
+    events: deque[tuple[float, int]] = field(default_factory=deque)
 
-class ProviderUnavailable(Exception):
-    pass
+    def allow(self, now: float, estimate: int) -> bool:
+        self._prune(now)
+        used = sum(t for _, t in self.events)
+        if used + max(0, estimate) > self.max_tokens:
+            return False
+        return True
 
+    def record(self, now: float, tokens: int) -> None:
+        self.events.append((now, max(0, int(tokens))))
+        self._prune(now)
 
-class ProviderError(Exception):
-    def __init__(self, message: str, code: str | None = None) -> None:
-        super().__init__(message)
-        self.code = code
+    def _prune(self, now: float) -> None:
+        while self.events and now - self.events[0][0] > self.window_s:
+            self.events.popleft()
 
 
 @dataclass
 class ProviderStats:
     circuit: CircuitBreaker = field(default_factory=CircuitBreaker)
     limiter: RateLimiter | None = None
+    budget: TokenBudget | None = None
+    cooldown_until: float = 0.0       # set from rate-limit headers / Retry-After
+    last_error: str | None = None
+
+
+# reasons that mean "skip this provider quietly" (no breaker failure, no retry)
+SKIP_REASONS = frozenset({
+    "circuit_open",
+    "cooldown",
+    "local_rpm_budget",
+    "local_tpm_budget",
+    "missing_key",
+    "gated",
+    "no_model",
+    "chain_exhausted",
+    "private_mode",
+    "blocked_window",
+    "cloud_vision_disabled",
+    "stt_not_available",
+})
+
+# provider failures worth retrying on the SAME provider before failing over
+_RETRYABLE = {"E_OFFLINE", "E_PROVIDER_5XX", "E_PROVIDER_429", "E_TIMEOUT"}
+
+SYSTEM_PROMPT = (
+    "You are Raphael, a warm and direct local-first desktop companion "
+    "with a female voice, talking with the person at this Windows PC. "
+    "Voice-first conversation: plain spoken text only — no markdown, no "
+    "lists, no emojis, no code. Match length to the ask: one sentence "
+    "for quick answers, a few sentences or a short paragraph when "
+    "explaining. Be candid about what you don't know. Never announce "
+    "that you are a language model."
+)
+
+
+def build_provider(name: str, config: RouterConfig) -> Provider:
+    from .groq import GroqProvider
+    from .mock import MockProvider
+    from .ollama import OllamaLocalProvider
+    from .zen import GoProvider, ZenProvider
+
+    builders: dict[str, Callable[[RouterConfig], Provider]] = {
+        "groq": GroqProvider,
+        "zen_free": ZenProvider,
+        "go": GoProvider,
+        "ollama": OllamaLocalProvider,
+        "mock": MockProvider,
+    }
+    try:
+        return builders[name](config)
+    except KeyError as e:
+        raise ProviderError(f"unknown provider in chain: {name}", code="E_INTERNAL") from e
 
 
 class Router:
     def __init__(self, config: RouterConfig | None = None) -> None:
         self.config = config or load_config()
-        self.zen = ZenDiscovery(
-            base_url=self.config.providers.zen_base_url,
-            ttl_s=self.config.providers.discovery_interval_s,
-        )
-        self.ollama = OllamaProvider(base_url=self.config.local_model.ollama_url)
+        self._providers: dict[str, Provider] = {}
         self._stats: dict[str, ProviderStats] = {}
-        self._health_task: asyncio.Task[None] | None = None
-        self._running = False
         self._usage_lock = asyncio.Lock()
-        USAGE_LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
-        # init stats
-        for p in ("zen_free", "go", "ollama"):
-            limiter = None
-            if p == "zen_free":
-                limiter = RateLimiter(
-                    max_calls=self.config.providers.max_calls_per_minute,
-                    window_s=60.0,
-                )
-            elif p == "go":
-                limiter = RateLimiter(max_calls=10, window_s=60.0)
-            elif p == "ollama":
-                limiter = RateLimiter(max_calls=20, window_s=60.0)
-            self._stats[p] = ProviderStats(limiter=limiter)
+        for name in self.config.providers.chain:
+            self._register(name)
+        self._local_transcriber: Callable[..., Awaitable[dict[str, Any]]] | None = None
 
-    def _now(self) -> float:
-        return time.monotonic()
+    # ------------------------------------------------------------------ #
+    # registry / stats
+    # ------------------------------------------------------------------ #
+    def _register(self, name: str) -> Provider:
+        prov = self._providers.get(name)
+        if prov is None:
+            prov = build_provider(name, self.config)
+            self._providers[name] = prov
+        self._stats.setdefault(name, ProviderStats(
+            limiter=RateLimiter(max_calls=self.config.providers.rpm_for(name)),
+            budget=TokenBudget(max_tokens=self.config.providers.tpm_for(name)),
+        ))
+        return prov
 
-    def _utc_now(self) -> datetime:
-        return datetime.now(timezone.utc)
+    def _chain(self) -> list[Provider]:
+        """Profile chain with the Go/paid gates applied (INTERFACES §a)."""
+        out: list[Provider] = []
+        for name in self.config.providers.chain:
+            if name == "go" and not self.config.providers.allow_go_runtime:
+                continue
+            out.append(self._register(name))
+        return out
 
-    async def _write_usage(self, ev: UsageEvent) -> None:
-        line = json.dumps(asdict(ev), ensure_ascii=False)
-        async with self._usage_lock:
-            await asyncio.to_thread(lambda: USAGE_LOG_PATH.open("a", encoding="utf-8").write(line + "\n"))
+    def _stats_for(self, name: str) -> ProviderStats:
+        return self._stats.setdefault(name, ProviderStats(
+            limiter=RateLimiter(max_calls=self.config.providers.rpm_for(name)),
+            budget=TokenBudget(max_tokens=self.config.providers.tpm_for(name)),
+        ))
 
-    async def _health_loop(self) -> None:
-        while self._running:
-            await asyncio.sleep(30.0 + (time.monotonic() % 5.0))
+    # ------------------------------------------------------------------ #
+    # gates (privacy / profile)
+    # ------------------------------------------------------------------ #
+    def _gate_cloud(self, operation: str) -> None:
+        """Private Mode disables ALL cloud calls (PROTOCOL §7/§11)."""
+        if is_private_mode():
+            raise RouterError(
+                "cloud call refused: Private Mode is on",
+                code="E_OFFLINE", reason="private_mode",
+                detail="Private Mode is on — cloud calls are off.",
+            )
+
+    def _gate_vision_profile(self) -> None:
+        if self.config.vision.provider != "cloud":
+            raise RouterError(
+                "cloud vision disabled by profile",
+                code="E_OFFLINE", reason="cloud_vision_disabled",
+                detail="Local-only vision is configured; cloud vision is off.",
+            )
+
+    def _gate_blocklist(self, operation: str) -> None:
+        """Foreground-window blocklist (PROTOCOL §7(2) / ARCHITECTURE §4).
+
+        Vision: ALWAYS refused on a blocklisted window. Chat: refused too
+        when `router.block_chat_on_blocklist` is set (default true — under
+        profile `cloud_temp` there is no local model to fall back to, so
+        refusing is the only safe action).
+        """
+        hit = blocklist_hit(self.config.privacy.blocklist_apps)
+        if not hit:
+            return
+        if operation == "chat" and not self.config.providers.block_chat_on_blocklist:
+            return
+        raise RouterError(
+            f"foreground window matches blocklist ({hit})",
+            code="E_OFFLINE", reason="blocked_window",
+            detail="Blocked window in focus — staying local only.",
+        )
+
+    # ------------------------------------------------------------------ #
+    # admission control (circuit / budgets / key / gate) → RouterError
+    # ------------------------------------------------------------------ #
+    def _admit(self, provider: Provider, estimate: int = 1) -> None:
+        now = time.monotonic()
+        stats = self._stats_for(provider.name)
+        if stats.circuit.can_proceed(now) is False:
+            raise RouterError("circuit open", code="E_OFFLINE",
+                              provider=provider.name, reason="circuit_open")
+        if now < stats.cooldown_until:
+            raise RouterError("rate-limit cooldown active", code="E_PROVIDER_429",
+                              provider=provider.name, reason="cooldown")
+        if not provider.has_key():
+            raise RouterError("missing API key", code="E_PROVIDER_AUTH",
+                              provider=provider.name, reason="missing_key")
+        if provider.gated and not self.config.providers.allow_go_runtime:
+            raise RouterError("provider gated off by config", code="E_OFFLINE",
+                              provider=provider.name, reason="gated")
+        if stats.limiter is not None and not stats.limiter.allow(now):
+            raise RouterError("local RPM budget exhausted", code="E_PROVIDER_429",
+                              provider=provider.name, reason="local_rpm_budget",
+                              detail="Too many requests this minute.")
+        if stats.budget is not None and not stats.budget.allow(now, estimate):
+            raise RouterError("local TPM budget exhausted", code="E_PROVIDER_429",
+                              provider=provider.name, reason="local_tpm_budget",
+                              detail="Token budget for this minute is used up.")
+
+    def _note_rate_limit(self, provider: str, rate_limit: dict[str, Any] | None,
+                         retry_after: float | None = None) -> None:
+        """Honor provider rate-limit headers (Wave 2 task 3)."""
+        stats = self._stats_for(provider)
+        now = time.monotonic()
+        if retry_after is not None:
+            stats.cooldown_until = max(stats.cooldown_until, now + retry_after)
+        if not isinstance(rate_limit, dict):
+            return
+        remaining = rate_limit.get("remaining_requests")
+        reset_s = rate_limit.get("reset_requests_s")
+        if remaining is not None and float(remaining) <= 0:
+            wait = float(reset_s) if reset_s else 30.0
+            stats.cooldown_until = max(stats.cooldown_until, now + min(wait, 120.0))
+        rem_tokens = rate_limit.get("remaining_tokens")
+        reset_tokens = rate_limit.get("reset_tokens_s")
+        if rem_tokens is not None and float(rem_tokens) <= 0:
+            wait = float(reset_tokens) if reset_tokens else 30.0
+            stats.cooldown_until = max(stats.cooldown_until, now + min(wait, 120.0))
+
+    # ------------------------------------------------------------------ #
+    # retry / backoff
+    # ------------------------------------------------------------------ #
+    def _backoff(self, attempt: int, retry_after: float | None) -> float:
+        """Exponential backoff with ±20% jitter; honors Retry-After when short."""
+        p = self.config.providers
+        if retry_after is not None:
+            if retry_after > p.backoff_cap_s:
+                return retry_after  # caller turns this into a failover cooldown
+            return max(0.0, retry_after * random.uniform(0.9, 1.1))
+        delay = min(p.backoff_cap_s, p.backoff_base_s * (2 ** max(0, attempt - 1)))
+        return delay * random.uniform(0.8, 1.2)
+
+    async def _call_provider(
+        self,
+        provider: Provider,
+        role: str,
+        purpose: str,
+        call: Callable[[Any], Awaitable[ChatResult]],
+        *,
+        require_capability: str | None = None,
+        fixed_model: str | None = None,
+        estimate: int = 100,
+    ) -> tuple[Any, ChatResult]:
+        """Single-provider attempt loop: retries → failover decision.
+
+        Returns (model, ChatResult). Raises the LAST RouterError.
+        `fixed_model` pins an exact model id (legacy `complete()` seam);
+        `estimate` is the input-token guess used for the TPM budget gate.
+        """
+        p = self.config.providers
+        stats = self._stats_for(provider.name)
+        estimate = max(1, int(estimate))
+        last: RouterError | None = None
+        attempt = 0
+        model = None
+        while attempt <= p.max_retries:
+            attempt += 1
+            # admission FIRST: missing key / open circuit / budgets must never
+            # cost a discovery round-trip or a request
             try:
-                await self.health_check()
-            except Exception:
-                # Isolate probe failures: a flaky network must never kill the
-                # health loop silently (CancelledError is BaseException -> propagates).
+                self._admit(provider, estimate=estimate)
+            except RouterError:
+                raise
+            try:
+                if fixed_model:
+                    model = ModelRef(fixed_model, provider.name)
+                else:
+                    model = await provider.pick(role,
+                                                require_capability=require_capability)
+            except RouterError as e:
+                last = e
+                if e.reason in SKIP_REASONS or e.code not in _RETRYABLE:
+                    raise
+                await asyncio.sleep(self._backoff(attempt, e.retry_after))
+                continue
+            if model is None:
+                raise RouterError("no model for role", code="E_OFFLINE",
+                                  provider=provider.name, reason="no_model",
+                                  detail="No model available for this request.")
+            if model.paid and not p.allow_paid_runtime:
+                raise RouterError("paid model gated off", code="E_OFFLINE",
+                                  provider=provider.name, reason="gated")
+            try:
+                start = time.monotonic()
+                result = await asyncio.wait_for(
+                    call(model), timeout=p.request_timeout_s,
+                )
+            except asyncio.TimeoutError as e:
+                last = RouterError("provider timeout", code="E_TIMEOUT",
+                                   provider=provider.name, model=getattr(model, "id", None))
+                stats.last_error = str(last)
+                if attempt <= p.max_retries:
+                    await asyncio.sleep(self._backoff(attempt, None))
+                    continue
+                raise last from e
+            except RouterError as e:
+                last = e
+                stats.last_error = str(e)
+                if e.reason == "model_not_found":
+                    # vanished model → re-select (ARCHITECTURE §4)
+                    provider.invalidate()
+                    continue
+                if e.reason in SKIP_REASONS:
+                    raise
+                if e.code in _RETRYABLE and attempt <= p.max_retries:
+                    if e.retry_after is not None and e.retry_after > p.backoff_cap_s:
+                        # provider says "wait long" → honor it as a cooldown and
+                        # let the chain take over now (headers honored, no stall)
+                        stats.cooldown_until = time.monotonic() + e.retry_after
+                        e.reason = "cooldown"
+                        raise
+                    await asyncio.sleep(self._backoff(attempt, e.retry_after))
+                    continue
+                raise
+            except Exception as e:  # noqa: BLE001 — normalize to RouterError
+                last = RouterError(redact_secrets(str(e)), code="E_PROVIDER_5XX",
+                                   provider=provider.name,
+                                   model=getattr(model, "id", None))
+                stats.last_error = str(last)
+                if attempt <= p.max_retries:
+                    await asyncio.sleep(self._backoff(attempt, None))
+                    continue
+                raise last from e
+
+            # success accounting
+            stats.circuit.record_success()
+            elapsed_ms = (time.monotonic() - start) * 1000.0
+            tokens = (result.estimated_tokens()
+                      if isinstance(result, ChatResult) else 0) or estimate
+            if stats.budget is not None:
+                stats.budget.record(time.monotonic(), tokens)
+            self._note_rate_limit(provider.name, getattr(result, "rate_limit", None))
+            stats.last_error = None
+            if isinstance(result, ChatResult):
+                result.usage.setdefault("input", 0)
+                result.usage.setdefault("output", 0)
+            return model, result
+        raise last or RouterError("provider failed", code="E_INTERNAL",
+                                  provider=provider.name)
+
+    # ------------------------------------------------------------------ #
+    # failover across the chain
+    # ------------------------------------------------------------------ #
+    async def _with_failover(
+        self,
+        *,
+        role: str,
+        purpose: str,
+        call: Callable[[Provider, Any], Awaitable[ChatResult]],
+        require_capability: str | None = None,
+        estimate: int = 100,
+    ) -> tuple[str, str, ChatResult]:
+        errors: list[RouterError] = []
+        for provider in self._chain():
+            try:
+                model, result = await self._call_provider(
+                    provider, role, purpose,
+                    lambda m, _p=provider: call(_p, m),
+                    require_capability=require_capability,
+                    estimate=estimate,
+                )
+            except RouterError as e:
+                errors.append(e)
+                stats = self._stats_for(provider.name)
+                stats.last_error = str(e)
+                if e.reason not in SKIP_REASONS:
+                    stats.circuit.record_failure(time.monotonic())
+                continue
+            return provider.name, model.id, result
+        raise self._exhausted(errors)
+
+    def _exhausted(self, errors: list[RouterError]) -> RouterError:
+        if not errors:
+            # chain empty or every provider gated off (e.g. `go` with
+            # allow_go_runtime=false) — still a §10 code, never a crash
+            return RouterError(
+                "no provider available (chain empty or gated off)",
+                code="E_OFFLINE", reason="chain_exhausted",
+                detail="No model service is reachable right now.",
+            )
+        codes = [e.code for e in errors]
+        code = aggregate_code(codes)
+        detail_map = {
+            "E_PROVIDER_429": "Rate limited everywhere — try again shortly.",
+            "E_PROVIDER_AUTH": "Model service rejected the API key.",
+            "E_OFFLINE": "No model service is reachable right now.",
+        }
+        last = errors[-1] if errors else None
+        reason = "chain_exhausted"
+        if last is not None and last.reason in ("private_mode", "blocked_window",
+                                                "cloud_vision_disabled"):
+            reason = last.reason
+        joined = "; ".join(str(e) for e in errors[:4])[:400] or "no providers in chain"
+        return RouterError(joined, code=code, reason=reason,
+                           detail=detail_map.get(code))
+
+    # ------------------------------------------------------------------ #
+    # FACADE — chat (INTERFACES §a)
+    # ------------------------------------------------------------------ #
+    def chat(self, messages: list[dict[str, Any]],
+             tools: list[dict[str, Any]] | None = None,
+             stream: bool = False,
+             purpose: str = "chat"):
+        """Non-streaming: `await chat(...)` → dict. Streaming:
+        `async for ev in chat(..., stream=True)` → deltas + final frame."""
+        if stream:
+            return self._chat_stream(messages, tools, purpose)
+        return self._chat(messages, tools, purpose)
+
+    async def _chat(self, messages, tools, purpose) -> dict[str, Any]:
+        start = time.monotonic()
+        self._gate_cloud("chat")
+        self._gate_blocklist("chat")
+        msgs = redact_messages(messages)
+        if not isinstance(msgs, list) or not msgs:
+            raise RouterError("messages must be a non-empty list",
+                              code="E_BAD_MSG", reason="bad_messages")
+        role = self._role_for(purpose, tools)
+        provider, model, result = await self._with_failover(
+            role=role, purpose=purpose,
+            call=lambda p, m: p.chat(m, msgs, tools=tools,
+                                     timeout=self.config.providers.request_timeout_s),
+            require_capability="tools" if tools else None,
+            estimate=estimate_input_tokens(msgs, tools),
+        )
+        latency = (time.monotonic() - start) * 1000.0
+        await self._log_usage(provider, model, purpose, result.usage,
+                              Outcome.SUCCESS, None, latency_ms=latency)
+        return {
+            "text": result.text,
+            "tool_calls": result.tool_calls,
+            "finish": result.finish if result.tool_calls else (result.finish or "stop"),
+            "provider": provider,
+            "model": model,
+            "usage": {"input": int(result.usage.get("input", 0)),
+                      "output": int(result.usage.get("output", 0))},
+        }
+
+    async def _chat_stream(self, messages, tools, purpose) -> AsyncIterator[dict[str, Any]]:
+        self._gate_cloud("chat")
+        self._gate_blocklist("chat")
+        msgs = redact_messages(messages)
+        if not isinstance(msgs, list) or not msgs:
+            raise RouterError("messages must be a non-empty list",
+                              code="E_BAD_MSG", reason="bad_messages")
+        role = self._role_for(purpose, tools)
+        errors: list[RouterError] = []
+        for provider in self._chain():
+            model = None
+            try:
+                model = await provider.pick(
+                    role, require_capability="tools" if tools else None)
+                if model is None:
+                    raise RouterError("no model for role", code="E_OFFLINE",
+                                      provider=provider.name, reason="no_model")
+                if model.paid and not self.config.providers.allow_paid_runtime:
+                    raise RouterError("paid model gated off", code="E_OFFLINE",
+                                      provider=provider.name, reason="gated")
+                self._admit(provider, estimate=estimate_input_tokens(msgs, tools))
+            except RouterError as e:
+                errors.append(e)
+                if e.reason not in SKIP_REASONS:
+                    self._stats_for(provider.name).circuit.record_failure(
+                        time.monotonic())
                 continue
 
-    async def start(self) -> None:
-        self._running = True
-        self._health_task = asyncio.create_task(self._health_loop())
-
-    async def shutdown(self) -> None:
-        self._running = False
-        if self._health_task:
-            self._health_task.cancel()
+            emitted = False
+            start = time.monotonic()
+            usage = {"input": 0, "output": 0}
             try:
-                await self._health_task
-            except asyncio.CancelledError:
-                pass
+                gen = provider.chat_stream(
+                    model, msgs, tools=tools,
+                    timeout=self.config.providers.stream_timeout_s,
+                )
+                async for ev in gen:
+                    if "finish" in ev:
+                        usage.update(ev.get("usage") or {})
+                        yield {
+                            "finish": ev.get("finish", "stop"),
+                            "tool_calls": ev.get("tool_calls") or [],
+                            "provider": provider.name,
+                            "model": model.id,
+                            "usage": dict(usage),
+                        }
+                    else:
+                        emitted = True
+                        yield {"delta": ev.get("delta", "")}
+            except RouterError as e:
+                stats = self._stats_for(provider.name)
+                stats.last_error = str(e)
+                if not emitted:
+                    errors.append(e)
+                    if e.reason not in SKIP_REASONS:
+                        stats.circuit.record_failure(time.monotonic())
+                    continue  # failover before the first delta
+                # mid-stream failure: surface it, the loop maps it to a job error
+                await self._log_usage(provider.name, model.id, purpose, usage,
+                                      Outcome.FAILED, e.code,
+                                      latency_ms=(time.monotonic() - start) * 1000)
+                raise
+            except Exception as e:  # noqa: BLE001
+                err = RouterError(redact_secrets(str(e)), code="E_PROVIDER_5XX",
+                                  provider=provider.name, model=model.id)
+                if not emitted:
+                    errors.append(err)
+                    self._stats_for(provider.name).circuit.record_failure(
+                        time.monotonic())
+                    continue
+                raise err from e
+
+            stats = self._stats_for(provider.name)
+            stats.circuit.record_success()
+            stats.last_error = None
+            tokens = usage.get("input", 0) + usage.get("output", 0)
+            if stats.budget is not None and tokens:
+                stats.budget.record(time.monotonic(), tokens)
+            await self._log_usage(provider.name, model.id, purpose, usage,
+                                  Outcome.SUCCESS, None,
+                                  latency_ms=(time.monotonic() - start) * 1000)
+            return
+        raise self._exhausted(errors)
+
+    def _role_for(self, purpose: str, tools: list[dict[str, Any]] | None) -> str:
+        if tools:
+            return self.config.providers.purpose_roles.get("tool", "strong")
+        return self.config.providers.purpose_roles.get(purpose, "fast")
+
+    # ------------------------------------------------------------------ #
+    # FACADE — vision (INTERFACES §a, PROTOCOL §7 gates)
+    # ------------------------------------------------------------------ #
+    async def vision(self, image: Any, question: str,
+                     purpose: str = "vision") -> dict[str, Any]:
+        self._gate_cloud("vision")
+        self._gate_vision_profile()
+        # caller (computer-use/brain-core) pre-gates: profile, redaction of
+        # extracted text, no logging. The router STILL re-checks the two gates
+        # that are cheap and fatal if skipped: blocklist + Private Mode.
+        self._gate_blocklist("vision")
+        log.debug("vision request: %s", describe_image(image))
+
+        data, mime = await _encode_image(image)
+        max_bytes = self.config.vision.max_bytes
+        if len(data) > max_bytes:
+            raise RouterError(
+                f"image too large ({len(data)} > {max_bytes} bytes) — "
+                "downscale before sending (config vision.max_px/quality)",
+                code="E_BAD_MSG", reason="image_too_large",
+            )
+        q = redact_secrets(question or "")
+        b64 = base64.b64encode(data).decode("ascii")
+        provider, model, result = await self._with_failover(
+            role="vision", purpose=purpose,
+            call=lambda p, m: p.vision(m, b64, mime, q,
+                                       timeout=self.config.providers.request_timeout_s),
+            require_capability="vision",
+        )
+        await self._log_usage(provider, model, purpose, result.usage,
+                              Outcome.SUCCESS, None)
+        return {"text": result.text, "provider": provider, "model": model}
+
+    # ------------------------------------------------------------------ #
+    # FACADE — transcribe (Groq Whisper; local seam for profile local)
+    # ------------------------------------------------------------------ #
+    def set_local_transcriber(
+        self, fn: Callable[..., Awaitable[dict[str, Any]]] | None
+    ) -> None:
+        """Voice lane registers its local STT behind this seam (INTERFACES §a)."""
+        self._local_transcriber = fn
+
+    async def transcribe(self, audio: bytes, language: str | None = None) -> dict[str, Any]:
+        self._gate_cloud("transcribe")
+        if not isinstance(audio, (bytes, bytearray)) or not audio:
+            raise RouterError("audio must be non-empty bytes", code="E_BAD_MSG",
+                              reason="bad_audio")
+        audio = bytes(audio)
+
+        if self.config.voice.stt_engine == "local":
+            if self._local_transcriber is None:
+                raise RouterError("local STT not registered", code="E_LOCAL_DOWN",
+                                  reason="stt_not_available",
+                                  detail="Local speech-to-text is not available.")
+            out = await self._local_transcriber(audio, language)
+            return {"text": str((out or {}).get("text", "")).strip(),
+                    "rtf": (out or {}).get("rtf")}
+
+        errors: list[RouterError] = []
+        for provider in self._chain():
+            # No static capability pre-check here: which provider can do STT is
+            # decided by live discovery (role "stt" → audio-capable/whisper
+            # model); providers without one skip out via the no_model path.
+            start = time.monotonic()
+            try:
+                model, result = await self._call_provider(
+                    provider, "stt", "stt",
+                    lambda m, _p=provider: _p.transcribe(
+                        m, audio, _audio_filename(audio),
+                        guess_audio_format(audio, _audio_filename(audio)),
+                        language or self.config.voice.stt_language or None,
+                        timeout=self.config.providers.request_timeout_s,
+                    ),
+                    require_capability="stt",
+                )
+            except RouterError as e:
+                errors.append(e)
+                stats = self._stats_for(provider.name)
+                stats.last_error = str(e)
+                if e.reason not in SKIP_REASONS:
+                    stats.circuit.record_failure(time.monotonic())
+                continue
+            elapsed = time.monotonic() - start
+            await self._log_usage(provider.name, model.id, "stt",
+                                  {"input": 0, "output": 0}, Outcome.SUCCESS, None,
+                                  latency_ms=elapsed * 1000)
+            text = str((result.get("text") if isinstance(result, dict)
+                        else result.text) or "").strip()
+            duration = _wav_duration(audio)
+            rtf = (elapsed / duration) if duration else None
+            return {"text": text, "rtf": rtf}
+        raise self._exhausted(errors)
+
+    # ------------------------------------------------------------------ #
+    # FACADE — health (INTERFACES §a)
+    # ------------------------------------------------------------------ #
+    async def health(self) -> dict[str, Any]:
+        providers: dict[str, Any] = {}
+        if is_private_mode():
+            # Private Mode: no cloud egress AT ALL — report from cache only.
+            for provider in self._chain():
+                cached = provider._models
+                providers[provider.name] = {
+                    "ok": bool(cached),
+                    "models": len(cached),
+                    "last_error": ("private mode: probe skipped" if cached
+                                   else "private mode: no cached models"),
+                }
+            return {"ok": bool(providers) and any(
+                p["ok"] for p in providers.values()), "providers": providers}
+        for provider in self._chain():
+            providers[provider.name] = await provider.health()
+        return {"ok": any(p.get("ok") for p in providers.values()),
+                "providers": providers}
 
     async def health_check(self) -> dict[str, bool]:
-        res: dict[str, bool] = {}
-        try:
-            await self.zen.get_models()
-            res["zen_free"] = True
-        except ZenDiscoveryError:
-            res["zen_free"] = False
-        res["go"] = bool(self.config.providers.allow_go_runtime)
-        res["ollama"] = await self.ollama.health_check()
-        return res
+        """Legacy shape used by older code/tests: {name: ok}."""
+        full = await self.health()
+        return {name: bool(info.get("ok"))
+                for name, info in full["providers"].items()}
 
+    # ------------------------------------------------------------------ #
+    # legacy seam (brain/llm.py — brain-core's side of the boundary)
+    # ------------------------------------------------------------------ #
     async def acquire_model(self, task_kind: str | None = None) -> tuple[str, str]:
-        chain = list(self.config.providers.chain)
-        for provider in chain:
-            if provider == "go" and not self.config.providers.allow_go_runtime:
-                continue
-            model = await self._try_acquire(provider)
-            if model:
-                return provider, model
-        raise ProviderUnavailable("All providers exhausted")
-
-    async def _try_acquire(self, provider: str) -> str | None:
-        if provider == "zen_free":
+        purpose = task_kind or "chat"
+        role = self._role_for(purpose, None)
+        errors: list[RouterError] = []
+        for provider in self._chain():
             try:
-                ids = await self.zen.get_free_model_ids()
-                if ids:
-                    return ids[0]
-                return None
-            except ZenDiscoveryError:
-                return None
-        if provider == "go":
-            return "go-reserved"
-        if provider == "ollama":
-            models = await self.ollama.list_models()
-            if models:
-                return models[0]
-            return None
-        return None
+                self._admit(provider, estimate=64)
+                model = await provider.pick(role)
+            except RouterError as e:
+                errors.append(e)
+                continue
+            if model is None:
+                errors.append(RouterError("no model", code="E_OFFLINE",
+                                          provider=provider.name, reason="no_model"))
+                continue
+            if model.paid and not self.config.providers.allow_paid_runtime:
+                continue
+            return provider.name, model.id
+        raise ProviderUnavailable(
+            "all providers exhausted: " + "; ".join(str(e) for e in errors[:4])
+        )
 
-    SYSTEM_PROMPT = (
-        "You are Raphael, a warm and direct local-first desktop companion "
-        "with a female voice, talking with the person at this Windows PC. "
-        "Voice-first conversation: plain spoken text only — no markdown, no "
-        "lists, no emojis, no code. Match length to the ask: one sentence "
-        "for quick answers, a few sentences or a short paragraph when "
-        "explaining. Be candid about what you don't know. Never announce "
-        "that you are a language model."
-    )
-
-    async def _chat(self, provider: str, model: str, prompt: str):
-        return await asyncio.to_thread(self._chat_sync, provider, model, prompt)
-
-    def _chat_sync(self, provider: str, model: str, prompt: str):
-        """REAL provider calls (the stub used to speak '[provider:model]
-        response' aloud — user-visible nonsense). ~400-token budget:
-        conversational, length-adaptive replies."""
-        from urllib import request as urlrequest
-        Request = urlrequest.Request  # Request lives in urllib.request, not urllib
+    async def complete(self, provider: str, model: str, prompt: str | None = None,
+                       task_kind: str | None = None) -> CallResult:
+        """Legacy single-provider completion — NEVER raises (llm.plan contract)."""
+        start = time.monotonic()
+        purpose = task_kind or "chat"
+        try:
+            self._gate_cloud("chat")
+        except RouterError as e:
+            return CallResult(provider=provider, model=model, ok=False,
+                              outcome=Outcome.UNAVAILABLE, error=str(e),
+                              error_code=e.code)
+        prov = self._providers.get(provider) or self._register(provider)
         now = datetime.now()
-        system = self.SYSTEM_PROMPT + (
+        system = SYSTEM_PROMPT + (
             f"\nCurrent local date/time on the user's machine: {now:%A}, "
             f"{now:%B %d, %Y %H:%M}. You HAVE clock/calendar access through "
             f"this line — answer time and date questions directly."
         )
-        messages = [
+        msgs = redact_messages([
             {"role": "system", "content": system},
-            {"role": "user", "content": prompt},
-        ]
-        if provider == "ollama":
-            base = self.config.local_model.ollama_url.rstrip("/")
-            body = json.dumps({
-                "model": model, "messages": messages, "stream": False,
-                "options": {"temperature": 0.7, "num_predict": 400},
-            }).encode()
-            req = Request(base + "/api/chat", data=body,
-                          headers={"Content-Type": "application/json"})
-            with urlrequest.urlopen(req, timeout=30) as resp:
-                data = json.loads(resp.read())
-            text = ((data.get("message") or {}).get("content") or "").strip()
-            usage = data.get("usage") or {}
-            return (text,
-                    int(usage.get("prompt_eval_count") or len(prompt.split())),
-                    int(usage.get("eval_count") or len(text.split())))
-        # zen_free / go: OpenAI-compatible chat completions
-        base = (self.config.providers.zen_base_url if provider == "zen_free"
-                else self.config.providers.go_base_url).rstrip("/")
-        key = os.environ.get("OPENCODE_API_KEY") or os.environ.get("ZEN_API_KEY")
-        if not key:
-            raise RuntimeError(f"no API key configured for {provider}")
-        body = json.dumps({
-            "model": model, "messages": messages,
-            "temperature": 0.7, "max_tokens": 400,
-        }).encode()
-        req = Request(base + "/chat/completions", data=body, headers={
-            "Content-Type": "application/json",
-            "Authorization": "Bearer " + key,
-        })
-        with urlrequest.urlopen(req, timeout=30) as resp:
-            data = json.loads(resp.read())
-        text = ((data.get("choices") or [{}])[0].get("message") or {}).get("content") or ""
-        usage = data.get("usage") or {}
-        return (text.strip(),
-                int(usage.get("prompt_tokens") or 0),
-                int(usage.get("completion_tokens") or 0))
+            {"role": "user", "content": prompt or ""},
+        ])
 
-    async def complete(
-        self,
-        provider: str,
-        model: str,
-        prompt: str | None = None,
-        task_kind: str | None = None,
-    ) -> CallResult:
-        start = self._now()
-        now = start
-        stats = self._stats.setdefault(provider, ProviderStats())
-        if not stats.circuit.can_proceed(now):
-            res = CallResult(
-                provider=provider,
-                model=model,
-                ok=False,
-                outcome=Outcome.UNAVAILABLE,
-                error="circuit open",
-                error_code="E_CIRCUIT_OPEN",
-            )
-            await self._write_usage(
-                UsageEvent(
-                    timestamp=self._utc_now().isoformat(),
-                    provider=provider,
-                    model=model,
-                    tokens_input=0,
-                    tokens_output=0,
-                    latency_ms=(self._now() - start) * 1000.0,
-                    outcome=res.outcome,
-                    task_kind=task_kind,
-                    error_code=res.error_code,
-                )
-            )
-            return res
-        if stats.limiter and not stats.limiter.allow(now):
-            res = CallResult(
-                provider=provider,
-                model=model,
-                ok=False,
-                outcome=Outcome.RETRY,
-                error="rate limited",
-                error_code="E_RATE_LIMIT",
-            )
-            await self._write_usage(
-                UsageEvent(
-                    timestamp=self._utc_now().isoformat(),
-                    provider=provider,
-                    model=model,
-                    tokens_input=0,
-                    tokens_output=0,
-                    latency_ms=(self._now() - start) * 1000.0,
-                    outcome=res.outcome,
-                    task_kind=task_kind,
-                    error_code=res.error_code,
-                )
-            )
-            return res
+        async def _call(m: Any) -> ChatResult:
+            return await prov.chat(m, msgs, tools=None,
+                                   timeout=self.config.providers.request_timeout_s)
+
         try:
-            text, tok_in, tok_out = await asyncio.wait_for(
-                self._chat(provider, model, prompt or ""), timeout=40)
-            latency_ms = (self._now() - start) * 1000.0
-            stats.circuit.record_success()
-            res = CallResult(
-                provider=provider,
-                model=model,
-                ok=True,
-                text=text,
-                tokens_input=tok_in,
-                tokens_output=tok_out,
-                latency_ms=latency_ms,
-                outcome=Outcome.SUCCESS,
+            _, result = await self._call_provider(prov, self._role_for(purpose, None),
+                                                  purpose, _call, fixed_model=model)
+        except RouterError as e:
+            self._stats_for(provider).last_error = str(e)
+            return CallResult(
+                provider=provider, model=model, ok=False,
+                outcome=Outcome.UNAVAILABLE if e.code == "E_OFFLINE" else Outcome.FAILED,
+                error=str(e)[:300], error_code=e.code,
+                latency_ms=(time.monotonic() - start) * 1000,
             )
-            await self._write_usage(
-                UsageEvent(
-                    timestamp=self._utc_now().isoformat(),
-                    provider=provider,
-                    model=model,
-                    tokens_input=res.tokens_input,
-                    tokens_output=res.tokens_output,
-                    latency_ms=latency_ms,
-                    outcome=res.outcome,
-                    task_kind=task_kind,
-                )
-            )
-            return res
-        except Exception as e:
-            stats.circuit.record_failure(self._now())
-            latency_ms = (self._now() - start) * 1000.0
-            res = CallResult(
-                provider=provider,
-                model=model,
-                ok=False,
-                outcome=Outcome.FAILED,
-                error=str(e),
-                error_code="E_PROVIDER_5XX",
-            )
-            await self._write_usage(
-                UsageEvent(
-                    timestamp=self._utc_now().isoformat(),
-                    provider=provider,
-                    model=model,
-                    tokens_input=0,
-                    tokens_output=0,
-                    latency_ms=latency_ms,
-                    outcome=res.outcome,
-                    task_kind=task_kind,
-                    error_code=res.error_code,
-                )
-            )
-            return res
+        await self._log_usage(provider, getattr(result, "model", model) or model,
+                              purpose, result.usage, Outcome.SUCCESS, None,
+                              latency_ms=(time.monotonic() - start) * 1000)
+        return CallResult(
+            provider=provider, model=model, ok=True, text=result.text,
+            tool_calls=result.tool_calls, finish=result.finish,
+            tokens_input=int(result.usage.get("input", 0)),
+            tokens_output=int(result.usage.get("output", 0)),
+            latency_ms=(time.monotonic() - start) * 1000,
+            outcome=Outcome.SUCCESS,
+        )
+
+    # ------------------------------------------------------------------ #
+    # usage log (gitignored runtime data: brain/router/usage.jsonl)
+    # ------------------------------------------------------------------ #
+    async def _log_usage(self, provider: str, model: str, purpose: str,
+                         usage: dict[str, Any], outcome: Outcome,
+                         error_code: str | None,
+                         latency_ms: float = 0.0) -> None:
+        ev = UsageEvent(
+            timestamp=datetime.now(timezone.utc).isoformat(),
+            provider=provider,
+            model=str(model),
+            tokens_input=int((usage or {}).get("input", 0)),
+            tokens_output=int((usage or {}).get("output", 0)),
+            latency_ms=round(latency_ms, 2),
+            outcome=outcome,
+            task_kind=purpose,
+            error_code=error_code,
+        )
+        await self.report_usage(ev)
 
     async def report_usage(self, event: UsageEvent) -> None:
-        await self._write_usage(event)
+        line = _usage_json(event)
+        path: Path = self.config.usage_log_path
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            async with self._usage_lock:
+                await asyncio.to_thread(_append_line, path, line)
+        except OSError:
+            pass  # usage accounting must never break a call
+
+    # ------------------------------------------------------------------ #
+    # lifecycle
+    # ------------------------------------------------------------------ #
+    async def start(self) -> None:  # kept for API parity with older code
+        return None
+
+    async def shutdown(self) -> None:
+        return None
 
 
+class ModelRef:
+    """Minimal ModelInfo stand-in when the caller pinned an exact model id."""
+
+    def __init__(self, model_id: str, provider: str) -> None:
+        self.id = model_id
+        self.provider = provider
+        self.free = True
+        self.paid = False
+        self.capabilities = frozenset()
+
+
+# --------------------------------------------------------------------------- #
+# image / audio helpers (never log the payload)
+# --------------------------------------------------------------------------- #
+async def _encode_image(image: Any) -> tuple[bytes, str]:
+    if isinstance(image, (bytes, bytearray)):
+        data = bytes(image)
+        return data, guess_image_mime(data)
+    if isinstance(image, (str, Path)):
+        path = Path(image)
+
+        def _read() -> bytes:
+            return path.read_bytes()
+
+        data = await asyncio.to_thread(_read)
+        return data, guess_image_mime(data, path.name)
+    raise RouterError(f"unsupported image type ({type(image).__name__})",
+                      code="E_BAD_MSG", reason="bad_image")
+
+
+def _audio_filename(audio: bytes) -> str:
+    if audio[:4] == b"RIFF" and audio[8:12] == b"WAVE":
+        return "audio.wav"
+    if audio[:4] == b"\x1aE\xdf\xa3":
+        return "audio.webm"
+    if audio[:3] == b"ID3" or audio[:2] == b"\xff\xfb":
+        return "audio.mp3"
+    return "audio.raw"
+
+
+def _wav_duration(audio: bytes) -> float | None:
+    """Seconds from a PCM WAV header (None for anything else)."""
+    import struct
+    if len(audio) < 44 or audio[:4] != b"RIFF" or audio[8:12] != b"WAVE":
+        return None
+    try:
+        idx = audio.find(b"fmt ")
+        if idx < 0:
+            return None
+        _chunk_size = struct.unpack("<I", audio[idx + 4:idx + 8])[0]
+        _audio_fmt, channels, rate, _brate, block_align, bits = struct.unpack(
+            "<HHIIHH", audio[idx + 8:idx + 24])
+        if _audio_fmt != 1 or channels == 0 or rate == 0 or bits == 0:
+            return None
+        didx = audio.find(b"data")
+        if didx < 0:
+            return None
+        data_size = struct.unpack("<I", audio[didx + 4:didx + 8])[0]
+        bytes_per_sec = rate * channels * bits // 8
+        if bytes_per_sec <= 0:
+            return None
+        return round(data_size / bytes_per_sec, 3)
+    except (struct.error, ValueError):
+        return None
+
+
+def _usage_json(ev: UsageEvent) -> str:
+    import json
+    data = asdict(ev)
+    data["outcome"] = ev.outcome.value if isinstance(ev.outcome, Outcome) else str(ev.outcome)
+    return json.dumps(data, ensure_ascii=False)
+
+
+def _append_line(path: Path, line: str) -> None:
+    with path.open("a", encoding="utf-8") as fh:
+        fh.write(line + "\n")
+
+
+# --------------------------------------------------------------------------- #
+# module-level singleton (brain/llm.py and other lanes use these)
+# --------------------------------------------------------------------------- #
 _router: Router | None = None
 
 
@@ -429,28 +1004,34 @@ def init_router(config: RouterConfig | None = None) -> Router:
 
 
 def get_router() -> Router:
+    global _router
     if _router is None:
-        return init_router()
+        _router = Router()
     return _router
+
+
+def reset_router() -> None:
+    """Drop the singleton (tests / profile switches)."""
+    global _router
+    _router = None
+
+
+async def shutdown_router() -> None:
+    global _router
+    if _router is not None:
+        await _router.shutdown()
+        _router = None
 
 
 async def acquire_model(task_kind: str | None = None) -> tuple[str, str]:
     return await get_router().acquire_model(task_kind=task_kind)
 
 
-async def complete(
-    provider: str,
-    model: str,
-    prompt: str | None = None,
-    task_kind: str | None = None,
-) -> CallResult:
-    return await get_router().complete(provider=provider, model=model, prompt=prompt, task_kind=task_kind)
+async def complete(provider: str, model: str, prompt: str | None = None,
+                   task_kind: str | None = None) -> CallResult:
+    return await get_router().complete(provider, model, prompt=prompt,
+                                       task_kind=task_kind)
 
 
 async def report_usage(event: UsageEvent) -> None:
     await get_router().report_usage(event)
-
-
-async def shutdown_router() -> None:
-    if _router is not None:
-        await _router.shutdown()
