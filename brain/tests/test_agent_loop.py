@@ -883,10 +883,12 @@ def test_fastpath_analyze_and_simulate_classification():
     ctx = fastpath.IntentCtx()
     res = fastpath.run_intent('analyze my disk usage', ctx)
     assert res is not None and res.done is False
-    assert res.job_kind == 'analysis' and res.task_kind == 'llm'
+    # task_kind uses the APPROVED analysis/simulation enum (shape_map octagram/
+    # triangle) — not the generic 'llm'
+    assert res.job_kind == 'analysis' and res.task_kind == 'analysis'
     res = fastpath.run_intent('simulate a dual-boot layout', ctx)
     assert res is not None and res.done is False
-    assert res.job_kind == 'simulation'
+    assert res.job_kind == 'simulation' and res.task_kind == 'simulation'
     res = fastpath.run_intent('analyse the crash log', ctx)
     assert res is not None and res.job_kind == 'analysis'
     # falls through to the agent loop (done=False) — no tool, no narration
@@ -940,9 +942,11 @@ def test_analysis_job_keeps_tools_and_records_kind(token_path, fake_chat):
                     ws_cli, lambda m: m.get('type') == 'job_event'
                     and m.get('status') == 'done' and m.get('job') == job)
                 assert done['text'] == 'Analysis complete — 3 large directories.'
-        # analysis keeps tools (unlike simulation)
+        # analysis keeps READ-ONLY tools; risky/lock tools are stripped
+        # (evolution contract: read-only, lock:false) — shell is risky
         tool_names = {t['function']['name'] for t in (calls[0]['tools'] or [])}
-        assert 't_an_probe' in tool_names and 'shell' in tool_names
+        assert 't_an_probe' in tool_names
+        assert 'shell' not in tool_names and 'uia' not in tool_names
         from brain.jobs.engine import get_engine
         assert get_engine().kind_of(job) == 'analysis'
     finally:

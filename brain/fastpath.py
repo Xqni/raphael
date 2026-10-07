@@ -167,13 +167,13 @@ def register_builtin_intents():
         # Wave-5 Analysis kind: routes to the agent loop WITH kind=analysis
         # (read-only intent; tools stay available, confirm rules unchanged).
         return IntentResult(text='', done=False, job_kind='analysis',
-                            task_kind='llm')
+                            task_kind='analysis')
 
     def _simulation(text, ctx):
         # Wave-5 Simulation kind: routes to the agent loop WITH
         # kind=simulation -> tools OFF (no side effects ever possible).
         return IntentResult(text='', done=False, job_kind='simulation',
-                            task_kind='llm')
+                            task_kind='simulation')
 
     for _kw in ('analyze ', 'analysis of ', 'analyse '):
         register_intent(_kw, _analysis)
