@@ -44,15 +44,32 @@ jobs:
         env:
           RAPHAEL_INSTANCE: qa-security
         run: python -m pytest -q brain/tests brain/router/tests
-      - name: ownership self-check (this lane's diff vs OWNERSHIP.md)
+      - name: ownership self-check (lane-derived vs OWNERSHIP.md)
+        # Lane derivation (coord decision 2026-10-07 — hardcoding
+        # `--lane qa-security` broke every non-qa push; evidence run
+        # 37574556616 flagged PROGRESS.md/brain/router on a main push):
+        #   - PR head / push ref = agent/<lane>  -> --lane <lane>  (per-lane gate)
+        #   - main, integrator pushes, anything else -> --lane integrator
+        #     (--lane integrator passes BY DESIGN: the integrator owns all
+        #      merges; real per-lane enforcement runs in the integrator's
+        #      merge loop per prompts/integrator_event.md)
         run: |
+          REF="${{ github.head_ref || github.ref_name }}"
+          case "$REF" in
+            agent/*) LANE="${REF#agent/}" ;;
+            *)       LANE="integrator" ;;
+          esac
           BASE="${{ github.event.pull_request.base.sha || github.event.before }}"
-          if [ -z "$BASE" ] || ! git cat-file -e "$BASE" 2>/dev/null; then
-            BASE="$(git rev-parse HEAD~1 2>/dev/null || echo HEAD)"
+          ZERO="0000000000000000000000000000000000000000"
+          if [ -z "$BASE" ] || [ "$BASE" = "$ZERO" ] || ! git cat-file -e "$BASE" 2>/dev/null; then
+            if [ "$REF" = "main" ]; then
+              BASE="$(git rev-parse HEAD~1 2>/dev/null || echo HEAD)"
+            else
+              BASE="$(git merge-base HEAD origin/main 2>/dev/null || git rev-parse HEAD~1 2>/dev/null || echo HEAD)"
+            fi
           fi
-          python tests/ownership_check.py --lane qa-security --diff --base "$BASE" \
-            || python tests/ownership_check.py --lane qa-security --files \
-                 $(git diff --name-only HEAD~1 HEAD -- 2>/dev/null || true)
+          echo "lane=$LANE ref=$REF base=$BASE"
+          python tests/ownership_check.py --lane "$LANE" --diff --base "$BASE"
       - name: Core Guard manifest verify
         run: python tests/core_guard.py
 
