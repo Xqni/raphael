@@ -85,7 +85,9 @@ class VoiceConfig:
     stt_device: str = "auto"          # auto|cuda|cpu
     stt_compute: str = "auto"         # auto|float16|int8|float32
     stt_language: Optional[str] = None  # None = auto-detect
-    tts_voice: str = "assets/raphael_reference.wav"
+    tts_voice: str = "assets/raphael_reference_jp.wav"
+    tts_reference_required: bool = True   # USER DIRECTIVE (Bug D): never
+    #  synthesize without the configured reference — no default/Zira voice ever
     tts_sample_rate: int = 24000
     wake_word: str = "raphael"
     ptt_hotkey: str = "ctrl+alt+space"
@@ -201,7 +203,8 @@ def load_voice_config(config_path: Optional[Path] = None) -> VoiceConfig:
     profile = _env("RAPHAEL_PROFILE", profile, str)   # idempotent; covers missing-file path
     known = {
         "profile", "stt_engine", "stt_model", "stt_device", "stt_compute",
-        "stt_language", "tts_voice", "tts_sample_rate", "wake_word",
+        "stt_language", "tts_voice", "tts_reference_required",
+        "tts_sample_rate", "wake_word",
         "ptt_hotkey", "always_listen", "ack_cache", "chunk_ms",
         "fish_host", "fish_port", "fish_device", "fish_checkpoint",
         "fish_venv", "fish_vendor",
@@ -212,7 +215,9 @@ def load_voice_config(config_path: Optional[Path] = None) -> VoiceConfig:
         stt_engine=str(section.get("stt_engine", "groq")),
         stt_model=str(section.get("stt_model", "small")),
         stt_device=str(section.get("stt_device", "auto")),
-        tts_voice=str(section.get("tts_voice", "assets/raphael_reference.wav")),
+        tts_voice=str(section.get("tts_voice", "assets/raphael_reference_jp.wav")),
+        tts_reference_required=_as_bool(section.get("tts_reference_required",
+                                                     True), True),
         tts_sample_rate=int(section.get("tts_sample_rate", 24000) or 24000),
         wake_word=str(section.get("wake_word", "raphael")),
         ptt_hotkey=str(section.get("ptt_hotkey", "ctrl+alt+space")),
@@ -230,6 +235,8 @@ def load_voice_config(config_path: Optional[Path] = None) -> VoiceConfig:
     cfg.stt_device = _env("RAPHAEL_STT_DEVICE", cfg.stt_device, str)
     cfg.stt_compute = _env("RAPHAEL_STT_COMPUTE", cfg.stt_compute, str)
     cfg.tts_voice = _env("RAPHAEL_TTS_VOICE", cfg.tts_voice, str)
+    cfg.tts_reference_required = _env("RAPHAEL_TTS_REFERENCE_REQUIRED",
+                                      cfg.tts_reference_required, _as_bool_raw)
     cfg.tts_sample_rate = _env("RAPHAEL_TTS_SAMPLE_RATE", cfg.tts_sample_rate, int)
     cfg.wake_word = _env("RAPHAEL_WAKE_WORD", cfg.wake_word, str)
     cfg.ack_cache = _env("RAPHAEL_ACK_CACHE", cfg.ack_cache, str)
