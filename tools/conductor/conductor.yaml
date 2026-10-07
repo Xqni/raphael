@@ -1,5 +1,5 @@
 {
- "_comment": "Conductor config \u2014 JSON syntax (valid YAML 1.2) so python stdlib json.load can read it. Free-tier models ONLY: dev runs must never burn Groq quota, Go, or paid models. Pings use each session's own configured model.",
+ "_comment": "Conductor config \u2014 JSON syntax (valid YAML 1.2) so python stdlib json.load can read it. SPEED MANDATE (AGintENTS_RULES Rule 15, 2026-10-07): paid fast models are authorized \u2014 handler runs use opencode-go/mimo-v2.5 for near-instant turns. Pings use each session's own configured model.",
  "tick_s": 15,
  "debounce_s": 75,
  "max_parallel_runs": 3,

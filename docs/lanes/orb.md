@@ -111,6 +111,13 @@ Re-ticked against the item text as originally written, with real evidence
       `#bfd4ff → #7fa8ff`; confirm keeps **2858 px in the 0-60° gold band**.
 - Evidence: `docs/status/orb.md` §7.
 
+## Wave 3 (start only when WAVES.md says so — current_wave: 3)
+
+Wave 2 is MERGED; live gate was 3/5 — evidence + bug dossiers: `docs/BUGS-WAVE2.md`. SPEED MANDATE: cloud is paid now — near-instant responses, fast model defaults (AGENT_RULES Rule 15, WAVES.md constraints).
+
+- [P0-BugC] Speaking visuals (docs/BUGS-WAVE2.md Bug C): (1) NO PULSE while she speaks — renderer `onSpeak` console lines never appeared although main received `speak chunk seq=N`; check preload 'speak' forwarding + the `ev.seq <= lastSpeakSeq` guard (fresh utterances start at seq 0). (2) "cages stuck in weird shape" — lattice morph wedges when interrupted by the Bug-E flicker (brain-core fixes the flicker; you make repeated `startMorphTo` interruption-safe). Delivery chain (brain→main→preload→renderer state apply) is VERIFIED — do not re-debug it; re-instrumentation guide in BUGS-WAVE2.md.
+- [SPEED] Orb flips states with no perceptible lag (Rule 15).
+
 ## Later waves
 - Per docs/WAVES.md — do not start early (AGENT_RULES §11).
 

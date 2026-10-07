@@ -16,6 +16,13 @@ Merge-order position: see docs/WAVES.md
 - [x] Mock/unit tests only; never inject real input outside mocks.
       → 78 body tests + 10 spec tests, all against FakeWin; e2e_control.py mock mode (default) uses FakeWS+FakeWin; `--live` refuses to run unless RAPHAEL_INSTANCE is set and ≠ main.
 
+## Wave 3 (start only when WAVES.md says so — current_wave: 3)
+
+Wave 2 is MERGED; live gate was 3/5 — evidence + bug dossiers: `docs/BUGS-WAVE2.md`. SPEED MANDATE: cloud is paid now — near-instant responses, fast model defaults (AGENT_RULES Rule 15, WAVES.md constraints).
+
+- [P0-BugB] Body half of BUGS-WAVE2 Bug B: `open_app` for "open YouTube and search lo-fi" opens a BLANK cmd window then fails with NO `act_res`. Make Windows launch robust (`Start-Process`/`os.startfile`, no console flash), always return an act_res (success or precise error), cover with a test.
+- [SPEED] Tool acts fire immediately on request (Rule 15).
+
 ## Later waves
 - Per docs/WAVES.md — do not start early (AGENT_RULES §11). Wave 3 (browser/CDP), Wave 4 (recycle-bin wrappers, activity viewer), Wave 5 (dry-run/Simulation) are NOT started: `current_wave` is still 2.
 

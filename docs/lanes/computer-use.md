@@ -11,6 +11,13 @@ Merge-order position: see docs/WAVES.md
 - [x] Privacy asserts: debug_capture stays false, no image bytes logged/persisted, Private Mode short-circuits to fastpath. — tests + service/runner short-circuits (note: shared `ws._on_act_res` journal leak filed as request → brain-core)
 - [x] Mock vision tests (fake router). — `brain/vision/tests` + `brain/tools/computer_use/tests` (scripted gateway/chat/vision incl. injected "ignore previous instructions" screen)
 
+## Wave 3 (start only when WAVES.md says so — current_wave: 3)
+
+Wave 2 is MERGED; live gate was 3/5 — evidence + bug dossiers: `docs/BUGS-WAVE2.md`. SPEED MANDATE: cloud is paid now — near-instant responses, fast model defaults (AGENT_RULES Rule 15, WAVES.md constraints).
+
+- [P0-BugF] `foreground_info` refuses vision on a NORMAL window: foreground = Windows Terminal titled "Ubuntu-26.04" (non-blocklisted, title query works) yet the answer was "I can't verify which window is in front" (docs/BUGS-WAVE2.md Bug F). Find the failing verification, fix it for non-blocklisted windows, keep blocklist refusal intact, test with a terminal foreground.
+- [SPEED] Screenshot→answer stays instant (Rule 15).
+
 ## Later waves
 - Per docs/WAVES.md — do not start early (AGENT_RULES §11).
   (Wave 3: watch mode, help-with-error, summarize-page, window-aware context.

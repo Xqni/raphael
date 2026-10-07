@@ -28,6 +28,13 @@ Merge-order position: see docs/WAVES.md
 - [x] (4) tool-integration-hooks x3: SPECS convention in the loader (raw-schema dicts AND pc ToolSpec objects; validate+fail loud, SPECS precedence over register(schema=)), `wiring.bind_loop(running_loop)` in app lifespan (guarded import), six fastpath `see_screen` intents (question = full utterance, needs_lock false).
 - [x] (5) `validate_schema` accepts EMPTY properties iff `required=[]` + `additionalProperties:false` (zero-arg PROTOCOL §7 tools); missing/invalid `required` still rejects (t_bad2/t_bad3 keep passing).
 
+## Wave 3 (start only when WAVES.md says so — current_wave: 3)
+
+Wave 2 is MERGED; live gate was 3/5 — evidence + bug dossiers: `docs/BUGS-WAVE2.md`. SPEED MANDATE: cloud is paid now — near-instant responses, fast model defaults (AGENT_RULES Rule 15, WAVES.md constraints).
+
+- [P0-BugE] No `speaking → listening → speaking` flicker between sentence chunks: `orbstate.derive_state()` must hold `speaking` until the whole utterance ends (evidence: docs/BUGS-WAVE2.md Bug E). Unit test the exact frame sequence.
+- [SPEED] Near-instant command→ack→first-subtitle on the fast path (Rule 15) — trim any gratuitous waits you own.
+
 ## Later waves
 - Per docs/WAVES.md — do not start early (AGENT_RULES §11).
 - Wave 3 (when current_wave=3): job concurrency polish (input-lock fairness, per-job cancel), conversation-memory hooks to tools-memory, proactive Notice events.

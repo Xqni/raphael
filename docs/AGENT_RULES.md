@@ -28,12 +28,21 @@ Read this at session start. Verbatim from the INTEGRATOR session brief (2026-10-
     exists, do NOT spawn: reuse it, or fail loudly and report. One fish, one conductor,
     one opencode serve — never N. The conductor watchdog auto-kills violations within a tick.
 
+### 15. SPEED — cloud is paid and authorized: near-instant is the target (user, 2026-10-07)
+
+User approval (verbatim in `docs/PAID_USAGE.md`): paid fast models are fine — use
+them for speed. Every session/agent/conductor run picks a FAST cloud model by
+default (flash-class; `opencode-go/mimo-v2.5` for reasoning); escalate only when a
+task genuinely needs it. Keep chains short, avoid gratuitous retries/backoff waits,
+and never block on free-tier scarcity — the paid pool is open within its logged
+caps. Fish-Speech remains the only local model (TTS, RAM rule 14 still binds).
+
 (Rule 13 added 2026-10-06 with the coord bus — mechanics in `docs/COORD_PROTOCOL.md`;
 adoption/continuation texts in `~/.raphael-coord/prompts/`.)
 
 ## Standing constraints (session brief, 2026-10-05)
 
 - The scheduled task "Raphael" is intentionally **Disabled**. Never re-enable it or start the live stack until the user says go.
-- Profile `cloud_temp` is the temporary pivot until the user's RAM upgrade: NO local models (no Ollama, no local Whisper, no local vision). Chat/tool-calling = Groq then OpenCode Zen free; STT = Groq Whisper; vision = cloud (PROTOCOL §7 exception); TTS = local Fish-Speech. Go and paid-pool models stay OFF.
+- Profile `cloud_temp` is the temporary pivot until the user's RAM upgrade: NO local models (no Ollama, no local Whisper, no local vision). Chat/tool-calling = Groq then OpenCode Zen free; STT = Groq Whisper; vision = cloud (PROTOCOL §7 exception); TTS = local Fish-Speech. Paid/Go models are AUTHORIZED within the caps logged in `docs/PAID_USAGE.md` (vision-only slot 2026-10-06; broad paid-fast approval 2026-10-07 — Rule 15).
 - Do NOT spend effort on performance/VRAM/latency optimization. Correctness, completeness, polish only.
 - Never print or log key values (presence checks only).

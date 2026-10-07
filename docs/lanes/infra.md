@@ -25,6 +25,13 @@ Merge-order position: see docs/WAVES.md
 - [x] Body pinned venv: `scripts/body-requirements.txt` (8 deps pinned vs PyPI), `scripts/install-body-venv.ps1` (py -3.13/-3.12, no admin, import verifier), supervisor `body_script` prefers the venv (config `paths.body_venv` override), selfcheck `body venv` row.
 - [x] Requests filed (AGENT_RULES §2): integrator ×2 (PROTOCOL §1 loopback bind sync; INTERFACES §d pidfile column), brain-core ×1 (`RAPHAEL_PIDFILE` in `brain/app.py`), qa-security ×1 (CI include of `supervisor/tests`).
 
+## Wave 3 (start only when WAVES.md says so — current_wave: 3)
+
+Wave 2 is MERGED; live gate was 3/5 — evidence + bug dossiers: `docs/BUGS-WAVE2.md`. SPEED MANDATE: cloud is paid now — near-instant responses, fast model defaults (AGENT_RULES Rule 15, WAVES.md constraints).
+
+- [P0-BugG] Bring-up/teardown pid hygiene (docs/BUGS-WAVE2.md Bug G): stale pid files made `kill $(cat /tmp/raphael-brain.pid)` silently no-op and `raphael stop` call a LIVE supervisor "dead" (WSL cannot see Windows pids) — resolve real pids via `ss -tlnp` / PowerShell side; supervisor must track the ACTUAL orb pid (integrator relaunched orb manually during E2E — next bring-up is supervisor-only). Ensure stop() leaves ZERO processes on both sides.
+- [SPEED] Supervisor restart/reconnect loops stay tight — no long backoffs in normal operation (Rule 15).
+
 ## Later waves
 - Per docs/WAVES.md — do not start early (AGENT_RULES §11).
   - Wave 3 (after integrator bumps `current_wave`): log rotation audit + crash reports with last-known state. NOTE: `supervisor/main.py` already ships size-cap rotation (5 MB × 3, selfcheck-verified); Wave 3 extends it to the other stack logs + adds last-known-state crash reports.

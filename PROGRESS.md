@@ -313,3 +313,54 @@ See docs/PAID_USAGE.md. Running total: $0.00 of $2.00.
 - RAM: watchdog kills multiple/stray fish servers each tick; rule 14 = one suite at a time + check-before-spawn; .wslconfig discard->gradual + memory 10->8GB (backup kept) — ARMS AT THE PENDING WSL RESTART.
 - *** POST-RESTART RECOVERY (do in order) ***: (1) verify .wslconfig active (free -m + Windows vmmem down), (2) `python3 tools/conductor/conductor.py start` (STOP must be absent), (3) final mock sweep ONE at a time (brain -k "not fish_real", voice, router, tests+supervisor, npm test), (4) WAVE 2 GATE — user pre-authorized the live E2E ("fire the e2e test... clean so it doesn't eat RAM and GPU"): read docs/TODO.md §0, manual revival (scheduled task STAYS Disabled), set state.live_e2e=true before fish starts (watchdog exemption), run WAVES exit criteria (text+voice lo-fi, free-form Q in her voice, vision via Go paid slot $1/day cap, orb states, pause/private/kill), TEAR DOWN clean (kill chain+fish+electron, live_e2e=false, verify RAM), tag wave-2-gate, wave-bump 3, wave_open all inboxes, rewrite docs/lanes/*.md for wave 3, push, report.
 - Coord bus (~/.raphael-coord: events/inbox/state/cursors/prompts) + opencode sessions are file/DB-durable = survive the restart. Lane TUIs resume from the DB when reopened.
+
+## Session 2026-10-06/07 (overnight, integrator) — LIVE E2E GATE + WAVE 3 HANDOFF
+
+**User decisions tonight (verbatim logs in docs/PAID_USAGE.md):** JP slime voice is
+PERMANENT, Zira retired ("zira is a bit too robotic so we are not using it");
+paid fast models authorized broadly, use them for speed ("make the most of it
+while we can") → new **AGENT_RULES Rule 15 (SPEED)**: near-instant responses,
+fast cloud defaults, fish stays local for TTS only; "continue as normal and
+hand off designated work to correct agent lanes".
+
+- DONE (T2): **Live E2E gate** on the real stack (supervisor + brain + body + orb +
+  fish + relay, manual bring-up, scheduled task stayed Disabled). Result **3/5**:
+  2 = free-form answers SPOKEN via fish ✓; 4 = 6 distinct live orb_states ✓
+  (idle/listening/thinking/acting/speaking/error); 5 = pause/private/kill ✓
+  (private blocks cloud exactly as designed). 1 = FAIL (`open_app`); 3 = paid
+  vision slot proven in-process (real "Blue" answer, go_vision,
+  deepseek-v4-flash-vision-exp, ~$0.001) but live WS path blocked by a foreground-
+  verification bug. Full evidence: **docs/BUGS-WAVE2.md** (Bugs A–G, per-lane).
+- DONE (T2): **Fix landed as integrator glue:** `GoVisionProvider` now sends the
+  mandatory `x-opencode-session` header (was: Go `HTTP 400 MissingSessionID` on
+  every live vision call) — `brain/router/zen.py`, committed.
+- DONE (T0): **Two silent test-killers documented:** (a) stale `/tmp/raphael-brain.pid`
+  made the E2E "restart" a no-op (all pre-restart tests ran on old code — resolve
+  via `ss -tlnp`); (b) `raphael stop` sees a LIVE Windows supervisor as "dead" from
+  WSL. Both → infra Bug G.
+- DONE (T1): **Japanese voice:** stitched 3 clean clips → `assets/raphael_reference_jp.wav`
+  (committed; config now points at it), direct fish A/B renders approved by user
+  live on speakers (`assets/reference/samples/01_jp_slime_ref.wav` vs `02_zira_...`),
+ 9.2s master-line clip for the user's Insta story at
+  `C:\Users\jxesu\Downloads\raphael_master_story.wav`. Live-TTS ref mismatch is
+  voice-lane Bug D.
+- DONE (T1): Orb speaking-state debug: delivery chain verified end-to-end
+  (brain→main→preload→renderer `STATE CHANGE -> speaking`, zero exceptions);
+  remaining visual issues (no pulse, cage morph wedging) = orb Bug C, debug
+  instrumentation reverted, re-instrument guide in BUGS-WAVE2.md.
+- DONE (T2): Model routing → `opencode-go/mimo-v2.5` for this session and the
+  conductor handler runs (Rule 15). Full 757-test run: 756 pass + 1 order-flake
+  (passes isolated; quarantined for qa-security). Conductor suites 34/34 green.
+  Core Guard OK.
+- DONE (T0): **Wave 3 open:** `current_wave: 3` (WAVES.md gate record updated —
+  `wave-2-gate` NOT tagged, honest 3/5, full gate re-runs at wave-3 close after
+  Bugs B/D/F); `wave_open` posted to all 10 lane inboxes; all
+  `docs/lanes/*.md` rewritten with per-lane P0 tasks + speed mandate.
+- DONE (T0): **Clean teardown verified** (rule 14): supervisor/body/orb/brain/fish/
+  relay all killed — 0 listeners, 0 fish, 0 electron, 0 Windows procs; GPU
+  2047→358 MiB; RAM 6.2 GB free; `live_e2e=false` (watchdog exemption off);
+  conductor tmux `raphael-conductor` still running (pid 1396).
+
+**NEXT (user):** send the CONTINUE prompt to the lane sessions — wave 3 P0s are
+Bug B (open YouTube), D (live JP voice), F (vision foreground) first; when they
+land, the integrator re-runs the full six-criterion live gate for `wave-2-gate`.

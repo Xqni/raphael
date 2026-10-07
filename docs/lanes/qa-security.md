@@ -17,7 +17,15 @@ Merge-order position: see docs/WAVES.md
 - [x] `tests/run_all` entry points (bash + ps1) + CI jobs.
 - [x] Security review → docs/reviews/2026-10-06-wave2.md + 22 per-finding requests to owning lanes.
 
-## Later waves (do not start early — AGENT_RULES §11; WAVES.md current_wave still 2)
+## Wave 3 (start only when WAVES.md says so — current_wave: 3)
+
+Wave 2 is MERGED; live gate was 3/5 — evidence + bug dossiers: `docs/BUGS-WAVE2.md`. SPEED MANDATE: cloud is paid now — near-instant responses, fast model defaults (AGENT_RULES Rule 15, WAVES.md constraints).
+
+- [P0-REGRESSIONS] Land tests for the gate bugs: (1) go_vision requests always carry `x-opencode-session` (Bug A); (2) no `listening` between sentences in an orb_state speak sequence (Bug E, with brain-core); (3) `open_app` failure always surfaces act_res + spoken subtitle (Bug B); (4) foreground=non-blocklisted terminal never refuses vision (Bug F). Wave-3 close = re-run ALL six WAVES criteria live (status table in docs/BUGS-WAVE2.md).
+- [FLAKE] `tests/contract/test_binary_frames.py::test_kind1_mic_pcm_accumulates_and_transcribes` failed once in a full 757-test run (2026-10-07) but passes in isolation — order-dependent state leak; isolate + quarantine.
+- [SPEED] Suites stay mock-fast (Rule 15).
+
+## Later waves (do not start early — AGENT_RULES §11; beyond current_wave 3)
 - [ ] Wave 3: golden job transcripts (replayable recorded conversations/tool traces as regression baseline).
 - [ ] Wave 4: resilience test suites (with infra) + security re-review after fixes.
 - [ ] Wave 5: evolution gate tests (Core Guard integrity, rollback, probation triggers).

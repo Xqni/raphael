@@ -21,6 +21,13 @@ Merge-order position: see docs/WAVES.md
 - [x] 4. Voice confirmation parsing (yes/no/modify) for LOW-risk only, fail-closed; high-risk = non-voice. OPEN request: docs/requests/voice__to__brain-core__voice-confirm-wiring.md.
 - [x] 5. Mock-based tests for the whole voice path (fake mic frames in, fake Fish out).
 
+## Wave 3 (start only when WAVES.md says so — current_wave: 3)
+
+Wave 2 is MERGED; live gate was 3/5 — evidence + bug dossiers: `docs/BUGS-WAVE2.md`. SPEED MANDATE: cloud is paid now — near-instant responses, fast model defaults (AGENT_RULES Rule 15, WAVES.md constraints).
+
+- [P0-BugD] Live TTS must use the JP slime reference — user decision 2026-10-07: JP voice PERMANENT (`config.yaml voice.tts_voice = assets/raphael_reference_jp.wav`), Zira retired (too robotic). Live E2E answers did NOT use it while direct renders with the same file sound correct (docs/BUGS-WAVE2.md Bug D). Suspects: silent `_references()` empty-fallback (tts.py:343), phrase cache keyed by text only, fish `use_memory_cache`. Task: LOUD ref loading (log path+bytes per synthesis; warn/fail on missing), invalidate/namespace the phrase cache on ref change, produce live proof; approved samples in assets/reference/samples/.
+- [SPEED] Sentence-streamed fish TTS stays local and instant (Rule 15).
+
 ## Later waves
 - Per docs/WAVES.md — do not start early (AGENT_RULES §11).
   - Wave 3: natural-conversation polish (utterance-end handling, interruptions, `spoken_reply_max_sentences` short replies).

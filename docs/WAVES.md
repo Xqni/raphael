@@ -1,6 +1,6 @@
 ---
-current_wave: 2
-updated: 2026-10-05
+current_wave: 3
+updated: 2026-10-07
 ---
 
 # WAVES.md — wave goals, exit criteria, merge order (integrator-owned)
@@ -10,15 +10,24 @@ Lanes read this every task (AGENT_RULES §11). Only the integrator bumps `curren
 ## Global constraints (apply to every wave)
 
 - Scheduled task "Raphael" stays **Disabled**; no live stack starts until the user says go (real runs = integrator, AGENT_RULES §5/§12).
-- Profile **`cloud_temp`**: no local models (no Ollama, no local Whisper, no local vision). Chat/tools = Groq → Zen free; STT = Groq Whisper; vision = cloud per PROTOCOL §7; TTS = local Fish-Speech. Go/paid stay OFF.
-- **No performance/VRAM/latency optimization work** — correctness, completeness, polish only.
+- Profile **`cloud_temp`**: no local models (no Ollama, no local Whisper, no local vision). Chat/tools = Groq → Zen free; STT = Groq Whisper; vision = cloud per PROTOCOL §7; TTS = local Fish-Speech. **Paid/Go models are AUTHORIZED** per user approvals logged in `docs/PAID_USAGE.md` (vision-only slot 2026-10-06; broad paid-fast 2026-10-07) — within their caps; never exceed a stated cap.
+- **SPEED MANDATE (user, 2026-10-07):** cloud is paid now — aim for NEAR-INSTANT replies everywhere: pick fast cloud model ids by default (flash-class, `opencode-go/mimo-v2.5`), short chains, no gratuitous retries/waiting. Fish-Speech stays the only local model (TTS). Escalate to bigger models only when a task actually needs it.
+- **No performance/VRAM/latency optimization ENGINEERING work** — correctness, completeness, polish only. (The speed mandate above is about model/route selection, not micro-optimization.)
 - Local model code paths stay in the repo (profile-gated, never deleted).
 
 ## Merge order (dependency-safe — integrator merges in exactly this order)
 
 `router → brain-core → pc-control → voice → computer-use → orb → infra → qa-security → tools-memory → evolution-persona`
 
-## Wave 2 — cloud conversational MVP (current)
+## Wave 2 — cloud conversational MVP (MERGED 2026-10-07 — all 8 lanes merged to main)
+
+**LIVE GATE RESULT (2026-10-07, integrator):** 3/5 PASS — criterion 2 (spoken
+answers), 4 (6 distinct live orb states), 5 (pause/private/kill) verified on the
+real stack. Criterion 1 FAILs on Bug B (`open_app`), criterion 3 = paid slot proven
+in-process but live WS path blocked by Bug F. Full evidence + bug assignment:
+`docs/BUGS-WAVE2.md`. **`wave-2-gate` tag NOT created** — gate re-runs (all six
+criteria) at wave-3 close once Bugs B/D/F land. Wave 3 was bumped early on the
+user's "continue as normal" directive; the three bugs are wave-3 P0.
 
 Cloud provider chain + tool calling; conversational loop with persona; orb states VISIBLY changing end-to-end; voice loop (Groq STT, Fish TTS, PTT/wake, typed input); Windows control tools; cloud-vision "see my screen" + computer-use loop; supervisor cloud profile; `raphael` CLI; mock-based test harness; instance isolation.
 
@@ -36,9 +45,25 @@ Cloud provider chain + tool calling; conversational loop with persona; orb state
 5. Pause / private / kill all work.
 6. Full mock test suite green.
 
-## Wave 3
+## Wave 3 — P0 gate bugs first, then the wave goals
 
-Memory, skills/plugins, web/files/shell/github/schedule tools, MCP client, Chrome automation via CDP, job-concurrency polish, proactive "Notice" events.
+**P0 (from the live gate, `docs/BUGS-WAVE2.md` — do these before wave goals):**
+
+1. **Bug B** (pc-control + router): `open_app` fails "open YouTube and search lo-fi"
+   (blank cmd window + error, no act_res) — robust Windows launch + right tool choice.
+2. **Bug D** (voice): live TTS must use the JP slime reference (`assets/raphael_reference_jp.wav`,
+   user-permanent) — loud ref-loading, phrase-cache invalidation, live proof.
+3. **Bug F** (computer-use): foreground verification refuses vision on a normal
+   terminal window — fix `foreground_info` path.
+4. **Bug A regression** (router): test that every go_vision request carries
+   `x-opencode-session`. **Bug E** (brain-core): no speaking→listening flicker
+   between sentences. **Bug C** (orb): speaking pulse + cage-morph polish.
+   **Bug G** (infra): supervisor-owned bring-up/teardown with correct pids.
+
+**Then the wave goals:** Memory, skills/plugins, web/files/shell/github/schedule tools, MCP client, Chrome automation via CDP, job-concurrency polish, proactive "Notice" events.
+
+**Exit criteria for wave 3:** re-run the full Wave-2 live gate (all 6 criteria, honest
+pass) + the wave's own goal demos + full mock suite green.
 
 ## Wave 4
 

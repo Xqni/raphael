@@ -18,7 +18,13 @@ Merge-order position: see docs/WAVES.md
 - [x] Unit tests with mocked HTTP only (no network, no keys in output) + placeholder-text guard that fails on any `[provider:model] response`.
 - [x] ~~**BLOCKED → request sent:** `vision()` has no FREE vision model to select~~ **BLOCKED — HUMAN DECISION PENDING** (amended decision, inbox 2026-10-06): Wave 2 exit criterion 3 stays on the exit list in docs/WAVES.md annotated *BLOCKED — human decision pending* (options: defer to Wave 6 / approve a spend-capped vision slot; ATTENTION posted to the user — exit criteria are the human's to change, authority rule `340398b`). **No code change:** `vision()` keeps refusing with `E_OFFLINE`/`no_model` — never send an image to a model that never claimed the capability (Groq 11 ids / Zen 14 `-free` ids, none vision; Zen's only vision id is paid, spend is human-only per AGENT_RULES §7). **`E_BLOCKED` DECLINED for Wave 2** — `reason` stays the discriminator (`private_mode` / `blocked_window` / `cloud_vision_disabled` / `chain_exhausted`); no PROTOCOL §10 edit, zero consumer churn.
 
-## Wave 3 (start only when WAVES.md says so)
+## Wave 3 (start only when WAVES.md says so — current_wave: 3)
+
+Wave 2 is MERGED; live gate was 3/5 — full evidence + bug dossiers: `docs/BUGS-WAVE2.md`. SPEED MANDATE: cloud is paid now — near-instant responses, fast model defaults (AGENT_RULES Rule 15, WAVES.md constraints).
+
+- [P0-BugA] Regression test: EVERY `go_vision` HTTP request carries `x-opencode-session` (fixed by integrator glue in `brain/router/zen.py` — a missing header = Go `HTTP 400 MissingSessionID`; see docs/BUGS-WAVE2.md Bug A). Also verify the live WS vision path end-to-end next stack-up.
+- [P0-BugB] Intent→tool mapping: "open YouTube and search lo-fi" must route to `search_youtube`/`launch_url`, NOT `open_app` (router half of BUGS-WAVE2 Bug B; body half is pc-control's).
+- [SPEED] Fast cloud ids by default in the chain (Rule 15) — near-instant replies; free-tier scarcity is no longer a reason to wait.
 - Usage/rate tracking surfaced in `/status`; schema-normalization edge cases; Go provider code kept but off (already gated).
 
 ## Later waves
