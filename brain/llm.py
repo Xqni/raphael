@@ -22,6 +22,11 @@ import os
 from dataclasses import dataclass, field
 from typing import Any, AsyncIterator, Dict, List, Optional
 
+from . import notice as notice_mod
+
+# codes that mean "the cloud chain is unreachable" (emitter 2, presence-only)
+_OUTAGE_CODES = {'E_OFFLINE', 'E_TIMEOUT', 'E_PROVIDER_429', 'E_PROVIDER_5XX'}
+
 
 @dataclass
 class LLMResult:
@@ -166,9 +171,17 @@ async def chat(messages: List[Dict[str, Any]],
         out = _normalize(res)
         if out.ok and task_kind and not out.provider:
             out.provider = None  # provider/model always reported by the facade
+        # emitter 2 (Notice, approved): presence-only outage/recovery pair
+        if out.ok:
+            notice_mod.provider_up()
+        elif out.code in _OUTAGE_CODES:
+            notice_mod.provider_down()
         return out
     except Exception as e:  # noqa: BLE001 — degradation, never a crash
-        return LLMResult(ok=False, code=_code_for(e), error=str(e)[:300])
+        code = _code_for(e)
+        if code in _OUTAGE_CODES:
+            notice_mod.provider_down()
+        return LLMResult(ok=False, code=code, error=str(e)[:200])
 
 
 async def _stream_via_facade(facade, messages, tools, purpose, task_kind,
@@ -187,11 +200,19 @@ async def _stream_via_facade(facade, messages, tools, purpose, task_kind,
                 return
             if isinstance(frame, dict):
                 yield frame
+                fin = frame.get('finish')
+                if fin and fin != 'error':
+                    notice_mod.provider_up()
+                elif fin == 'error' and frame.get('code') in _OUTAGE_CODES:
+                    notice_mod.provider_down()
             else:
                 yield {'delta': str(frame)}
     except Exception as e:  # noqa: BLE001 — degradation, never a crash
+        code = _code_for(e)
+        if code in _OUTAGE_CODES:
+            notice_mod.provider_down()
         yield {'finish': 'error', 'provider': None, 'model': None,
-               'code': _code_for(e), 'error': str(e)[:300]}
+               'code': code, 'error': str(e)[:300]}
 
 
 async def plan(text: str, task_kind: Optional[str] = None,

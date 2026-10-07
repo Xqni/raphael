@@ -446,6 +446,12 @@ class WsHub:
                              'server_v': SERVER_V})
         await self._send(s, {'type': 'ping', 'v': 1})  # kick off keepalive
         self.refresh_orb_state()
+        # Notice emitter 1 delivery (PROTOCOL §3, approved): queued boot
+        # notices reach the first ui/cli session — they connect after the
+        # boot broadcast would have been lost. body never renders text (§e).
+        if s.role in ('ui', 'cli'):
+            from . import notice as _notice
+            await _notice.flush_pending(self, s)
 
     def _record_auth_fail(self, ip: str):
         now = time.time()

@@ -77,6 +77,22 @@ async def lifespan(app: FastAPI):
     get_mode()                     # load persisted mode flags
     orbstate.finish_boot()
     orbstate.refresh(hub=hub, engine=engine)
+    # Notice emitter 1 (PROTOCOL §3, approved 2026-10-07): restart recovery —
+    # queued PENDING because ui/cli clients authenticate AFTER boot; the
+    # first one drains it (ws._handle_auth -> notice.flush_pending).
+    try:
+        n_boot = len(getattr(engine, 'interrupted_at_boot', None) or [])
+        if n_boot:
+            from . import config as _ncfg
+            from . import notice as _notice
+            greeting = _ncfg.cfg_get(
+                _ncfg.get_config(), 'voice_personality.greeting_recovered',
+                'Raphael online. Recovered from an unexpected shutdown.')
+            _notice.emit(f'{greeting} Interrupted tasks: {n_boot}.',
+                         level='warn', key='boot_recovery', pending=True)
+    except Exception as _ne:  # noqa: BLE001 — a notice can never break boot
+        print(f'[notice] boot notice skipped: {type(_ne).__name__}: {_ne}',
+              flush=True)
     # Pre-warm Fish TTS in the background: a COLD fish server made the user's
     # first spoken reply silent in the wild (spawn window + empty fallback
     # after the phrase cache was cleared). warmup() never raises.

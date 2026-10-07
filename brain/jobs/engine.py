@@ -48,6 +48,9 @@ class JobEngine:
         # after a full-scope cancel so listeners can stop job-scoped side
         # effects (in-flight speech). Never raises.
         self.on_job_cancelled: Optional[Callable[[int, str], Any]] = None
+        # external ids marked `interrupted` by the LAST _mark_interrupted run
+        # (boot notice emitter 1 — PROTOCOL §3 notice, approved 2026-10-07)
+        self.interrupted_at_boot: List[str] = []
 
     def _ensure_queue(self) -> "asyncio.PriorityQueue":
         loop = asyncio.get_running_loop()
@@ -139,8 +142,10 @@ class JobEngine:
                                 progress=1.0, text='Cancelled (engine shutdown)',
                                 error_code='E_CANCELLED')
 
-    def _mark_interrupted(self):
-        """Startup crash recovery: report non-terminal jobs as interrupted."""
+    def _mark_interrupted(self) -> List[str]:
+        """Startup crash recovery: report non-terminal jobs as interrupted.
+        Returns + records their external ids (boot notice emitter)."""
+        marked: List[str] = []
         for job in store.list_jobs():
             if job['status'] in store.TERMINAL:
                 continue
@@ -150,6 +155,9 @@ class JobEngine:
             job = store.get_job(job['id']) or job
             self.emit_event(job, 'interrupted', stage='done', progress=1.0,
                             text='Interrupted by brain restart', error_code='E_INTERNAL')
+            marked.append(job.get('job') or store.job_ext_id(job['id']))
+        self.interrupted_at_boot = marked
+        return marked
 
     # ---- submission --------------------------------------------------------
     async def submit(self, text: str, priority='normal', source: str = 'text',
