@@ -158,6 +158,20 @@ async def test_stream_deltas_and_final_frame(tmp_path, make_server, keys) -> Non
 
 
 @pytest.mark.asyncio
+async def test_stream_without_final_frame_still_delivers_one(
+        tmp_path, make_server, keys) -> None:
+    """Provider closes the stream early → router still owes one final frame."""
+    srv = make_server(free_suffix=False)   # default reply is plain JSON, no SSE
+    cfg = make_config(tmp_path, ["groq"], groq_url=srv.url)
+    _router(tmp_path, cfg)
+    events = [ev async for ev in router.chat(_msgs(), stream=True)]
+    finals = [e for e in events if "finish" in e]
+    assert len(finals) == 1
+    assert finals[0]["provider"] == "groq"
+    assert finals[0]["model"]
+
+
+@pytest.mark.asyncio
 async def test_stream_tool_call_fragments_repaired(tmp_path, make_server, keys) -> None:
     srv = make_server(free_suffix=False)
     srv.chat_script.append(sse_tool_stream("launch_app", "{'name': 'notepad'}"))

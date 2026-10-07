@@ -107,6 +107,11 @@ class Provider:
     def supports(self, capability: str) -> bool:
         return capability in self.caps
 
+    @property
+    def cached_models(self) -> list[ModelInfo]:
+        """Last discovery result (no network) — used by Private-Mode health()."""
+        return list(self._models)
+
     def has_key(self) -> bool:
         return not self.key_env or secret_present(self.key_env)
 

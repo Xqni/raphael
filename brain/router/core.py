@@ -408,10 +408,7 @@ class Router:
             attempt += 1
             # admission FIRST: missing key / open circuit / budgets must never
             # cost a discovery round-trip or a request
-            try:
-                self._admit(provider, estimate=estimate)
-            except RouterError:
-                raise
+            self._admit(provider, estimate=estimate)
             try:
                 if fixed_model:
                     model = ModelRef(fixed_model, provider.name)
@@ -616,6 +613,7 @@ class Router:
                 continue
 
             emitted = False
+            saw_final = False
             start = time.monotonic()
             usage = {"input": 0, "output": 0}
             try:
@@ -625,6 +623,7 @@ class Router:
                 )
                 async for ev in gen:
                     if "finish" in ev:
+                        saw_final = True
                         usage.update(ev.get("usage") or {})
                         yield {
                             "finish": ev.get("finish", "stop"),
@@ -636,6 +635,16 @@ class Router:
                     else:
                         emitted = True
                         yield {"delta": ev.get("delta", "")}
+                if not saw_final:
+                    # a provider that closed the stream early still owes the
+                    # caller one final frame (INTERFACES §a stream contract)
+                    yield {
+                        "finish": "stop",
+                        "tool_calls": [],
+                        "provider": provider.name,
+                        "model": model.id,
+                        "usage": dict(usage),
+                    }
             except RouterError as e:
                 stats = self._stats_for(provider.name)
                 stats.last_error = str(e)
@@ -699,14 +708,17 @@ class Router:
             )
         q = redact_secrets(question or "")
         b64 = base64.b64encode(data).decode("ascii")
+        started = time.monotonic()
         provider, model, result = await self._with_failover(
             role="vision", purpose=purpose,
             call=lambda p, m: p.vision(m, b64, mime, q,
                                        timeout=self.config.providers.request_timeout_s),
             require_capability="vision",
+            estimate=1500,  # rough vision token guess for the TPM budget gate
         )
         await self._log_usage(provider, model, purpose, result.usage,
-                              Outcome.SUCCESS, None)
+                              Outcome.SUCCESS, None,
+                              latency_ms=(time.monotonic() - started) * 1000.0)
         return {"text": result.text, "provider": provider, "model": model}
 
     # ------------------------------------------------------------------ #
@@ -735,6 +747,8 @@ class Router:
                     "rtf": (out or {}).get("rtf")}
 
         errors: list[RouterError] = []
+        filename = _audio_filename(audio)
+        mime = guess_audio_format(audio, filename)
         for provider in self._chain():
             # No static capability pre-check here: which provider can do STT is
             # decided by live discovery (role "stt" → audio-capable/whisper
@@ -744,8 +758,7 @@ class Router:
                 model, result = await self._call_provider(
                     provider, "stt", "stt",
                     lambda m, _p=provider: _p.transcribe(
-                        m, audio, _audio_filename(audio),
-                        guess_audio_format(audio, _audio_filename(audio)),
+                        m, audio, filename, mime,
                         language or self.config.voice.stt_language or None,
                         timeout=self.config.providers.request_timeout_s,
                     ),
@@ -777,7 +790,7 @@ class Router:
         if is_private_mode():
             # Private Mode: no cloud egress AT ALL — report from cache only.
             for provider in self._chain():
-                cached = provider._models
+                cached = provider.cached_models
                 providers[provider.name] = {
                     "ok": bool(cached),
                     "models": len(cached),
@@ -860,8 +873,8 @@ class Router:
                 error=str(e)[:300], error_code=e.code,
                 latency_ms=(time.monotonic() - start) * 1000,
             )
-        await self._log_usage(provider, getattr(result, "model", model) or model,
-                              purpose, result.usage, Outcome.SUCCESS, None,
+        await self._log_usage(provider, model, purpose, result.usage,
+                              Outcome.SUCCESS, None,
                               latency_ms=(time.monotonic() - start) * 1000)
         return CallResult(
             provider=provider, model=model, ok=True, text=result.text,
