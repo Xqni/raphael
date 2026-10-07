@@ -72,6 +72,9 @@ def init_db():
     ):
         if name not in cols:
             cur.execute(ddl)
+    # Wave-3 additive memory schema (tools-memory lane; IF NOT EXISTS only)
+    from .schema import migrate as _schema_migrate
+    _schema_migrate(conn)
     conn.commit()
     conn.close()
 

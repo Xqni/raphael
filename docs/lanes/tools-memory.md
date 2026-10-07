@@ -19,8 +19,8 @@ Wave 2 is MERGED; live gate was 3/5 — evidence + bug dossiers: `docs/BUGS-WAVE
 
 Execution order (each = implement → test → commit → update docs/status/tools-memory.md; stop after 2 failed attempts on one problem, §11):
 
-0. **Prep:** rebase on latest main; re-read merged `brain/tools/__init__.py` (exact spec/registration mechanism per INTERFACES §b), `brain/loop.py` (untrusted wrapping, confirm gate); check requests answered; create `config.d/tools-memory.yaml` (keys in §6 below); write any missing seam requests.
-1. **Memory core** (task 1): store + FTS5/BM25 retrieval + untrusted block wrapper + user-profile view + conversation summaries → §4 schema, §5 tests.
+0. **Prep:** ✅ DONE 2026-10-07 — rebased on origin/main (lane-doc conflict resolved: integrator Wave-3 intro + my plan both kept); registry/loop/confirm re-read (confirm-gate request LANDED at loop.py:430-431; `register(schema=)`+SPECS+`as_untrusted`+`validate_args` all landed; discovery skips tests); `config.d/tools-memory.yaml` created; conversation-hook request ACCEPTED + answered on the bus; no BUGS-WAVE2 P0s assigned to this lane (all A–G belong to others). Seam request #2 (memory/skills injection) still OPEN with brain-core.
+1. **Memory core** (task 1): store + FTS5/BM25 retrieval + untrusted block wrapper + user-profile view + conversation summaries → §4 schema, §5 tests. **IN PROGRESS — done: conversation-turn capture (`brain/memory/conversation.py`, the ACCEPTED brain-core producer seam) + `conversation_turns` schema + 10 tests. Remaining: memories/FTS5/store/retrieval/block/profile/summary.**
 2. **Skills/plugins** (task 2): SKILL.md loader (draft + confidence gate + usage counters + dedup) + plugin manifest loader → §7, tests in §5.
 3. **Tools** (task 3): files → shell → schedule → github → web (smallest-risk first, MCP last because it is the largest) → §3 specs, §5 tests.
 4. **MCP adapter** (task 4): allow-list fail-closed, confirm categories, untrusted-output → §3.6, tests.
