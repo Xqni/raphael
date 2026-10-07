@@ -1,0 +1,35 @@
+# gitleaks config for the Raphael repo (infra lane, Wave-2 secrets task).
+# Usage:  gitleaks detect --source . --config scripts/gitleaks.toml --redact
+#        gitleaks dir   . --config scripts/gitleaks.toml --redact   (worktree)
+# Always pass --redact (or use scripts/secret-scan.sh, which does).
+# qa-security: please wire this into CI (docs/requests/infra__to__qa-security
+# __ci-supervisor-tests.md mentions the suite include; add the scan beside it).
+
+title = "Raphael secrets scan"
+
+# Start from gitleaks' full default ruleset (AWS/GitHub/Slack/OpenAI/...)
+[extend]
+useDefault = true
+
+[allowlist]
+description = """
+Committed placeholders, docs, and self-referential files. Keep this list
+TIGHT: allowlisting a real secrets file is exactly the failure mode this
+config exists to prevent.
+"""
+paths = [
+    '''\.env\.example$''',                 # committed placeholders only
+    '''scripts/gitleaks\.toml$''',         # this file
+    '''scripts/secret-scan\.sh$''',        # contains the scan patterns
+    '''scripts/brain-sudoers\.snippet$''', # sudoers example (no secrets)
+    '''supervisor/tests/.*$''',            # synthetic fixtures (fake tokens)
+    '''brain/tests/.*$''',
+    '''tests/.*$''',
+]
+regexes = [
+    # <GROQ_API_KEY> / ${TOKEN} style placeholders
+    '''[<{\[][^<>{\}]{0,40}(KEY|TOKEN|SECRET|PASSWORD)[^<>}{\]]{0,40}[>}\]]''',
+    '''your[-_ ]?(key|token|secret)''',
+    '''unit-test-token''',                 # CLI test fixture value
+    '''example[-_ ]?token''',
+]

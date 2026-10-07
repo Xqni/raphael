@@ -43,7 +43,8 @@ def relay_env(monkeypatch):
     monkeypatch.setattr(sup, "_spawn", fake_spawn)
     monkeypatch.setattr(sup, "_wsl_networking_mode", fake_mode)
     monkeypatch.setattr(sup, "IS_WINDOWS", True)
-    monkeypatch.setattr(sup, "_wsl_path", lambda p: "/home/dami/repo/" + p.name)
+    monkeypatch.setattr(sup, "_wsl_path",
+                        lambda p: "/home/devuser/repo/" + p.name)
     log = sup.Logger(path=_tmp_log(), echo=False)
     return seen, log
 

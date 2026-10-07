@@ -53,7 +53,7 @@ def test_launch_brain_instance_env_and_loopback(monkeypatch, tmp_path):
     captured = {}
 
     def fake_wsl_path(p):
-        return "/home/dami/repoinfra"     # pretend UNC resolution ok
+        return "/home/devuser/repoinfra"     # pretend UNC resolution ok
 
     def fake_spawn(inner, cwd, log, label, log_file, env=None):
         captured["inner"] = list(inner)
@@ -82,7 +82,7 @@ def test_launch_brain_instance_env_and_loopback(monkeypatch, tmp_path):
 
 def test_launch_brain_main_pidfile_unchanged_location(monkeypatch, tmp_path):
     captured = {}
-    monkeypatch.setattr(sup, "_wsl_path", lambda p: "/home/dami/raphael")
+    monkeypatch.setattr(sup, "_wsl_path", lambda p: "/home/devuser/raphael")
     monkeypatch.setattr(
         sup, "_spawn",
         lambda inner, cwd, log, label, log_file, env=None:
