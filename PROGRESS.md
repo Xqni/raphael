@@ -495,3 +495,7 @@ live_e2e=false) when wanted.
 - **pc-control wave-4 merged** (position 3): 17-tool failure tables, lock-release audit,
   partial-failure matrix, E2E injection. Board: router ✓ brain-core ✓ pc-control ✓ →
   voice(4) next, then computer-use(5), orb(6), infra(7), qa(8 incl. flake fix), tools(9), evo(10).
+- **voice wave-4 merged** (position 4): fish-recovery ownership-safe, STT-outage path,
+  soak, Bug H guards (request to brain-core rides the merge). computer-use verified with
+  a REAL security fix (blocklist bypass via untitled KeePass window → composite
+  'title | process' identity) → wave_done next (pos 5). Board: 4/10 landed.
