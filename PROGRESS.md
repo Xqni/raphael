@@ -437,3 +437,8 @@ land, the integrator re-runs the full six-criterion live gate for `wave-2-gate`.
   main. Rule-4 incident fully closed (rebase --skip of empty 6d174f0 verified by lane).
   **9/10 lanes landed.** Only evolution-persona remains: design-notes task DONE (2e3c534,
   verified), assigned post wave_done at final position 10 — session asleep, ping queued.
+- **WAVE-3 MERGE BOARD COMPLETE: 10/10** (evolution-persona closed it at 6aa52f0).
+  Full mock gate sweep green: tests/run_all --with-brain = 272 passed, rc=0.
+  WAVES.md gate record updated; attention posted — **wave-3 live E2E re-run awaits the
+  user's GO** (starting the live stack is human-only). Open item: shadow-instance
+  request (evolution-persona -> brain-core) blocks Wave-4 shadow runs only.

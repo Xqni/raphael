@@ -47,6 +47,18 @@ Cloud provider chain + tool calling; conversational loop with persona; orb state
 
 ## Wave 3 — P0 gate bugs first, then the wave goals
 
+**MERGE BOARD COMPLETE 2026-10-07 — all 10/10 lanes merged to main** (router, brain-core,
+pc-control, voice, computer-use, orb, infra, qa-security, tools-memory, evolution-persona).
+Every P0 gate bug (A/B/C/D/E/F/G) landed with regression tests. Full mock sweep green:
+`tests/run_all --with-brain` = 272 passed, rc=0.
+
+**GATE STATUS: waiting on the human's go for the LIVE E2E re-run** (all six Wave-2
+criteria on the real stack + `prove_reference.py` JP-voice proof + wave-goal demos).
+Starting the live stack is human-only — see `coord attention` "Wave 3 gate ready".
+One open cross-lane item: evolution-persona's shadow-instance request (OPEN with
+brain-core) hard-blocks Wave-4 shadow runs only.
+
+
 **P0 (from the live gate, `docs/BUGS-WAVE2.md` — do these before wave goals):**
 
 1. **Bug B** (pc-control + router): `open_app` fails "open YouTube and search lo-fi"
