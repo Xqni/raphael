@@ -1,6 +1,6 @@
 # infra — status
 
-Updated: 2026-10-07 (Wave 4 open — resilience drills complete, queued for review; coord rule §13)
+Updated: 2026-10-07 (Wave 5 open — tier/simulation/shadow plumbing complete; coord rule §13)
 
 ## Done (Wave 2 — all tasks, commits `0451dba..737e216` on `agent/infra`)
 
@@ -212,12 +212,48 @@ class on the next `raphael stop`). No orphans from this session (Rule 14).
   the conductor, not infra's.
 - selfcheck exit 0 · secret-scan exit 0 · tree clean at `4e833a2`.
 
+## Wave 5 (current_wave=5 — open 2026-10-07, wave-4 GATE PASSED)
+
+### Done (2026-10-07, branch rebased onto origin/main `ccee742`)
+
+17. **Tier runtime switch — safe restart semantics.** `raphael tier`
+    [name] [--force]: show/set `persona.tier` in
+    `config.d/evolution-persona.yaml` with fail-closed validation (only
+    the three tier names, loader-C1 parity), surgical exactly-one-line
+    edit (atomic; `max_tokens_tier` + comments provably untouched),
+    active-jobs REFUSAL (job list shown; `--force` = informed override),
+    then a **single-spawner recycle** — supervisor alive ⇒ verified kill
+    only (its health loop is the sole respawner; no double-spawn race),
+    supervisor absent ⇒ local respawn; waits healthy and reports
+    old→new. Brain-down ⇒ write + defer to next start. No new frames.
+18. **Simulation supervision.** `raphael jobs <id> --wait [--timeout N]`:
+    0.4 s polls to a terminal state, transition lines,
+    `awaiting_confirm` hint, result snippet on done, exit codes
+    0/1/2 (done / terminal-failure / brain unreachable).
+19. **Shadow-instance readiness (8911, carried).** Unknown
+    `RAPHAEL_INSTANCE` **without** `RAPHAEL_PORT` now fails CLOSED in
+    `load_config` (ValueError → supervisor main exits 1, CLI reports) —
+    the old silent 8765 fallback could collide with the live main
+    instance; aligns with brain-core `port()` + qa "never guess".
+    With `RAPHAEL_PORT=8911`: full derivation collision-free (mutex,
+    lock, supervisor pidfile, relay backend 9911) — test-asserted.
+    When brain-core's §d row lands: one line in `INSTANCE_ORDER`.
+
+### Wave 5 test output (real runs, sequential — Rule 14, 2026-10-07)
+
+- `pytest supervisor/tests -q` → **99 passed** (+11 tier/jobs/shadow)
+- `pytest tests -q` → **204 passed, 7 xfailed**
+- `pytest body -q` → **139 passed**
+- brain suite: not rerun this wave — diff is supervisor/scripts/docs-only
+  and brain tests have zero `supervisor` imports (proven last wave);
+  integrator reruns at review. (Known cross-lane memory/tests order flake
+  from wave 4 still reported in the error log.)
+- selfcheck exit 0 · secret-scan exit 0.
+
 ## Next
 
-- Wave 4 lane list complete (resilience drills + watchdog, commit
-  `4e833a2`). Post `task_done` + `test_result`; await review — `wave_done`
-  only on the conductor's call (exit criteria are the human's,
-  AGENT_RULES §11).
-- For the reviewer: brain-suite 2-failure flake detail above (tools-memory
-  order-dependent, passes isolated); watchdog engages at next supervisor
-  start — no live restart forced (live_e2e=true).
+- Wave 5 lane list complete (tier plumbing + job supervision + shadow
+  readiness). Post `task_done` + `test_result`; await review — `wave_done`
+  on the conductor's call (exit criteria are the human's, §11).
+- Blockers: none. The §d shadow row itself is brain-core's (assigned);
+  infra is ready the moment it lands (one-line table entry).
