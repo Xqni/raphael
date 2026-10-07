@@ -55,7 +55,7 @@ def _variants(pat: str) -> list:
 def load_lane_table(path: Path = OWNERSHIP) -> dict:
     """-> {lane: [pattern, ...]} from the OWNERSHIP.md lane table."""
     lanes = {}
-    for line in path.read_text().splitlines():
+    for line in path.read_text(encoding='utf-8').splitlines():
         if not line.startswith('|'):
             continue
         cells = [c.strip() for c in line.strip('|').split('|')]

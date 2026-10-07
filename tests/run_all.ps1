@@ -2,20 +2,20 @@
 #
 #   .\tests\run_all.ps1
 #
-# Runs only the Windows-relevant subset: tests/body_win (lock + hotkey
-# envelope unit tests — no real hotkeys registered, no microphone, no GUI)
-# plus the dependency-light conformance checks. The full mock harness
-# (contract/regression/security) runs on Ubuntu CI (tests/run_all).
+# Order: CONFORMANCE FIRST — the docs/PROTOCOL parsers are encoding-
+# sensitive on Windows (cp1252 decode of UTF-8 markers; integrator glue
+# d9915fc) and must fail fast before the body tests. CI mirrors this as the
+# dedicated conformance matrix line (ubuntu + windows).
 $ErrorActionPreference = "Stop"
 Set-Location (Join-Path $PSScriptRoot "..")
 
 $py = Join-Path $PSScriptRoot ".venv\Scripts\python.exe"
 if (-not (Test-Path $py)) { $py = "python" }
 
-& $py -m pytest -q (Join-Path $PSScriptRoot "body_win")
+& $py -m pytest -q (Join-Path $PSScriptRoot "conformance")
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-& $py -m pytest -q (Join-Path $PSScriptRoot "conformance")
+& $py -m pytest -q (Join-Path $PSScriptRoot "body_win")
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
 Write-Host "run_all.ps1: OK"

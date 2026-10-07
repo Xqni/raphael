@@ -36,7 +36,7 @@ def _sha(path: Path) -> str:
 def test_core_guard_byte_stable():
     assert MANIFEST.exists(), \
         f'{MANIFEST} missing — run: python tests/core_guard.py --update'
-    manifest = json.loads(MANIFEST.read_text())
+    manifest = json.loads(MANIFEST.read_text(encoding='utf-8'))
     drift = []
     for rel, owner in CORE_GUARD.items():
         expected = manifest.get(rel)
@@ -53,7 +53,7 @@ def test_core_guard_byte_stable():
 def test_core_guard_semantic_invariants():
     """Content tripwires that survive APPROVED edits: the guardrails must
     still exist in code, whatever the surrounding refactor."""
-    confirm = (REPO / 'brain' / 'confirm.py').read_text()
+    confirm = (REPO / 'brain' / 'confirm.py').read_text(encoding='utf-8')
     # timeout must abort, never auto-approve
     assert 'ConfirmTimeout' in confirm or 'timeout' in confirm
     assert re.search(r"return 'timeout'", confirm)
@@ -61,20 +61,20 @@ def test_core_guard_semantic_invariants():
     # ambiguous free text fails closed
     assert 'modify/unclear' in confirm, 'parse_free_text no longer fails closed'
     # the agent loop must abort on anything that is not an explicit yes
-    loop = (REPO / 'brain' / 'loop.py').read_text()
+    loop = (REPO / 'brain' / 'loop.py').read_text(encoding='utf-8')
     assert re.search(r"answer != 'yes'", loop), \
         'loop no longer aborts on non-yes answers'
 
-    auth = (REPO / 'brain' / 'auth.py').read_text()
+    auth = (REPO / 'brain' / 'auth.py').read_text(encoding='utf-8')
     assert 'compare_digest' in auth, 'constant-time token compare removed'
     assert 'if not expected or not candidate' in auth, \
         'auth no longer denies when no token is configured'
 
-    mode = (REPO / 'brain' / 'mode.py').read_text()
+    mode = (REPO / 'brain' / 'mode.py').read_text(encoding='utf-8')
     for action in ('private_on', 'private_off', 'pause', 'resume', 'watch_on'):
         assert f"'{action}'" in mode, f'mode lost action {action}'
 
-    control = (REPO / 'brain' / 'control.py').read_text()
+    control = (REPO / 'brain' / 'control.py').read_text(encoding='utf-8')
     assert 'kill_gui' in control and 'momentary' in control, \
         'kill_gui no longer momentary (persisted?)'
     actions = set(re.findall(r"'([a-z_]+)'",
@@ -88,7 +88,7 @@ def test_loop_keeps_private_before_provider_call():
     afterwards) — brain/loop.py must check mode.private before the ONLY
     path to the model (the conversational agent loop). Fastpath runs first
     (local intents stay available), then the private gate, then llm.chat."""
-    loop = (REPO / 'brain' / 'loop.py').read_text()
+    loop = (REPO / 'brain' / 'loop.py').read_text(encoding='utf-8')
     private_check = loop.find('if mode.private:')
     agent_call = loop.find('await _agent_loop()')
     fastpath = loop.find('fastpath.run_intent')
@@ -105,7 +105,7 @@ def test_loop_keeps_private_before_provider_call():
 
 
 def test_ws_auth_uses_constant_time_compare():
-    ws = (REPO / 'brain' / 'ws.py').read_text()
+    ws = (REPO / 'brain' / 'ws.py').read_text(encoding='utf-8')
     assert 'compare_digest' in ws or 'check_token' in ws
 
 
@@ -169,7 +169,7 @@ def test_usage_log_has_no_prompt_or_key_text(client, qa_token,
                  and m.get('status') == 'done', timeout=15)
     log = tmp_path / 'usage.jsonl'
     assert log.exists(), 'usage log was never written'
-    text = log.read_text()
+    text = log.read_text(encoding='utf-8')
     assert 'SECRET_PROMPT_MARKER_42' not in text, 'prompt text in usage log'
     assert 'sk-qa-fake' not in text, 'API key material in usage log'
     for line in text.splitlines():

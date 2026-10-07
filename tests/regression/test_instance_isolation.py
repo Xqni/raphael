@@ -27,7 +27,7 @@ BOOT = REPO / 'tests' / 'harness' / 'brain_boot.py'
 
 # ---- (1) table contract ---------------------------------------------------
 def _interfaces_rows():
-    text = (REPO / 'docs' / 'INTERFACES.md').read_text()
+    text = (REPO / 'docs' / 'INTERFACES.md').read_text(encoding='utf-8')
     rows = []
     for line in text.splitlines():
         if not line.startswith('|'):
@@ -99,7 +99,7 @@ def test_runtime_code_derives_from_raphael_instance():
                REPO / 'supervisor' / 'main.py', REPO / 'body' / 'win' / 'main.py',
                REPO / 'body' / 'win' / 'ws_client.py']
     missing = [str(p.relative_to(REPO)) for p in checked
-               if p.exists() and 'RAPHAEL_INSTANCE' not in p.read_text()]
+               if p.exists() and 'RAPHAEL_INSTANCE' not in p.read_text(encoding='utf-8')]
     assert not missing, f'RAPHAEL_INSTANCE not referenced in: {missing}'
 
 

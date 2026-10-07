@@ -17,7 +17,7 @@ REPO = Path.cwd()
 
 
 def _config_text() -> str:
-    return (REPO / 'config.yaml').read_text()
+    return (REPO / 'config.yaml').read_text(encoding='utf-8')
 
 
 def test_config_cloud_temp_disables_local_models():
@@ -57,7 +57,7 @@ def test_router_never_touches_ollama_url_during_a_job(client, qa_token,
 # supervisor only starts ollama when the profile/local_model allows it
 # (request qa-security -> infra ollama-profile-gate).
 def test_supervisor_gates_ollama_start_on_profile():
-    src = (REPO / 'supervisor' / 'main.py').read_text()
+    src = (REPO / 'supervisor' / 'main.py').read_text(encoding='utf-8')
     # find the ollama start block and require a profile/enabled gate nearby
     m = re.search(r'systemctl_action\([^)]*["\']start["\'][^)]*ollama_unit|'
                   r'ollama_unit[^)]*["\']start["\']', src, re.S)
@@ -70,7 +70,7 @@ def test_supervisor_gates_ollama_start_on_profile():
 # PINNED STRICT 2026-10-07 (was xfail): infra removed the ollama pull-in
 # from the unit (request qa-security -> infra ollama-profile-gate).
 def test_systemd_unit_does_not_want_ollama():
-    unit = (REPO / 'brain' / 'raphael-brain.service').read_text()
+    unit = (REPO / 'brain' / 'raphael-brain.service').read_text(encoding='utf-8')
     active = [ln for ln in unit.splitlines()
               if ln.strip().startswith(('Wants=', 'After='))]
     assert not any('ollama' in ln and not ln.strip().startswith('#')

@@ -93,7 +93,7 @@ def test_manifest_verifies():
 def test_manifest_lists_core_guard_files():
     import json
     manifest = json.loads((REPO / 'tests' / 'core_guard_manifest.json')
-                          .read_text())
+                          .read_text(encoding='utf-8'))
     assert set(manifest) == {'brain/confirm.py', 'brain/auth.py',
                              'brain/control.py', 'brain/mode.py'}
     assert all(len(v) == 64 for v in manifest.values())

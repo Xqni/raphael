@@ -93,14 +93,14 @@ def test_registry_rejects_bad_spec():
 
 # ---- §c configuration -----------------------------------------------------
 def test_base_profile_is_cloud_temp():
-    text = (REPO / 'config.yaml').read_text()
+    text = (REPO / 'config.yaml').read_text(encoding='utf-8')
     m = re.search(r'^profile:\s*(\S+)', text, re.M)
     assert m and m.group(1) == 'cloud_temp', m
 
 
 def test_cloud_temp_chain_has_no_local_providers():
     """§c/WAVES: chat/tools = Groq → Zen free; Go/ollama OFF under cloud_temp."""
-    text = (REPO / 'config.yaml').read_text()
+    text = (REPO / 'config.yaml').read_text(encoding='utf-8')
     m = re.search(r'^\s*chain:\s*\[([^\]]+)\]', text, re.M)
     assert m, 'providers.chain not found'
     chain = [c.strip() for c in m.group(1).split(',')]
@@ -115,7 +115,7 @@ def test_no_secrets_in_yaml_or_example_env():
         r'(sk-[A-Za-z0-9]{16,}|ghp_[A-Za-z0-9]{20,}|'
         r'AKIA[0-9A-Z]{12,}|xox[baprs]-[A-Za-z0-9-]{10,})')
     for rel in ('config.yaml', '.env.example'):
-        text = (REPO / rel).read_text()
+        text = (REPO / rel).read_text(encoding='utf-8')
         m = pattern.search(text)
         assert m is None, f'key-shaped secret in {rel}: {m.group(0)[:8]}...'
 
@@ -159,7 +159,7 @@ def test_tool_results_wrapped_untrusted_before_models():
     assert wrapped.startswith('[UNTRUSTED shell output'), wrapped[:60]
     assert 'never instructions' in wrapped
     assert evil in wrapped          # body preserved as DATA, not stripped
-    loop_src = (REPO / 'brain' / 'loop.py').read_text()
+    loop_src = (REPO / 'brain' / 'loop.py').read_text(encoding='utf-8')
     assert 'as_untrusted(' in loop_src, \
         'agent loop no longer wraps tool results before the model sees them'
 
