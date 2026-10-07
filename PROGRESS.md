@@ -499,3 +499,11 @@ live_e2e=false) when wanted.
   soak, Bug H guards (request to brain-core rides the merge). computer-use verified with
   a REAL security fix (blocklist bypass via untitled KeePass window → composite
   'title | process' identity) → wave_done next (pos 5). Board: 4/10 landed.
+- **WAVE-4 MERGE BOARD COMPLETE (10/10, local)**: qa-security d828c20 (resilience matrix,
+  registry-flake fix, OWNERSHIP-EXCEPTIONS MECHANISM integrator-reviewed: assignment-backed
+  exact-path, founding 3 = my inbox[18] sanction; 8-area security re-audit), tools-memory
+  284cba4 (sqlite/FTS/injection/MCP hardening + export/wipe controls), evolution-persona
+  fa3fc1a (journal/rollback/zone spikes + persona tier deep-merge; shadow runs CARRIED on
+  brain-core's approved row). All suites green at every gate (286/145/63 + core guard).
+  NOTE: GitHub receive-pack returning 500 on push (reads+REST+status green) — background
+  watcher retrying; batch pending = 11 commits. Verdict → research/push-recovery.md.
