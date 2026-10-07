@@ -514,3 +514,7 @@ live_e2e=false) when wanted.
   Analysis, Simulation, parallel-minds visuals, persona tiers (great_sage→raphael→ciel).
   wave_open to all 10 lanes with Wave-5 sections; carried: brain-core shadow row,
   voice C1+C2 confirm residual (qa re-audit).
+- Wave-5 early: brain-core shadow row + STT-outage MERGED (577f09c, position-2 deviation
+  ahead of unstarted router — recorded in merge msg + exceptions file; evolution shadow
+  runs UNBLOCKED). CI fix: test_hardening bare-module import (qa pattern missed file) —
+  exact CI step 738 green, pushed c60c23c.
