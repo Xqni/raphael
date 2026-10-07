@@ -51,7 +51,7 @@ Wave 2 is MERGED; live gate was 3/5 — evidence + bug dossiers: `docs/BUGS-WAVE
 
 Wave 3 is MERGED + **GATE PASSED** (tag `wave-3-gate`, all six criteria live, acoustic voice included). Wave-4 theme per WAVES.md: hardening, resilience tests, audit fixes, crash recovery, evolution infrastructure. Rule 15 speed mandate still binds.
 
-- [ ] Crash-recovery: interrupted-job journal replay hardening (post-restart task resume), engine kill-safety matrix, Notice emitter outage-storm drill (Wave-3 addition), input-lock arbitration stress.
+- [x] Crash-recovery: interrupted-job journal replay hardening (post-restart task resume), engine kill-safety matrix, Notice emitter outage-storm drill (Wave-3 addition), input-lock arbitration stress. DONE 2026-10-07 — see `brain/tests/test_resilience.py` (8) + storm drills in `test_notice.py` (+4); fixes: stale `pending_confirm` cleared on interrupted rows, `engine.shutdown()` now fires the per-job kill hook (speech stops on engine kill), TestClient never writes live pidfiles (`_pidfile_targets()` empty under pytest). NOTE: actual auto-RESUME of interrupted jobs stays forbidden by PROTOCOL §5 — journal is verified fully replayable for explicit resume only.
 
 ## Later waves
 - Per docs/WAVES.md — do not start early (AGENT_RULES §11).

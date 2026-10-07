@@ -114,6 +114,11 @@ class JobEngine:
 
     async def shutdown(self):
         self._running = False
+        # every job still alive when the engine stops is being KILLED —
+        # remember them so per-job side effects (in-flight speech) stop too
+        # (Wave-4 kill-safety: shutdown used to leave speech running).
+        doomed = [j['id'] for j in store.list_jobs()
+                  if j['status'] not in store.TERMINAL]
         # cancel workers first (they clean up their current job task on the
         # way out), then any remaining job tasks — nothing is left orphaned
         for w in self._workers:
@@ -141,6 +146,11 @@ class JobEngine:
                 self.emit_event(store.get_job(job['id']), 'cancelled', stage='done',
                                 progress=1.0, text='Cancelled (engine shutdown)',
                                 error_code='E_CANCELLED')
+            if job['id'] not in doomed:
+                doomed.append(job['id'])
+        # per-job kill side effects (speech interrupt) for everything killed
+        for rowid in doomed:
+            self._fire_cancelled(rowid)
 
     def _mark_interrupted(self) -> List[str]:
         """Startup crash recovery: report non-terminal jobs as interrupted.
@@ -152,6 +162,10 @@ class JobEngine:
             store.transition(job['id'], 'interrupted', stage='done',
                              error_code='E_INTERNAL',
                              result='brain restarted mid-run (not auto-resumed)')
+            # crash-recovery hygiene (Wave 4): a crash MID-CONFIRM leaves the
+            # pending_confirm column set — clear it or the terminal row keeps
+            # claiming a confirmation that no longer exists.
+            store.set_pending_confirm(job['id'], False)
             job = store.get_job(job['id']) or job
             self.emit_event(job, 'interrupted', stage='done', progress=1.0,
                             text='Interrupted by brain restart', error_code='E_INTERNAL')

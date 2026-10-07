@@ -275,3 +275,70 @@ def test_boot_recovery_notice_flushed_to_first_ui_client():
             os.remove(token_path)
         except OSError:
             pass
+
+
+# ---- Wave-4: outage-storm drill ---------------------------------------------
+def test_outage_storm_bounded_single_warn_pair():
+    """1000 rapid provider failures + a recovery storm: at most ONE warn and
+    ONE info within the 10-min window; state never grows unbounded."""
+    notice.reset_for_tests()
+    warns = infos = 0
+    for _ in range(1000):
+        if notice.provider_down():
+            warns += 1
+    for _ in range(1000):
+        if notice.provider_up():
+            infos += 1
+    # storms AFTER the pair (still in cooldown) are fully suppressed
+    for _ in range(1000):
+        if notice.provider_down():
+            warns += 1
+    assert warns == 1 and infos == 1, (warns, infos)
+    assert notice.pending_count() == 0     # none of these were pending
+    notice.reset_for_tests()
+
+
+def test_emit_without_running_loop_is_fail_silent():
+    """A notice fired while no event loop is running (shutdown races) must
+    neither raise nor corrupt state."""
+    notice.reset_for_tests()
+    assert notice.emit('during teardown') is True      # no loop -> no-op fanout
+    assert notice.provider_down() is True
+    assert notice.provider_up() is True
+    notice.reset_for_tests()
+
+
+def test_pending_queue_is_bounded():
+    notice.reset_for_tests()
+    for i in range(20):
+        notice.emit(f'boot {i}', pending=True)
+    assert notice.pending_count() <= notice._PENDING_CAP
+    notice.reset_for_tests()
+
+
+@pytest.mark.asyncio
+async def test_storm_during_stream_failure_emits_once(monkeypatch):
+    """A stream that dies mid-answer 50 times in a row: exactly one outage
+    notice through the real llm seam."""
+    import brain.router as router
+    from brain import llm as llm_mod
+    notice.reset_for_tests()
+    ui = attach('ui')
+
+    async def dying_chat(messages, tools=None, stream=False, purpose='chat'):
+        async def gen():
+            yield {'delta': 'partial'}
+            yield {'finish': 'error', 'code': 'E_PROVIDER_5XX',
+                   'error': 'boom'}
+        return gen()
+
+    monkeypatch.setattr(router, 'chat', dying_chat, raising=False)
+    monkeypatch.delenv('RAPHAEL_DISABLE_ROUTER', raising=False)
+    for _ in range(50):
+        stream = await llm_mod.chat([{'role': 'user', 'content': 'x'}],
+                                    stream=True)
+        _ = [f async for f in stream]
+    await drain()
+    warns = [n for n in notices(ui) if n['level'] == 'warn']
+    assert len(warns) == 1, len(warns)
+    notice.reset_for_tests()
