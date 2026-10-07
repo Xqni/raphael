@@ -30,7 +30,8 @@ Updated: 2026-10-07 (Wave 4)
 - —
 
 ## Blocked
-- **shadow instance row** (OPEN with brain-core): hard-blocks Wave-4 shadow-instance verification runs.
+- **shadow instance row** — APPROVED + assigned to brain-core (priority ping sent); hard-blocks the
+  shadow verification runs until their config row merges. Request-only from this lane.
 - Full controller (`controller/worktree/shadow/baseline/promote`) waits on: shadow row, infra rollback-hook
   seam, qa-security golden-harness seam + CORE_GUARD_FILES extension, router weights ownership
   (all listed in `docs/evolution/03-wave4-spikes.md` § Dependencies).
