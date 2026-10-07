@@ -74,6 +74,49 @@ Inbox items handled (2 messages: infra CI include APPROVED + 3-item nudge):
    (nudge item 1) do not affect our conformance tests — suite green.
 4. Posted `heartbeat` (task start), `test_result`, `wave_done` on the bus.
 
+## Follow-up 2 (2026-10-06, coord wake #2 — green on merged main)
+
+Fix-list from inbox (5 failed + 6 errors on main 9e7269b) — all resolved:
+1. **Fixture**: `router_to_mock` repointed to `brain.router.config.REPO_ROOT`
+   (router moved it); usage log now via `RouterSettings.usage_log_path`
+   (module `USAGE_LOG_PATH` gone).
+2. **Core Guard re-pinned with BOTH approvals** (`--approval` now accepts
+   repeated flags): `brain-core__to__integrator__confirm-hardening.md`
+   (HIGH-risk non-voice rule — landed exactly as our request asked) +
+   `pc-control__to__integrator__instance-token-path.md`.
+3. **orbstate singleton isolation**: `orbstate.reset_for_tests()` added to
+   the per-test reset (sticky speaking/error flags leaked across tests and
+   caused the frame timeouts).
+4. **Expectations updated to the MERGED contract** (all in tests/, none in
+   others' files):
+   - private = `mode` overlay, never state `private_overlay` (§e audit);
+     private job now completes locally with `PRIVATE_NOTICE` (not failed);
+   - loop semantic pin: `mode.private` gate before the single
+     `await _agent_loop()` path (was `llm.plan`, removed);
+   - **harness fix**: mock OpenAI now serves real SSE for `stream:true`
+     (the merged loop always streams; plain JSON yielded zero deltas →
+     'Done.' fallback). Ordered chunking + OpenAI `tool_calls` deltas.
+5. **9 tripwires promoted to STRICT** (implementations landed): config
+   loader/profile overlay (router+brain-core), config.d §c loader,
+   orb listening/acting/speaking/error + confirm state + awaiting_confirm
+   snapshot (brain-core orbstate), redaction scrubber + blocklist +
+   private vision suppression (router privacy gates), provider 429 mapping
+   (router), LLM tool-call dispatch + uia lock propagation (tool_calls
+   path).
+
+**Test output (real runs, post-fix):**
+```
+tests/run_all (py3.14)              → 187 passed, 11 xfailed, 0 failed, 34s
+tests/run_all (py3.12 CI recipe)    → 187 passed, 11 xfailed, 35s
+ownership --diff (58 files)         → OK
+core_guard                          → OK (4 files, dual approval recorded)
+```
+Remaining 11 xfail = still-open requests: REST rate-limit, tool-spec
+registry API, circuit-open §10 code, lock-busy code, supervisor/systemd
+ollama gate ×2, voice-confirm ×2, instance derivation (infra/body),
+FastAPI /docs. (supervisor/tests still pre-merge — collected by run_all
+when present.)
+
 ## Test output (real runs only)
 
 ```

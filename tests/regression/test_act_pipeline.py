@@ -34,10 +34,8 @@ def test_fastpath_gui_tool_runs_via_body_act_req(client, qa_token):
         assert not [f for f in cli.frames if f.get('type') == 'act_req']
 
 
-@pytest.mark.xfail(reason='input-lock flag propagation (uia is needs_lock '
-                   'but uia tool calls are only reachable from LLM plans, '
-                   'and tool-call extraction is broken — see '
-                   'tool-call-extraction request to brain-core)', strict=False)
+# PINNED STRICT 2026-10-06 (was xfail): uia (needs_lock) reaches the Body
+# from LLM plans now — act_req carries lock:true.
 def test_lock_action_sets_lock_true(client, qa_token, router_to_mock):
     """uia is needs_lock → the body must receive act_req with lock:true."""
     router_to_mock.push({'tool': {'name': 'uia',
@@ -83,11 +81,9 @@ def test_lock_busy_reported_as_e_lock_busy(client, qa_token):
         assert failed.get('error_code') == 'E_LOCK_BUSY', failed
 
 
-@pytest.mark.xfail(reason='loop._TOOL_CALL_RE cannot match nested JSON '
-                   '({"tool":…,"args":{…}}) — LLM tool calls with args are '
-                   'never extracted, so the act pipeline is unreachable from '
-                   'model plans (request: qa-security -> brain-core '
-                   'tool-call-extraction)', strict=False)
+# PINNED STRICT 2026-10-06 (was xfail): LLM tool calls now dispatch through
+# the OpenAI tool_calls response path (merged router/brain-core; the embedded
+# JSON regex remains a fallback only).
 def test_llm_tool_call_with_args_dispatches_to_body(client, qa_token,
                                                     router_to_mock):
     router_to_mock.push({'tool': {'name': 'launch_url',

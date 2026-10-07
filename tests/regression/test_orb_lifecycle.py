@@ -2,17 +2,15 @@
 (INTERFACES §e + PROTOCOL §8). A mock orb client records the exact frame
 sequence the server broadcasts.
 
-Core transitions (server-side today) must hold; the four documented gaps
-(listening/acting/speaking/error are computed only from stats today) are an
-xfail tripwire with a filed request.
+Contract note (merged brain-core, 2026-10-06): private/paused are MODE
+overlays — `private_overlay` is a legacy client-side value the server no
+longer emits; base `state` always comes from brain.orbstate.VALID_STATES.
 """
-import pytest
-
 from harness.mock_body import MockBody
 from harness.mock_orb import MockOrb
 from harness.wssession import WSSession
 
-REQUIRED_CORE = ('idle', 'thinking', 'private_overlay')
+REQUIRED_CORE = ('idle', 'thinking', 'confirm')
 REQUIRED_FULL = ('listening', 'acting', 'speaking', 'error')
 
 
@@ -67,12 +65,12 @@ def test_core_lifecycle_transitions_emitted(client, qa_token):
         cli.wait(lambda m: m.get('type') == 'ack', timeout=5)
 
         # private is a mode overlay (state stays a valid semantic state)
+        from brain.orbstate import VALID_STATES
         cli.send({'type': 'control', 'v': 1, 'action': 'private_on'})
         cli.wait(lambda m: m.get('type') == 'ack', timeout=5)
         frame = orb.wait(lambda m: m.get('type') == 'orb_state'
                          and m.get('mode') == 'private', timeout=5)
-        assert frame['state'] in ('idle', 'private_overlay', 'thinking',
-                                  'confirm')
+        assert frame['state'] in VALID_STATES, frame
         cli.send({'type': 'control', 'v': 1, 'action': 'private_off'})
         cli.wait(lambda m: m.get('type') == 'ack', timeout=5)
 
@@ -123,13 +121,6 @@ def _drive_full(client, token):
                      and m.get('job') == ack['job'], timeout=10)
 
 
-@pytest.mark.xfail(strict=False,
-                   reason='INTERFACES §e gap: hub.refresh_orb_state computes '
-                          'state from stats alone — listening (audio_start), '
-                          'acting (first act_req/stage tool), speaking '
-                          '(speak start), error (job failed) are never '
-                          'emitted (request: qa-security -> brain-core '
-                          'orb-state-emission)')
 def test_every_lifecycle_state_emitted(client, qa_token):
     with MockOrb(client, qa_token) as orb:
         _drive_full(client, qa_token)
@@ -141,15 +132,6 @@ def test_every_lifecycle_state_emitted(client, qa_token):
             f'missing states {missing}; sequence={orb.state_sequence}'
 
 
-@pytest.mark.xfail(strict=False,
-                   reason='INTERFACES §e: state `confirm` must be emitted '
-                          'when needs_confirm is live — loop.py never '
-                          'transitions the job STATUS to awaiting_confirm '
-                          '(only the pending_confirm column), so '
-                          'stats()[jobs_pending_confirm] is always 0 and '
-                          'refresh_orb_state can never compute `confirm` '
-                          '(request: qa-security -> brain-core '
-                          'awaiting-confirm-status)')
 def test_orb_confirm_state_while_awaiting(client, qa_token):
     with MockOrb(client, qa_token) as orb, \
          WSSession(client, qa_token, role='cli') as cli:
@@ -162,12 +144,6 @@ def test_orb_confirm_state_while_awaiting(client, qa_token):
                   'scope': 'full'})  # cleanup
 
 
-@pytest.mark.xfail(strict=False,
-                   reason='PROTOCOL §5 state machine: the job snapshot must '
-                          'read awaiting_confirm while a confirmation is '
-                          'pending — status stays `running` (loop.py does '
-                          'not transition; request: qa-security -> '
-                          'brain-core awaiting-confirm-status)')
 def test_job_snapshot_reports_awaiting_confirm(client, qa_token):
     with WSSession(client, qa_token, role='cli') as cli:
         cli.send({'type': 'command', 'v': 1,

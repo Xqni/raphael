@@ -117,8 +117,10 @@ class MockOpenAI:
         with self._lock:
             self.requests.append(entry)
 
-    def _next_chat_response(self) -> tuple[int, str, str]:
-        """-> (status, content_type, body)"""
+    def _next_chat_response(self, stream: bool) -> tuple[int, str, str]:
+        """-> (status, content_type, body). Honors `stream: true` with real
+        SSE (the merged router parses `data:` lines + [DONE] — a plain JSON
+        reply to a streaming request yields zero deltas)."""
         step = self.script.pop(0) if self.script else self.default_step
         delay = float(step.get('delay') or 0)
         if delay:
@@ -128,6 +130,9 @@ class MockOpenAI:
             body = json.dumps({'error': {'message': f'mock status {status}',
                                          'type': 'mock_error'}})
             return status, 'application/json', body
+        if stream:
+            return 200, 'text/event-stream; charset=utf-8', \
+                self._sse_body(step)
         if 'raw' in step:
             return 200, 'application/json', str(step['raw'])
         if 'tool' in step:
@@ -145,6 +150,42 @@ class MockOpenAI:
                       'total_tokens': 15},
         })
         return 200, 'application/json', body
+
+    def _sse_body(self, step: dict) -> str:
+        """SSE transcript for one scripted step (content OR tool call)."""
+        def ev(obj) -> str:
+            return 'data: ' + json.dumps(obj) + '\n\n'
+
+        head = {'id': 'chatcmpl-mock', 'object': 'chat.completion.chunk',
+                'model': 'mock-model-1', 'choices': [{'index': 0}]}
+        out = [ev({**head, 'choices': [{'index': 0,
+                                        'delta': {'role': 'assistant'}}]})]
+        if 'tool' in step:
+            tool = step['tool']
+            args = json.dumps(tool.get('args') or {})
+            out.append(ev({**head, 'choices': [{'index': 0, 'delta': {
+                'tool_calls': [{'index': 0, 'id': 'call_mock_0',
+                                'type': 'function',
+                                'function': {'name': tool.get('name'),
+                                             'arguments': args}}]}}]}))
+            out.append(ev({**head, 'choices': [{'index': 0, 'delta': {},
+                                                'finish_reason': 'tool_calls'}]}))
+        else:
+            content = str(step.get('content', ''))
+            words = content.split(' ')
+            if words:
+                n = max(1, len(words) // 3)
+                pieces = [' '.join(words[i:i + n])
+                          for i in range(0, len(words), n)]
+            else:
+                pieces = []
+            for piece in pieces:
+                out.append(ev({**head, 'choices': [{'index': 0, 'delta': {
+                    'content': piece + ' '}}]}))
+            out.append(ev({**head, 'choices': [{'index': 0, 'delta': {},
+                                                'finish_reason': 'stop'}]}))
+        out.append('data: [DONE]\n\n')
+        return ''.join(out)
 
 
 def _make_handler(mock: MockOpenAI):
@@ -180,7 +221,12 @@ def _make_handler(mock: MockOpenAI):
             body = self._read_body()
             mock._record('POST', self.path, body, dict(self.headers))
             if 'chat/completions' in self.path:
-                status, ctype, resp = mock._next_chat_response()
+                stream = False
+                try:
+                    stream = bool(json.loads(body.decode('utf-8')).get('stream'))
+                except (ValueError, UnicodeDecodeError):
+                    stream = False
+                status, ctype, resp = mock._next_chat_response(stream)
                 self._respond(status, ctype, resp)
                 return
             # unknown POST (e.g. ollama /api/chat when used as a counter) —

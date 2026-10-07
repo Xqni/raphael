@@ -7,7 +7,6 @@ scrubbing BEFORE router.vision). Tripwires pin both halves.
 import re
 from pathlib import Path
 
-import pytest
 import yaml
 
 REPO = Path.cwd()
@@ -51,36 +50,26 @@ def _code_blob() -> str:
     return blob
 
 
-@pytest.mark.xfail(strict=False,
-                   reason='computer-use lane: no runtime privacy.redact '
-                          'scrubber exists yet (grep finds no redact '
-                          'function) — required before the first cloud '
-                          'vision call (PROTOCOL §7 gate 3; request: '
-                          'qa-security -> computer-use vision-gate)')
+# PINNED STRICT 2026-10-06 (was xfail): runtime scrubbers landed
+# (brain/router/privacy.py::redact_secrets / redact_categories / redact_messages).
 def test_runtime_redaction_scrubber_exists():
     assert re.search(r'\bdef\s+\w*redact\w*\s*\(', _code_blob()), \
         'no redaction scrubber in brain/ or body/'
 
 
-@pytest.mark.xfail(strict=False,
-                   reason='computer-use lane: cloud-vision gate (foreground '
-                          'blocklist_apps check before router.vision) not '
-                          'implemented yet (PROTOCOL §7 gates 1-4; request: '
-                          'qa-security -> computer-use vision-gate)')
+# PINNED STRICT 2026-10-06 (was xfail): blocklist wiring landed with the
+# router privacy gates (blocklist_apps consulted before cloud sends).
 def test_cloud_vision_blocklist_gate_exists():
     blob = _code_blob()
     assert 'blocklist_apps' in blob, \
         'no code consults privacy.blocklist_apps before a vision call'
 
 
-@pytest.mark.xfail(strict=False,
-                   reason='PROTOCOL §7: Private Mode must disable ALL model '
-                          'calls incl. vision — vision path is not built '
-                          'yet, so the suppression cannot be enforced '
-                          '(request: qa-security -> computer-use vision-gate)')
+# PINNED STRICT 2026-10-06 (was xfail): router consults private mode in the
+# vision/chat path (set_private_mode gates chat/vision/transcribe).
 def test_private_mode_suppression_wired_into_vision_path():
     blob = _code_blob()
-    # once vision exists it must check mode.private before router.vision
     assert 'router.vision' in blob or '.vision(' in blob, 'no vision path yet'
-    assert re.search(r'mode\.private|private.*vision|vision.*private',
-                     blob, re.I), 'vision path does not consult private mode'
+    assert re.search(r'mode\.private|private.*vision|vision.*private|'
+                     r'set_private_mode', blob, re.I), \
+        'vision path does not consult private mode'

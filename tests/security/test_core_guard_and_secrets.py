@@ -85,14 +85,23 @@ def test_core_guard_semantic_invariants():
 
 def test_loop_keeps_private_before_provider_call():
     """Private Mode must suppress the PROVIDER CALL itself (not just fail
-    afterwards) — brain/loop.py must check mode.private before llm.plan."""
+    afterwards) — brain/loop.py must check mode.private before the ONLY
+    path to the model (the conversational agent loop). Fastpath runs first
+    (local intents stay available), then the private gate, then llm.chat."""
     loop = (REPO / 'brain' / 'loop.py').read_text()
-    private_check = loop.find('mode.private')
-    plan_call = loop.find('await llm.plan(')
+    private_check = loop.find('if mode.private:')
+    agent_call = loop.find('await _agent_loop()')
+    fastpath = loop.find('fastpath.run_intent')
     assert private_check != -1, 'loop no longer consults mode.private'
-    assert plan_call != -1, 'loop no longer calls llm.plan'
-    assert private_check < plan_call, \
-        'private check must come BEFORE the provider call'
+    assert agent_call != -1, 'loop no longer calls the agent loop'
+    assert loop.count('await _agent_loop()') == 1, \
+        'multiple agent-loop call sites — private gate must cover all'
+    assert fastpath != -1 and fastpath < private_check, \
+        'fastpath must run BEFORE the private gate (local intents stay)'
+    assert private_check < agent_call, \
+        'private check must come BEFORE the only provider-call path'
+    # llm.chat (the actual model call) must live ONLY inside the agent loop
+    assert 'llm.chat(' in loop, 'loop no longer calls llm.chat'
 
 
 def test_ws_auth_uses_constant_time_compare():

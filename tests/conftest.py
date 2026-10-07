@@ -84,6 +84,12 @@ def qa_reset_before_test(qa_session_env):
     _wipe_db()
     reset_mode_for_tests()
     try:
+        from brain import orbstate
+        orbstate.reset_for_tests()   # sticky error/speaking/boot flags must
+                                     # not leak across tests (merged brain-core)
+    except Exception:  # noqa: BLE001
+        pass
+    try:
         from brain.jobs.engine import get_engine
         eng = get_engine()
         eng.resume()
@@ -175,11 +181,11 @@ def router_to_mock(mock_openai, monkeypatch, tmp_path):
     fake key (presence-only, never a real secret), usage log redirected to
     tmp so no test writes brain/router/usage.jsonl (runtime data, not ours).
 
-    NOTE: builds RouterConfig directly instead of load_config() — load_config
-    currently CRASHES on config.yaml's profiles block (naive YAML parser;
-    request: qa-security -> router fix-config-loader). The load crash itself
-    is pinned by contract/test_config_loader.py."""
+    NOTE: builds RouterConfig directly instead of load_config() so tests
+    never depend on the ambient profile (the loader itself is pinned by
+    contract/test_config_loader.py)."""
     from brain.router import core as router_core
+    import brain.router.config as router_config
     from brain.router.config import (LocalModelSettings, ProviderEndpoints,
                                      RouterConfig, RouterSettings)
 
@@ -193,16 +199,15 @@ def router_to_mock(mock_openai, monkeypatch, tmp_path):
         discovery_interval_s=3600,
         max_calls_per_minute=1000,
         benchmark_ranking_path='brain/router/benchmark_ranking.json',
+        usage_log_path=str(tmp_path / 'usage.jsonl'),
     )
     local = LocalModelSettings(candidates=[], text='auto', vision='auto',
                                keep_alive='5m', vision_keep_alive='0',
                                max_concurrency=1,
                                ollama_url=mock_openai.plain_url + '/ollama')
     cfg = RouterConfig(providers=providers, local_model=local,
-                       repo_root=router_core.REPO_ROOT)
+                       repo_root=router_config.REPO_ROOT)
     monkeypatch.setattr(router_core, '_router', router_core.Router(cfg))
-    monkeypatch.setattr(router_core, 'USAGE_LOG_PATH',
-                        tmp_path / 'usage.jsonl')
     monkeypatch.setenv('OPENCODE_API_KEY', 'sk-qa-fake-key-not-a-real-secret')
     monkeypatch.delenv('RAPHAEL_DISABLE_ROUTER', raising=False)
     return mock_openai

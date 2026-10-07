@@ -139,10 +139,8 @@ def test_run_py_honors_explicit_env_overrides(monkeypatch):
     assert captured['log_level'] == 'warning'
 
 
-@pytest.mark.xfail(reason='INTERFACES §c: config.d/*.yaml deep-merge loader + '
-                   'profiles.<profile> overlay + RAPHAEL_PROFILE resolution '
-                   'not implemented yet (brain-core owns the loader)',
-                   strict=False)
+# PINNED STRICT 2026-10-06 (was xfail): brain-core landed the §c loader —
+# config.d deep-merge + profiles.<profile> overlay + RAPHAEL_PROFILE resolution.
 def test_config_d_loader_and_profile_overlay_exist():
     src = ''
     for p in (REPO / 'brain').rglob('*.py'):

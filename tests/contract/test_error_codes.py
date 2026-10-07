@@ -112,10 +112,9 @@ def test_wire_codes_during_failures_are_catalog_codes(client, qa_token):
         assert code in catalog, f'{where} emitted {code!r} not in §10 {sorted(catalog)}'
 
 
-@pytest.mark.xfail(reason='provider HTTP 429 must map to §10 E_PROVIDER_429 '
-                   '(retryable), not E_PROVIDER_5XX — router complete() '
-                   'catches HTTPError generically (request: qa-security -> '
-                   'router provider-429-mapping)', strict=False)
+# PINNED STRICT 2026-10-06 (was xfail): router now maps provider HTTP 429
+# to §10 E_PROVIDER_429 (request qa-security -> router provider-429-mapping
+# — landed with the router merge).
 def test_provider_429_maps_to_e_provider_429(client, qa_token,
                                              router_to_mock):
     router_to_mock.push({'status': 429})

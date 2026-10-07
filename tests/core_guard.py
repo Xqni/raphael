@@ -53,18 +53,20 @@ def _approval_located(rel: str) -> str | None:
 
 def main(argv):
     if '--update' in argv:
-        approval = None
+        approvals = []
         if '--approval' in argv:
-            approval = argv[argv.index('--approval') + 1]
-            found = _approval_located(approval)
-            if not found:
-                print(f'approval file not found anywhere: {approval}')
-                return 2
-            approval = f'{approval} [{found}]'
+            idxs = [i for i, a in enumerate(argv) if a == '--approval']
+            for i in idxs:
+                rel = argv[i + 1]
+                found = _approval_located(rel)
+                if not found:
+                    print(f'approval file not found anywhere: {rel}')
+                    return 2
+                approvals.append(f'{rel} [{found}]')
+        note = (' (approval: ' + '; '.join(approvals) + ')') if approvals else \
+            ' !! NO APPROVAL REFERENCE — integrator review expected !!'
         MANIFEST.write_text(json.dumps(hashes(), indent=2, sort_keys=True)
                             + '\n')
-        note = f' (approval: {approval})' if approval else \
-            ' !! NO APPROVAL REFERENCE — integrator review expected !!'
         print(f'manifest updated{note}')
         return 0
     current = hashes()
