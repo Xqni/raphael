@@ -158,6 +158,12 @@ class RateLimiter:
         self.calls.append(now)
         return True
 
+    def snapshot(self, now: float) -> dict[str, Any]:
+        """Live usage for `/status` (prunes stale slots first)."""
+        self._prune(now)
+        return {"used": len(self.calls), "cap": self.max_calls,
+                "window_s": self.window_s}
+
     def _prune(self, now: float) -> None:
         while self.calls and now - self.calls[0] > self.window_s:
             self.calls.popleft()
@@ -181,6 +187,12 @@ class TokenBudget:
     def record(self, now: float, tokens: int) -> None:
         self.events.append((now, max(0, int(tokens))))
         self._prune(now)
+
+    def snapshot(self, now: float) -> dict[str, Any]:
+        """Live usage for `/status` (prunes stale entries first)."""
+        self._prune(now)
+        return {"used": sum(t for _, t in self.events), "cap": self.max_tokens,
+                "window_s": self.window_s}
 
     def _prune(self, now: float) -> None:
         while self.events and now - self.events[0][0] > self.window_s:
@@ -900,6 +912,35 @@ class Router:
                 for name, info in full["providers"].items()}
 
     # ------------------------------------------------------------------ #
+    # FACADE — usage/rate status (Wave 3: surfaced by brain-core in GET /status)
+    # ------------------------------------------------------------------ #
+    async def usage_status(self) -> dict[str, Any]:
+        """24 h usage aggregation + live rate/circuit state. No network, no
+        secrets, never raises (see brain/router/status.py)."""
+        from .status import WINDOW_HOURS, read_usage_events, summarize_events
+        events = await asyncio.to_thread(read_usage_events,
+                                         self.config.usage_log_path)
+        out = summarize_events(events)
+        out["window_hours"] = WINDOW_HOURS
+        out["log"] = str(self.config.usage_log_path)
+
+        now = time.monotonic()
+        providers: dict[str, Any] = {}
+        for prov in self._vision_chain():        # names only — no probing
+            stats = self._stats_for(prov.name)
+            providers[prov.name] = {
+                "circuit": stats.circuit.state.value,
+                "cooldown_s": round(max(0.0, stats.cooldown_until - now), 1),
+                "rpm": (stats.limiter.snapshot(now) if stats.limiter else None),
+                "tpm": (stats.budget.snapshot(now) if stats.budget else None),
+                "last_error": stats.last_error,
+            }
+        out["providers"] = providers
+        if self.config.providers.allow_vision_paid:
+            out["vision_paid"] = self._vision_spend.snapshot()
+        return out
+
+    # ------------------------------------------------------------------ #
     # legacy seam (brain/llm.py — brain-core's side of the boundary)
     # ------------------------------------------------------------------ #
     async def acquire_model(self, task_kind: str | None = None) -> tuple[str, str]:
@@ -1137,3 +1178,8 @@ async def complete(provider: str, model: str, prompt: str | None = None,
 
 async def report_usage(event: UsageEvent) -> None:
     await get_router().report_usage(event)
+
+
+async def usage_status() -> dict[str, Any]:
+    """24 h usage + live rate/circuit state (Wave 3 — for GET /status)."""
+    return await get_router().usage_status()

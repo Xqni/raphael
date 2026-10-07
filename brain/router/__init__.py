@@ -11,6 +11,8 @@ Public API (INTERFACES §a)::
     await vision(image, question, purpose="vision")       -> {"text", "provider", "model"}
     await transcribe(audio, language=None)                -> {"text", "rtf"}
     await health()                                        -> {"ok", "providers": {name: {ok, models, last_error}}}
+    await usage_status()                                  -> 24 h usage + live rate/circuit state
+                                                             (Wave 3: brain-core surfaces it in GET /status)
 
 Every failure raises `RouterError(code=…)` with a PROTOCOL §10 code
 (`E_PROVIDER_429`, `E_PROVIDER_5XX`, `E_PROVIDER_AUTH`, `E_LOCAL_DOWN`,
@@ -48,6 +50,7 @@ from .core import (
     report_usage,
     reset_router,
     shutdown_router,
+    usage_status,
 )
 from .errors import (
     RETRYABLE_CODES,
@@ -110,7 +113,7 @@ __all__ = [
     "Router", "RouterConfig", "load_config",
     "CallResult", "Outcome", "UsageEvent", "ChatResult", "Provider",
     "init_router", "get_router", "shutdown_router", "reset_router",
-    "acquire_model", "complete", "report_usage",
+    "acquire_model", "complete", "report_usage", "usage_status",
     # resilience primitives (exposed for tests)
     "CircuitBreaker", "RateLimiter", "TokenBudget", "ProviderStats",
 ]
