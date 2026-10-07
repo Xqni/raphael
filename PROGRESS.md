@@ -522,3 +522,7 @@ live_e2e=false) when wanted.
   hand-edit (239eb90/a4b1565, atomic conformance whitelist pair) + loader-authority-guard
   (security, qa request → brain-core decision/implementation → merged) all landed.
   Queued: infra@7, evolution@10; qa (whitelist rebase + wave_done) next.
+- **Wave-5 queue batch positions 3-7 MERGED** (a96f7ba pc report-act, 2fb9f4c voice pacing/
+  tiers, 486fbe0 computer-use gather_context+vision guard, a0960a1 orb banners/fan-out/themes,
+  aa5cf83 infra tier CLI): gates all green, brain 184, conformance 4/4, core guard OK, pushed.
+  Remaining wave-5: qa(8) whitelist rebase + wave_done, tools-memory(9), evolution(10).
