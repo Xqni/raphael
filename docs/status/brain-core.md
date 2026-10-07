@@ -1,6 +1,6 @@
 # brain-core — status
 
-Updated: 2026-10-07 (Wave 3 goals: concurrency polish + memory hook DONE; Notice blocked on PROTOCOL decision)
+Updated: 2026-10-07 (Wave 3: goals 1+2 DONE and rebased on main; goal 3 Notice BLOCKED on PROTOCOL decision — wave_done once decided+landed)
 
 ## Done (Wave 3 goals, 2026-10-07)
 - **Job-concurrency polish — input-lock fairness + per-job cancel** (`brain/jobs/lock.py`, `engine.py`, `loop.py`):
