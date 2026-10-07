@@ -1,42 +1,45 @@
 # evolution-persona — status
 
-Updated: 2026-10-07 (Wave 3)
+Updated: 2026-10-07 (Wave 4)
 
 ## Done
-- Wave 3 **closed for this lane (2026-10-07)** — `wave_done` posted (merge position 10/10, closes the
-  wave-3 merge board); conductor VERIFIED the design-notes refresh (2e3c534; core guard exit 0;
-  Notice anchor + core_guard-as-manifest + config.d tier switch match the assignment; no P0s for this lane).
-- Wave 2 (2026-10-05): design notes `docs/evolution/01-self-evolution-infra.md` (Wave 4 infra) +
-  `02-persona-tiers.md` (Wave 5) + request `evolution-persona__to__brain-core__shadow-instance-row.md`.
-- Coord adoption (2026-10-06): heartbeat posted, lane hold taken, rule 13 (coord post every
-  task/test/wave) + mode `exit` adopted.
-- Wave 3 (2026-10-07): rebased onto merged main (3fab0a6) and refreshed both design notes:
-  - `01`: THE manifest is now qa-security's `tests/core_guard.py` + `tests/core_guard_manifest.json`
-    (4 core files) — the evolution controller verifies through it instead of keeping a second copy;
-    §7 dependency table rewritten with statuses (shadow row request OPEN and now hard-blocked by
-    `brain/config.py::_instance_index` failing loudly for unknown instances — correct fail-closed
-    behavior); queued Wave-4 requests: extend CORE_GUARD_FILES (qa-security), rollback hook seam (infra),
-    golden-harness seam (qa-security; `tests/{run_all,harness,conformance,contract}` exist to reuse),
-    router weights ownership (router).
-  - `02`: Notice format now anchors on brain-core's concrete `notice` frame proposal
-    (`docs/requests/brain-core__to__integrator__notice-events.md`, OPEN) — no competing frame; spoken
-    caps read existing `voice_personality.spoken_reply_max_sentences` / `proactive_warnings`; tier
-    switch mechanism settled = `config.d/evolution-persona.yaml` deep-merge overlay per tier over
-    `voice_personality` (integrator's `config.yaml` untouched; `great_sage` changes nothing).
-  - No P0 gate bugs assigned to this lane (docs/BUGS-WAVE2.md has no evolution/persona items).
+- Wave 2 (2026-10-05): design notes `docs/evolution/01-self-evolution-infra.md` + `02-persona-tiers.md` +
+  shadow-instance request to brain-core.
+- Wave 3 (2026-10-07): design-notes refresh (core_guard-as-single-manifest, Notice frame anchor, config.d
+  tier switch) — merged 080c1aa, conductor-verified, wave-3 merge board closed by this lane (position 10).
+- Wave 4 (2026-10-07, this task batch):
+  - **Shadow resolution:** coord `request` posted to brain-core (ref = my request file). Still OPEN — blocks
+    `shadow.py`/`baseline.py`; everything else proceeded without waiting (rule 2).
+  - **Implementation spikes (journal + rollback):** `brain/evolution/{__init__,zones,journal,rollback}.py`
+    + `tests/{test_zones,test_journal,test_rollback}.py`. Fail-closed zone classifier with authority-content
+    re-guard; schema-validated journal (auto rollback fill for promoted, INDEX, weekly spoken summary);
+    core-guard verify delegated to `tests/core_guard.py` (fail-closed on missing tool/manifest); LKG tag
+    helpers + command-string generators that never execute against the real repo.
+  - **Persona tier switch:** `brain/persona/tiers.py` (fail-closed `tier_of`), `brain/persona/tests/
+    test_tier_switch.py` (Layers A real-repo / B tmp-merge / C guard rails), lane fragment
+    `config.d/evolution-persona.yaml` (`persona.tier: great_sage`, `evolution.mode: propose`, idle-only,
+    free-tier budget, probation).
+  - Docs: `docs/evolution/03-wave4-spikes.md` (spike report + 5 remaining dependencies),
+    `docs/evolution/04-tier-switch-test-plan.md` (executed plan).
 
 ## In progress
 - —
 
 ## Blocked
-- Wave 4 code still gated by AGENT_RULES §11 (current_wave: 3; wave-4 goals are not yet due).
-- `shadow` instance row (my OPEN request to brain-core) will hard-block shadow-instance runs when
-  Wave 4 starts — no workaround planned (never hardcode ports, INTERFACES (d)).
+- **shadow instance row** (OPEN with brain-core): hard-blocks Wave-4 shadow-instance verification runs.
+- Full controller (`controller/worktree/shadow/baseline/promote`) waits on: shadow row, infra rollback-hook
+  seam, qa-security golden-harness seam + CORE_GUARD_FILES extension, router weights ownership
+  (all listed in `docs/evolution/03-wave4-spikes.md` § Dependencies).
 
 ## Next
-- On next coord ping: re-check `docs/requests/*__to__evolution-persona__*.md` + status of my shadow
-  request; at Wave 4 start write the four queued dependency requests from `01` §7.
+- On ping: re-check requests to this lane + shadow request status; if landed, build `worktree.py` +
+  `controller.py` skeleton (detect → classify → worktree → verify → journal, `off|propose` gating).
+- At Wave 4 start-of-task: file the queued requests (infra rollback hook, qa-security harness seam,
+  router weights) from 01 §7.
 
 ## Test output (real runs only — never claim unrun tests)
-- 2026-10-07: `python3 tests/core_guard.py` → `Core Guard OK (4 files byte-stable)` (exit 0).
-- (no other tests run this wave — documentation/design task only)
+- 2026-10-07: `tests/.venv/bin/python -m pytest brain/evolution/tests -q` → **49 passed in 0.14s**
+- 2026-10-07: `tests/.venv/bin/python -m pytest brain/persona/tests -q` → **14 passed in 0.10s**
+- 2026-10-07: `python3 tests/core_guard.py` → `Core Guard OK (4 files byte-stable)` (exit 0)
+- 2026-10-07: `tests/ownership_check.py --lane evolution-persona --files <11 new files>` → `ownership OK (11 checked)`
+- 2026-10-07: `python3 tests/core_guard.py` (Wave 3) → `Core Guard OK (4 files byte-stable)`

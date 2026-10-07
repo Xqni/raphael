@@ -1,0 +1,23 @@
+# evolution-persona lane fragment (AGENT_RULES §3 — lanes only edit their own file).
+# Load order: config.yaml -> config.d/*.yaml (sorted, deep-merge, later wins)
+# -> profile overlay (docs/INTERFACES.md §c). This file NEVER contains secrets.
+persona:
+  # great_sage | raphael | ciel — unlock criteria + user approval: docs/evolution/02-persona-tiers.md.
+  # The tier itself is a proposal-only value: a self-produced diff that raises it
+  # is always a proposal, never auto-promoted (design 01 §6 rule 1).
+  tier: great_sage
+
+# Self-evolution controller settings (design 01 §5). Consumed by brain/evolution
+# once the controller lands; harmless defaults until then. `mode` escalation is
+# itself a proposal — an evolution patch may not raise it.
+evolution:
+  mode: propose            # off | propose | auto_safe  (default: propose)
+  idle_only: true
+  budget:
+    max_patches_per_day: 3
+    max_steps_per_patch: 40
+    max_tokens_tier: free
+  probation:
+    jobs: 20
+    hours: 24
+  journal_dir: docs/evolution/journal

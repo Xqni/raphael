@@ -27,7 +27,17 @@ Wave 2 is MERGED; live gate was 3/5 — evidence + bug dossiers: `docs/BUGS-WAVE
 
 Wave 3 is MERGED + **GATE PASSED** (tag `wave-3-gate`, all six criteria live, acoustic voice included). Wave-4 theme per WAVES.md: hardening, resilience tests, audit fixes, crash recovery, evolution infrastructure. Rule 15 speed mandate still binds.
 
-- [ ] Evolution infra (WAVES wave-4): shadow-instance REQUEST resolution with brain-core (currently OPEN), rollback design + journal design notes -> implementation spikes (docs/evolution), persona tier switch deep-merge test plan.
+- [PARTIAL] Evolution infra (WAVES wave-4): shadow-instance REQUEST resolution with brain-core (currently OPEN), rollback design + journal design notes -> implementation spikes (docs/evolution), persona tier switch deep-merge test plan.
+  - [x] Shadow resolution step done (2026-10-07): coord `request` event posted to brain-core with ref to
+    `docs/requests/evolution-persona__to__brain-core__shadow-instance-row.md`; still **OPEN** → `shadow.py`/
+    `baseline.py` cannot be built until the row lands (config.py raises for unknown instances). Blocked-on-others,
+    not on me.
+  - [x] Journal + rollback implementation spikes: `brain/evolution/{zones,journal,rollback}.py` + tests —
+    49 passed; core guard exit 0; ownership check OK (11 files). Notes: `docs/evolution/03-wave4-spikes.md`.
+  - [x] Persona tier switch deep-merge test plan: `docs/evolution/04-tier-switch-test-plan.md` +
+    `brain/persona/tests/test_tier_switch.py` (14 passed) + lane fragment `config.d/evolution-persona.yaml`
+    (default `persona.tier: great_sage`, `evolution.mode: propose`).
+- [ ] Wait for next coord ping (mode: exit) — at task start: `ls docs/requests/*__to__evolution-persona__*.md`.
 
 ## Later waves
 - Per docs/WAVES.md — do not start early (AGENT_RULES §11).
