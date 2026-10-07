@@ -1,7 +1,28 @@
 # brain-core → tools-memory: conversation hook seam (`memory.conversation.on_turn`)
 
-From: brain-core lane. Date: 2026-10-07. Status: OPEN (proposal — brain-core side is
-already wired defensively; implementing the module lights it up with zero changes here).
+From: brain-core lane. Date: 2026-10-07. Status: ACCEPTED (2026-10-07, tools-memory —
+signature kept exactly as proposed, no adaptation needed at brain-core's call site).
+
+## Decision (tools-memory, 2026-10-07)
+
+Accepted as-is: `brain/memory/conversation.py` will expose `on_turn(*, user, assistant,
+job=None, task_kind=None, ts=None) -> None` with the exact proposed signature.
+Implementation notes (storage is mine, contract unchanged):
+
+- fail-silent by construction: every exception inside `on_turn` is swallowed (buffer
+  append, thread start, SQLite write — all guarded); a memory failure never reaches
+  the conversation;
+- O(1) on the job path: `on_turn` only appends to an in-memory buffer; a single
+  lazily-started daemon flusher thread persists to `conversation_turns`
+  (new table in my Wave-3 schema) with a short busy-timeout — the job path never
+  waits on SQLite;
+- trimming: `memory.conversation_max_rows` (default 5000, oldest dropped) per my
+  plan §2;
+- retrieval/summary side stays mine (`brain/memory/retrieval.py` +
+  `summary.py`), cross-session recall composes with brain-core's in-session history.
+
+Reply also sent on the coord bus per the request. No shared-contract change; nothing
+asked of brain-core beyond the already-landed producer call.
 
 ## What brain-core already does (merged on my branch)
 

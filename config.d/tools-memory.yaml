@@ -1,0 +1,50 @@
+# tools-memory lane fragment (loader contract: docs/INTERFACES.md §c)
+# Deep-merged over config.yaml — only THIS lane's knobs live here.
+# Base `github.*` and `safety.confirm_actions` are read-only for this lane
+# (never redeclared, never loosened — docs/lanes/tools-memory.md §6).
+
+memory:
+  top_k: 5                       # BM25 rows injected per turn on top of pinned
+  max_context_chars: 4000        # hard cap for the untrusted memory/skill block
+  category_boost:
+    identity: 0.15
+    preference: 0.15
+    task: 0.05
+  conversation_max_rows: 5000    # conversation_turns trim (oldest dropped first)
+  conversation_flush_s: 1.0      # background flusher cadence (job path stays O(1))
+
+skills:
+  dir: skills                    # runtime SKILL.md dirs (git-tracked, user-reviewable)
+  gate_confidence: 0.6           # below this OR status=draft -> never auto-injected
+  dedup_jaccard: 0.82            # >= this similarity at creation -> bump usage, no new skill
+  inject_drafts: false
+
+plugins:
+  dir: plugins                   # user-authored manifests; enabled only by the user
+  auto_enable: false             # a plugin tool set never activates without the user
+
+files:
+  allowed_roots: ["~"]           # file_read/file_write confined to these (expanded)
+  trash_subdir: trash            # file_trash moves here; NO delete tool exists
+  read_max_bytes: 262144
+
+shell:
+  scripts: {}                    # fixed script registry: name -> {cmd: [argv...], cwd?, desc?}
+  timeout_s: 30
+  max_output_bytes: 65536        # never shell=True; args appended as raw argv only
+
+web:
+  fetch_max_bytes: 1048576
+  timeout_s: 15
+  block_private_ips: true        # SSRF guard: loopback/private/link-local refused
+  search_endpoint: "https://html.duckduckgo.com/html/"   # no API key; overridable
+
+schedule:
+  tick_s: 1
+
+mcp:
+  servers: []                    # [{name, transport: stdio, command: [argv], allow: [...]}]
+                                 # allow: [] = fail-closed (visible, not callable)
+                                 # servers start ONLY from this user-authored config
+  timeout_s: 10                  # keep small: unresponsive servers delay boot by this
+  max_result_chars: 65536        # per tools/call result cap
