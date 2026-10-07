@@ -1,5 +1,12 @@
 # computer-use → pc-control: screen-context-ops
-Status: OPEN
+Status: DONE — superseded without owner action. pc-control's merged landing
+(`body/win/act_window.py` `foreground_info{}`, `body/win/act_uia.py`
+`uia{op:"tree"}`, PROTOCOL §7 enum amended 2026-10-06) shipped equivalent
+operations under different shapes; the computer-use gateway now targets the
+SHIPPED contract (`foreground_info` result `{'window': {title,...}|None}`;
+`uia{op:"tree", element:{control_type:"window"}, args:{depth:1..3}}` rendered
+to text Brain-side — see `brain/tools/computer_use/gateway.py` +
+`tests/test_gateway.py`). Kept below for the original rationale.
 
 ## What
 Two read-only body `act_req` operations my cloud-vision gate and computer-use loop depend on

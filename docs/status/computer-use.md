@@ -1,9 +1,30 @@
 # computer-use — status
 
-Updated: 2026-10-06 (Wave 2 complete — handoff below)
+Updated: 2026-10-06 (coord-assigned task #1 re-verified post-merge; handoff below)
 
 ## Done (Wave 2, docs/lanes/computer-use.md all checked)
 
+**Task #1 addendum (coord decision 1791340802, post-merge re-verify):**
+- Rebased onto main (router/brain-core/pc-control merged); gate re-verified
+  against the amended PROTOCOL §7 — downscale/foreground-blocklist/redaction
+  still all run BEFORE router.vision, cloud_temp-only, fail-closed.
+- **`foreground_info{}` wired into the blocklist check ahead of any screenshot
+  egress**: `gateway.foreground_window()` now sends the §7 read-only action
+  (`lock:false`), parses `{'window': {title,...} | None}` — `None`/unsupported
+  = unverifiable = gate denies (no capture even happens).
+- **UIA tree aligned to pc-control's shipped `uia{op:"tree"}`** (selector
+  `element:{control_type:'window'}` → foreground window = first body candidate;
+  depth 1..3 clamp): structured result rendered to bounded TEXT Brain-side by
+  `render_tree()` (lane rule: element tree arrives as text).
+- **Registry/discovery alignment with brain-core's merged INTERFACES §(b):**
+  module-level `register(_reg=None)` hook (discovery walker convention) +
+  `schema=SPECS[...]` on both tools so `tool_specs()` offers them and
+  `validate_args()` guards dispatch. `load_errors()` clean for this package.
+- New `tests/test_gateway.py`: exact wire frames (foreground_info/uia-tree/
+  screenshot, lock flags), result parsing, fail-closed paths, tree→text
+  rendering/bounds — fake hub/engine, no sockets.
+- pc-control request `…__screen-context-ops.md` marked DONE (superseded by
+  their landing; gateway targets the shipped shapes).
 1. **Isolation (task 0).** All lane tests run with `RAPHAEL_INSTANCE=computer-use`
    (conftests), router disabled (`RAPHAEL_DISABLE_ROUTER=1`), temp memory DB.
    My code opens no sockets/ports and resolves no instance paths — the act
@@ -70,22 +91,35 @@ Updated: 2026-10-06 (Wave 2 complete — handoff below)
 
 ## Test output (real runs only — never claim unrun tests)
 ```
+# lane (post-merge, foreground_info gateway + discovery hook + new contract tests)
 $ RAPHAEL_INSTANCE=computer-use /home/dami/raphael/brain/.venv/bin/python -m pytest -q \
     brain/vision/tests brain/tools/computer_use/tests
-69 passed, 2 skipped in 0.20s          # 2 skips = jsonschema-absent spec checks
+84 passed, 2 skipped in 0.87s           # 2 skips = jsonschema-absent spec checks
 
+# everything merged (brain-core + router + voice + pc-in-tools + mine)
 $ RAPHAEL_INSTANCE=computer-use /home/dami/raphael/brain/.venv/bin/python -m pytest -q \
-    brain/tests brain/router/tests brain/voice/tests brain/vision/tests \
-    brain/tools/computer_use/tests tests/conformance
-131 passed, 2 skipped in 20.08s
+    brain/tests brain/router/tests brain/voice/tests brain/vision/tests brain/tools
+1 failed, 302 passed, 2 skipped in 43.06s
+
+$ RAPHAEL_INSTANCE=computer-use /home/dami/raphael/brain/.venv/bin/python -m pytest -q tests/conformance
+2 passed in 0.01s
 ```
-- Note: `tests/body_win/test_hotkeys_envelope.py` fails at COLLECTION with
-  `No module named pip` (shared venv has no pip) — pre-existing, qa-security's
-  area, untouched by this lane.
-- Note: one earlier full-suite run showed an intermittent
-  `brain/voice/tests::test_round_trip_tts_to_stt` failure; it passes in
-  isolation and in the rerun above — flagged here for the voice lane, no
-  computer-use code involved.
+- **The 1 failure is pre-existing on main, NOT this lane** (verified: fails
+  with my changes `git stash`ed on the clean merged tree):
+  `brain/tests/test_tools_registry.py::test_tool_specs_only_offers_conforming_schemas`
+  — `assert 'shell' in specs and 'launch_url' in specs`.
+  Root cause: `import brain.tools` registers the gui stubs WITH schema, then
+  `discover()` imports `brain/tools/pc` whose `_register_all()` re-registers
+  `launch_url` (and the other pc tools) **without `schema=`**, so
+  `tool_specs()` stops offering them. Owners: brain-core (test/expectation) +
+  pc-control (drops schema on re-registration — they keep model-facing specs
+  in `pc.openai_tools()`); a schema-preserving re-register or passing
+  `schema=s.to_schema()` fixes it. Reported via coord `test_result`.
+- `brain/tests/test_agent_loop.py::test_persona_streamed_reply_and_multi_turn_history`
+  failed once in the first combined run and passed on every rerun (isolation
+  + combined) — timing flake, same class as the disclosed brain-suite flake.
+- `tests/body_win/test_hotkeys_envelope.py` collection error (`No module named
+  pip`, shared venv) — pre-existing, qa-security's area, unrelated.
 
 ## Handoff (integration points for the integrator / next waves)
 - Tool registration: `import brain.tools.computer_use` registers both tools;

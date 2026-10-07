@@ -9,7 +9,9 @@ os.environ.setdefault("RAPHAEL_CONFIRM_TIMEOUT_S", "2")
 
 _fd, _db = tempfile.mkstemp(prefix="raphael-cu-tools-db-")
 os.close(_fd)
-os.environ["RAPHAEL_DB_PATH"] = _db
+# setdefault: in a combined run brain/tests/conftest may have already claimed
+# the DB path — never repoint a live test session's DB from under it.
+os.environ.setdefault("RAPHAEL_DB_PATH", _db)
 
 import pytest  # noqa: E402
 

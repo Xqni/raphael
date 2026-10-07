@@ -10,7 +10,9 @@ os.environ.setdefault("RAPHAEL_CONFIRM_TIMEOUT_S", "2")
 
 _fd, _db = tempfile.mkstemp(prefix="raphael-cu-vision-db-")
 os.close(_fd)
-os.environ["RAPHAEL_DB_PATH"] = _db
+# setdefault: never repoint a DB path another conftest already claimed
+# (combined runs import several lane conftests).
+os.environ.setdefault("RAPHAEL_DB_PATH", _db)
 
 import pytest  # noqa: E402
 

@@ -46,6 +46,33 @@ def test_tool_signatures_match_specs():
     assert list(inspect.signature(cu.computer_use).parameters) == ["task"]
 
 
+def test_registry_carries_strict_schemas():
+    """INTERFACES §(b): specs attach to the registry so tool_specs() offers
+    the tools to the model and validate_args() guards dispatch."""
+    for name in ("see_screen", "computer_use"):
+        meta = tool_reg.describe(name)
+        assert meta["schema"] == SPECS[name], name
+    offered = {t["function"]["name"] for t in tool_reg.tool_specs()}
+    assert {"see_screen", "computer_use"} <= offered
+
+
+def test_discovery_hook_convention():
+    """brain-core's walker calls a module-level register() with the registry
+    module when its signature takes a positional arg (INTERFACES §b)."""
+    params = inspect.signature(cu.register).parameters
+    assert any(p.kind in (p.POSITIONAL_ONLY, p.POSITIONAL_OR_KEYWORD)
+               for p in params.values())
+    cu.register(tool_reg)             # discovery-style call: idempotent, no error
+    assert tool_reg.get("see_screen") is cu.see_screen
+    assert tool_reg.get("computer_use") is cu.computer_use
+
+
+def test_discovery_walk_is_clean_for_this_package():
+    errs = tool_reg.discover(force=True)
+    mine = {k: v for k, v in errs.items() if "computer_use" in k or "vision" in k}
+    assert mine == {}, mine
+
+
 @pytest.mark.skipif(jsonschema is None, reason="jsonschema not installed")
 @pytest.mark.parametrize("name", sorted(SPECS))
 def test_specs_validate_with_jsonschema(name):
