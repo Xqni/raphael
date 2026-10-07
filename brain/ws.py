@@ -488,6 +488,17 @@ class WsHub:
             return
         source = msg.get('source') if msg.get('source') in ('text', 'voice', 'orb') else 'text'
         priority = msg.get('priority') or 'normal'
+        # Wave-5 approved additive fields: optional kind + parent (validated
+        # loud — a typo never silently becomes a kind)
+        kind = msg.get('kind')
+        if kind is not None and kind not in self.engine.KINDS:
+            await self._send(s, {'type': 'error', 'v': 1, 'code': 'E_BAD_MSG',
+                                 'detail': f'kind must be one of '
+                                           f'{list(self.engine.KINDS)}'})
+            return
+        parent = msg.get('parent') or None
+        if parent is not None:
+            parent = str(parent)
         # HARDENING (Wave 2 task 3): while a confirmation is pending, a VOICE
         # command that clearly says yes/no is first interpreted as that
         # confirmation's answer — a high-risk "yes" from the open mic is
@@ -513,8 +524,12 @@ class WsHub:
                                          'accepted': False})
                     return
                 # 'none' — raced to completion; fall through
-        await self._submit_and_ack(s, text, source, priority,
-                                   msg.get('job_id'))
+        snap = await self.engine.submit(text=text, priority=priority,
+                                        source=source, session=s.sid,
+                                        kind=kind, parent=parent)
+        s.jobs.add(snap['id'])
+        await self._send(s, {'type': 'ack', 'v': 1, 'job': snap['job'],
+                             'text_id': msg.get('job_id')})
 
     async def _on_cancel(self, s: Session, msg: Dict[str, Any]):
         if self.engine is None:

@@ -875,3 +875,176 @@ def test_stt_fatal_code_sends_no_subtitle(token_path, monkeypatch):
                 subtitles = [m for m in seen if m.get('type') == 'subtitle']
                 assert subtitles == [], subtitles
                 assert any(m.get('type') == 'error' for m in seen), seen
+
+
+# ---- Wave-5: Analysis + Simulation job kinds --------------------------------
+def test_fastpath_analyze_and_simulate_classification():
+    from brain import fastpath
+    ctx = fastpath.IntentCtx()
+    res = fastpath.run_intent('analyze my disk usage', ctx)
+    assert res is not None and res.done is False
+    assert res.job_kind == 'analysis' and res.task_kind == 'llm'
+    res = fastpath.run_intent('simulate a dual-boot layout', ctx)
+    assert res is not None and res.done is False
+    assert res.job_kind == 'simulation'
+    res = fastpath.run_intent('analyse the crash log', ctx)
+    assert res is not None and res.job_kind == 'analysis'
+    # falls through to the agent loop (done=False) — no tool, no narration
+    assert res.text == ''
+    # unrelated commands unaffected
+    assert fastpath.run_intent('echo hi', ctx).job_kind is None
+
+
+def test_simulation_job_runs_with_tools_off(token_path, fake_chat):
+    """Wave-5 Simulation kind: fastpath classifies -> agent loop runs with
+    tools=[] and NO prompt-block (no side effects are ever possible)."""
+    calls = fake_chat([{'text': 'If we assume 8 % growth…'}])
+    with TestClient(app) as client:
+        with client.websocket_connect('/ws') as ws_cli:
+            assert _auth(ws_cli, 'cli')['type'] == 'auth_ok'
+            job = _command(ws_cli, 'simulate the 2027 budget outlook')
+            done, _ = _recv_until(
+                ws_cli, lambda m: m.get('type') == 'job_event'
+                and m.get('status') == 'done' and m.get('job') == job)
+            assert done['text'].startswith('If we assume')
+    assert len(calls) == 1
+    # tools suppressed for simulation (None/empty) and no textual catalog
+    assert not calls[0]['tools']
+    sys_prompt = calls[0]['messages'][0]['content']
+    assert 'Tool calling:' not in sys_prompt
+    # the kind rode the runner snapshot end-to-end
+    from brain.jobs.engine import get_engine
+    assert get_engine().kind_of(job) == 'simulation'
+
+
+def test_analysis_job_keeps_tools_and_records_kind(token_path, fake_chat):
+    calls = fake_chat([
+        {'text': '', 'tool_calls': [{
+            'id': 'c1', 'type': 'function',
+            'function': {'name': 't_an_probe',
+                         'arguments': json.dumps({'q': 'du'})}}]},
+        {'text': 'Analysis complete — 3 large directories.'},
+    ])
+    from brain import tools as reg
+    reg.register('t_an_probe', lambda q: '82% /home', description='probe',
+                 schema={'type': 'object',
+                         'properties': {'q': {'type': 'string',
+                                              'description': 'target'}},
+                         'required': ['q'], 'additionalProperties': False})
+    try:
+        with TestClient(app) as client:
+            with client.websocket_connect('/ws') as ws_cli:
+                assert _auth(ws_cli, 'cli')['type'] == 'auth_ok'
+                job = _command(ws_cli, 'analyze my disk usage')
+                done, _ = _recv_until(
+                    ws_cli, lambda m: m.get('type') == 'job_event'
+                    and m.get('status') == 'done' and m.get('job') == job)
+                assert done['text'] == 'Analysis complete — 3 large directories.'
+        # analysis keeps tools (unlike simulation)
+        tool_names = {t['function']['name'] for t in (calls[0]['tools'] or [])}
+        assert 't_an_probe' in tool_names and 'shell' in tool_names
+        from brain.jobs.engine import get_engine
+        assert get_engine().kind_of(job) == 'analysis'
+    finally:
+        reg._registry.pop('t_an_probe', None)
+        reg._META.pop('t_an_probe', None)
+
+
+# ---- Wave-5: answer/report emitters e2e (APPROVED 2026-10-07) ---------------
+def test_answer_frame_fastpath_roles_ui_cli_only(token_path, fake_chat):
+    fake_chat([{'text': 'never'}])                 # echo never reaches the model
+    with TestClient(app) as client:
+        with client.websocket_connect('/ws') as ws_ui:
+            assert _auth(ws_ui, 'ui')['type'] == 'auth_ok'
+            with client.websocket_connect('/ws') as ws_cli:
+                assert _auth(ws_cli, 'cli')['type'] == 'auth_ok'
+                with client.websocket_connect('/ws') as ws_body:
+                    assert _auth(ws_body, 'body')['type'] == 'auth_ok'
+                    job = _command(ws_cli, 'echo answer frame')
+                    ans, _ = _recv_until(ws_ui, lambda m: m.get('type') == 'answer')
+                    assert ans['job'] == job
+                    assert ans['text'] == 'Echo: answer frame'
+                    assert ans['format'] == 'answer' and ans['v'] == 1
+                    assert 'provider' not in ans and 'model' not in ans
+                    # cli gets it too
+                    _recv_until(ws_cli, lambda m: m.get('type') == 'answer'
+                                and m.get('job') == job)
+                    # body never does (ui+cli only — decision condition 5)
+                    try:
+                        bodyf = _recv_json(ws_body, timeout=1.0)
+                        assert bodyf.get('type') != 'answer', bodyf
+                    except Exception:  # noqa: BLE001 — quiet body = pass
+                        pass
+
+
+def test_answer_frame_agent_reply_carries_provider(token_path, fake_chat):
+    calls = fake_chat([{'text': 'Four is the answer.'}])
+    with TestClient(app) as client:
+        with client.websocket_connect('/ws') as ws_ui:
+            assert _auth(ws_ui, 'ui')['type'] == 'auth_ok'
+            with client.websocket_connect('/ws') as ws_cli:
+                assert _auth(ws_cli, 'cli')['type'] == 'auth_ok'
+                job = _command(ws_cli, 'what is two plus two')
+                ans, _ = _recv_until(ws_ui, lambda m: m.get('type') == 'answer'
+                                     and m.get('job') == job)
+                assert ans['text'] == 'Four is the answer.'
+                assert ans['provider'] == 'fake-provider'
+                assert ans['model'] == 'fake-model'
+    assert len(calls) == 1
+
+
+def test_analysis_emits_answer_and_capped_report(token_path, fake_chat):
+    long_body = '\n\n'.join(f'Finding {i}: ' + ('data ' * 120)
+                            for i in range(25))
+    fake_chat([{'text': long_body}])
+    with TestClient(app) as client:
+        with client.websocket_connect('/ws') as ws_ui:
+            assert _auth(ws_ui, 'ui')['type'] == 'auth_ok'
+            with client.websocket_connect('/ws') as ws_cli:
+                assert _auth(ws_cli, 'cli')['type'] == 'auth_ok'
+                job = _command(ws_cli, 'analyze the telemetry dump')
+                ans, _ = _recv_until(ws_ui, lambda m: m.get('type') == 'answer'
+                                     and m.get('job') == job)
+                rep, _ = _recv_until(ws_ui, lambda m: m.get('type') == 'report'
+                                     and m.get('job') == job)
+                assert ans['format'] == 'answer'
+                assert rep['format'] == 'report'
+                assert rep['title'].startswith('Analysis —')
+                assert len(rep['summary']) <= 500
+                assert len(rep['sections']) <= 10
+                assert all(len(s['text']) <= 2000 for s in rep['sections'])
+                # job_event now echoes kind (APPROVED additive field)
+                ev, _ = _recv_until(ws_cli, lambda m: m.get('type') == 'job_event'
+                                    and m.get('status') == 'done'
+                                    and m.get('job') == job)
+                assert ev.get('kind') == 'analysis'
+
+
+def test_ws_command_kind_parent_echo_and_validation(token_path, fake_chat):
+    fake_chat([{'text': 'tagged reply'}])
+    with TestClient(app) as client:
+        with client.websocket_connect('/ws') as ws_cli:
+            assert _auth(ws_cli, 'cli')['type'] == 'auth_ok'
+            # invalid kind -> loud E_BAD_MSG, no job
+            ws_cli.send_text(json.dumps({'type': 'command', 'v': 1,
+                                         'text': 'x', 'kind': 'bogus'}))
+            err, _ = _recv_until(ws_cli, lambda m: m.get('type') == 'error')
+            assert err['code'] == 'E_BAD_MSG' and 'kind' in err['detail']
+            # valid kind + parent -> job_event echoes both
+            ws_cli.send_text(json.dumps({'type': 'command', 'v': 1,
+                                         'text': 'parented analysis',
+                                         'kind': 'analysis',
+                                         'parent': 'j_20261007_0009'}))
+            ack, _ = _recv_until(ws_cli, lambda m: m.get('type') == 'ack')
+            job = ack['job']
+            done, _ = _recv_until(ws_cli, lambda m: m.get('type') == 'job_event'
+                                  and m.get('status') == 'done'
+                                  and m.get('job') == job)
+            assert done['kind'] == 'analysis'
+            assert done['parent'] == 'j_20261007_0009'
+            # plain command: kind/parent ABSENT from job_event (additive)
+            job2 = _command(ws_cli, 'plain echo now')
+            done2, _ = _recv_until(ws_cli, lambda m: m.get('type') == 'job_event'
+                                   and m.get('status') == 'done'
+                                   and m.get('job') == job2)
+            assert 'kind' not in done2 and 'parent' not in done2

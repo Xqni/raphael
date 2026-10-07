@@ -34,6 +34,8 @@ class IntentResult:
     done: bool = True                # False → intent wants the LLM/router path
     task_kind: Optional[str] = None  # orb shape/task kind (INTERFACES §e):
     #                                  system|files|web|media|llm|gui|none
+    job_kind: Optional[str] = None   # Wave-5 job kind (chat|analysis|
+    #                                  simulation|act) — carried to the engine
 
 
 @dataclass
@@ -160,6 +162,23 @@ def register_builtin_intents():
         return IntentResult(text='Let me look.', tool='see_screen',
                             tool_args={'question': text}, needs_lock=False,
                             task_kind='gui')
+
+    def _analysis(text, ctx):
+        # Wave-5 Analysis kind: routes to the agent loop WITH kind=analysis
+        # (read-only intent; tools stay available, confirm rules unchanged).
+        return IntentResult(text='', done=False, job_kind='analysis',
+                            task_kind='llm')
+
+    def _simulation(text, ctx):
+        # Wave-5 Simulation kind: routes to the agent loop WITH
+        # kind=simulation -> tools OFF (no side effects ever possible).
+        return IntentResult(text='', done=False, job_kind='simulation',
+                            task_kind='llm')
+
+    for _kw in ('analyze ', 'analysis of ', 'analyse '):
+        register_intent(_kw, _analysis)
+    for _kw in ('simulate ', 'simulation of ', 'simulate: '):
+        register_intent(_kw, _simulation)
 
     for _kw in ('what am i looking at', "what's on my screen",
                 'what is on my screen', 'describe my screen',

@@ -185,6 +185,8 @@ class JobIn(BaseModel):
     priority: Any = 'normal'            # 'user_facing'|'normal'|'background' or legacy int
     input_lock: bool = False
     job_id: Optional[str] = None        # pre-allocated id ack (PROTOCOL §3)
+    kind: Optional[str] = None          # Wave-5 APPROVED: chat|analysis|simulation|act
+    parent: Optional[str] = None        # Wave-5 APPROVED: fan-out correlation
 
 
 @app.post('/jobs')
@@ -193,9 +195,13 @@ async def post_job(body: JobIn, auth: bool = Depends(token_auth)) -> Dict[str, A
     if not text:
         raise HTTPException(status_code=422, detail='text is required')
     engine = get_engine()
+    if body.kind is not None and body.kind not in engine.KINDS:
+        raise HTTPException(status_code=422,
+                            detail=f'kind must be one of {list(engine.KINDS)}')
     snap = await engine.submit(text=text, priority=body.priority,
                                source=body.source, input_lock=body.input_lock,
-                               session=None, task=text)
+                               session=None, task=text,
+                               kind=body.kind, parent=body.parent)
     return {'job_id': snap['job'], 'job': snap}
 
 

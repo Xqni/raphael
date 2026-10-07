@@ -51,6 +51,11 @@ class JobEngine:
         # external ids marked `interrupted` by the LAST _mark_interrupted run
         # (boot notice emitter 1 — PROTOCOL §3 notice, approved 2026-10-07)
         self.interrupted_at_boot: List[str] = []
+        # Wave-5 job kinds + fan-out correlation (in-memory; wire exposure
+        # awaits docs/requests/brain-core__to__integrator__output-formats-
+        # and-job-kinds.md). chat|analysis|simulation|act; parent = fan-out tag.
+        self._kinds: Dict[int, str] = {}
+        self._parents: Dict[int, str] = {}
 
     def _ensure_queue(self) -> "asyncio.PriorityQueue":
         loop = asyncio.get_running_loop()
@@ -174,11 +179,66 @@ class JobEngine:
         return marked
 
     # ---- submission --------------------------------------------------------
+    # sanctioned kind values (contract request pending; validated here so a
+    # typo never silently becomes a kind)
+    KINDS = ('chat', 'analysis', 'simulation', 'act')
+
+    def set_kind(self, ref, kind: Optional[str]) -> bool:
+        rowid = store.parse_job_ref(ref)
+        if rowid is None or kind not in self.KINDS:
+            return False
+        self._kinds[rowid] = kind
+        return True
+
+    def kind_of(self, ref) -> Optional[str]:
+        rowid = store.parse_job_ref(ref)
+        return self._kinds.get(rowid) if rowid is not None else None
+
+    def set_parent(self, ref, parent: Optional[str]) -> bool:
+        rowid = store.parse_job_ref(ref)
+        if rowid is None or not parent:
+            return False
+        self._parents[rowid] = str(parent)
+        return True
+
+    def parent_of(self, ref) -> Optional[str]:
+        rowid = store.parse_job_ref(ref)
+        return self._parents.get(rowid) if rowid is not None else None
+
+    async def submit_fanout(self, parent, texts, priority='normal',
+                            source: str = 'text', kind: str = 'analysis',
+                            input_lock: bool = False,
+                            session: Optional[str] = None) -> List[Dict[str, Any]]:
+        """Parallel-minds seam: create N sibling jobs correlated to ONE
+        parent job id (each inherits kind/parent; admission respects
+        priority). Returns the child snapshots in submission order."""
+        if not texts:
+            return []
+        if kind not in self.KINDS:
+            kind = 'analysis'
+        out = []
+        for t in texts:
+            snap = await self.submit(text=t, priority=priority, source=source,
+                                     input_lock=input_lock, session=session)
+            self.set_kind(snap['id'], kind)
+            self.set_parent(snap['id'], parent)
+            snap['kind'] = kind
+            snap['parent'] = str(parent)
+            out.append(snap)
+        return out
+
     async def submit(self, text: str, priority='normal', source: str = 'text',
                      input_lock: bool = False, session: Optional[str] = None,
-                     task: Optional[str] = None) -> Dict[str, Any]:
+                     task: Optional[str] = None, kind: Optional[str] = None,
+                     parent: Optional[str] = None) -> Dict[str, Any]:
         snap = store.create_job(text=text, priority=priority, source=source,
                                 input_lock=input_lock, session=session, task=task)
+        if kind:
+            self.set_kind(snap['id'], kind)
+        if parent:
+            self.set_parent(snap['id'], parent)
+        snap['kind'] = self._kinds.get(snap['id'])
+        snap['parent'] = self._parents.get(snap['id'])
         self._submit_seq += 1
         rank = store.PRIORITY_RANK.get(snap['priority'], 1)
         q = self._ensure_queue()
@@ -236,6 +296,12 @@ class JobEngine:
             return
         store.transition(rowid, 'running', stage='routing', progress=0.05)
         job = store.get_job(rowid)
+        # Wave-5 metadata rides the runner's snapshot (in-memory; no schema).
+        # MUST come after the re-fetch above — the refetched dict would
+        # otherwise discard it.
+        if job is not None:
+            job['kind'] = self._kinds.get(rowid)
+            job['parent'] = self._parents.get(rowid)
         self.emit_event(job, 'running', stage='routing', progress=0.05,
                         text='Working on it')
         try:
@@ -378,6 +444,14 @@ class JobEngine:
             frame['tool'] = tool
         if error_code:
             frame['error_code'] = error_code
+        # Wave-5 approved additive fields: echo the job's kind/parent when
+        # known (absent otherwise — additive, consumers unaffected).
+        _kind = snap.get('kind') or (self._kinds.get(rowid) if rowid else None)
+        _parent = snap.get('parent') or (self._parents.get(rowid) if rowid else None)
+        if _kind:
+            frame['kind'] = _kind
+        if _parent:
+            frame['parent'] = _parent
         for hook in (self.sink, self.on_state):
             if hook is not None:
                 try:
