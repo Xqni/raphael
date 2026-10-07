@@ -33,6 +33,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, AsyncIterator, Awaitable, Callable
 
+from . import spend as spend_mod
 from .config import RouterConfig, load_config
 from .errors import RouterError, ProviderError, ProviderUnavailable, aggregate_code
 from .httputil import guess_audio_format, guess_image_mime
@@ -44,6 +45,7 @@ from .privacy import (
     redact_messages,
 )
 from .provider import ChatResult, Provider, estimate_input_tokens
+from .spend import DailySpend, estimate_cost_usd
 
 log = logging.getLogger("raphael.router")
 
@@ -228,12 +230,13 @@ def build_provider(name: str, config: RouterConfig) -> Provider:
     from .groq import GroqProvider
     from .mock import MockProvider
     from .ollama import OllamaLocalProvider
-    from .zen import GoProvider, ZenProvider
+    from .zen import GoProvider, GoVisionProvider, ZenProvider
 
     builders: dict[str, Callable[[RouterConfig], Provider]] = {
         "groq": GroqProvider,
         "zen_free": ZenProvider,
         "go": GoProvider,
+        "go_vision": GoVisionProvider,
         "ollama": OllamaLocalProvider,
         "mock": MockProvider,
     }
@@ -251,6 +254,12 @@ class Router:
         self._usage_lock = asyncio.Lock()
         for name in self.config.providers.chain:
             self._register(name)
+        # vision-only paid slot (user-approved, docs/PAID_USAGE.md 2026-10-06):
+        # daily USD counter — state under <repo_root>/run/ (gitignored runtime)
+        self._vision_spend = DailySpend(
+            self.config.repo_root / "run" / "vision_paid_daily.json",
+            self.config.providers.vision_paid_daily_cap_usd,
+        )
         self._local_transcriber: Callable[..., Awaitable[dict[str, Any]]] | None = None
 
     # ------------------------------------------------------------------ #
@@ -275,6 +284,19 @@ class Router:
                 continue
             out.append(self._register(name))
         return out
+
+    def _vision_chain(self) -> list[Provider]:
+        """Vision chain = `_chain()` + the paid vision slot as LAST resort.
+
+        The user-approved paid slot never displaces free capacity: it is only
+        consulted when no free-chain provider can serve vision, and only when
+        `providers.allow_vision_paid` is on. It is absent from `_chain()`, so
+        chat/tools/STT can never reach it.
+        """
+        chain = list(self._chain())
+        if self.config.providers.allow_vision_paid:
+            chain.append(self._register("go_vision"))
+        return chain
 
     def _stats_for(self, name: str) -> ProviderStats:
         return self._stats.setdefault(name, ProviderStats(
@@ -425,7 +447,7 @@ class Router:
                 raise RouterError("no model for role", code="E_OFFLINE",
                                   provider=provider.name, reason="no_model",
                                   detail="No model available for this request.")
-            if model.paid and not p.allow_paid_runtime:
+            if model.paid and not provider.paid_models_allowed:
                 raise RouterError("paid model gated off", code="E_OFFLINE",
                                   provider=provider.name, reason="gated")
             try:
@@ -708,18 +730,81 @@ class Router:
             )
         q = redact_secrets(question or "")
         b64 = base64.b64encode(data).decode("ascii")
-        started = time.monotonic()
-        provider, model, result = await self._with_failover(
-            role="vision", purpose=purpose,
-            call=lambda p, m: p.vision(m, b64, mime, q,
-                                       timeout=self.config.providers.request_timeout_s),
-            require_capability="vision",
-            estimate=1500,  # rough vision token guess for the TPM budget gate
+
+        # free chain first; the paid slot is the LAST resort and is charged to
+        # the daily cap (user approval, docs/PAID_USAGE.md)
+        spend = self._vision_spend
+        price = self.config.providers.vision_paid_price_per_mtok
+        errors: list[RouterError] = []
+        cap_blocked = False
+        for provider in self._vision_chain():
+            if provider.name == "go_vision" and spend.exhausted:
+                # HARD STOP (vision_paid_daily_cap_usd): skip the paid slot
+                cap_blocked = True
+                errors.append(RouterError(
+                    "vision daily cap reached", code="E_OFFLINE",
+                    provider=provider.name, reason="vision_paid_cap",
+                    detail="Vision daily cap reached — image analysis "
+                           "resumes tomorrow.",
+                ))
+                self._alert_vision_cap()
+                continue
+            started = time.monotonic()
+            try:
+                model, result = await self._call_provider(
+                    provider, "vision", purpose,
+                    lambda m, _p=provider: _p.vision(
+                        m, b64, mime, q,
+                        timeout=self.config.providers.request_timeout_s),
+                    require_capability="vision",
+                    estimate=1500,  # rough vision token guess for TPM budget
+                )
+            except RouterError as e:
+                errors.append(e)
+                stats = self._stats_for(provider.name)
+                stats.last_error = str(e)
+                if e.reason not in SKIP_REASONS:
+                    stats.circuit.record_failure(time.monotonic())
+                continue
+            if provider.name == "go_vision":
+                cost = estimate_cost_usd(result.usage, price, result.cost_usd)
+                total, crossed = spend.record(cost, model.id)
+                log.debug("vision paid slot: +$%.6f -> $%.6f/$%.2f (%s)",
+                          cost, total, spend.cap_usd, model.id)
+                if crossed:
+                    self._alert_vision_cap()
+            latency = (time.monotonic() - started) * 1000.0
+            await self._log_usage(provider.name, model.id, purpose,
+                                  result.usage, Outcome.SUCCESS, None,
+                                  latency_ms=latency)
+            return {"text": result.text, "provider": provider.name,
+                    "model": model.id}
+
+        if cap_blocked and all(
+            e.reason in ("no_model", "chain_exhausted", "vision_paid_cap",
+                         "circuit_open", "missing_key", "cooldown",
+                         "local_rpm_budget", "local_tpm_budget")
+            for e in errors
+        ):
+            # nothing free could serve AND the paid slot is capped out →
+            # the user-facing answer is the cap, not a generic outage
+            raise RouterError(
+                "vision daily cap reached — no free vision model available",
+                code="E_OFFLINE", reason="vision_paid_cap",
+                detail="Vision daily cap reached — image analysis "
+                       "resumes tomorrow.",
+            )
+        raise self._exhausted(errors)
+
+    def _alert_vision_cap(self) -> None:
+        """coord attention 'vision daily cap hit' — once per day, never raises."""
+        if self._vision_spend.alerted_today:
+            return
+        self._vision_spend.mark_alerted()
+        spend_mod.notify_attention(
+            f"vision daily cap hit (${self.config.providers.vision_paid_daily_cap_usd:.2f}/day) "
+            "— vision() refusing paid calls until tomorrow"
         )
-        await self._log_usage(provider, model, purpose, result.usage,
-                              Outcome.SUCCESS, None,
-                              latency_ms=(time.monotonic() - started) * 1000.0)
-        return {"text": result.text, "provider": provider, "model": model}
 
     # ------------------------------------------------------------------ #
     # FACADE — transcribe (Groq Whisper; local seam for profile local)
@@ -789,7 +874,7 @@ class Router:
         providers: dict[str, Any] = {}
         if is_private_mode():
             # Private Mode: no cloud egress AT ALL — report from cache only.
-            for provider in self._chain():
+            for provider in self._vision_chain():
                 cached = provider.cached_models
                 providers[provider.name] = {
                     "ok": bool(cached),
@@ -799,10 +884,14 @@ class Router:
                 }
             return {"ok": bool(providers) and any(
                 p["ok"] for p in providers.values()), "providers": providers}
-        for provider in self._chain():
+        for provider in self._vision_chain():
             providers[provider.name] = await provider.health()
-        return {"ok": any(p.get("ok") for p in providers.values()),
-                "providers": providers}
+        out = {"ok": any(p.get("ok") for p in providers.values()),
+               "providers": providers}
+        if self.config.providers.allow_vision_paid:
+            # paid-slot budget for supervisors/status consumers (no egress)
+            out["vision_paid"] = self._vision_spend.snapshot()
+        return out
 
     async def health_check(self) -> dict[str, bool]:
         """Legacy shape used by older code/tests: {name: ok}."""

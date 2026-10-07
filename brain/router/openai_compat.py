@@ -87,6 +87,7 @@ class OpenAICompatProvider(Provider):
         caps: frozenset[str] | None = None,
         gated: bool = False,
         free_only: bool = False,
+        assume_billed: bool = False,
         extra_headers: dict[str, str] | None = None,
     ) -> None:
         super().__init__(config)
@@ -96,6 +97,7 @@ class OpenAICompatProvider(Provider):
         self.caps = caps or frozenset({"chat", "tools"})
         self.gated = gated
         self.free_only = free_only
+        self.assume_billed = assume_billed   # Go/Go-vision: every call is billed
         self.extra_headers = dict(extra_headers or {})
 
     # ------------------------------------------------------------------ #
@@ -187,10 +189,14 @@ class OpenAICompatProvider(Provider):
             mid = item.get("id") or item.get("model") or item.get("name")
             if not mid:
                 continue
-            free = item.get("free", True)
-            if isinstance(free, str):
-                free = free.lower() == "true"
-            paid = bool(item.get("paid") or item.get("premium") or False)
+            if self.assume_billed:
+                # Go endpoint: "assume every Go call is billed" (MODEL_POLICY)
+                free, paid = False, True
+            else:
+                free = item.get("free", True)
+                if isinstance(free, str):
+                    free = free.lower() == "true"
+                paid = bool(item.get("paid") or item.get("premium") or False)
             models.append(ModelInfo(
                 id=str(mid),
                 provider=self.name,
@@ -379,12 +385,23 @@ def _parse_chat_response(data: dict[str, Any],
         "input": int(usage.get("prompt_tokens") or 0),
         "output": int(usage.get("completion_tokens") or 0),
     }
+    # provider-reported actual cost, when the endpoint provides one
+    cost: float | None = None
+    raw_cost = data.get("cost")
+    if raw_cost is None and isinstance(usage, dict):
+        raw_cost = usage.get("cost")
+    if raw_cost is not None:
+        try:
+            cost = float(raw_cost)
+        except (TypeError, ValueError):
+            cost = None
     return ChatResult(
         text=text,
         tool_calls=tool_calls,
         finish=str(finish),
         usage=usage_out,
         rate_limit=httputil.parse_rate_limit(headers),
+        cost_usd=cost,
     )
 
 

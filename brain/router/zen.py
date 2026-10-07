@@ -191,4 +191,37 @@ class GoProvider(OpenAICompatProvider):
             key_env=config.providers.zen_key_env,
             caps=frozenset({"chat", "tools"}),
             gated=True,
+            assume_billed=True,
         )
+
+
+class GoVisionProvider(OpenAICompatProvider):
+    """User-approved vision-ONLY paid slot (docs/PAID_USAGE.md 2026-10-06).
+
+    Gates, in order — none of them optional:
+      1. `providers.allow_vision_paid` (config.yaml, user approval) — only then
+         does the router put this provider in the VISION chain (chat/tools/STT
+         use `providers.chain` and never see it);
+      2. `providers.allow_go_runtime` / `allow_paid_runtime` stay FALSE for
+         everything else — `paid_selection_ok` exempts ONLY this provider;
+      3. `providers.vision_paid_daily_cap_usd` — DailySpend hard stop in
+         `Router.vision()` (exceed → E_OFFLINE + coord attention);
+      4. selection is still by capability: roles.pick() returns a model only
+         when live discovery shows a vision-hinted id — never a hardcoded id,
+         and never a guess (score 0 → None → E_OFFLINE/no_model).
+
+    Every Go call is assumed billed (MODEL_POLICY), so discovered models are
+    marked paid for honest accounting.
+    """
+
+    def __init__(self, config: RouterConfig) -> None:
+        super().__init__(
+            config,
+            name="go_vision",
+            base_url=config.providers.go_base_url,
+            key_env=config.providers.zen_key_env,
+            caps=frozenset({"vision"}),
+            gated=False,
+            assume_billed=True,
+        )
+        self.paid_selection_ok = True

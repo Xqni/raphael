@@ -127,6 +127,7 @@ def _merge_fragments(base: dict[str, Any], config_d: Path) -> dict[str, Any]:
 # Defaults (code-side; config can override every one of them)
 # --------------------------------------------------------------------------- #
 from .roles import DEFAULT_DENY_HINTS, DEFAULT_PURPOSE_ROLES, DEFAULT_ROLE_HINTS  # noqa: E402
+from .spend import DEFAULT_PRICE_PER_MTOK  # noqa: E402
 
 DEFAULT_CHAIN = ["groq", "zen_free"]
 
@@ -191,6 +192,14 @@ class RouterSettings:
     block_chat_on_blocklist: bool = True
     vision_max_bytes: int = 4_000_000  # defensive cap; caller pre-downscales (§7)
     local_stt_enabled: bool = True     # profile local: voice lane registers the seam
+    # --- vision-only paid slot (USER APPROVAL 2026-10-06, docs/PAID_USAGE.md) ---
+    # gates ONE Go-tier vision model for vision() purpose ONLY; chat/tools/STT
+    # keep using allow_go_runtime/allow_paid_runtime (both stay false).
+    allow_vision_paid: bool = False
+    vision_paid_daily_cap_usd: float = 1.00
+    vision_paid_price_per_mtok: dict[str, float] = field(
+        default_factory=lambda: dict(DEFAULT_PRICE_PER_MTOK)
+    )
 
     def rpm_for(self, provider: str) -> int:
         return int(self.rpm.get(provider, self.max_calls_per_minute))
@@ -336,6 +345,14 @@ def load_config(path: Path | None = None) -> RouterConfig:
         usage_log_path=str(router_data.get("usage_log_path", "")),
         block_chat_on_blocklist=bool(router_data.get("block_chat_on_blocklist", True)),
         vision_max_bytes=int(router_data.get("vision_max_bytes", 4_000_000)),
+        allow_vision_paid=bool(providers_data.get("allow_vision_paid", False)),
+        vision_paid_daily_cap_usd=float(
+            providers_data.get("vision_paid_daily_cap_usd", 1.00)),
+        vision_paid_price_per_mtok={
+            str(k): float(v)
+            for k, v in (_get(router_data, "vision_paid_price_per_mtok")
+                         or dict(DEFAULT_PRICE_PER_MTOK)).items()
+        },
     )
     local_model = LocalModelSettings(
         candidates=_as_str_list(local_data.get("candidates"), []),
