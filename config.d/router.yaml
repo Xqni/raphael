@@ -24,6 +24,8 @@ router:
     plan: strong
     ack: fast
     vision: vision
+    analysis: deep      # Wave 5: Analysis/Simulation take the DEEPER tier
+    simulation: deep
   # per-provider budgets (requests / tokens per 60 s window)
   rpm: { groq: 30, zen_free: 12, go: 10, go_vision: 10, ollama: 60, mock: 100000 }
   tpm: { groq: 60000, zen_free: 12000, go: 30000, go_vision: 30000, ollama: 200000, mock: 10000000 }
