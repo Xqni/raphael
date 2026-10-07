@@ -442,3 +442,11 @@ land, the integrator re-runs the full six-criterion live gate for `wave-2-gate`.
   WAVES.md gate record updated; attention posted — **wave-3 live E2E re-run awaits the
   user's GO** (starting the live stack is human-only). Open item: shadow-instance
   request (evolution-persona -> brain-core) blocks Wave-4 shadow runs only.
+
+## Session 2026-10-07 (day) — USER GO: live gate + drive to "alive and usable"
+
+**User approval (verbatim):** "im going to work, but you keep working brother and make
+sure its done to the very end where raphael is alive and usable and can control my
+laptop" — treated as the GO for the wave-3 live E2E (attention "Wave 3 gate ready")
+AND instruction to LEAVE THE STACK RUNNING at the end (manual bring-up; scheduled task
+stays Disabled per rule 12; one-fish rule 14 still binds).
