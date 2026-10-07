@@ -24,7 +24,7 @@ BRAIN_TO_CLIENT_FRAMES = {
 
 def _protocol_brain_to_client_types() -> set:
     """Parse the `**Brain → Client:**` table in PROTOCOL §3 → frame types."""
-    content = Path("docs/PROTOCOL.md").read_text()
+    content = Path("docs/PROTOCOL.md").read_text(encoding="utf-8")
     marker = "**Brain → Client:**"
     start = content.find(marker)
     assert start != -1, "PROTOCOL §3 Brain → Client section not found"
@@ -55,7 +55,7 @@ def test_brain_to_client_frame_whitelist_matches_protocol():
 def test_notice_frame_shape():
     """The additive `notice` row (2026-10-07): ui,cli + text/level/ts/job? —
     additive only, orb_state stays the sole state authority."""
-    content = Path("docs/PROTOCOL.md").read_text()
+    content = Path("docs/PROTOCOL.md").read_text(encoding="utf-8")
     row = next((l for l in content.splitlines()
                 if l.startswith("| `notice`")), None)
     assert row is not None, "notice row missing from PROTOCOL §3"
@@ -71,7 +71,7 @@ def test_protocol_enums_match_body():
     if not protocol_path.exists():
         pytest.fail("PROTOCOL.md not found")
     
-    content = protocol_path.read_text()
+    content = protocol_path.read_text(encoding="utf-8")
     # Find line with `control` action enum
     # Line 43: | `control` | cli, ui, body | `action: pause\|resume\|private_on\|private_off\|kill_gui\|watch_on\|watch_off`, `persist: bool` |
     match = re.search(r"action:\s*([^\`]+)", content)
@@ -83,7 +83,7 @@ def test_protocol_enums_match_body():
     cleaned_actions = raw_actions.replace('\\', '').strip()
     expected_actions = set(cleaned_actions.split('|'))
     
-    hotkeys_content = body_hotkeys_path.read_text()
+    hotkeys_content = body_hotkeys_path.read_text(encoding="utf-8")
     found_actions = set(re.findall(r"_post\([\'\"]([^\'\"]+)", hotkeys_content))
     
     for action in found_actions:
@@ -91,7 +91,7 @@ def test_protocol_enums_match_body():
 
 def test_orb_states_conformance():
     """Verify semantic states in PROTOCOL.md."""
-    content = Path("docs/PROTOCOL.md").read_text()
+    content = Path("docs/PROTOCOL.md").read_text(encoding="utf-8")
     match = re.search(r"Semantic states \(server-authoritative\):\s*([^.]+)", content)
     if not match:
         pytest.fail("Could not find semantic states in PROTOCOL.md")
