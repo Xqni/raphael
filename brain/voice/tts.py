@@ -387,7 +387,7 @@ class FishSpeechServer:
         default voice. Opt out only with VoiceConfig(
         tts_reference_required=False) — tests and explicit tooling.
         """
-        voice = self.cfg.tts_voice_path
+        voice = self.cfg.reference_path
         try:
             missing = (not voice.exists()) or voice.stat().st_size == 0
         except OSError:
@@ -441,7 +441,7 @@ class FishSpeechServer:
     async def synthesize(self, text: str) -> bytes:
         """Sentence -> wav bytes (decoder rate). Raises TTSError on failure."""
         references = self._references()          # LOUD: raises if ref missing
-        voice = self.cfg.tts_voice_path
+        voice = self.cfg.reference_path
         try:
             size = voice.stat().st_size
         except OSError:
@@ -497,8 +497,9 @@ class TTSEngine:
         self.cfg = cfg or load_voice_config()
         # reference fingerprint = phrase-cache namespace (Bug D): switching the
         # voice reference can never replay a wav synthesized with another voice
-        self.reference_path = self.cfg.tts_voice_path
+        self.reference_path, self._tier_note = self.cfg.tier_voice_path()
         self.reference_fp = reference_fingerprint(self.reference_path)
+        self._tier_notice_shown = False
         self.cache = PhraseCache(self.cfg.ack_cache_path,
                                  fingerprint=self.reference_fp)
         self.fish = FishSpeechServer(self.cfg)
@@ -559,17 +560,32 @@ class TTSEngine:
         return "Voice engine restarted mid-reply."
 
     def refresh_reference(self) -> str:
-        """Re-read the reference fingerprint (cheap) and re-namespace the
-        phrase cache when it changed — self-heals a reference swap (user drops
-        in a new recording) WITHOUT a restart, and invalidates old-voice cache
-        entries the moment the file changes. Returns the current fingerprint."""
-        fp = reference_fingerprint(self.reference_path)
-        if fp != self.reference_fp:
-            _log(f"[tts] reference changed {self.reference_fp} -> {fp} "
-                 f"({self.reference_path}); phrase cache re-namespaced")
+        """Re-resolve the TIER reference + fingerprint (cheap), re-namespace
+        the phrase cache when anything changed — self-heals both a user
+        reference swap AND a persona-tier flip (great_sage -> ciel) WITHOUT a
+        restart, invalidating old-voice cache entries from that first chunk.
+        Returns the current fingerprint."""
+        path, note = self.cfg.tier_voice_path()
+        fp = reference_fingerprint(path)     # content-addressed: catches an
+        # in-place file swap too (Bug D), not just a path/tier change
+        if path != self.reference_path or fp != self.reference_fp:
+            _log(f"[tts] reference -> {path} (tier '{self.cfg.persona_tier}', "
+                 f"fp {fp}); phrase cache re-namespaced")
+            self.reference_path = path
             self.reference_fp = fp
-            self.cache = PhraseCache(self.cfg.ack_cache_path, fingerprint=fp)
+            self.cache = PhraseCache(self.cfg.ack_cache_path,
+                                     fingerprint=fp)
+        self._tier_note = note
         return fp
+
+    def _tier_fallback_notice(self) -> Optional[str]:
+        """One-time notice when the persona tier's voice slot was missing and
+        the current reference was used instead (Wave 5 tier surface — the
+        evolution design's 'fallback + spoken notice')."""
+        if self._tier_notice_shown or not self._tier_note:
+            return None
+        self._tier_notice_shown = True
+        return self._tier_note
 
     def _once(self, message: str) -> Optional[str]:
         """Returns `message` the first time, None afterwards (one-time notice)."""
@@ -636,6 +652,7 @@ class TTSEngine:
     async def speak(self, text: str, *, job: Optional[str] = None,
                     cancel: Optional[asyncio.Event] = None,
                     force_fallback: bool = False,
+                    max_sentences: Optional[int] = None,
                     ) -> AsyncIterator[Dict[str, Any]]:
         """Async iterator of PROTOCOL speak frame dicts, sentence by sentence.
 
@@ -645,15 +662,29 @@ class TTSEngine:
         interrupted? (end only, barge-in). Chunk frames also carry
         'payload' (raw s16le bytes) — strip via speak_payload() before
         json.dumps; wrap with encode_binary_frame(2, seq, payload).
+
+        SPOKEN DELIVERY CAP (Wave 5): at most `max_sentences` sentences are
+        synthesized — default from config voice_personality
+        `spoken_reply_max_sentences` (2); `max_sentences=0` disables the cap.
+        The subtitle/UI always carries the full text (loop.py), so fish never
+        burns GPU on audio nobody hears (Rule 15), and long Reports/Answers
+        read aloud at a fixed pace.
         """
         rate = self.sample_rate
         sentences = split_sentences(text)
         if not sentences:
             return
-        # Playback-echo bookkeeping: remember what she is about to say so the
+        limit = (self.cfg.spoken_max_sentences if max_sentences is None
+                 else max_sentences)
+        if limit and limit > 0 and len(sentences) > limit:
+            _log(f"[tts] spoken cap: synthesizing {limit} of "
+                 f"{len(sentences)} sentences (rest is subtitle-only)")
+            sentences = sentences[:limit]
+        spoken = " ".join(sentences)
+        # Playback-echo bookkeeping: remember what she is about to SAY so the
         # activation gate can drop her own voice when it bounces back through
         # the mic (self-trigger loop prevention — activation.py).
-        get_playback_echoes().remember(text)
+        get_playback_echoes().remember(spoken)
         # Reference handshake (Bug D): re-fingerprint + re-namespace the phrase
         # cache BEFORE any cache lookup, so a swapped reference is picked up
         # immediately and old-voice wavs are unreachable from the first chunk.
@@ -666,7 +697,7 @@ class TTSEngine:
         # --- 1. cache check (whole phrase) ---------------------------------
         cached_wav: Optional[bytes] = None
         if not force_fallback:
-            cached_wav = self.cache.load(text)
+            cached_wav = self.cache.load(spoken)
         cached = cached_wav is not None
         engine = "cache" if cached else "none"
 
@@ -772,7 +803,7 @@ class TTSEngine:
                     buf = io.BytesIO()
                     sf.write(buf, pcm_s16le_to_float32(full), rate, format="WAV",
                              subtype="PCM_16")
-                    self.cache.store(text, buf.getvalue())
+                    self.cache.store(spoken, buf.getvalue())
                 except Exception:  # noqa: BLE001 — cache write is best-effort
                     pass
 
@@ -796,9 +827,12 @@ class TTSEngine:
             yield _end(interrupted=False, notice=notice)
             return
 
-        if notice is None and self._recovered_this_speak:
-            # successful mid-speak restart: tell the user once (subtitled)
-            notice = self._recovery_notice()
+        if notice is None:
+            # one-time informational notices (subtitled): tier voice-slot
+            # fallback first (Wave 5), then a successful mid-speak restart
+            notice = (self._tier_fallback_notice()
+                      or (self._recovery_notice()
+                          if self._recovered_this_speak else None))
         yield _end(interrupted=False, notice=notice)
 
 
@@ -822,6 +856,30 @@ def stt_final_frame(text: str, lang: Optional[str], rtf: float,
 def error_frame(code: str, detail: str, job: Optional[str] = None) -> Dict[str, Any]:
     return {"type": "error", "v": 1, "code": code, "job": job,
             "detail": str(detail)[:300]}
+
+
+# ---- spoken Notice delivery (Wave 5) ----------------------------------------
+_NOTICE_LEADINS = ("warning:", "caution:", "attention:", "note:")
+
+
+def notice_spoken_text(text: str, level: str = "info") -> str:
+    """Level-tinted phrasing for a SPOKEN Notice (Wave 5).
+
+    info -> as-is (calm, matter-of-fact, persona §10); warn -> a crisp lead-in
+    UNLESS the text already carries one (idempotent), so an alerted warning is
+    audibly distinct from a status line. Unknown levels coerce to 'info' — the
+    same rule as brain/notice.build(). Sentence pacing stays with speak()
+    (voice_personality.spoken_reply_max_sentences).
+    """
+    t = " ".join(str(text or "").split())
+    if not t:
+        return ""
+    if str(level or "info").lower() != "warn":
+        return t
+    low = t.lower()
+    if any(low.startswith(p) for p in _NOTICE_LEADINS):
+        return t
+    return f"Warning: {t}"
 
 
 # ---- module singleton ------------------------------------------------------

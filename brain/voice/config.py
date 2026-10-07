@@ -86,9 +86,18 @@ class VoiceConfig:
     stt_compute: str = "auto"         # auto|float16|int8|float32
     stt_language: Optional[str] = None  # None = auto-detect
     tts_voice: str = "assets/raphael_reference_jp.wav"
+    tts_voice_ciel: str = "assets/ciel_reference.wav"   # evolution-persona
+    #  tier slot (docs/evolution/02-persona-tiers.md §5) — missing file falls
+    #  back to tts_voice (the JP great-sage ref) + one-time notice, never a
+    #  default voice (user directive / Bug D).
+    tts_voice_raphael: str = ""        # optional raphael-tier slot (empty =
+    #  keep the current reference, per the tier table)
     tts_reference_required: bool = True   # USER DIRECTIVE (Bug D): never
     #  synthesize without the configured reference — no default/Zira voice ever
+    persona_tier: str = "great_sage"       # great_sage|raphael|ciel (fail-closed)
     tts_sample_rate: int = 24000
+    spoken_max_sentences: int = 2          # voice_personality
+    #  spoken_reply_max_sentences: cap on what is SPOKEN (screen carries the rest)
     wake_word: str = "raphael"
     ptt_hotkey: str = "ctrl+alt+space"
     always_listen: bool = True        # false = PTT-only (hotkey fallback)
@@ -102,6 +111,40 @@ class VoiceConfig:
     fish_vendor: str = "brain/voice/vendor/fish-speech"
     chunk_ms: int = 250               # speak chunk size (PROTOCOL §6 cap: 500 ms)
     extra: Dict[str, Any] = field(default_factory=dict)
+
+    # -- persona-tier voice profile (Wave 5) --------------------------------
+    def tier_voice_path(self) -> "tuple":
+        """Resolve (path, fallback_note) for the effective persona tier.
+
+        great_sage / raphael -> `voice.tts_voice` (the current, user-approved
+        JP great-sage reference — the raphael tier keeps 'the current voice'
+        per docs/evolution/02-persona-tiers.md tier table); ciel -> its own
+        slot (`voice.tts_voice_ciel`). A missing SLOT falls back to tts_voice
+        with a note (the caller logs/subtitles it once) — never a default
+        voice (user directive / Bug D); when even tts_voice is missing the
+        note is None and Bug D's loud gate fires.
+        """
+        base = Path(self.tts_voice)
+        base = base if base.is_absolute() else REPO_ROOT / base
+        slot_rel = {"ciel": self.tts_voice_ciel,
+                    "raphael": self.tts_voice_raphael}.get(self.persona_tier, "")
+        if not slot_rel:
+            return base, None                      # great_sage / empty slot
+        slot = Path(slot_rel)
+        slot = slot if slot.is_absolute() else REPO_ROOT / slot
+        try:
+            ok = slot.exists() and slot.stat().st_size > 0
+        except OSError:
+            ok = False
+        if ok:
+            return slot, None
+        return base, (f"tier '{self.persona_tier}' voice slot missing ({slot}) "
+                      f"— using the current reference ({base})")
+
+    @property
+    def reference_path(self) -> Path:
+        """Tier-resolved reference path (what synthesis actually sends)."""
+        return self.tier_voice_path()[0]
 
     # -- instance-derived paths (never hardcoded) ---------------------------
     @property
@@ -177,6 +220,31 @@ def _as_bool_raw(value: str) -> bool:
     return _as_bool(value, False)
 
 
+def _load_persona_tier(data: Dict[str, Any]) -> str:
+    """Effective persona tier for tier-scoped voice profiles (Wave 5).
+
+    Source order: RAPHAEL_PERSONA_TIER (explicit/test) -> `persona.tier` in a
+    merged config (`data`) -> the evolution-persona lane's fragment
+    config.d/evolution-persona.yaml (read-only, we never edit it). Unknown /
+    missing fails CLOSED to great_sage — same rule as their tier_of().
+
+    The tier cannot raise itself (addendum §14 / design 01 §6 rule 1): a diff
+    that changes it is a proposal, never an auto-promote.
+    """
+    tier = (os.environ.get("RAPHAEL_PERSONA_TIER") or "").strip()
+    if not tier:
+        tier = str((((data or {}).get("persona") or {}).get("tier")) or "")
+    if not tier:
+        frag = REPO_ROOT / "config.d" / "evolution-persona.yaml"
+        try:
+            if frag.exists():
+                d = yaml.safe_load(frag.read_text(encoding="utf-8")) or {}
+                tier = str((((d or {}).get("persona") or {}).get("tier")) or "")
+        except (yaml.YAMError, OSError):
+            tier = ""
+    return tier if tier in ("great_sage", "raphael", "ciel") else "great_sage"
+
+
 def load_voice_config(config_path: Optional[Path] = None) -> VoiceConfig:
     path = config_path or CONFIG_PATH
     section: Dict[str, Any] = {}
@@ -203,13 +271,15 @@ def load_voice_config(config_path: Optional[Path] = None) -> VoiceConfig:
     profile = _env("RAPHAEL_PROFILE", profile, str)   # idempotent; covers missing-file path
     known = {
         "profile", "stt_engine", "stt_model", "stt_device", "stt_compute",
-        "stt_language", "tts_voice", "tts_reference_required",
+        "stt_language", "tts_voice", "tts_voice_ciel", "tts_voice_raphael",
+        "persona_tier", "tts_reference_required",
         "tts_sample_rate", "wake_word",
         "ptt_hotkey", "always_listen", "ack_cache", "chunk_ms",
         "fish_host", "fish_port", "fish_device", "fish_checkpoint",
         "fish_venv", "fish_vendor",
     }
     extra = {k: v for k, v in section.items() if k not in known}
+    vp = data.get("voice_personality") or {}
     cfg = VoiceConfig(
         profile=profile,
         stt_engine=str(section.get("stt_engine", "groq")),
@@ -220,9 +290,14 @@ def load_voice_config(config_path: Optional[Path] = None) -> VoiceConfig:
         # into `known` but never wired — stt_language silently stayed None,
         # whisper auto-detect mislabeled the wake word under the JP voice.
         tts_voice=str(section.get("tts_voice", "assets/raphael_reference_jp.wav")),
+        tts_voice_ciel=str(section.get("tts_voice_ciel",
+                                        "assets/ciel_reference.wav")),
+        tts_voice_raphael=str(section.get("tts_voice_raphael", "")),
+        persona_tier=_load_persona_tier(data),
         tts_reference_required=_as_bool(section.get("tts_reference_required",
                                                      True), True),
         tts_sample_rate=int(section.get("tts_sample_rate", 24000) or 24000),
+        spoken_max_sentences=int(vp.get("spoken_reply_max_sentences", 2) or 2),
         wake_word=str(section.get("wake_word", "raphael")),
         ptt_hotkey=str(section.get("ptt_hotkey", "ctrl+alt+space")),
         always_listen=_as_bool(section.get("always_listen", True), True),

@@ -40,8 +40,8 @@ from .stt import (STT_SAMPLE_RATE, SUBTITLE_CODES, CloudTranscriber, Segment,
                   transcribe, transcribe_result)
 from .tts import (TTS_SAMPLE_RATE_DEFAULT, FishSpeechServer, PhraseCache,
                   TTSEngine, TTSError, encode_binary_frame, error_frame,
-                  get_tts, speak as _speak_singleton, speak_frame,
-                  speak_payload, split_sentences, stt_final_frame)
+                  get_tts, notice_spoken_text, speak as _speak_singleton,
+                  speak_frame, speak_payload, split_sentences, stt_final_frame)
 from .wake import (InterruptController, PTTGate, WakeGate, WakeMatch,
                    get_interrupts, get_ptt_gate, get_wake_gate, normalize_text)
 
@@ -88,9 +88,23 @@ class VoiceStack:
     async def speak(self, text: str, *, job: Optional[str] = None,
                     cancel: Optional[Any] = None,
                     force_fallback: bool = False,
+                    max_sentences: Optional[int] = None,
                     ) -> AsyncIterator[Dict[str, Any]]:
         async for ev in self.tts.speak(text, job=job, cancel=cancel,
-                                       force_fallback=force_fallback):
+                                       force_fallback=force_fallback,
+                                       max_sentences=max_sentences):
+            yield ev
+
+    async def speak_notice(self, text: str, *, level: str = "info",
+                           job: Optional[str] = None,
+                           cancel: Optional[Any] = None,
+                           ) -> AsyncIterator[Dict[str, Any]]:
+        """Speak a `notice` frame's text with LEVEL-TINTED phrasing (Wave 5):
+        warn gets a crisp lead-in, info stays as-is; pacing/cap as usual.
+        Caller broadcasts the resulting frames + subtitle (same as speak())."""
+        from .tts import notice_spoken_text
+        async for ev in self.speak(notice_spoken_text(text, level),
+                                   job=job, cancel=cancel):
             yield ev
 
     # -- lifecycle ----------------------------------------------------------
@@ -132,6 +146,7 @@ __all__ = [
     "transcribe", "transcribe_result", "get_transcriber",
     "TTSError", "TTSEngine", "FishSpeechServer", "PhraseCache",
     "speak", "speak_frame", "speak_payload", "encode_binary_frame",
+    "notice_spoken_text",
     "stt_final_frame", "error_frame", "split_sentences", "get_tts",
     "WakeGate", "WakeMatch", "PTTGate", "InterruptController",
     "normalize_text", "get_wake_gate", "get_interrupts", "get_ptt_gate",
