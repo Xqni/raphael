@@ -61,8 +61,18 @@ def _gui_stub(**_kwargs: Any):
 def _register_all() -> None:
     from .. import register as _register  # brain.tools registry (brain-core)
     for s in SPECS.values():
+        # Pass schema= whenever the tool declares arguments: brain.tools
+        # tool_specs() only offers schema-declaring tools, so without it the
+        # model never sees the pc tools (caught on the merged tree by
+        # brain-core's test_tool_specs_only_offers_conforming_schemas,
+        # 2026-10-06). Zero-arg tools (PROTOCOL §7 `list_windows{}` …) are the
+        # exception: brain-core's validate_schema still rejects
+        # `properties: {}` (its own test enshrines that) — relaxation
+        # requested in the brain-core inbox; those three stay reachable via
+        # openai_tools() / prompt_block() until it lands.
+        schema = s.schema() if s.properties else None
         _register(s.name, _gui_stub, risky=s.risky, needs_lock=s.needs_lock,
-                  description=s.description, category='gui')
+                  description=s.description, category='gui', schema=schema)
 
 
 _register_all()

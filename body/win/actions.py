@@ -47,7 +47,10 @@ LOG_MAX_BYTES = 5 * 1024 * 1024  # rotate the action log (1 backup)
 # Actions pending addition to the PROTOCOL §7 enum — tracked in
 # docs/requests/pc-control__to__integrator__protocol-act-req-enum.md so the
 # conformance test can assert registry == §7 enum + these three.
-PENDING_PROTO_ADDITIONS = ('list_windows', 'foreground_info', 'list_running_apps')
+# 2026-10-06: the integrator added list_windows / foreground_info /
+# list_running_apps to §7, so the pending set is now EMPTY (the request file
+# stays as the audit trail; the test's union assertion still holds).
+PENDING_PROTO_ADDITIONS = ()
 
 
 class ActionError(Exception):
