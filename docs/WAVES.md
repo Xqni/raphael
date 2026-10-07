@@ -1,5 +1,5 @@
 ---
-current_wave: 4
+current_wave: 5
 updated: 2026-10-07
 ---
 
@@ -86,6 +86,14 @@ pass) + the wave's own goal demos + full mock suite green.
 ## Wave 4
 
 Hardening, resilience tests, audit fixes, crash recovery, evolution infrastructure (shadow instance, rollback, journal).
+
+## Wave 5
+
+**WAVE-4 GATE PASSED 2026-10-07 — tag `wave-4-gate`:** all 10 lanes merged (incl. the
+ownership-exceptions mechanism, integrator-reviewed), full mock sweep 308 passed rc=0,
+CI green (both OSes). CARRIED into this wave: brain-core's shadow instance row
+(port 8911, APPROVED+assigned — blocks evolution's shadow verification runs only);
+qa's re-audit residual C1+C2 voice-confirm (docs/reviews/2026-10-07-wave4.md).
 
 ## Wave 5
 
