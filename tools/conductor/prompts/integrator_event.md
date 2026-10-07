@@ -18,11 +18,26 @@ then exit. No new events = exit immediately (idempotent).
 
 Advance with `coord cursor --lane <L>` ONLY after that lane's batch is fully handled.
 
-- **task_done / test_result** → note it in `PROGRESS.md` only. Nothing else.
+- **task_done / test_result** → note it in `PROGRESS.md`, then **review + assign the next
+  task** (this is the hand-off loop — lanes never wonder what's next):
+  1. light review: does `docs/status/<lane>.md` reflect it (real test output, honest claims)?
+     Anything suspicious → `coord attention`, and do NOT assign yet.
+  2. pick the lane's NEXT unblocked task — the first unchecked item in
+     `docs/lanes/<lane>.md` for the current wave that doesn't depend on an unmerged lane or
+     an undecided request — and assign it: `coord reply --lane <L> --type decision --msg
+     "reviewed: <summary>. NEXT TASK: <checkbox text> (source: docs/lanes/<L>.md)"`.
+  3. **wake the lane with it**: `coord ping --lane <L> --msg "coord: reviewed — next task
+     in your inbox"`. The ping IS the hand-off (skip if the lane is mid-run; steer queues it).
+  4. nothing unblocked left (wave list exhausted, or blocked on someone's merge): reply
+     `--type answer` with exactly: **"WAIT: your wave tasks are done — go idle
+     (coord mode=exit); you will be pinged at wave_open when every lane finishes."**
+     Do NOT ping for a pure wait — an idle session is already free.
+- When a merge or an adjudicated request **resolves an earlier `blocked`**, ping that lane:
+  `coord ping --lane <L> --msg "your dependency/request is resolved — read your inbox"`.
 - **request** → decide per `docs/INTERFACES.md` / `docs/PROTOCOL.md`. Write the decision to
   `inbox/<owner>` AND `inbox/<requester>` via `coord reply --type decision`. If it changes a
   shared contract, edit the shared doc yourself and post `coord reply --type nudge` to every
-  affected lane.
+  affected lane. After an ACCEPTED request that unlocks work, ping the requester.
 - **blocked** → unblock with a decision or reassign. If it needs the human (money, keys,
   Core Guard, uncertainty) → `coord attention "..."` and stop on that item.
 - **wave_done (one lane)** → verify that lane's branch:
@@ -32,6 +47,8 @@ Advance with `coord cursor --lane <L>` ONLY after that lane's batch is fully han
   3. if clean: merge to main **in the WAVES.md merge order** (only lanes whose predecessors
      are already merged), then `coord reply --lane <lane> --type decision
      --msg "decision: merged <sha>"`. If not clean: reject with the exact fix list.
+  4. after a merged wave_done the lane has no further work this wave — send the WAIT reply
+     (wording from task_done step 4); it idles until wave_open wakes everyone.
 
 ## Citation & authority rules (hard)
 
@@ -56,7 +73,10 @@ When every required lane (not paused, `current_wave >= start_conditions[lane].mi
   **do NOT start it and do NOT bump.** Run
   `coord attention "Wave N gate ready: say go for live E2E"` and exit.
 - Otherwise: tag `wave-N-gate`, `coord wave-bump --wave N+1`, post
-  `coord reply --lane <each> --type wave_open` to EVERY lane inbox, update `PROGRESS.md`.
+  `coord reply --lane <each> --type wave_open` to EVERY lane inbox, update `PROGRESS.md`,
+  and **rewrite each `docs/lanes/<L>.md` for the new wave** (concrete task checkboxes derived
+  from `docs/WAVES.md`'s goals for that lane) — the next-task assignments read from those
+  lists. Commit them (explicit paths).
 
 ## Human-only list — use `coord attention` and STOP on that item
 

@@ -8,7 +8,12 @@ your existing session) or as the first message of a fresh headless run in your w
 1. **Check your inbox:** `~/.raphael-coord/bin/coord inbox --lane <your-lane> --unread`
    Handle any `decision` / `answer` / `pause` / `nudge` there, then mark it read:
    `~/.raphael-coord/bin/coord inbox --lane <your-lane> --unread --mark-read`.
-   (`wave_open` just points you at WAVES.md — already covered below.)
+   - A `decision` containing **NEXT TASK: …** is an explicit assignment — do exactly that
+     task (it overrides the checkbox list order).
+   - An `answer` containing **WAIT:** means no unblocked work exists for you — go idle
+     (`coord mode` → `exit`); you will be pinged at `wave_open` when every lane finishes.
+     Waiting costs nothing.
+   - (`wave_open` just points you at WAVES.md — covered below.)
 2. **Read `docs/WAVES.md`** — confirm `current_wave` and your lane's exit criteria.
    If your inbox or `docs/status/<lane>.md` says your wave's work is done and merged, post
    `wave_done` (see rule 13) and go idle — do not start the next wave early.
