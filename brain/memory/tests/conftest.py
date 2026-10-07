@@ -31,9 +31,10 @@ def _clean_state():
     """Per-test: no leftover flusher threads (Rule 14) + empty memory tables."""
     yield
     try:
-        from brain.memory import conversation, get_conn
+        from brain.memory import conversation, get_conn, summary
         conversation.shutdown(timeout=2.0)
         conversation.clear_turns()
+        summary.clear_summaries()
         conn = get_conn()
         try:
             conn.execute('DELETE FROM memories')

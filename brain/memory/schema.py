@@ -55,5 +55,19 @@ def migrate(conn) -> None:
     from . import fts as _fts
     _fts.ensure(conn)
 
-    # (Wave-3 tasks add: conversation_summaries, skills_index, plugins_index,
-    #  schedules — same additive pattern.)
+    # --- conversation summaries (rolling, older turns -> compact recall) -----
+    # covers_from/covers_to are conversation_turns.id bounds (NOT timestamps —
+    # same-second turns would otherwise be skipped forever after coverage).
+    cur.execute('''
+    CREATE TABLE IF NOT EXISTS conversation_summaries (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        session TEXT,
+        summary TEXT NOT NULL,
+        covers_from INTEGER,
+        covers_to INTEGER,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+    ''')
+
+    # (Wave-3 tasks add: skills_index, plugins_index, schedules — same
+    #  additive pattern.)
