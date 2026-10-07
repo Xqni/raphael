@@ -41,6 +41,7 @@ import json
 import os
 import shlex
 import shutil
+import signal
 import socket
 import subprocess
 import sys
@@ -615,7 +616,10 @@ def stop_brain(cfg, log):
     """
     if brain_run_mode(cfg) == "process":
         shell = _kill_brain_shell(cfg)
-        if find_wsl():
+        # Windows supervisor/CLI: reach the brain through wsl.exe. Inside
+        # WSL (the raphael CLI's home turf) the brain is LOCAL — run the
+        # kill shell directly, never via a nested wsl.exe round-trip.
+        if IS_WINDOWS and find_wsl():
             rc, out = wsl_run(cfg, "sh", "-c", shell, timeout=10)
         else:
             rc, out = run_cmd(["sh", "-c", shell], timeout=10)
@@ -1868,9 +1872,10 @@ def selfcheck(args):
                         "pinned interpreter: %s" % body_venv))
     else:
         results.append(("body venv", "WARN",
-                        "pinned venv not found — Body falls back to this "
-                        "system Python %s (EOL ~2026-10); run "
-                        "scripts/install-body-venv.ps1"
+                        "pinned venv not found — body_cmd 'python' falls "
+                        "back to this interpreter (this host: %s); on "
+                        "Windows that is system Python 3.10, EOL ~2026-10 "
+                        "— run scripts/install-body-venv.ps1"
                         % sys.version.split()[0]))
 
     # 3 — wsl.exe discovery
@@ -2036,6 +2041,14 @@ def main(argv=None):
     log = Logger()
     log.info("supervisor starting pid=%d python=%s platform=%s"
              % (os.getpid(), sys.version.split()[0], sys.platform))
+
+    # SIGTERM = CLEAN shutdown (finally: keepalive terminate, supervisor
+    # pidfile removal, mutex release). Default SIGTERM would skip `finally`
+    # entirely — `raphael stop` sends SIGTERM on WSL/Linux.
+    try:
+        signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
+    except (ValueError, OSError, AttributeError):
+        pass
 
     # ---- single-instance guard (second launch exits 0) ------------------
     mutex = inst_mod.mutex_name()          # Raphael_Supervisor[_<instance>]
