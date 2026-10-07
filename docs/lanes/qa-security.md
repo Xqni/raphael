@@ -33,5 +33,5 @@ Wave 3 is MERGED + **GATE PASSED** (tag `wave-3-gate`, all six criteria live, ac
 
 ## Later waves (do not start early — AGENT_RULES §11; beyond current_wave 3)
 - [ ] Wave 3: golden job transcripts (replayable recorded conversations/tool traces as regression baseline).
-- [ ] Wave 4: resilience test suites (with infra) + security re-review after fixes.
+- [x] Wave 4: resilience test suites (with infra) + security re-review after fixes.  (`tests/resilience/` 3 drills green + `docs/reviews/2026-10-07-wave4.md`; matrix orchestration bullet above)
 - [ ] Wave 5: evolution gate tests (Core Guard integrity, rollback, probation triggers).
