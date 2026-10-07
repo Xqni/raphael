@@ -1,0 +1,59 @@
+#!/usr/bin/env bash
+# tests/run_all — the mock suite entry point (qa-security lane).
+#
+#   tests/run_all                # qa suite: contract + regression + security
+#                                #            + harness + baseline tests
+#                                #            + supervisor/tests (when present)
+#   tests/run_all --with-brain   # + brain suite (brain/tests, brain/router/tests)
+#   PYTHON=/path/python tests/run_all   # override interpreter (CI uses this)
+#
+# The documented root command (coord decision 2026-10-06, APPROVED by infra):
+#   pytest -q tests supervisor/tests
+# — supervisor/tests (infra-owned, ~30 synthetic tests, self-contained) is
+# collected whenever it exists on the branch (merge order: infra lands before
+# qa-security, so it is present at integration time).
+#
+# Rules honored here (AGENT_RULES §5):
+# - RAPHAEL_INSTANCE=qa-security is forced by tests/conftest.py;
+# - no network, no keys, no GPU, no Fish TTS, no Ollama (all mocked);
+# - never touches the live stack (contract tests spawn ONLY their own
+#   hermetic subprocesses on ephemeral ports).
+#
+# NOTE: --with-brain runs brain-core's suite with THEIR conftest, which
+# does NOT mock TTS — if a Fish-Speech server is already running on this
+# machine, brain tests will talk to it. Requests filed (brain-core:
+# mock-TTS-in-tests, pidfile-guard). Default (no flag) never does.
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO="$(dirname "$SCRIPT_DIR")"
+cd "$REPO"
+
+PYTHON="${PYTHON:-$SCRIPT_DIR/.venv/bin/python}"
+if [[ ! -x "$PYTHON" ]]; then
+    if command -v python3 >/dev/null 2>&1; then
+        PYTHON=python3
+        echo "run_all: tests/.venv not found — falling back to python3" >&2
+    else
+        echo "run_all: no interpreter found (set PYTHON=...)" >&2
+        exit 2
+    fi
+fi
+
+SUITES=("$SCRIPT_DIR")
+if [[ -d "$REPO/supervisor/tests" ]]; then
+    SUITES+=("$REPO/supervisor/tests")
+else
+    echo "run_all: NOTE supervisor/tests absent on this branch yet" \
+         "(infra merges first) — collecting tests/ only" >&2
+fi
+
+echo "== qa-security mock suite (tests + supervisor/tests) =="
+"$PYTHON" -m pytest -q "${SUITES[@]}"
+
+if [[ "${1:-}" == "--with-brain" ]]; then
+    echo "== brain suite (brain/tests, brain/router/tests) =="
+    "$PYTHON" -m pytest -q brain/tests brain/router/tests
+fi
+
+echo "run_all: OK"

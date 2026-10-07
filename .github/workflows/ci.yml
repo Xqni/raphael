@@ -1,0 +1,76 @@
+# CI — mock suites only; secrets NEVER required (AGENT_RULES §7).
+#
+# ubuntu job  = brain suite + qa-security mock harness (contract, regression,
+#               security, ownership) — everything runs against mocks, no
+#               network providers, no GPU, no live stack.
+# windows job = Body unit tests (lock/hotkey envelope) + conformance, no GUI.
+#
+# Local equivalent:  tests/run_all --with-brain   (Ubuntu)
+#                    tests\run_all.ps1            (Windows)
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  brain-and-mocks:
+    name: Ubuntu — brain + mock suites
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # ownership checker diffs against the base branch
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: tests/requirements.txt
+      - name: Install suite deps (no secrets)
+        run: python -m pip install --upgrade pip && pip install -r tests/requirements.txt
+      - name: qa-security mock suite (contract + regression + security + harness)
+        # tests/run_all runs the documented root command:
+        #   pytest -q tests supervisor/tests
+        # supervisor/tests (infra, ~30 synthetic tests) is collected whenever
+        # present — coord decision 2026-10-06 (infra APPROVED, qa-security
+        # owns the timing); merge order puts infra's landing before ours, so
+        # it exists at integration time.
+        env:
+          RAPHAEL_INSTANCE: qa-security
+        run: tests/run_all
+      - name: brain suite (brain/tests + brain/router/tests) on mocks
+        env:
+          RAPHAEL_INSTANCE: qa-security
+        run: python -m pytest -q brain/tests brain/router/tests
+      - name: ownership self-check (this lane's diff vs OWNERSHIP.md)
+        run: |
+          BASE="${{ github.event.pull_request.base.sha || github.event.before }}"
+          if [ -z "$BASE" ] || ! git cat-file -e "$BASE" 2>/dev/null; then
+            BASE="$(git rev-parse HEAD~1 2>/dev/null || echo HEAD)"
+          fi
+          python tests/ownership_check.py --lane qa-security --diff --base "$BASE" \
+            || python tests/ownership_check.py --lane qa-security --files \
+                 $(git diff --name-only HEAD~1 HEAD -- 2>/dev/null || true)
+      - name: Core Guard manifest verify
+        run: python tests/core_guard.py
+
+  body-unit-windows:
+    name: Windows — Body unit tests (no GUI)
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: tests/requirements.txt
+      - name: Install suite deps (no secrets)
+        run: python -m pip install --upgrade pip; pip install -r tests/requirements.txt
+      - name: Body unit tests + conformance
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          python -m pytest -q tests/body_win tests/conformance
