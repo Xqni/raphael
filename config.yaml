@@ -109,6 +109,8 @@ orb:
     media: hexagon                       # music/video playback
     llm: octagram                        # reasoning/research — signature shape
     gui: circle                          # computer-use (calm, precise)
+    analysis: octagram                   # deep reasoning (approved 2026-10-07)
+    simulation: triangle                 # dry-run/rehearsal (approved 2026-10-07)
     none: circle                         # default / idle / speaking base
 
 voice_personality:
