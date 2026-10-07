@@ -30,10 +30,11 @@ Wave 2 is MERGED; live gate was 3/5 — evidence + bug dossiers: `docs/BUGS-WAVE
 
 Wave 3 is MERGED + **GATE PASSED** (tag `wave-3-gate`, all six criteria live, acoustic voice included). Wave-4 theme per WAVES.md: hardening, resilience tests, audit fixes, crash recovery, evolution infrastructure. Rule 15 speed mandate still binds.
 
-- [ ] Act-layer hardening: timeout/kill recovery per tool, partial-failure matrix (act_res always truthful under crash), Windows E2E failure injection (each pc tool: happy/missing-denied/locked).
+- [x] Act-layer hardening: timeout/kill recovery per tool, partial-failure matrix (act_res always truthful under crash), Windows E2E failure injection (each pc tool: happy/missing-denied/locked).
+      → `body/win/failure_cases.py` = single source (INVALID_ARGS + CRASH_CASES for all 17 tools), shared by unit + e2e. Dispatcher now audit-logs `E_CANCELLED` on kill/disconnect mid-action (outer finally still releases the lock — PROTOCOL §5). Matrix: every tool × {E_BAD_MSG with zero OS calls, E_LOCK_BUSY side-effect-free, E_INTERNAL truthful + recovery dispatch} + timeout-release + cancel-release tests → `test_pc_failure_matrix.py` 54 passed. E2E injection phase: 123 checks PASS (0 fail). FakeWin gained a `delays` knob for timeout drills.
 
 ## Later waves
-- Per docs/WAVES.md — do not start early (AGENT_RULES §11). Wave 3 (browser/CDP), Wave 4 (recycle-bin wrappers, activity viewer), Wave 5 (dry-run/Simulation) are NOT started: `current_wave` is still 2.
+- Per docs/WAVES.md — do not start early (AGENT_RULES §11). Wave 5 (Answer/Notice/Report, Analysis, Simulation, persona tiers) starts only at `current_wave: 5`.
 
 ## Cross-lane requests addressed to pc-control
 - (none open — checked at session start and per task)

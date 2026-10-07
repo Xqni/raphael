@@ -71,25 +71,32 @@ class FakeWin:
         # --- failure injection ------------------------------------------
         self.fail_methods: set = set()          # BackendError on these calls
         self.fail_key_down_vk: Optional[int] = None
+        self.delays: Dict[str, float] = {}      # method -> seconds (timeout drills)
         if overrides:
             raise TypeError('unknown FakeWin overrides: %s'
                             % ', '.join(sorted(overrides)))
 
     # -- recording helper -------------------------------------------------
     def _rec(self, method: str, *args: Any) -> None:
+        # Record FIRST (the call happened), then apply delay/failure
+        # injection — a crashed call stays observable in the audit trail.
         self.events.append((method, args))
+        self._maybe_fail(method)
 
     def calls(self, method: str) -> List[tuple]:
         return [args for name, args in self.events if name == method]
 
     def _maybe_fail(self, method: str) -> None:
+        delay = self.delays.get(method)
+        if delay:
+            import time
+            time.sleep(delay)
         if method in self.fail_methods:
             raise BackendError('injected failure in %s' % method)
 
     # -- keyboard / mouse -------------------------------------------------
     def type_text(self, text: str, pause: float = 0.0) -> None:
         self._rec('type_text', text)
-        self._maybe_fail('type_text')
 
     def key_down(self, vk: int) -> None:
         self._rec('key_down', vk)
@@ -98,7 +105,6 @@ class FakeWin:
 
     def key_up(self, vk: int) -> None:
         self._rec('key_up', vk)
-        self._maybe_fail('key_up')
 
     def mouse_position(self) -> Tuple[int, int]:
         self._rec('mouse_position')
@@ -219,20 +225,17 @@ class FakeWin:
     def powershell(self, argv: List[str], env: Dict[str, str],
                    timeout_s: float) -> Dict[str, Any]:
         self._rec('powershell', list(argv), dict(env), timeout_s)
-        self._maybe_fail('powershell')
         return dict(self.powershell_result)
 
     # -- UIA --------------------------------------------------------------
     def uia_find(self, selector: Dict[str, Any],
                  timeout_s: float) -> Optional[Dict[str, Any]]:
         self._rec('uia_find', dict(selector), timeout_s)
-        self._maybe_fail('uia_find')
         return self.uia_data.get('find')
 
     def uia_click(self, selector: Dict[str, Any], timeout_s: float,
                   button: str = 'left') -> Dict[str, Any]:
         self._rec('uia_click', dict(selector), timeout_s, button)
-        self._maybe_fail('uia_click')
         if self.uia_data.get('find') is None:
             raise BackendError('element not found: %s' % selector)
         return self.uia_data['find']
@@ -240,7 +243,6 @@ class FakeWin:
     def uia_type(self, selector: Dict[str, Any], text: str, clear: bool,
                  timeout_s: float) -> Dict[str, Any]:
         self._rec('uia_type', dict(selector), text, clear, timeout_s)
-        self._maybe_fail('uia_type')
         if self.uia_data.get('find') is None:
             raise BackendError('element not found: %s' % selector)
         return self.uia_data['find']
@@ -248,7 +250,6 @@ class FakeWin:
     def uia_read(self, selector: Dict[str, Any],
                  timeout_s: float) -> Dict[str, Any]:
         self._rec('uia_read', dict(selector), timeout_s)
-        self._maybe_fail('uia_read')
         if self.uia_data.get('find') is None:
             raise BackendError('element not found: %s' % selector)
         return dict(self.uia_data['find'],
@@ -257,7 +258,6 @@ class FakeWin:
     def uia_tree(self, selector: Dict[str, Any], depth: int,
                  timeout_s: float) -> Dict[str, Any]:
         self._rec('uia_tree', dict(selector), depth, timeout_s)
-        self._maybe_fail('uia_tree')
         if self.uia_data.get('find') is None:
             raise BackendError('element not found: %s' % selector)
         return dict(self.uia_data['find'],
@@ -267,5 +267,4 @@ class FakeWin:
     # -- capture ----------------------------------------------------------
     def capture(self, max_px: int, quality: int) -> bytes:
         self._rec('capture', max_px, quality)
-        self._maybe_fail('capture')
         return b'\xff\xd8' + b'FAKEJPEG' * 32 + b'\xff\xd9'
