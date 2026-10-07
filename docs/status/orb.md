@@ -455,3 +455,59 @@ ok notice_reaches_renderer:        renderer rx notice frames: 0 -> 1
 ok notice_shown_as_banner:         banner={"text":"Notice: disk almost full","shown":true}
 ok notice_never_changes_state:     state idle -> idle, applied=idle (must be unchanged)
 ```
+
+---
+
+# WAVE 3 HANDOFF (orb lane) — 2026-10-07
+
+**Scope for this lane in Wave 3 is complete.** Every box in
+`docs/lanes/orb.md` is ticked; committing `3de9a54` / `8f94665`.
+
+## What shipped this wave
+
+| item | verdict | evidence |
+|---|---|---|
+| **P0 Bug C (1) no pulse** | fixed | speak `seq` guard dropped every fresh utterance restarting at 0 — removed (ordered WS ⇒ nothing needs dropping). Verified `amp1=0.15 → amp2=0.95` |
+| **P0 Bug C (2) stuck shape** | fixed | two causes: octagram target **144 floats vs 180** (stale tail forever) **and** `onOrbState` pre-setting `shapeHint` so the morph never fired on a state change. Verified `maxErr = 0` for lattice **and** cage after 5 interrupted morphs (was 0.134 / 0.253) |
+| **Rule 15 speed** | met | mock-Brain → renderer applied **mean 1 ms, worst 2 ms**; 300–600 ms crossfade is by design |
+| **`notice` frame** (§3 nudge) | done | level-tinted banner, **never** an `orb_state` (`notice_never_changes_state: idle → idle`) |
+| **size gate de-flaked** | done | worst drift **12.0% (on the line) → 8.0% / 7.7%** across consecutive runs; pose-locked captures |
+
+```
+$ npm run orb:trace            PASS  (distinctness 104 pairs, interaction 19/19,
+                                      BugC 6/6, transparency border alpha 0)
+$ npm run orb:trace --only=bugc PASS 6/6   -> docs/orb/trace/bugc.json
+$ npm run orb:size              PASS x2 (limit 12%, measured 8.0% / 7.7%)
+$ node tests/state-machine.test.js  All state machine tests passed (11)
+$ node test/orb-diff.cjs        PASS (exit 0)
+orphans: none · ports 8906/9406 free
+```
+
+## The one lesson worth carrying forward
+
+**The pose lock was hiding a real bug.** `__orbLockPose()` snaps the lattice
+straight to the target before every capture, so *every* screenshot-based gate
+(104 distinctness pairs, the whole matrix, `orb:size`) looked correct while the
+live orb never morphed at all. The fix was a probe that measures the same thing
+**unlocked** — `window.__orbMorphDiff()` (`maxErr`, `lengthMismatch`,
+`targetLengths`). Any future renderer invariant should be asserted through an
+unlocked probe, not through a locked screenshot.
+
+## Known gaps / still open (not started, not mine to start now)
+
+1. **Real-Brain re-run** of `npm run orb:trace` (replace the mock) — queued
+   behind brain-core's merge per decision `1791339926`.
+2. `docs/requests/orb__to__integrator__backing-disc-default-zero.md` — **OPEN**:
+   base `config.yaml` default + `ORB_REBUILD_TASK.md` §4 text still say 0.25;
+   live behaviour is already correct via `config.d/orb.yaml`.
+3. **Wireframe line weight** — WebGL clamps `gl.lineWidth` to 1 device px, so
+   "slightly thicker lines" is done only for layers that are real geometry
+   (orbit ring, private/paused rings, job dots, node size). Fat-line geometry
+   (`three/examples/jsm/lines`) remains the one open §3 item.
+4. **150% Windows scaling** is verified with `--force-device-scale-factor=1.5`
+   (identical to what Windows does to the renderer), not on the real desktop.
+5. Wave-3 orb scope has **no further checkbox**; the Wave-3 goals list in
+   `docs/WAVES.md` (memory, skills/plugins, tools, MCP, CDP, job concurrency)
+   is other lanes' — re-check `docs/lanes/orb.md` at the next `wave_open`.
+
+**Next for this lane:** wait for `wave_open` / an inbox assignment (AGENT_RULES §11/§13).
