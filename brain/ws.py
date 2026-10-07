@@ -64,6 +64,20 @@ AUTH_FAIL_BAN_S = 300.0
 MAX_STRIKES = 3                     # repeated malformed frames -> close
 
 
+def _clear_yes_no(text: str) -> Optional[str]:
+    """'yes' | 'no' when the text clearly IS an answer, else None (used by the
+    voice-confirm interception: unclear speech never resolves a confirmation)."""
+    from .confirm import NO_WORDS, YES_WORDS
+    a = (text or '').strip().lower().strip('.,!?')
+    words = a.split()
+    first = words[0] if words else ''
+    if a in YES_WORDS or first in YES_WORDS:
+        return 'yes'
+    if a in NO_WORDS or first in NO_WORDS:
+        return 'no'
+    return None
+
+
 class Session:
     # audio_buf/audio_reason were added by the mic lane WITHOUT extending
     # __slots__ -> every audio_start died with AttributeError (found by the
@@ -443,6 +457,20 @@ class WsHub:
             self._banned_until[ip] = now + AUTH_FAIL_BAN_S
 
     # ---- client frame handlers --------------------------------------------
+    async def _submit_and_ack(self, s: Session, text: str, source: str,
+                              priority: str = 'normal',
+                              text_id: Optional[str] = None):
+        if self.engine is None:
+            await self._send(s, {'type': 'error', 'v': 1, 'code': 'E_INTERNAL'})
+            return None
+        snap = await self.engine.submit(text=text, priority=priority,
+                                        source=source, session=s.sid)
+        s.jobs.add(snap['id'])
+        # instant cached ack (PROTOCOL §3) — job already allocated
+        await self._send(s, {'type': 'ack', 'v': 1, 'job': snap['job'],
+                             'text_id': text_id})
+        return snap
+
     async def _on_command(self, s: Session, msg: Dict[str, Any]):
         text = (msg.get('text') or '').strip()
         if not text:
@@ -454,12 +482,33 @@ class WsHub:
             return
         source = msg.get('source') if msg.get('source') in ('text', 'voice', 'orb') else 'text'
         priority = msg.get('priority') or 'normal'
-        snap = await self.engine.submit(text=text, priority=priority,
-                                        source=source, session=s.sid)
-        s.jobs.add(snap['id'])
-        # instant cached ack (PROTOCOL §3) — job already allocated
-        await self._send(s, {'type': 'ack', 'v': 1, 'job': snap['job'],
-                             'text_id': msg.get('job_id')})
+        # HARDENING (Wave 2 task 3): while a confirmation is pending, a VOICE
+        # command that clearly says yes/no is first interpreted as that
+        # confirmation's answer — a high-risk "yes" from the open mic is
+        # rejected, never granted. Anything else stays a normal command.
+        if source == 'voice' and self.engine.confirmer.pending_ids():
+            answer = _clear_yes_no(text)
+            if answer is not None:
+                result, _rowid = self.engine.confirmer.resolve_oldest_pending(
+                    answer, via='voice')
+                if result == 'ok':
+                    await self._send(s, {'type': 'ack', 'v': 1,
+                                         'job': None, 'confirm_answer': True,
+                                         'accepted': True})
+                    self.refresh_orb_state()
+                    return
+                if result == 'rejected_channel':
+                    self.broadcast({'type': 'subtitle', 'v': 1, 'job': None,
+                                    'text': 'High-risk action — confirm from '
+                                            'the orb or by typing, not voice.',
+                                    'fade_ms': 6000}, roles={'ui', 'cli'})
+                    await self._send(s, {'type': 'ack', 'v': 1, 'job': None,
+                                         'confirm_answer': True,
+                                         'accepted': False})
+                    return
+                # 'none' — raced to completion; fall through
+        await self._submit_and_ack(s, text, source, priority,
+                                   msg.get('job_id'))
 
     async def _on_cancel(self, s: Session, msg: Dict[str, Any]):
         if self.engine is None:
@@ -486,13 +535,29 @@ class WsHub:
             return
         rowid = store.parse_job_ref(msg.get('job'))
         answer = msg.get('answer') or ''
-        ok = self.engine.confirmer.resolve(rowid, answer)
-        if not ok:
+        # Channel (Wave 2 task 3): explicit via wins; otherwise role-derived —
+        # body = voice (STT), ui = orb click, cli = typed.
+        via = msg.get('via')
+        if via not in ('voice', 'click', 'text'):
+            via = {'body': 'voice', 'ui': 'click', 'cli': 'text'}.get(s.role, 'text')
+        result = self.engine.confirmer.resolve_ex(rowid, answer, via=via)
+        if result == 'none':
             await self._send(s, {'type': 'error', 'v': 1, 'code': 'E_BAD_MSG',
                                  'detail': 'no pending confirmation for job'})
             return
+        if result == 'rejected_channel':
+            # high-risk x voice x yes: REJECTED — pending stays, user must
+            # use the orb or keyboard (timeout still aborts).
+            self.broadcast({'type': 'subtitle', 'v': 1, 'job': msg.get('job'),
+                            'text': 'High-risk action — confirm from the orb '
+                                    'or by typing, not by voice.',
+                            'fade_ms': 6000}, roles={'ui', 'cli'})
+            await self._send(s, {'type': 'ack', 'v': 1, 'job': msg.get('job'),
+                                 'answer': answer, 'accepted': False,
+                                 'hint': 'non-voice confirmation required'})
+            return
         await self._send(s, {'type': 'ack', 'v': 1, 'job': msg.get('job'),
-                             'answer': answer})
+                             'answer': answer, 'accepted': True})
 
     async def _on_control(self, s: Session, msg: Dict[str, Any]):
         action = msg.get('action')
@@ -525,8 +590,40 @@ class WsHub:
         await self._send(s, {'type': 'job_get', 'v': 1, 'job': job})
 
     async def _on_orb_input(self, s: Session, msg: Dict[str, Any]):
-        # orb interaction — acknowledged; deeper menu wiring is orb-dev's client side
-        await self._send(s, {'type': 'ack', 'v': 1, 'kind': msg.get('kind')})
+        kind = msg.get('kind')
+        # Typed input channel (Wave 2 task 2 / lane task): orb text entry.
+        if kind == 'submit_text':
+            value = (msg.get('value') or '').strip()
+            if not value:
+                await self._send(s, {'type': 'error', 'v': 1,
+                                     'code': 'E_BAD_MSG',
+                                     'detail': 'orb_input.value required'})
+                return
+            await self._submit_and_ack(s, value, 'orb')
+            return
+        # Orb confirmation click (Wave 2 task 3): the NON-voice answer path
+        # for high-risk actions (menu item / explicit confirm).
+        if kind in ('menu', 'click', 'confirm') and self.engine is not None \
+                and self.engine.confirmer.pending_ids():
+            value = msg.get('value') or msg.get('answer') or ''
+            if value:
+                result, rowid = self.engine.confirmer.resolve_oldest_pending(
+                    str(value), via='click')
+                if result == 'ok':
+                    job_snap = store.get_job(rowid) if rowid else None
+                    job = job_snap['job'] if job_snap else None
+                    await self._send(s, {'type': 'ack', 'v': 1, 'job': job,
+                                         'answer': str(value),
+                                         'accepted': True})
+                    self.refresh_orb_state()
+                    return
+                if result == 'rejected_channel':
+                    # click is always an acceptable channel — defensive only
+                    await self._send(s, {'type': 'ack', 'v': 1, 'job': None,
+                                         'accepted': False})
+                    return
+        # plain interaction — acknowledged; deeper menu wiring is orb-dev's side
+        await self._send(s, {'type': 'ack', 'v': 1, 'kind': kind})
 
     async def _on_act_res(self, s: Session, msg: Dict[str, Any]):
         """Body -> Brain: act_req result (PROTOCOL §7).
@@ -612,7 +709,29 @@ class WsHub:
             
             # 1. Broadcast transcript to Body and UI
             self.broadcast(stt_final_frame(res.text, res.lang, res.rtf), roles={'body', 'ui'})
-            
+
+            # 1b. Voice-confirm interception (Wave 2 task 3): a pending
+            # confirmation consumes a clear yes/no utterance HERE — voice
+            # "yes" on a HIGH-risk action is rejected (pending stays, hint
+            # subtitle), voice "no"/deny always works.
+            if self.engine is not None and self.engine.confirmer.pending_ids():
+                answer = _clear_yes_no(res.text)
+                if answer is not None:
+                    result, _row = self.engine.confirmer.resolve_oldest_pending(
+                        answer, via='voice')
+                    if result == 'ok':
+                        self.refresh_orb_state()
+                        await self._send(s, {'type': 'ack', 'v': 1,
+                                             'audio': 'end'})
+                        return
+                    if result == 'rejected_channel':
+                        self.broadcast({'type': 'subtitle', 'v': 1, 'job': None,
+                                        'text': 'High-risk action — confirm '
+                                                'from the orb or by typing, '
+                                                'not voice.', 'fade_ms': 6000},
+                                       roles={'ui', 'cli'})
+                        # pending stays: orb/typed confirm or timeout abort
+
             # 2. WakeGate handling
             match = voice.wake.gate(res.text, reason=reason)
             if match.kind != 'none':

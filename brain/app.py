@@ -9,6 +9,7 @@ Endpoints:
 - POST /jobs/{job_id}/cancel  {scope: gui|full}
 - POST /control             {action, persist} (PROTOCOL §3 control actions)
 - GET  /status              mode + engine stats
+- POST /say                 {text, job?} speak + subtitle (CLI voice-out)
 
 Lifespan wires the agent loop (fastpath → router seam → tools → narrate) to the
 WS hub and marks interrupted jobs at startup (PROTOCOL §5).
@@ -18,6 +19,7 @@ from contextlib import asynccontextmanager
 from typing import Any, Dict, List, Optional
 
 from fastapi import Depends, FastAPI, Header, HTTPException, WebSocket
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from . import auth as auth_mod
@@ -25,7 +27,7 @@ from . import tools as tool_reg  # noqa: F401 — registers built-in tools on im
 from .control import apply_control
 from .jobs import store
 from .jobs.engine import get_engine
-from .loop import start_loop, stop_loop
+from .loop import narrate_now, start_loop, stop_loop
 from .mode import get_mode
 from .ws import SERVER_V, get_hub
 
@@ -196,3 +198,27 @@ async def status(auth: bool = Depends(token_auth)) -> Dict[str, Any]:
     engine = get_engine()
     return {'ok': True, 'server_v': SERVER_V, 'mode': get_mode().label(),
             'sessions': get_hub().session_counts(), **engine.stats()}
+
+
+# ---- POST /say (CLI voice-out; request: docs/requests/brain-core__to__
+# integrator__rest-say-endpoint.md) ------------------------------------------
+class SayIn(BaseModel):
+    text: str
+    job: Optional[str] = None        # correlation id for the frames (optional)
+
+
+@app.post('/say')
+async def say(body: SayIn, auth: bool = Depends(token_auth)):
+    """Speak + subtitle an arbitrary line (CLI voice-out). 202 — narration is
+    async; TTS fallback/notice handles a cold Fish server."""
+    import uuid
+    text = (body.text or '').strip()
+    if not text:
+        raise HTTPException(status_code=422, detail='text is required')
+    if len(text) > 4000:
+        raise HTTPException(status_code=422, detail='text too long (4000 max)')
+    job_id = (body.job or '').strip() or f'say_{uuid.uuid4().hex[:8]}'
+    narrate_now(hub, job_id, text, engine=get_engine())
+    return JSONResponse(status_code=202,
+                        content={'ok': True, 'job': job_id,
+                                 'chars': len(text)})
