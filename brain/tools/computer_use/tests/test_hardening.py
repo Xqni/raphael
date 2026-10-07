@@ -8,8 +8,12 @@ from brain.tools.computer_use.gateway import ActError
 from brain.tools.computer_use.runner import run_task
 from brain.vision.config import VisionConfig
 
-from .harness import (CHANGED_TREE, DEFAULT_TREE, ScriptedChat,
-                      ScriptedGateway, final_reply, make_deps)
+try:
+    from .harness import (CHANGED_TREE, DEFAULT_TREE, ScriptedChat,
+                          ScriptedGateway, final_reply, make_deps)
+except ImportError:  # bare-module collection (no tests/__init__.py — e16ca0f)
+    from harness import (CHANGED_TREE, DEFAULT_TREE, ScriptedChat,
+                         ScriptedGateway, final_reply, make_deps)
 
 SECRET_TREE = (
     'window KeePassX\n'
