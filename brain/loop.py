@@ -200,7 +200,7 @@ def _conversation_hook(user: str, assistant: str, job: Optional[str] = None
         if not callable(fn):
             return
         fn(user=user, assistant=assistant, job=job,
-           task_kind=orbstate.current_task_kind())
+           task_kind=orbstate.current_task_kind(), ts=int(time.time() * 1000))
     except Exception:  # noqa: BLE001 — memory must never break conversation
         pass
 
