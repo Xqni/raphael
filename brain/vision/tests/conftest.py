@@ -1,0 +1,27 @@
+"""Isolation for computer-use lane tests (AGENT_RULES §5):
+RAPHAEL_INSTANCE=computer-use, router disabled, temp memory DB (never the
+real brain/memory/memory.db, never a network/provider call)."""
+import os
+import tempfile
+
+os.environ.setdefault("RAPHAEL_INSTANCE", "computer-use")
+os.environ.setdefault("RAPHAEL_DISABLE_ROUTER", "1")
+os.environ.setdefault("RAPHAEL_CONFIRM_TIMEOUT_S", "2")
+
+_fd, _db = tempfile.mkstemp(prefix="raphael-cu-vision-db-")
+os.close(_fd)
+# setdefault: never repoint a DB path another conftest already claimed
+# (combined runs import several lane conftests).
+os.environ.setdefault("RAPHAEL_DB_PATH", _db)
+
+import pytest  # noqa: E402
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _cleanup_db():
+    yield
+    for p in (_db, _db + "-wal", _db + "-shm"):
+        try:
+            os.remove(p)
+        except OSError:
+            pass
