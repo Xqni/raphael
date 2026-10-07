@@ -57,6 +57,7 @@ Updated: 2026-10-07 (Wave 3: goals 1+2 DONE and rebased on main; goal 3 Notice B
 - Nudge: PROTOCOL §7 act_req gained `list_windows`/`foreground_info`/`list_running_apps` — auto-covered once pc's tools register through discovery; no change needed from me.
 
 ## Test output (real runs only — never claim unrun tests)
+- (Wave-4 batch) brain 164 / router 120 / voice 94+1skip / pc 11 / computer_use 51+2skip = **440 passed, 3 skipped** (sequential, Rule 14); root **197 passed, 9 xfailed**
 - (Notice batch) brain 152 / router 120 / voice 82+2skip / pc 10 / computer_use 49+2skip = **413 passed, 4 skipped** (sequential, Rule 14); root **187 passed, 9 xfailed, 2 xpassed**
 - (concurrency batch) brain 143 / router 120 / voice 82+2skip / pc 10 / computer_use 49+2skip = **403 passed, 4 skipped** (sequential, Rule 14); root **187 passed, 9 xfailed, 2 xpassed**
 - `./brain/.venv/bin/python -m pytest -q brain/tests brain/router/tests brain/voice/tests brain/tools/pc/tests brain/tools/computer_use/tests` → **367 passed, 4 skipped** (wave-3 new: fastpath open/search 5, Bug E flicker 3, /status router block 1; round-3 was 346+2)

@@ -34,6 +34,20 @@ from .ws import SERVER_V, get_hub
 hub = get_hub()
 
 
+def _pidfile_targets():
+    """Paths the lifespan writes its pid to — EMPTY during test runs
+    (PYTEST_CURRENT_TEST), so TestClient boots never touch a live brain's
+    pidfiles. Production (uvicorn via run.py) always writes."""
+    if os.environ.get('PYTEST_CURRENT_TEST'):
+        return []
+    from . import config as appcfg
+    targets = [appcfg.pidfile()]
+    legacy = appcfg.legacy_pidfile()
+    if legacy is not None:
+        targets.append(legacy)
+    return targets
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     engine = get_engine()
@@ -113,15 +127,13 @@ async def lifespan(app: FastAPI):
     # instance data-dir (out of world-writable /tmp). Instance `main` ALSO
     # writes the legacy /tmp/raphael-brain.pid so the current supervisor keeps
     # byte-compatible behavior until the infra lane adopts config.pidfile().
+    # Wave-4 safety: NEVER written from tests — a TestClient lifespan runs in
+    # the pytest process and must not clobber the LIVE brain's pidfiles
+    # (live stack up by user directive).
     try:
-        from . import config as appcfg
-        pf = appcfg.pidfile()
-        pf.parent.mkdir(parents=True, exist_ok=True)
-        pf.write_text(str(os.getpid()))
-        legacy = appcfg.legacy_pidfile()
-        if legacy is not None:
-            with open(legacy, 'w') as _pf:
-                _pf.write(str(os.getpid()))
+        for _pf_path in _pidfile_targets():
+            _pf_path.parent.mkdir(parents=True, exist_ok=True)
+            _pf_path.write_text(str(os.getpid()))
     except OSError:
         pass
     try:
