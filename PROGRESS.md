@@ -408,3 +408,6 @@ land, the integrator re-runs the full six-criterion live gate for `wave-2-gate`.
   brain-core wave COMPLETE (all 3 goals + P0s + 2 requests). Conversation-hook ts fix
   landed (tools-memory had accepted). Queue: voice (pos 4) next, then computer-use, orb,
   infra, qa, tools-memory (started prep), evolution-persona.
+- **voice wave-3 MERGED** — Bug D lands: JP great-sage reference required on EVERY
+  synthesis (loud fail + zero audio otherwise), per-synthesis proof line, phrase cache
+  ref-sha1 namespaced. Voice 93 + brain 152 green post-merge. orb wave_done queued@6.
