@@ -141,8 +141,26 @@ class BodyGateway:
             title = " ".join(str(win.get("title") or "").split())
             process = " ".join(str(win.get("process") or "").split())
             ident = " | ".join(x for x in (title, process) if x)
-            return ident or None                 # real window, zero identity
+            if not ident:
+                return None                 # real window, zero identity
+            # Wave 5: every production probe feeds the local window-history
+            # ring (in-memory only; filtered+redacted at emit — context.py).
+            try:
+                from brain.vision.context import record_foreground
+                record_foreground(ident)
+            except Exception:    # noqa: BLE001 — history must never break a probe
+                pass
+            return ident
         return None
+
+    async def list_windows(self) -> Dict[str, Any]:
+        """PROTOCOL §7 `list_windows{}` — read-only window enumeration for
+        Analysis context (lock:false). Returns the body's dict as-is; callers
+        filter blocklist entries before anything reaches a model."""
+        result = await self.act("list_windows", {}, lock=False)
+        if isinstance(result, dict):
+            return result
+        return {}
 
     async def uia_tree(self, max_chars: int = _DEFAULT_MAX_CHARS,
                        depth: int = _TREE_DEPTH,

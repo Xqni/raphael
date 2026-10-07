@@ -28,11 +28,11 @@ def test_tools_registered_with_metadata():
 
 
 def test_specs_are_strict_json_schema():
-    assert set(SPECS) == {"see_screen", "computer_use"}
+    assert set(SPECS) == {"see_screen", "computer_use", "gather_context"}
     for name, spec in SPECS.items():
         assert spec["type"] == "object", name
         assert spec.get("additionalProperties") is False, name
-        assert spec.get("required"), name
+        assert isinstance(spec.get("required"), list), name   # [] = all-optional
         props = spec["properties"]
         assert set(spec["required"]) <= set(props), name
         for key, prop in props.items():
@@ -44,16 +44,20 @@ def test_specs_are_strict_json_schema():
 def test_tool_signatures_match_specs():
     assert list(inspect.signature(cu.see_screen).parameters) == ["question"]
     assert list(inspect.signature(cu.computer_use).parameters) == ["task"]
+    assert set(inspect.signature(cu.gather_context).parameters) == {
+        "question", "include_screen", "include_windows", "include_history"}
 
 
 def test_registry_carries_strict_schemas():
     """INTERFACES §(b): specs attach to the registry so tool_specs() offers
     the tools to the model and validate_args() guards dispatch."""
-    for name in ("see_screen", "computer_use"):
+    for name in ("see_screen", "computer_use", "gather_context"):
         meta = tool_reg.describe(name)
         assert meta["schema"] == SPECS[name], name
     offered = {t["function"]["name"] for t in tool_reg.tool_specs()}
-    assert {"see_screen", "computer_use"} <= offered
+    assert {"see_screen", "computer_use", "gather_context"} <= offered
+    assert tool_reg.describe("gather_context")["needs_lock"] is False
+    assert tool_reg.describe("gather_context")["risky"] is False
 
 
 def test_discovery_hook_convention():
@@ -65,6 +69,7 @@ def test_discovery_hook_convention():
     cu.register(tool_reg)             # discovery-style call: idempotent, no error
     assert tool_reg.get("see_screen") is cu.see_screen
     assert tool_reg.get("computer_use") is cu.computer_use
+    assert tool_reg.get("gather_context") is cu.gather_context
 
 
 def test_discovery_walk_is_clean_for_this_package():
@@ -76,15 +81,16 @@ def test_discovery_walk_is_clean_for_this_package():
 @pytest.mark.skipif(jsonschema is None, reason="jsonschema not installed")
 @pytest.mark.parametrize("name", sorted(SPECS))
 def test_specs_validate_with_jsonschema(name):
+    valid_args = {
+        "see_screen": {"question": "what is this?"},
+        "computer_use": {"task": "open notepad"},
+        "gather_context": {"question": "deep dive", "include_screen": True},
+    }
     schema = {"type": "object", "properties": {"root": SPECS[name]},
               "required": ["root"]}
-    jsonschema.validate({"root": {"question": "what is this?"}}
-                        if name == "see_screen"
-                        else {"root": {"task": "open notepad"}}, schema)
+    jsonschema.validate({"root": valid_args[name]}, schema)
     with pytest.raises(jsonschema.ValidationError):
-        jsonschema.validate(
-            {"root": {"question": "x", "extra": 1}} if name == "see_screen"
-            else {"root": {"task": "x", "extra": 1}}, schema)
+        jsonschema.validate({"root": dict(valid_args[name], extra=1)}, schema)
 
 
 def test_registry_dispatches_to_registered_callables():

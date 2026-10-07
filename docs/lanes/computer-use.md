@@ -28,7 +28,7 @@ Wave 3 is MERGED + **GATE PASSED** (tag `wave-3-gate`, all six criteria live, ac
 
 Wave 4 is MERGED + **GATE PASSED** (tag `wave-4-gate`, 10/10 lanes, mock 308 green). Wave-5 theme per WAVES.md: Raphael features — Answer/Notice/Report formats, Analysis, Simulation, parallel-minds visuals, persona tiers. Rule 15 speed mandate binds; shared-contract changes go through integrator requests. Carried items are noted in WAVES.md gate record (shadow row; C1+C2 residual).
 
-- [ ] Analysis-mode context gathering (screen + foreground + window history for deep-dive requests), redaction discipline extended to Simulation/Analysis payloads.
+- [x] Analysis-mode context gathering (screen + foreground + window history for deep-dive requests), redaction discipline extended to Simulation/Analysis payloads. — **`gather_context` tool** (self-registered, strict SPECS, offered via tool_specs): foreground (`foreground_info`, 1 probe) + open windows (`list_windows`, top-10, **blocklist entries filtered — sensitive titles never reach a model**) + in-process window-history ring (32-row memory, 12 emitted, dedup; fed by every production `BodyGateway.foreground_window()` probe; nothing persisted) + optional gated screen pass (blocklist/profile/debug_capture/image gates, vision). Private Mode = ZERO probes; fg probe failure = honest unreachable; ALL output through `gate.redact` + bounded 3000 chars + blocklist-generic wording (app names withheld from cloud payloads; see_screen's spoken naming stays user-facing). Simulation/Analysis payload discipline = same redact path (`brain/vision/context.py::gather_context`).
 
 ## Later waves
 - Per docs/WAVES.md — do not start early (AGENT_RULES §11).
