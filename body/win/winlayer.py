@@ -74,9 +74,26 @@ def _sibling(name: str):
     return importlib.import_module(name)
 
 
-# ---------------------------------------------------------------- offsets --
-def _u32(x: int) -> int:
-    return x & 0xFFFFFFFF
+CREATE_NO_WINDOW = 0x08000000  # Win32 CREATE_NO_WINDOW (console suppression)
+
+
+def hidden_popen_kwargs() -> dict:
+    """subprocess kwargs that stop child processes from FLASHING a console
+    window — the Wave-2 gate saw a blank cmd window during open_app
+    (PowerShell child spawn; docs/BUGS-WAVE2.md Bug B). Pure + portable so
+    tests can assert the flag on any OS."""
+    import subprocess
+    kwargs: dict = {'creationflags': getattr(subprocess, 'CREATE_NO_WINDOW',
+                                             CREATE_NO_WINDOW)}
+    if os.name == 'nt':
+        try:
+            si = subprocess.STARTUPINFO()
+            si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+            si.wShowWindow = 0          # SW_HIDE
+            kwargs['startupinfo'] = si
+        except (AttributeError, OSError):
+            pass
+    return kwargs
 
 
 class WindowsBackend:
@@ -484,14 +501,15 @@ class WindowsBackend:
 
     def powershell(self, argv: List[str], env: Dict[str, str],
                    timeout_s: float) -> Dict[str, Any]:
-        """Run a FIXED argv (never user text) with args passed via env vars."""
+        """Run a FIXED argv (never user text) with args passed via env vars.
+        Spawned HIDDEN (hidden_popen_kwargs) — no console flash (Bug B)."""
         import subprocess
         full_env = dict(os.environ)
         full_env.update(env)
         try:
             proc = subprocess.run(
                 list(argv), env=full_env, capture_output=True, text=True,
-                timeout=timeout_s, shell=False)
+                timeout=timeout_s, shell=False, **hidden_popen_kwargs())
         except subprocess.TimeoutExpired:
             return {'rc': -1, 'out': '', 'err': 'timeout after %.0fs' % timeout_s}
         return {'rc': int(proc.returncode),

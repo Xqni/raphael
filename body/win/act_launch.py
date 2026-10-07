@@ -75,12 +75,19 @@ def _validate_open_app(args: Dict[str, Any]) -> Dict[str, Any]:
     return {'name': name}
 
 
+# Console-script suffixes are excluded from launch candidates: running them
+# flashes a cmd window (BUGS-WAVE2 Bug B "blank Windows terminal"). Users
+# can still open such a file explicitly via open_path (default handler).
+_CONSOLE_SCRIPTS = ('.bat', '.cmd', '.ps1', '.vbs', '.wsf')
+
+
 def _resolve_source(name: str, backend):
     """(normalized, payload) lists per source — fetched lazily so an exact
     PATH hit never pays for a PowerShell UWP enumeration."""
     if name == 'path':
         return [(_normalize(c['name']), c['path'])
-                for c in backend.path_commands()]
+                for c in backend.path_commands()
+                if not str(c.get('path', '')).lower().endswith(_CONSOLE_SCRIPTS)]
     if name == 'shortcut':
         return [(_normalize(c['name']), c['path'])
                 for c in backend.start_menu_shortcuts()]
@@ -130,9 +137,14 @@ def resolve_app(name: str, backend) -> Tuple[str, str]:
             for cand_name, payload in get(key):
                 if n in cand_name:
                     return (_SOURCE_KIND[key], payload)
-    raise ActionError('E_INTERNAL',
-                      "app not found: '%s' (tried PATH, Start Menu, "
-                      "App Paths, UWP)" % _clean_name(name))
+    # Precise, stage-counted failure (Bug B: the gate saw an opaque
+    # "open_app failed" — the error now says exactly what was searched).
+    raise ActionError(
+        'E_INTERNAL',
+        "app not found: '%s' (tried %d PATH, %d Start Menu, %d App Paths, "
+        "%d UWP candidates; console scripts excluded)"
+        % (_clean_name(name), len(get('path')), len(get('shortcut')),
+           len(get('app_path')), len(get('uwp'))))
 
 
 def _clean_name(name: str) -> str:

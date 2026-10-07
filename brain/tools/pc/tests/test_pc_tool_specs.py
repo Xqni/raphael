@@ -125,6 +125,25 @@ def test_prompt_block_lists_every_tool_and_matches_extract_protocol():
     assert json.loads(reply)['tool'] in pc.SPECS
 
 
+def test_registry_receives_schemas_so_tools_are_offered():
+    """The Brain offers only tools with a registered schema
+    (registry.tool_specs()); this guards the brain-core conformance test
+    `test_tool_specs_only_offers_conforming_schemas` against my overwrite —
+    including the 3 zero-arg tools now that the empty-properties relaxation
+    is merged (allow-empty-properties-schema, ACCEPTED 2026-10-06)."""
+    offered = {s['function']['name'] for s in registry.tool_specs()}
+    for name, spec in pc.SPECS.items():
+        meta = registry.describe(name)
+        assert meta['schema'] == spec.schema(), name
+        assert name in offered, name
+        # No-arg tools must carry the strict empty shape, not be skipped.
+        if not spec.properties:
+            assert meta['schema'] == {
+                'type': 'object', 'properties': {}, 'required': [],
+                'additionalProperties': False}, name
+    assert offered >= set(pc.SPECS)
+
+
 def test_descriptions_carry_usage_rules():
     # Cloud models rely on these (they cannot see the body implementation).
     assert 'http' in pc.SPECS['launch_url'].description

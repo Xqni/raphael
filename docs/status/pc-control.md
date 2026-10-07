@@ -95,7 +95,7 @@ $ cd body/win && python3 -c "import ws_client, actions; print(len(actions.action
 
 Honest note: ONE earlier run of the brain suite reported `1 failed, 69 passed`
 before any name could be captured (the `.pytest_cache/lastfailed` was cleared
-by the next green run). The identical sequence was then repeated9 times — all
+by the next green run). The identical sequence was then repeated 9 times — all
 `70 passed`, `lastfailed = {}`. The pc-control tests (88) were green in every
 single run; the transient sits in the pre-existing brain suite (timing-class),
 not in this lane's tests. Re-run `pytest brain` if it reappears and report the
@@ -125,3 +125,42 @@ name to the owning lane.
   - Test invocations that work on this machine: `tests/.venv` for
     `tests` + `body/win/tests` + `brain/tools/pc/tests`; `brain/.venv` for
     `brain/**` (no PyYAML in tests/.venv).
+
+---
+
+# Wave 3 log
+
+## 2026-10-07 — P0-BugB (body half) + approved schema flip — DONE
+
+**Bug B body half** (`docs/BUGS-WAVE2.md` — blank cmd window + no act_res):
+1. **No console flash:** `winlayer.hidden_popen_kwargs()` = CREATE_NO_WINDOW +
+   hidden STARTUPINFO on every PowerShell child; open_app's launch candidates
+   exclude console scripts (`.bat/.cmd/.ps1/.vbs/.wsf` — explicit `open_path`
+   unaffected); UWP scan timeout 30→15 s (Rule 15 fail-fast).
+2. **act_res always surfaced:** ws_client's act_req branch wraps dispatch —
+   any crash answers `act_res{ok:false, E_INTERNAL}` instead of killing the
+   receive loop, and prints `[body-win] act_res: <action> job=… ok=… ms=…`
+   (the exact evidence the gate grepped for and didn't find).
+3. **Precise errors:** not-found now reports stage counts ("tried N PATH,
+   N Start Menu, N App Paths, N UWP candidates; console scripts excluded").
+
+**Approved flip** (allow-empty-properties → merged): all 17 pc tools now pass
+`schema=s.schema()` to the registry — `tool_specs()` offers every pc tool
+incl. `list_windows`/`foreground_info`/`list_running_apps`; request file →
+DONE with implementation note.
+
+**Tests (Rule 14: smallest target first, one suite at a time, all real):**
+```
+$ pytest body/win/tests/test_pc_ws_actreq.py            9 passed   (7+2 new)
+$ pytest body/win/tests/test_pc_actions_launch.py      11 passed   (8+3 new)
+$ pytest body/win/tests/test_pc_actions_powershell.py  10 passed   (8+2 new)
+$ pytest body/win/tests                                85 passed
+$ pytest brain/tools/pc/tests                          11 passed
+$ pytest tests                                        187 passed, 9 xfailed, 2 xpassed
+$ python3 body/win/e2e_control.py              E2E-MOCK: PASS (0 failed)
+$ pytest brain                                    431 passed, 4 skipped
+```
+
+**Blocked/next:** waiting for merge (pc-control is next after brain-core),
+then the coord ping for the next task. The `--live` Windows re-verification of
+Bug B (real "open YouTube and search lo-fi") stays the integrator's gate step.

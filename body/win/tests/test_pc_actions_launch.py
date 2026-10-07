@@ -107,3 +107,47 @@ async def test_list_running_apps_groups_and_sorts(actlog, fake):
     by_name = {a['name']: a for a in out['apps']}
     assert by_name['notepad.exe']['windows'] == ['Untitled - Notepad']
     assert by_name['notepad.exe']['processes'] == 1
+
+
+async def test_open_app_skips_console_scripts(actlog):
+    """Bug B: .bat/.cmd/.ps1 launch candidates are excluded — spawning them
+    flashes the blank Windows terminal the gate saw."""
+    from body.win import winlayer
+    from body.win.fakewin import FakeWin
+    bat_only = FakeWin(paths=[{'name': 'youtube', 'path': 'C:\\tools\\youtube.bat'}],
+                       shortcuts=[], app_paths=[], uwp=[])
+    winlayer.set_backend(bat_only)
+    try:
+        res = await actions.dispatch('open_app', {'name': 'youtube'}, job='j1')
+        assert res['ok'] is False
+        assert 'console scripts excluded' in res['error']
+        assert bat_only.calls('launch_path') == []
+        assert bat_only.calls('launch_uwp') == []
+    finally:
+        winlayer.reset_backend()
+
+
+async def test_open_app_prefers_exe_over_bat(actlog):
+    from body.win import winlayer
+    from body.win.fakewin import FakeWin
+    both = FakeWin(paths=[
+        {'name': 'youtube', 'path': 'C:\\tools\\youtube.bat'},
+        {'name': 'youtube', 'path': 'C:\\tools\\youtube.exe'},
+    ], shortcuts=[], app_paths=[], uwp=[])
+    winlayer.set_backend(both)
+    try:
+        res = await actions.dispatch('open_app', {'name': 'youtube'}, job='j2')
+        assert res['ok'] is True, res
+        assert res['result']['resolved'].endswith('youtube.exe')
+    finally:
+        winlayer.reset_backend()
+
+
+async def test_not_found_error_reports_stage_counts(actlog, fake):
+    res = await actions.dispatch('open_app', {'name': 'definitely-not-real'},
+                                 job='j3')
+    assert res['ok'] is False
+    err = res['error']
+    assert 'app not found' in err
+    assert 'PATH' in err and 'Start Menu' in err and 'UWP' in err
+    assert 'candidates' in err

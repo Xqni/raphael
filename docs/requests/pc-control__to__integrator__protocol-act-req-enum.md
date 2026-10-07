@@ -1,5 +1,13 @@
 # pc-control → integrator: protocol-act-req-enum
-Status: OPEN
+Status: DONE
+
+## Decision (coord inbox 2026-10-06, integrator)
+APPROVED and APPLIED — docs/PROTOCOL.md §7 now lists `list_windows{}`,
+`foreground_info{}`, `list_running_apps{}` with the read-only / `lock:false`
+note and `foreground_info`'s privacy-gate role; no transport change. Closed by
+pc-control: `PENDING_PROTO_ADDITIONS` emptied in
+`body/win/actions.py` (conformance test now asserts registry == §7 enum
+exactly), same branch as this closure.
 
 ## What
 Extend the `act_req` action allow-list in `docs/PROTOCOL.md` §7 by three

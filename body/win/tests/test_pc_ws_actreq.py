@@ -82,3 +82,29 @@ async def test_act_req_with_non_dict_args(actlog, fake):
     await _act(ws, 'volume', args=['not', 'a', 'dict'], job='j_odd')
     assert ws.sent[-1]['ok'] is False
     assert ws.sent[-1]['error'].startswith('E_BAD_MSG')
+
+
+async def test_act_res_always_sent_when_dispatch_crashes(actlog, fake, monkeypatch):
+    """Bug B: a dispatcher crash must still produce an act_res — the receive
+    loop used to die with the request and the Brain timed out blind."""
+    async def boom(*_a, **_k):
+        raise RuntimeError('synthesized dispatcher crash')
+
+    monkeypatch.setattr(ws_client.actions, 'dispatch', boom)
+    ws = FakeWS()
+    await _act(ws, 'open_app', {'name': 'YouTube'}, job='j_crash')
+    res = ws.sent[-1]
+    assert res['type'] == 'act_res' and res['job'] == 'j_crash'
+    assert res['ok'] is False
+    assert res['error'].startswith('E_INTERNAL')
+    assert 'synthesized dispatcher crash' in res['error']
+
+
+async def test_act_res_evidence_line_is_printed(actlog, fake, capsys):
+    """body.log must carry a greppable act_res line (the Wave-2 gate grepped
+    for it and found none)."""
+    await _act(ws := FakeWS(), 'screenshot', {'max_px': 320}, job='j_line')
+    out = capsys.readouterr().out
+    assert '[body-win] act_req: screenshot for job j_line' in out
+    assert '[body-win] act_res: screenshot job=j_line ok=True' in out
+    assert 'ms=' in out

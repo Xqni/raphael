@@ -86,3 +86,21 @@ async def test_notify_toast_arg_validation(actlog, fake):
                                   'args': {'text': ''}}, job='j9')
     assert res['ok'] is False and 'too short' in res['error']
     assert fake.calls('powershell') == [], 'invalid args must fail pre-lock'
+
+
+async def test_hidden_popen_kwargs_suppresses_console():
+    """Bug B: every Windows child spawn must carry CREATE_NO_WINDOW — the
+    gate saw a blank cmd/PowerShell window during open_app."""
+    import subprocess
+    from body.win import winlayer
+    kwargs = winlayer.hidden_popen_kwargs()
+    expected = getattr(subprocess, 'CREATE_NO_WINDOW', 0x08000000)
+    assert kwargs['creationflags'] == expected
+    assert kwargs['creationflags'] != 0
+    if winlayer.os.name == 'nt':
+        assert 'startupinfo' in kwargs
+
+
+async def test_uwp_scan_fails_fast(actlog, fake):
+    # open_app's last stage must not sit on a 30 s PowerShell (Rule 15).
+    assert act_powershell.SCRIPTS['list_uwp_apps']['timeout_s'] <= 15.0

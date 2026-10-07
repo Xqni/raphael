@@ -15,6 +15,7 @@ import asyncio
 import json
 import pathlib
 import sys
+import time
 from typing import Any
 
 try:
@@ -130,11 +131,31 @@ async def handle_message(msg: Any, ws, mic_streamer):
         print(f"[body-win] act_req: {action} for job {job}", flush=True)
         # PROTOCOL §7: allow-list, input-lock etiquette (E_LOCK_BUSY),
         # timeout and action-log all live in actions.dispatch().
-        outcome = await actions.dispatch(
-            action, args, lock=lock_req, job=job, timeout_ms=timeout_ms)
+        # BUG B (docs/BUGS-WAVE2.md): an act_res MUST go out for EVERY
+        # act_req — a dispatcher crash used to tear down the receive loop
+        # and the Brain sat on an unanswered request until its 30 s timeout.
+        t0 = time.monotonic()
+        try:
+            outcome = await actions.dispatch(
+                action, args, lock=lock_req, job=job, timeout_ms=timeout_ms)
+        except asyncio.CancelledError:
+            raise                      # connection closing — nothing to answer
+        except Exception as e:         # noqa: BLE001 — never lose the response
+            print(f"[body-win] act_req CRASH {action}: {type(e).__name__}: {e}",
+                  flush=True)
+            outcome = {"ok": False,
+                       "error": "E_INTERNAL: %s: %s"
+                                % (type(e).__name__, str(e)[:180])}
         res = {"type": "act_res", "v": 1, "job": job}
         res.update(outcome)
-        await ws.send(json.dumps(res))
+        try:
+            await ws.send(json.dumps(res))
+        except Exception as e:         # noqa: BLE001 — socket gone with the job
+            print(f"[body-win] act_res send failed {action}: {e}", flush=True)
+            return
+        # Greppable evidence line (the Wave-2 gate greps body.log for act_res).
+        print(f"[body-win] act_res: {action} job={job} ok={res.get('ok')} "
+              f"ms={int((time.monotonic() - t0) * 1000)}", flush=True)
         return
 
 async def client_once(mic_streamer):
