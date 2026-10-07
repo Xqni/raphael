@@ -426,3 +426,32 @@ $ tests/.venv/bin/python -m pytest tests/regression/test_confirm_flow.py -q -rxX
 17 passed, 2 xfailed   # C1/C2 tripwires (analysis above)
 orphans: zero (no fish spawned)
 ```
+
+## Wave 5 — PocketTTS evaluation (task 2026-10-07)
+
+Full report: **`brain/voice/EVAL-pockettts.md`** (all numbers, table, integration
+map, recommendation). Scripts: `brain/voice/scripts/eval_pockettts.py` (offline,
+Rule 14 — never spawns a server) + `eval_ab_compare.py` (reuses the live fish
+server). Artifacts: `~/.raphael/voice/eval/{fp32,q_int8,fish}/` (outside git).
+
+Headline numbers (this box, measured):
+- **RSS peak 1.45 GB** (load 1.23 GB; +89 MB over 15 renders → no balloon on
+  v3.2.x in-process; int8 = same RAM, buys speed only: RTF ×3.0 → ×4.4).
+- **Speed: PocketTTS RTF ×3.0 (fp32) / ×4.4 (int8) vs fish ×0.5** → ~6–9×
+  faster; **first audio 79 ms** (48 ms int8) vs fish's 2.5–8.4 s per sentence —
+  attacks the known `TTS latency 13.4s/phrase` pain, frees the RTX 4060.
+- **A/B on the 5 live-stack sentences** (fish real payload vs pocket catalog
+  voice): pocket intelligibility **1.00 everywhere**, auto-lang `en`;
+  fish 0.14–0.96 = the JP accent defeating EN-ASR (hypotheses show heavy
+  mangling) — an ASR artifact, not a quality verdict; the OUR-voice A/B is the
+  switch gate.
+- **BLOCKED (b)**: `kyutai/pocket-tts` is `gated:auto` + prohibited-use form;
+  our token only received `kyutai/pocket-tts-without-voice-cloning` →
+  `get_state_for_audio_prompt` refuses cloning. We did NOT accept terms on the
+  user's behalf. Ask posted to coord: user accepts the HF gate once → rerun →
+  `great-sage.safetensors` + our-voice A/B → user listens → switch decision.
+- Recommendation: **HYBRID now (fish stays live) → SWITCH after the clone gate
+  + user's ear.** KittenTTS disqualified (no cloning), Voicebox not installable.
+- Rule 14: both eval processes ran offline and exited; orphan checks after
+  every run = zero; fish server untouched (health-checked, reused, never
+  spawned).

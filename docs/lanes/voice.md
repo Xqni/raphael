@@ -54,19 +54,7 @@ Wave 2 is MERGED; live gate was 3/5 — evidence + bug dossiers: `docs/BUGS-WAVE
 
 ## TASK 2026-10-07 — lightweight TTS evaluation (PocketTTS vs fish)
 
-- [ ] Evaluate **PocketTTS (Kyutai)** as fish-speech replacement (research winner:
-  `.opencode/research/lightweight-tts-options.md` —100M params, ~1.1GB RAM CPU-only
-  (fish = 2GB GPU), zero-shot cloning from WAV reference, 24kHz streaming, MIT/CC-BY,
-  community OpenAI-compatible server). (a) measure REAL RSS on this box; (b) clone the
-  JP great-sage reference `assets/raphael_reference_jp.wav` once -> persisted state;
-  (c) A/B render the exact sample sentences from `assets/reference/samples/` (compare
-  against fish output — mind the caveat: accent transfer JP-reference -> English text is
-  partial per research); (d) map the streaming path onto brain/voice/tts.py seam
-  (community server = possible zero-change drop-in). (e) KittenTTS disqualified (no
-  cloning), Voicebox has no released weights — note in report. RULE 14: one-server rule
-  binds — prefer OFFLINE inference calls for the eval (no persistent server while fish
-  is up); if you need a server window, file a request to integrator first. Deliver a
-  recommendation: switch / keep fish / hybrid, with measured numbers.
+- [ ] Evaluate **PocketTTS (Kyutai)** as fish-speech replacement — **(a)(c)(d)(e) DONE, (b) BLOCKED on user HF acceptance.** Full report: `brain/voice/EVAL-pockettts.md`; scripts `brain/voice/scripts/eval_pockettts.py` + `eval_ab_compare.py`; artifacts in `~/.raphael/voice/eval/` (outside git). Measured: **peak RSS 1.45 GB** (load 1.23 GB, no balloon over 15 renders, int8 = same RAM but RTF ×3.0→×4.4), **first stream chunk 79 ms**, **RTF ×3.0** vs fish **×0.5** (~6–9× faster), EN intelligibility **1.00** on all 5 live-stack sentences (fish 0.14–0.96 = the JP accent defeating EN-ASR, not a quality verdict), auto-lang `en` (no drift with catalog voice), 24 kHz streaming maps onto the `synthesize()->wav` seam (adapter ~40–60 lines; OpenAI-compat servers do NOT speak fish's `references[]`, so "zero-change" holds only at endpoint level). **(b) clone of `assets/raphael_reference_jp.wav` BLOCKED**: `kyutai/pocket-tts` is `gated:auto` + prohibited-use form — our token only received `kyutai/pocket-tts-without-voice-cloning`; terms accepted only by the user (we never accept on their behalf) → rerun → `great-sage.safetensors` + our-voice A/B → user listens → switch decision. Recommendation: **HYBRID now (keep fish live) → SWITCH after that gate**. KittenTTS disqualified (no cloning), Voicebox not installable (no weights) — restated from research. RULE 14 held: offline inference, no second server, zero orphans.
 
 ## Wave 4 (start only when WAVES.md says so — current_wave: 4)
 
