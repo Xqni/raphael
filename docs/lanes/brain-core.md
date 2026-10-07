@@ -21,6 +21,13 @@ Merge-order position: see docs/WAVES.md
   - [x] (3) dispatch-time confirm: `classify(text, tool=...)` + registry `risky` metadata via new `confirm.tool_decision()` (Core Guard strengthening).
   - [x] (4) registry-level load-time rejection: name/category/description/schema all validated in `register()`.
 
+## Coord task batch (2026-10-06, 5 assigned — all resolved)
+- [x] (1) ws `_on_audio_end` `reason=reason` → **LANDED ON MAIN by integrator (8e2d9fb); skipped, not re-implemented.**
+- [x] (2) `confirm.voice_safe(job_id)` predicate (voice request piece 1): pending + risk=='low' only; unknown/high/no-pending → False (fail-closed, Core Guard split not re-derived by voice).
+- [x] (3) no-screenshot-result-journaling: `ws._on_act_res` journals `<omitted N b64 chars>` summary; PLUS source-level guard in `loop._execute_tool` (b64 never reaches results/job_events either — PROTOCOL §7(4)); delivery to the waiter stays full.
+- [x] (4) tool-integration-hooks x3: SPECS convention in the loader (raw-schema dicts AND pc ToolSpec objects; validate+fail loud, SPECS precedence over register(schema=)), `wiring.bind_loop(running_loop)` in app lifespan (guarded import), six fastpath `see_screen` intents (question = full utterance, needs_lock false).
+- [x] (5) `validate_schema` accepts EMPTY properties iff `required=[]` + `additionalProperties:false` (zero-arg PROTOCOL §7 tools); missing/invalid `required` still rejects (t_bad2/t_bad3 keep passing).
+
 ## Later waves
 - Per docs/WAVES.md — do not start early (AGENT_RULES §11).
 - Wave 3 (when current_wave=3): job concurrency polish (input-lock fairness, per-job cancel), conversation-memory hooks to tools-memory, proactive Notice events.

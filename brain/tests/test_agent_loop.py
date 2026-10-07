@@ -694,3 +694,64 @@ def test_tool_decision_helper_maps_risk():
     d = confirm_mod.tool_decision('files_delete', 'delete the thing')
     assert d.needs and d.action == 'delete_files' and d.risk == 'high'
     assert 'files_delete' in d.question and 'delete the thing' in d.question
+
+
+# ---- computer-use hooks: fastpath see_screen + no-b64 journaling -----------
+def test_fastpath_see_screen_intents():
+    """ACCEPTED hook: the six screen phrases resolve instantly (no LLM) to
+    the see_screen tool with the FULL utterance as the vision question."""
+    from brain import fastpath
+    ctx = fastpath.IntentCtx()
+    for phrase in ('What am I looking at', "what's on my screen right now",
+                   'What is on my screen', 'describe my screen',
+                   'look at my screen', 'see my screen please'):
+        res = fastpath.run_intent(phrase, ctx)
+        assert res is not None, phrase
+        assert res.tool == 'see_screen', phrase
+        assert res.tool_args == {'question': phrase}, phrase
+        assert res.needs_lock is False
+        assert res.text == 'Let me look.'
+        assert res.done is True
+    # unrelated text still falls through to the LLM path
+    assert fastpath.run_intent('tell me about screens', ctx) is None
+
+
+def test_act_res_journal_never_persists_screenshot_b64(token_path, fake_chat):
+    """PROTOCOL §7(4) + computer-use request ACCEPTED: the act_res journal
+    stores a summary, never base64 image bytes (delivery stays full)."""
+    fake_chat([{'text': 'ignored'}])
+    fake_b64 = 'QUJD' * 50                     # 200 chars of "image"
+    with TestClient(app) as client:
+        with client.websocket_connect('/ws') as ws_body:
+            assert _auth(ws_body, 'body')['type'] == 'auth_ok'
+            with client.websocket_connect('/ws') as ws_cli:
+                assert _auth(ws_cli, 'cli')['type'] == 'auth_ok'
+                # fastpath 'screenshot' -> gui tool -> act_req to the body
+                job = _command(ws_cli, 'screenshot')
+                req, _ = _recv_until(ws_body, lambda m: m.get('type') == 'act_req'
+                                     and m.get('job') == job)
+                assert req['action'] == 'screenshot'
+                ws_body.send_text(json.dumps({
+                    'type': 'act_res', 'v': 1, 'job': job, 'ok': True,
+                    'result': {'b64': fake_b64, 'bytes': 99}}))
+                done, _ = _recv_until(
+                    ws_cli, lambda m: m.get('type') == 'job_event'
+                    and m.get('status') in ('done', 'failed')
+                    and m.get('job') == job)
+                assert done['status'] == 'done'
+                assert done['seq'] > 0
+
+    # journal must contain the summary, never the b64 payload
+    from brain.jobs import store as job_store
+    from brain.memory import get_conn
+    rowid = job_store.parse_job_ref(job)
+    conn = get_conn()
+    try:
+        rows = conn.execute('SELECT event FROM journal WHERE job_id=?',
+                            (rowid,)).fetchall()
+    finally:
+        conn.close()
+    blob = ' '.join(str(r['event']) for r in rows)
+    assert fake_b64[:50] not in blob, 'b64 fragment leaked into the journal'
+    assert '<omitted 200 b64 chars>' in blob, blob[-300:]
+    assert '"delivered": true' in blob, 'delivery must be unaffected'

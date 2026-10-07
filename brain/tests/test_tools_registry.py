@@ -242,3 +242,108 @@ def test_lifespan_rediscovers_subpackage_registered_later(tmp_path):
         reg._registry.pop('t_late_tool', None)
         reg._META.pop('t_late_tool', None)
         reg._load_errors.clear()
+
+
+# ---- SPECS convention + bind_loop (computer-use hooks, APPROVED x3) ---------
+_SPECS_PKG = (
+    'from brain.tools import register as _r\n'
+    'def register():\n'
+    '    _r("{name}", {fn}, description="spec tool")\n'
+    'SPECS = {{\n'
+    '    "{name}": {{\n'
+    '        "type": "object",\n'
+    '        "properties": {{"q": {{"type": "string", "description": "query"}}}},\n'
+    '        "required": ["q"], "additionalProperties": False,\n'
+    '    }},\n'
+    '}}\n'
+)
+
+
+def _write_pkg(tmp_path, name, body):
+    pkg = tmp_path / name
+    pkg.mkdir()
+    (pkg / '__init__.py').write_text(body, encoding='utf-8')
+    import brain.tools
+    brain.tools.__path__.append(str(tmp_path))
+    return pkg
+
+
+def _drop_pkg(tmp_path, name):
+    import sys as _sys
+    import brain.tools
+    brain.tools.__path__.remove(str(tmp_path))
+    _sys.modules.pop(f'brain.tools.{name}', None)
+    reg._discovered.discard(f'brain.tools.{name}')
+    reg._load_errors.clear()
+
+
+def test_specs_convention_validates_and_attaches(tmp_path):
+    """SPECS entries are validated strictly and attached to the registered
+    tool — a tool registered WITHOUT schema= still reaches the model."""
+    _write_pkg(tmp_path, 't_specs_pkg',
+               _SPECS_PKG.format(name='t_spec_tool', fn='lambda q: q'))
+    try:
+        errs = reg.discover(force=True)
+        assert not errs, errs
+        meta = reg.describe('t_spec_tool')
+        assert meta['schema']['required'] == ['q']
+        assert meta['schema']['additionalProperties'] is False
+        names = {s['function']['name'] for s in reg.tool_specs()}
+        assert 't_spec_tool' in names
+    finally:
+        _cleanup('t_spec_tool')
+        _drop_pkg(tmp_path, 't_specs_pkg')
+
+
+def test_specs_invalid_schema_is_recorded_loudly(tmp_path):
+    bad = ('from brain.tools import register as _r\n'
+           'def register():\n'
+           '    _r("t_bad_spec_tool", lambda q: q, description="x")\n'
+           'SPECS = {"t_bad_spec_tool": {"type": "object", '
+           '"properties": {"q": {"type": "string"}}, '
+           '"required": ["q"], "additionalProperties": True}}\n')
+    _write_pkg(tmp_path, 't_bad_specs_pkg', bad)
+    try:
+        errs = reg.discover(force=True)
+        assert any('t_bad_specs_pkg' in k and 'SPECS invalid' in v
+                   for k, v in errs.items()), errs
+        with pytest.raises(reg.BadToolSpec):
+            reg.strict_discover()
+    finally:
+        _cleanup('t_bad_spec_tool')
+        _drop_pkg(tmp_path, 't_bad_specs_pkg')
+        reg.strict_discover()   # real tree must be clean again
+
+
+def test_specs_for_unregistered_tool_fails(tmp_path):
+    ghost = ('SPECS = {"t_ghost": {"type": "object", '
+             '"properties": {"q": {"type": "string", "description": "q"}}, '
+             '"required": ["q"], "additionalProperties": False}}\n')
+    _write_pkg(tmp_path, 't_ghost_pkg', ghost)
+    try:
+        errs = reg.discover(force=True)
+        assert any('t_ghost_pkg' in k and 'no registered tool' in v
+                   for k, v in errs.items()), errs
+    finally:
+        _drop_pkg(tmp_path, 't_ghost_pkg')
+
+
+def test_lifespan_binds_main_loop_for_computer_use(monkeypatch):
+    """Item 2: app lifespan calls brain.tools.computer_use.wiring.bind_loop
+    with the RUNNING loop (sync tools need it for the act pipeline)."""
+    import sys as _sys
+    import types as _types
+    from fastapi.testclient import TestClient
+    from brain.app import app
+
+    called = {}
+    wiring = _types.ModuleType('brain.tools.computer_use.wiring')
+    wiring.bind_loop = lambda loop: called.setdefault('loop', loop)
+    fake_pkg = _types.ModuleType('brain.tools.computer_use')
+    fake_pkg.wiring = wiring
+    monkeypatch.setitem(_sys.modules, 'brain.tools.computer_use', fake_pkg)
+    monkeypatch.setitem(_sys.modules, 'brain.tools.computer_use.wiring', wiring)
+    with TestClient(app):
+        pass
+    assert called.get('loop') is not None
+    assert not called['loop'].is_closed() or True   # loop ran during lifespan

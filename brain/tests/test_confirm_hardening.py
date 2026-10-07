@@ -183,3 +183,54 @@ def test_take_complete_sentences_keeps_remainder():
     assert sents == [] and rest == 'no end yet'
     sents, rest = loop_mod.take_complete_sentences('One. Two! Three?')
     assert sents == ['One.', 'Two!', 'Three?'] and rest == ''
+
+
+# ---- voice_safe predicate (voice request piece 1, assigned 2026-10-06) ------
+@pytest.mark.asyncio
+async def test_voice_safe_only_for_pending_low_risk():
+    from brain.confirm import voice_safe
+    from brain.jobs.engine import get_engine
+    c = get_engine().confirmer
+    try:
+        # no pending confirmation -> False (voice must not answer anything)
+        assert voice_safe(4242) is False
+        # LOW risk pending -> True
+        low = asyncio.create_task(
+            c.request(11, 'curl it?', ['yes', 'no'], risk='low'))
+        await asyncio.sleep(0.01)
+        assert voice_safe(11) is True
+        assert voice_safe('j_20261006_0011') is True   # ext id form too
+        c.cancel(11)
+        await asyncio.gather(low, return_exceptions=True)
+        # resolved/cancelled -> False again
+        assert voice_safe(11) is False
+        # HIGH risk pending -> False, always (unknown risk == high)
+        high = asyncio.create_task(
+            c.request(12, 'delete?', ['yes', 'no'], risk='high'))
+        await asyncio.sleep(0.01)
+        assert voice_safe(12) is False
+        c.cancel(12)
+        await asyncio.gather(high, return_exceptions=True)
+        # garbage ids -> False
+        assert voice_safe(None) is False
+        assert voice_safe('not-a-job') is False
+    finally:
+        c.cancel(11)
+        c.cancel(12)
+
+
+@pytest.mark.asyncio
+async def test_voice_safe_matches_confirmer_risk_map_not_text():
+    """The split is Core Guard state recorded at needs_confirm time — it must
+    not be re-derivable from the question text by the voice lane."""
+    from brain.confirm import voice_safe
+    from brain.jobs.engine import get_engine
+    c = get_engine().confirmer
+    # a HIGH-risk question whose TEXT is vague
+    task = asyncio.create_task(
+        c.request(13, 'About to do the thing. Confirm?', ['yes', 'no'],
+                  risk='high'))
+    await asyncio.sleep(0.01)
+    assert voice_safe(13) is False
+    c.cancel(13)
+    await asyncio.gather(task, return_exceptions=True)

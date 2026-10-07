@@ -179,17 +179,43 @@ def load_errors() -> Dict[str, str]:
     return dict(_load_errors)
 
 
+def _spec_to_schema(tname: str, entry: Any) -> Dict[str, Any]:
+    """SPECS values come in two landed shapes: raw JSON-schema dicts
+    (computer_use.spec) and spec objects with a `.schema()` method
+    (pc._spec.ToolSpec). Normalize to a raw schema dict."""
+    if isinstance(entry, dict):
+        return entry
+    for attr in ('schema', 'to_schema', 'to_dict'):
+        val = getattr(entry, attr, None)
+        out = None
+        if isinstance(val, dict):
+            out = val
+        elif callable(val):
+            try:
+                out = val()
+            except Exception:  # noqa: BLE001 — try the next accessor
+                out = None
+        if isinstance(out, dict) and out.get('type'):
+            return out
+    raise BadToolSpec(
+        f'SPECS entry {tname!r}: unsupported spec object '
+        f'{type(entry).__name__} (need a JSON-schema dict or .schema())')
+
+
 def _apply_specs(module_name: str, specs: Dict[str, Any]) -> None:
-    """Apply a package's SPECS dict ({tool_name: JSON Schema}) — validate
-    every entry strictly, then attach it to the registered tool's metadata."""
+    """Apply a package's SPECS dict ({tool_name: schema}) — validate every
+    entry strictly (fail loud), then attach it to the registered tool's
+    metadata. register(schema=) alone still stands (pc's landed pattern);
+    SPECS wins when both are present (decision 2026-10-06)."""
     for tname, tschema in specs.items():
-        validate_schema(tname, tschema)          # raises BadToolSpec loudly
+        raw = _spec_to_schema(tname, tschema)
+        validate_schema(tname, raw)                # raises BadToolSpec loudly
         meta = _META.get(tname)
         if meta is None:
             raise BadToolSpec(
                 f'SPECS entry {tname!r} (from {module_name}) has no '
                 f'registered tool — call register() for it first')
-        meta['schema'] = tschema                 # SPECS takes precedence
+        meta['schema'] = raw                       # SPECS takes precedence
 
 
 # ---- model-facing specs ----------------------------------------------------

@@ -646,10 +646,21 @@ class WsHub:
             delivered = self.engine.deliver_act_res(ref, res)
         rowid = store.parse_job_ref(ref)
         if rowid is not None:
+            # PROTOCOL §7(4): screenshot bytes are NEVER logged or persisted —
+            # journal a summary instead of the b64 fragment (computer-use
+            # request ACCEPTED 2026-10-06). Delivery to the waiter (above) is
+            # unchanged: the vision path still gets the full image in memory.
+            raw = msg.get('result')
+            if isinstance(raw, dict) and 'b64' in raw:
+                summary = {'b64': f'<omitted {len(raw.get("b64") or "")} '
+                                  f'b64 chars>',
+                           'bytes': raw.get('bytes')}
+            else:
+                summary = str(raw)[:200] if raw is not None else None
             store._log_event(rowid, {'event': 'act_res',
                                      'delivered': delivered,
                                      'ok': msg.get('ok'),
-                                     'result': str(msg.get('result'))[:200] if msg.get('result') is not None else None,
+                                     'result': summary,
                                      'error': msg.get('error')})
         await self._send(s, {'type': 'ack', 'v': 1, 'job': ref})
 

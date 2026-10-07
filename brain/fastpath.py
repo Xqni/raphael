@@ -121,6 +121,18 @@ def register_builtin_intents():
             text=(f"It's {h}:{now.minute:02d} {ampm} on {now:%A}, "
                   f"{now:%B} {now.day}, {now:%Y}"))
 
+    def _see_screen(text, ctx):
+        # computer-use hook (ACCEPTED 2026-10-06): Wave 2 exit criterion #3 —
+        # the full utterance is the vision prompt (their service composes it).
+        return IntentResult(text='Let me look.', tool='see_screen',
+                            tool_args={'question': text}, needs_lock=False,
+                            task_kind='gui')
+
+    for _kw in ('what am i looking at', "what's on my screen",
+                'what is on my screen', 'describe my screen',
+                'look at my screen', 'see my screen'):
+        register_intent(_kw, _see_screen)
+
     for _kw in ('what time', 'what is the time', "what's the time",
                 'tell me the time', 'current time', 'what day is it',
                 'what is the date', "what's the date", 'time today'):

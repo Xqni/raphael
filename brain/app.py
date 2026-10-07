@@ -38,6 +38,17 @@ hub = get_hub()
 async def lifespan(app: FastAPI):
     engine = get_engine()
     hub.engine = engine
+    # computer-use hook (ACCEPTED 2026-10-06): sync tools run via to_thread —
+    # they need the brain's MAIN loop for the act pipeline (hub.broadcast /
+    # engine.expect_act). Supported hook replaces their private-attr fallback.
+    try:
+        import asyncio as _aio
+        from .tools.computer_use import wiring as _cu_wiring
+        _cu_wiring.bind_loop(_aio.get_running_loop())
+    except ImportError:
+        pass                      # computer-use lane not present yet
+    except Exception as _e:        # noqa: BLE001 — loud, never fatal
+        print(f'[tools] bind_loop failed: {type(_e).__name__}: {_e}', flush=True)
     from . import orbstate
     orbstate.attach(hub)
     # narration fanout: job_event → all roles; orb_state refresh on transitions
