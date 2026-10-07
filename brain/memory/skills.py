@@ -92,10 +92,13 @@ def _validate(meta: Dict[str, Any], body: str) -> Dict[str, Any]:
     source = str(meta.get('source') or 'learned')
     if source not in SOURCES:
         raise SkillError(f'invalid source {source!r} (one of {SOURCES})')
+    raw_conf = meta.get('confidence')
+    if isinstance(raw_conf, bool):         # `confidence: true` must not = 1.0
+        raise SkillError(f'invalid confidence {raw_conf!r} (boolean)')
     try:
-        confidence = float(meta.get('confidence') or 0.0)
+        confidence = float(raw_conf or 0.0)
     except (TypeError, ValueError):
-        raise SkillError(f'invalid confidence {meta.get("confidence")!r}')
+        raise SkillError(f'invalid confidence {raw_conf!r}')
     if not 0.0 <= confidence <= 1.0:
         raise SkillError(f'confidence {confidence} outside [0, 1]')
     tags = meta.get('tags') or []
@@ -358,6 +361,8 @@ def _set_meta(name: str, **fields: Any) -> bool:
         return False
     for k, v in fields.items():
         if k == 'confidence':
+            if isinstance(v, bool):         # True must not coerce to 1.0
+                raise SkillError(f'invalid confidence {v!r} (boolean)')
             v = float(v)
             if not 0.0 <= v <= 1.0:
                 raise SkillError(f'confidence {v} outside [0, 1]')
