@@ -21,7 +21,8 @@ class Config {
     this.reconnectMax = 30000;
     this.heartbeatInterval = 10000;
     // Fidelity-pass defaults (overridden by config.yaml / config.d/*.yaml)
-    this.theme = 'raphael';        // raphael | ciel | custom  (docs/orb/THEMES.md)
+    this.theme = 'auto';           // auto | raphael | ciel | custom  (docs/orb/THEMES.md)
+    this.personaTier = 'great_sage'; // persona.tier, drives theme=auto
     this.vibrance = 1.15;          // 0.8 .. 1.5
     this.motionBlur = 'auto';      // auto | off | low | high
     this.startupSpinTauMs = 1400;  // exponential spin-down tau (spec §1)
@@ -92,7 +93,10 @@ class Config {
     // NB: no port extraction here — the WS port comes from the instance
     // derivation (INTERFACES §d), never from a hardcoded yaml regex.
     // Fidelity pass
-    this.theme = this._str(txt, /theme:\s*(raphael|ciel|custom)/, this.theme);
+    this.theme = this._str(txt, /theme:\s*(auto|raphael|ciel|custom)/, this.theme);
+    // persona.tier (config.d/evolution-persona.yaml) — only one `tier:` key in
+    // the merged tree, so the match is unambiguous.
+    this.personaTier = this._str(txt, /\btier:\s*(great_sage|raphael|ciel)\b/, this.personaTier);
     this.vibrance = this._float(txt, /vibrance:\s*([0-9.]+)/, this.vibrance);
     this.motionBlur = this._str(txt, /motion_blur:\s*(auto|off|low|high)/, this.motionBlur);
     this.startupSpinTauMs = this._int(txt, /spin_tau_ms:\s*(\d+)/, this.startupSpinTauMs);

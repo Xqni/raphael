@@ -18,25 +18,44 @@ design and reads its colors from tokens; a theme is a value, not a branch.
 ```yaml
 # config.d/orb.yaml (lane fragment) — deep-merged over config.yaml (INTERFACES §c)
 orb:
-  theme: raphael     # raphael | ciel | custom
+  theme: auto        # auto | raphael | ciel | custom
   vibrance: 1.15     # 0.8 .. 1.5 — applied to the haze/glyph saturation
   custom_theme:      # only consulted when theme == custom
     core_tint: "#FFFFFF"
     ...
 ```
 
+### `auto` — the persona tier picks the theme (Wave 5)
+
+`auto` is the default and resolves through **`persona.tier`** from
+`config.d/evolution-persona.yaml` (evolution-persona lane, AGENT_RULES §3):
+
+```
+persona.tier: great_sage | raphael | ciel   ->   orb theme of the same name
+```
+
+So a tier switch is a **config edit, never a renderer change** — the whole point
+of this hook. `great_sage` is the *identity* tier
+(`docs/evolution/04-tier-switch-test-plan.md` A2: it changes nothing) and
+therefore renders exactly like Raphael today; `ciel` is currently an alias too.
+An explicit `theme: raphael|ciel|custom` **pins** the palette and wins over the
+tier, and an unknown/missing tier falls back to the Raphael palette rather than
+rendering blank. Verified: `orb:trace --only=wave5` →
+`theme_follows_persona_tier: orb.theme=auto persona.tier=great_sage`.
+
 Read path (no secrets, no per-frame file IO):
 
 ```
 config.yaml + config.d/*.yaml  ->  body/orb/src/main/config.js
                                 ->  preload.js exposes window.orbConfig
-                                      { theme, vibrance, themeTokens }
+                                      { theme, personaTier, vibrance, themeTokens }
                                 ->  renderer.js resolves the palette once at
                                     startup and feeds the shader uniforms
 ```
 
-`theme` is resolved **once, at page load**. Changing it requires an orb
-restart (it is a design token, not a runtime state).
+`theme` is resolved **once, at page load** — and when it is `auto`,
+`persona.tier` is read at that same moment. Changing either requires an orb
+restart (they are design tokens, not runtime state).
 
 ## 3. Tokens
 
@@ -64,7 +83,8 @@ one map — never a renderer rewrite.
 
 1. Decide whether it is a **named alias** or a **custom block**.
    - Named alias (recommended when it ships as a persona tier): add the entry
-     to the theme→token map in `renderer.js` next to `raphael`/`ciel`.
+     to `THEMES` in `src/renderer/palette.js` next to
+     `great_sage`/`raphael`/`ciel`.
    - One-off: set `orb.theme: custom` and fill `orb.custom_theme` in
      `config.d/<your-lane>.yaml`.
 2. Keep every token present — a missing token falls back to the Raphael
@@ -105,7 +125,8 @@ Contract notes for whoever implements it later:
 ## 6. Persona tiers
 
 `great_sage → raphael → ciel` are evolution/persona-lane concerns
-(`docs/WAVES.md` Wave 5, lane `evolution-persona`). This file only guarantees
-that the *visual* side of a tier change is a config edit. When that lane ships
-a tier, it should set `orb.theme` (and optionally `orb.evolve_stage`) through
-the existing config path — no orb code change expected.
+(`docs/WAVES.md` Wave 5, lane `evolution-persona`). Since Wave 5 the orb reads
+`persona.tier` **directly** when `orb.theme: auto`, so that lane does not have
+to set `orb.theme` at all — setting `persona.tier` is enough and the orb picks
+the palette up on its next start. Pin `orb.theme` only if the orb should
+deliberately diverge from the tier.

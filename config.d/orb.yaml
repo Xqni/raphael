@@ -16,7 +16,11 @@ orb:
   #   raphael | ciel | custom   — `ciel` is currently an alias of `raphael`, so a
   #   later Ciel reskin is a config/theme-file change, not a renderer rewrite.
   #   `custom` reads the token block below.
-  theme: raphael
+  # `auto` (default, Wave 5) = follow `persona.tier` from
+  # config.d/evolution-persona.yaml, so great_sage -> raphael -> ciel is a
+  # CONFIG switch and never a renderer rewrite (docs/orb/THEMES.md).
+  # Set an explicit `raphael` / `ciel` / `custom` to pin it instead.
+  theme: auto
   # Colour richness of the haze/glyph palette. Range 0.8-1.5; 1.0 = untouched.
   # Spec §3.7: "raise saturation and richness toward the reference haze".
   vibrance: 1.15

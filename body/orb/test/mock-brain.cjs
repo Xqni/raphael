@@ -162,6 +162,26 @@ class MockBrain {
         return this.broadcast({ type: 'orb_state', ...base, ...INFO, state: 'thinking', jobs_active: 6, mode: 'normal', shape_hint: 'hexagon', task_kind: 'media' });
       case 'subtitle':
         return this.broadcast({ type: 'subtitle', ...base, text: 'subtitle frame', fade_ms: 4000 });
+      case 'fan':
+        // PROTOCOL §5 additive: `parent` = parallel-minds fan-out tag
+        this.broadcast({ type: 'orb_state', ...base, ...INFO, state: 'thinking',
+                         jobs_active: 3, mode: 'normal', shape_hint: 'octagram', task_kind: 'llm' });
+        this.broadcast({ type: 'job_event', ...base, job: 'j_parent', seq: 1, status: 'running',
+                         stage: 'tool', text: 'fan-out root', kind: 'chat' });
+        this.broadcast({ type: 'job_event', ...base, job: 'j_child_a', seq: 1, status: 'running',
+                         stage: 'llm', text: 'child A analysis', kind: 'analysis', parent: 'j_parent' });
+        this.broadcast({ type: 'job_event', ...base, job: 'j_child_b', seq: 1, status: 'running',
+                         stage: 'llm', text: 'child B sim', kind: 'simulation', parent: 'j_parent' });
+        return { type: 'fan', jobs: 3 };
+      case 'answer':
+        return this.broadcast({ type: 'answer', ...base, job: 'j_parent', format: 'answer',
+                                text: 'The quick brown fox jumps over the lazy dog.',
+                                provider: 'groq', model: 'llama-3.3-70b-versatile' });
+      case 'report':
+        return this.broadcast({ type: 'report', ...base, job: 'j_parent', format: 'report',
+                                title: 'Weekly pipeline report',
+                                summary: '4 jobs run, 0 failures, GPU idle 96% of the week.',
+                                sections: [{ heading: 'Jobs', text: 'ok' }] });
       case 'notice':
         // PROTOCOL §3 notice: text/level/ts/job — no state change, ever
         return this.broadcast({ type: 'notice', ...base, text: 'Notice: disk almost full',

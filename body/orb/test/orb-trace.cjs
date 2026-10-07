@@ -441,6 +441,67 @@ async function runBugC(cdp, brain, rec) {
   return out;
 }
 
+/**
+ * Wave 5 — answer/report banners, parallel-minds fan-out, kind accent, theme.
+ * Contract guard for all of them: NONE of this may move the orb state.
+ */
+async function runWave5(cdp, brain, rec) {
+  const checks = [];
+  const add = (name, ok, detail) => checks.push({ name, ok, detail, pass: !!ok });
+  const banner = async () => {
+    const s = await cdp.evaluateJson(
+      "JSON.stringify({ text: (document.getElementById('subtitle')||{}).textContent || '', " +
+      "shown: !!(document.getElementById('subtitle')||{}).classList.contains('show'), " +
+      "cls: (document.getElementById('subtitle')||{}).className || '' })");
+    return s;
+  };
+
+  await cdp.evaluate(`document.body.style.background = ${JSON.stringify(BG_STYLES.dark)}`);
+  brain.step('fan');                    // parallel-minds: 1 parent + 2 children
+  await sleep(1400);
+  let trace = await cdp.evaluateJson('JSON.stringify(window.__orbTrace())');
+  add('parallel_minds_fan_layout',
+      trace.jobs.length === 3 && trace.jobFan === true &&
+      trace.jobGroups >= 1 && trace.jobSpokes > 0,
+      `jobs=${trace.jobs.length} fan=${trace.jobFan} groups=${trace.jobGroups} ` +
+      `spokes=${trace.jobSpokes} (expect 3 / true / >=1 / >0)`);
+  add('kind_accent_analysis', trace.jobKind === 'analysis',
+      `foreground kind=${trace.jobKind} (first live job_event.kind, expect analysis)`);
+
+  const stateBefore = trace.applied.state;
+
+  brain.step('answer');
+  await sleep(700);
+  let b = await banner();
+  const t = await cdp.evaluateJson('JSON.stringify(window.__orbTrace())');
+  add('answer_renders_as_banner',
+      b.shown && /Answer ·/.test(b.text) && /groq/.test(b.text) && /banner/.test(b.cls),
+      `text=${JSON.stringify(b.text)} cls=${b.cls}`);
+  add('answer_does_not_change_state', t.applied.state === stateBefore,
+      `state ${stateBefore} -> ${t.applied.state} (must be unchanged)`);
+
+  brain.step('report');
+  await sleep(700);
+  b = await banner();
+  add('report_renders_as_banner',
+      b.shown && /Weekly pipeline report/.test(b.text) && /banner/.test(b.cls),
+      `text=${JSON.stringify(b.text.slice(0, 90))} cls=${b.cls}`);
+  const t2 = await cdp.evaluateJson('JSON.stringify(window.__orbTrace())');
+  add('report_does_not_change_state', t2.applied.state === stateBefore,
+      `state ${stateBefore} -> ${t2.applied.state} (must be unchanged)`);
+
+  add('theme_follows_persona_tier',
+      t.theme && t.theme.requested === 'auto' && t.theme.personaTier === 'great_sage',
+      t.theme ? `orb.theme=${t.theme.requested} persona.tier=${t.theme.personaTier}` : 'theme probe missing');
+
+  const out = { pass: checks.every((c) => c.ok), checks };
+  rec('wave5', out);
+  fs.writeFileSync(path.join(OUT, 'wave5.json'), JSON.stringify(out, null, 2) + '\n');
+  log(`Wave 5: ${out.pass ? 'PASS' : 'FAIL'} (${checks.filter((c) => c.ok).length}/${checks.length})`);
+  for (const c of checks) log(`  ${c.ok ? 'ok  ' : 'FAIL'} ${c.name}: ${c.detail}`);
+  return out;
+}
+
 async function runStartupPhase(cdp, brain, rec) {
   // §1 evidence: drive a FULL starting -> idle sequence and sample omega,
   // angle, core brightness and layer weights every 50 ms through it, plus a
@@ -587,6 +648,7 @@ async function main() {
       else if (ONLY_PHASE === 'perf') await runBlurPerf(cdp, brain, rec);
       else if (ONLY_PHASE === 'interaction') await runInteraction(cdp, brain, rec);
       else if (ONLY_PHASE === 'bugc') await runBugC(cdp, brain, rec);
+      else if (ONLY_PHASE === 'wave5') await runWave5(cdp, brain, rec);
       else throw new Error('unknown --only phase: ' + ONLY_PHASE);
       fs.writeFileSync(path.join(OUT, 'trace-partial.jsonl'), lines.join('\n') + '\n');
       const only = lines.map((l) => { try { return JSON.parse(l); } catch (e) { return null; } })
@@ -684,6 +746,15 @@ async function main() {
       rec('bugc_error', { message: String(e && e.message) });
     }
 
+    // --- Wave 5 (answer/report/parallel-minds/kind/theme) ------------------
+    let wave5 = null;
+    try {
+      wave5 = await runWave5(cdp, brain, rec);
+    } catch (e) {
+      log('Wave 5 phase FAILED:', e && e.message);
+      rec('wave5_error', { message: String(e && e.message) });
+    }
+
     // --- W2.3 interaction (menu / hit-testing / typed command) -------------
     let interaction = null;
     try {
@@ -766,6 +837,10 @@ async function main() {
     }
     if (transparency && !transparency.pass) {
       console.error('[orb-trace] FAIL: transparency check — a box/fringe is visible at the window edge');
+      failed = true;
+    }
+    if (wave5 && !wave5.pass) {
+      console.error('[orb-trace] FAIL: Wave 5 (answer/report/parallel-minds/theme) checks did not hold');
       failed = true;
     }
     if (bugc && !bugc.pass) {

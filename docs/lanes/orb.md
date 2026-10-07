@@ -180,7 +180,34 @@ Wave 3 is MERGED + **GATE PASSED** (tag `wave-3-gate`, all six criteria live, ac
 
 Wave 4 is MERGED + **GATE PASSED** (tag `wave-4-gate`, 10/10 lanes, mock 308 green). Wave-5 theme per WAVES.md: Raphael features — Answer/Notice/Report formats, Analysis, Simulation, parallel-minds visuals, persona tiers. Rule 15 speed mandate binds; shared-contract changes go through integrator requests. Carried items are noted in WAVES.md gate record (shadow row; C1+C2 residual).
 
-- [ ] Parallel-minds visuals + persona-tier visuals (great_sage -> raphael -> ciel themes per docs/evolution/04-tier-switch-test-plan.md) — renderer only, orb_state contract via integrator request if new states needed.
+- [x] **Parallel-minds visuals + persona-tier visuals** — renderer only, no new
+      `orb_state`, no integrator request needed (`docs/PROTOCOL.md` §3 already
+      carries `answer`/`report`/`job_event += kind|parent`):
+  - **Persona tiers** — `orb.theme: auto` (new default) follows
+        `persona.tier`, so `great_sage → raphael → ciel` is a **config edit,
+        never a renderer change**; `great_sage` = identity tier, unknown tier
+        falls back to the Raphael palette. `docs/orb/THEMES.md` updated.
+        Verified `theme_follows_persona_tier: orb.theme=auto persona.tier=great_sage`.
+  - **Parallel minds** — `job_event.parent` tracked in ws-status on its own
+        channel; beads lay out as a **fan**: one wedge per parent, children on
+        an inner ring, a spoke linking parent→child (single `LineSegments` with
+        a per-frame `drawRange`). Verified `jobs=3 fan=true groups=2 spokes=6`.
+        Count stays authoritative from `orb_state.jobs_active` (§8) so a stale
+        job table can never leave beads on screen.
+  - **`kind` styling** — lattice accent per `job_event.kind`
+        (analysis `#7FD4FF`, simulation `#9D8CFF`, act `#FFB000`). A live
+        analysis/simulation job wins over a `chat` root — caught by the test
+        (`kind_accent_analysis` first failed with `kind=chat`).
+  - **`answer` / `report` banners** — wrapped `#subtitle.banner` cards (the
+        plain subtitle is `nowrap` and would have clipped a paragraph off a
+        280px window): answer gold 6 s with provider/model, report violet 9 s
+        with title+summary. **Neither moves the orb state** — asserted.
+  - **Per-frame allocation** — layout memoised on `(jobList identity,
+        jobs_active)` per ORB_REBUILD §5 "Do not allocate per frame".
+- [x] **Full gate:** `npm run test:unit` PASS · `orb:trace` PASS (distinctness
+      104 pairs + wave5 7/7 + bugc 6/6 + interaction 19/19 + transparency) ·
+      `orb:size` PASS (drift 4.6% of 12%) · `orb-diff` PASS · zero orphans,
+      ports free.
 
 ## Later waves
 - Per docs/WAVES.md — do not start early (AGENT_RULES §11).
