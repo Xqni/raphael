@@ -11,7 +11,7 @@ Windows (logon)
      ├─ 2) spawns WSL:  wsl.exe -d Ubuntu-26.04 -u dami -- (systemd bring-up check + ollama; brain runs PROCESS-MODE: uvicorn spawned + /tmp/raphael-brain.pid — raphael-brain.service NOT installed yet)
      │     └─ WSL (systemd)
      │          ├─ raphael-brain (process-mode today; systemd unit planned)  ← FastAPI :8765, agent loop, jobs, router, STT/TTS
-     │          └─ ollama.service         (already exists, Restart=always)
+     │          └─ ollama.service         (already exists — NOT used/started under profile cloud_temp)
      ├─ 3) body/win (Python, Windows-native) → WS client role=body → ws://127.0.0.1:8765/ws
      │     (mic capture, playback, screenshot, UIA, input, hotkeys, clipboard)
      └─ 4) health loop: HTTP /health + WS ping every 5 s → exponential-backoff restarts (cap → orb error, no thrash)
@@ -90,8 +90,8 @@ raphael/
 - **Priority semantics:** `user_facing` preempts *admission order and announcement/TTS/LLM-lane access* — NOT in-flight execution and never the input lock. In-flight background jobs keep running until done/cancelled.
 - **Limits:** per-provider semaphore (from router rate headers + config), local-model concurrency = 1 (8 GB VRAM), tts semaphore = 1, wake/STT lane always reserved so background jobs can't starve voice (user_facing priority floor).
 - **Fast path:** `fastpath.py` regex/keyword rules run BEFORE any LLM: open app/URL, YouTube search, volume/brightness/media, timers/reminders, window ops, clock/date (9 phrases — "what time", "what's the date", added 2026-10-05), "what's running", job status/cancel, mode toggles → instant `act_req`. Target: action dispatch < 300 ms from end-of-utterance. Miss → **Laya decision tier** — **STATUS 2026-10-05: NOT WIRED** (researched + installed + GPU-benchmarked at 44.7 ms single / 21 ms batched in `brain/.venv`, but no code integration yet; Phase 1 advisory adapter = TODO §5, positioning per addendum §12): typed `intent`/`task_kind`/`urgency`/`needs_confirm` questions — Phase 1 advisory (task_kind → orb shape_hint, urgency, pre-check hints), Phase 2 gating after fine-tune; abstention (`min_confidence`) = fail-closed escalation. Still unresolved / `needs-llm` → LLM path with instant cached ack ("Understood.") + streamed sentences → Fish-Speech.
-- **Router chain:** `zen_free` (discover via GET `https://opencode.ai/zen/v1/models`, filter free — never hardcode IDs; benchmark ranks them) → `go` (only if `allow_go_runtime:true`) → `ollama` local. Health checks, per-provider circuit breaker (open after N failures → cooldown with jitter), 401/429/5xx handling, rate-limit header honoring, model-vanished → re-select (normal, not an error). Offline → local, brief spoken notice, automatic switch-back.
-- **Privacy:** `private_on` disables all cloud calls (persisted flag); foreground-window blocklist (password managers/banking/messengers) forces local models for that interaction; `allow_free_models_for_personal_data:false` default → personal-flagged content → local only; redaction of keys/tokens/cards/emails before any cloud call; screenshots → local vision only, ever.
+- **Router chain (profile cloud_temp, current): `groq` → `zen_free`** (Groq first: OpenAI-compatible free tier — chat + tool calling + Whisper STT + cloud vision, base `https://api.groq.com/openai/v1`, `GROQ_API_KEY` in `.env`; Zen free: discover via GET `https://opencode.ai/zen/v1/models`, filter free — never hardcode IDs; benchmark ranks them) → `go` (only if `allow_go_runtime:true`) → `ollama` local. **Go/paid stay OFF in both profiles.** Health checks, per-provider circuit breaker (open after N failures → cooldown with jitter), 401/429/5xx handling, rate-limit header honoring, model-vanished → re-select (normal, not an error). Offline → brief spoken notice, automatic switch-back (local profile; cloud_temp fails over to the next cloud provider).
+- **Privacy:** `private_on` disables all cloud calls (persisted flag); foreground-window blocklist (password managers/banking/messengers) forces local models for that interaction; `allow_free_models_for_personal_data:false` default → personal-flagged content → local only; redaction of keys/tokens/cards/emails before any cloud call; screenshots → local vision only, ever (TEMPORARY exception under profile `cloud_temp` — PROTOCOL §7/§11, removed at Wave 6 cutover).
 - **Memory + self-written skills:** SQLite tables mirroring Odysseus semantics (pinned + hybrid-retrieved memories wrapped as untrusted context; skills as `skills/<name>/SKILL.md` with draft/confidence gate + usage counters + dedup). See REQUIREMENTS_ADDENDUM §3/§4.
 
 ## 5. Latency instrumentation (brief §3B)
@@ -101,11 +101,12 @@ raphael/
 ## 6. Config surface (`config.yaml`)
 
 ```yaml
-providers: { chain: [zen_free, go, ollama], allow_go_runtime: false, allow_paid_runtime: false,
+profile: cloud_temp                        # TEMPORARY until RAM upgrade; profiles: below holds the local cutover
+providers: { chain: [groq, zen_free], allow_go_runtime: false, allow_paid_runtime: false,
              allow_free_models_for_personal_data: false, model: auto, benchmark_ranking_path: ... }
-local_model: { candidates: [qwen3.5:4b, qwen3.5:9b, qwen3:1.7b, huihui_ai/qwen3-vl-abliterated:4b-instruct],
+local_model: { enabled: false, candidates: [qwen3.5:4b, qwen3.5:9b, qwen3:1.7b, huihui_ai/qwen3-vl-abliterated:4b-instruct],
                text: auto, vision: auto, keep_alive: "5m", vision_keep_alive: "0" }   # slut: EXCLUDED permanently
-voice: { stt_model: small, tts_voice: assets/raphael_reference.wav, wake_word: "raphael", always_listen: true, ptt_hotkey: ... }
+voice: { stt_engine: groq, stt_model: small, tts_voice: assets/raphael_reference.wav, wake_word: "raphael", always_listen: true, ptt_hotkey: ... }
 jobs: { max_concurrent: 8, gui_steps_cap: 25, local_concurrency: 1 }
 safety: { confirm_actions: [delete, send_message, purchase, password, system_settings, install, make_public_repo],
           failsafe_corner: true, kill_switch_hotkey: ..., pause_persist: true }
@@ -120,7 +121,7 @@ Secrets ONLY in `.env` (`OPENCODE_API_KEY`, `GITHUB_TOKEN`, token paths) — chm
 | Failure | Recovery owner | Behavior |
 |---|---|---|
 | Brain crash | Supervisor (backoff, cap→orb error) | task journal replay → report interrupted jobs, **ask before resume** |
-| Ollama crash/hang | Brain (`systemctl restart ollama` via interop) + router failover to cloud | spoken notice; OOM → unload vision → smaller model/context → report |
+| Ollama crash/hang (profile local — cloud_temp never runs Ollama) | Brain (`systemctl restart ollama` via interop) + router failover to cloud | spoken notice; OOM → unload vision → smaller model/context → report |
 | Body crash | Brain via `powershell.exe` relaunch | orb unaffected; Body reconnects |
 | WSL VM idle-stop / `wsl --shutdown` | Supervisor keep-alive + wake; restart chain | orb `reconnecting` → `starting` → normal |
 | Sleep/resume, network change | Brain resume hook: re-verify WSL/Ollama/audio/providers/WS, re-warm TTS+router, reconnect | cloud unreachable = normal state (failover + brief notice) |

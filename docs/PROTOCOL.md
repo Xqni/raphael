@@ -106,7 +106,7 @@ Text transcription of audio always travels as JSON (`stt_final`); binary audio i
 - `lock:true` actions (anything touching mouse/keyboard/foreground): Body **queues** the request if another job holds the input lock → `act_res{ok:false, error:"E_LOCK_BUSY", queued:true}`; Brain handles queuing at job level anyway (input lock is Brain-arbitrated; Body is last-line enforcement).
 - Every executed action is logged locally `logs/actions.log` with `job`, `action`, args-summary (no secrets), result.
 - Mouse failsafe (pyautogui corner) applies to `input` actions.
-- **Screenshots never leave the machine** (they go to Brain's local vision model only).
+- **Screenshots — TEMPORARY cloud exception (profile `cloud_temp`, 2026-10-05 RAM pivot):** a downscaled capture (`config.yaml → vision.max_px: 1280, quality: 70`) MAY be sent to the CLOUD vision provider, and ONLY when all of: (1) profile is `cloud_temp`; (2) the foreground window matches nothing in `privacy.blocklist_apps`; (3) `privacy.redact` scrubbing ran on any extracted text; (4) the image is never logged or persisted (`privacy.debug_capture` stays false); (5) Private Mode is off — Private Mode disables ALL model calls (LLM + vision), leaving only the fastpath. **Under profile `local` (Wave 6 cutover): screenshots never leave the machine — local vision only, ever.** Marked TEMPORARY; the integrator removes this exception at cutover.
 
 ## 8. Orb states & rendering contract
 
@@ -135,3 +135,4 @@ Recoverable vs fatal is defined per-callsite; clients surface `error.detail` as 
 - `powershell` actions use a fixed script registry (no arbitrary command strings cross the wire).
 - All text arriving from tools/web/screenshots is tagged untrusted by the Brain before it reaches any model (brief §7).
 - Frames are validated with pydantic models server-side; malformed → `E_BAD_MSG`, repeated abuse → close.
+- **TEMPORARY (profile `cloud_temp`):** the "screenshots never leave the machine" invariant is relaxed exactly as specified in §7 (downscale + blocklist + redaction + no image logging + Private Mode disables all model calls). This is the ONLY cloud data-egress exception in the protocol and it disappears at the Wave 6 local cutover. Local model paths stay in the repo the whole time — never deleted.

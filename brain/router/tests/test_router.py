@@ -131,14 +131,26 @@ async def test_rate_limiter() -> None:
 
 
 @pytest.mark.asyncio
-async def test_complete_logs_usage() -> None:
+async def test_complete_logs_usage(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Hermetic (integrator glue, 2026-10-05): commit d9095bb replaced the fake-text
+    # stub with a real key check (core.py:290) + urlopen (core.py:299), which broke
+    # this test for anyone without env keys/network. No real key, no real HTTP here.
+    monkeypatch.setenv("OPENCODE_API_KEY", "test-key-not-real")
+    fake_body = json.dumps({
+        "choices": [{"message": {"content": "ack"}}],
+        "usage": {"prompt_tokens": 5, "completion_tokens": 2},
+    }).encode()
+    fake_resp = mock.MagicMock()
+    fake_resp.__enter__.return_value.read.return_value = fake_body
     cfg = _make_config(Path("/tmp"))
     router = init_router(cfg)
     try:
-        res = await complete(provider="zen_free", model="test-model", prompt="hi there", task_kind="test")
+        with mock.patch("urllib.request.urlopen", return_value=fake_resp):
+            res = await complete(provider="zen_free", model="test-model", prompt="hi there", task_kind="test")
         assert isinstance(res, CallResult)
         assert res.ok
         assert res.outcome == Outcome.SUCCESS
+        assert res.text == "ack"
     finally:
         await shutdown_router()
 

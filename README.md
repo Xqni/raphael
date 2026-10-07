@@ -44,7 +44,7 @@ Raphael is configured for **zero-touch startup**. Once installed via `scripts/se
 Run these from their respective environments to verify the current Wave 2 state:
 
 - **Brain Logic:** `cd brain && ./.venv/bin/pytest`
-- **Integration Tests:** `cd tests && ./.venv/bin/pytest`
+- **Integration Tests:** `cd tests && ./.venv/bin/python -m pytest -q .` (conftest puts the repo root on `sys.path`)
 - **Body Control E2E:** `python body/win/e2e_control.py`
 - **Full Wave-2 E2E:** `python tests/e2e_wave2.py` (Requires running stack + muted audio)
 

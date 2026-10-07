@@ -1,8 +1,18 @@
 # Raphael runtime configuration (committed — NO secrets here; secrets live in .env)
 # Schema documented in docs/ARCHITECTURE.md §6. Flat keys; nested by indentation.
+#
+# TEMPORARY PIVOT (2026-10-05, until the user's RAM upgrade — docs/WAVES.md Wave 6 cutover):
+#   profile cloud_temp (CURRENT) = NO local models: no Ollama, no local Whisper, no local vision.
+#     chat + tool calling: Groq -> OpenCode Zen free; STT: Groq Whisper; vision: cloud (PROTOCOL §7
+#     exception); TTS: local Fish-Speech (already installed). Go and paid-pool models stay OFF.
+#   profile local (later) = local-model cutover — see profiles: at the bottom of this file.
+#   Local code paths stay in the repo in BOTH profiles. Never delete them.
+#   Correctness/completeness/polish only — no performance/VRAM/latency optimization work (AGENT_RULES §6).
+profile: cloud_temp
 
 providers:
-  chain: [zen_free, go, ollama]          # ordered failover
+  chain: [groq, zen_free]                # cloud_temp ordered failover (Go/ollama OFF here); profile local -> [zen_free, go, ollama]
+  groq_base_url: https://api.groq.com/openai/v1   # OpenAI-compatible; GROQ_API_KEY from .env — never logged
   allow_go_runtime: false                # user directive: off by default (bills Zen balance past Go limits)
   allow_paid_runtime: false              # paid Zen models never used by Raphael's runtime unless enabled
   allow_free_models_for_personal_data: false   # personal/sensitive-flagged → local model only
@@ -13,6 +23,7 @@ providers:
   benchmark_ranking_path: brain/router/benchmark_ranking.json
 
 local_model:
+  enabled: false                         # cloud_temp: local models OFF (Ollama neither used nor started); profile local flips true
   # User-confirmed exclusions: 'slut' permanently excluded (no tool calling / vision).
   candidates: [qwen3.5:4b, qwen3.5:9b, qwen3:1.7b, huihui_ai/qwen3-vl-abliterated:4b-instruct]
   text: auto                             # picked by `raphael benchmark`; `raphael set-local-model <name>` overrides
@@ -23,7 +34,8 @@ local_model:
   ollama_url: http://127.0.0.1:11434
 
 voice:
-  stt_model: small                       # faster-whisper size (Phase 0 budget)
+  stt_engine: groq                       # cloud_temp: Groq Whisper via router.transcribe(); local: faster-whisper (stt_model)
+  stt_model: small                       # faster-whisper size (local profile)
   stt_device: auto
   tts_voice: assets/raphael_reference.wav   # falls back to default voice + spoken notice if missing
   tts_sample_rate: 24000
@@ -59,6 +71,14 @@ privacy:
   debug_capture: false                   # no screenshot/sensitive logging unless enabled
   blocklist_apps: [1Password, KeePass, Bitwarden, Banking]   # matched foreground → local models only
   redact: [api_key, token, password, card, email, phone]
+
+vision:
+  provider: cloud                        # cloud_temp ONLY (TEMPORARY, PROTOCOL §7/§11): cloud vision. profile local: local Ollama, never cloud.
+  max_px: 1280                           # downscale BEFORE any cloud send
+  quality: 70
+  # Pre-send gates (code-enforced, cloud path only): privacy.blocklist_apps foreground check,
+  # privacy.redact scrubbing, NO image logging/persistence (debug_capture stays false).
+  # Private Mode disables ALL model calls (LLM + vision) -> fastpath only.
 
 github:
   default_visibility: private
@@ -116,4 +136,16 @@ supervisor:
 
 server:
   host: 0.0.0.0                         # WSL NAT localhostForwarding requires it; token auth mandatory (PROTOCOL §1)
-  port: 8765
+  port: 8765                            # main instance; lanes use RAPHAEL_INSTANCE-derived ports (INTERFACES §d)
+
+# Profile overlays — deep-merged over this file per docs/INTERFACES.md §(c).
+# The base values above ALREADY reflect profile: cloud_temp (current effective config),
+# so the cloud_temp overlay is a no-op; profile local is the Wave 6 cutover.
+profiles:
+  cloud_temp: {}
+  local:
+    profile: local
+    providers: { chain: [zen_free, go, ollama] }
+    local_model: { enabled: true }
+    voice: { stt_engine: local }
+    vision: { provider: local }
