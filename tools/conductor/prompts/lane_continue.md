@@ -34,6 +34,11 @@ your existing session) or as the first message of a fresh headless run in your w
 
 ## When your task batch ends
 
+If your inbox contained **no assignment and no WAIT** (nobody told you what to do):
+post `~/.raphael-coord/bin/coord post --lane <L> --type task_done --msg "needs assignment:
+finished with nothing queued"` **before** ending your turn — that wakes the integrator to
+hand you your next task. Never end a work turn silently with an empty inbox.
+
 Run `~/.raphael-coord/bin/coord mode --lane <L>`:
 
 - **`exit`** → the conductor is running and will ping you when there is work. Simply end

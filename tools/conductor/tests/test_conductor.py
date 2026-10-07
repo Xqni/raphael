@@ -231,6 +231,58 @@ class TestTimeout(CBase):
         self.assertIn("timeout", self.attn())
 
 
+class TestSweep(CBase):
+    """Backstop: stranded lane (adopted + wave-active + EMPTY inbox + no pending events)
+    wakes the integrator; settled or standby lanes never do."""
+
+    def _strand(self, lane="voice", inbox_empty=True, role="active"):
+        st = self.st()
+        st["lanes"][lane]["wave_role"] = role
+        st["lanes"][lane]["heartbeat"] = time.time()
+        st["conductor_seen_wave"] = st["current_wave"]   # no wave-open noise
+        coord.write_state(self.d, st)
+        if not inbox_empty:
+            coord.main(["reply", "--lane", lane, "--type", "decision",
+                        "--msg", "NEXT TASK: something"])
+
+    def test_stranded_lane_triggers_sweep_wake(self):
+        self.cfg["sweep_s"] = 0.3
+        self._strand(inbox_empty=True, role="active")
+        c = self.mk(dry=True)
+        time.sleep(0.4)          # pass the sweep interval
+        c.tick_once()
+        wakes = [e for e in coord.read_jsonl(c.dry_path) if e["lane"] == "integrator"]
+        self.assertEqual(len(wakes), 1, wakes)
+        self.assertIn("SWEEP", (self.d / "logs" / "conductor.log").read_text())
+
+    def test_no_sweep_when_inbox_settled(self):
+        self.cfg["sweep_s"] = 0.3
+        self._strand(inbox_empty=False, role="active")
+        c = self.mk(dry=True)
+        time.sleep(0.4)
+        c.tick_once()
+        wakes = [e for e in coord.read_jsonl(c.dry_path) if e["lane"] == "integrator"]
+        self.assertEqual(wakes, [])
+
+    def test_no_sweep_for_standby_lane(self):
+        self.cfg["sweep_s"] = 0.3
+        self._strand(inbox_empty=True, role="standby")
+        c = self.mk(dry=True)
+        time.sleep(0.4)
+        c.tick_once()
+        wakes = [e for e in coord.read_jsonl(c.dry_path) if e["lane"] == "integrator"]
+        self.assertEqual(wakes, [])
+
+    def test_sweep_interval_respected(self):
+        self.cfg["sweep_s"] = 600      # long interval
+        self._strand(inbox_empty=True, role="active")
+        c = self.mk(dry=True)
+        c.tick_once()                  # fires once (last_sweep starts at 0)
+        c.tick_once()                  # inside the interval -> must NOT fire again
+        wakes = [e for e in coord.read_jsonl(c.dry_path) if e["lane"] == "integrator"]
+        self.assertEqual(len(wakes), 1, f"sweep fired twice inside one interval: {wakes}")
+
+
 class TestPauseResume(CBase):
     def test_pause_blocks_wake_resume_re_enables(self):
         cond.main(["pause", "infra"])

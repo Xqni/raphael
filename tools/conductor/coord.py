@@ -219,6 +219,8 @@ def envelope(lane: str, etype: str, msg: str, ref, data, wave: int | None = None
 
 def do_notify(text: str, append_attention: bool = True) -> None:
     cd = coord_dir()
+    if os.environ.get("COORD_NOTIFY_NO_APPEND") == "1":
+        append_attention = False   # caller already wrote its own ATTENTION entry
     if os.environ.get("COORD_NO_TOAST") != "1":
         try:
             b64 = base64.b64encode(text.encode()).decode()

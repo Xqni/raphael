@@ -84,7 +84,9 @@ class Conductor:
         with contextlib.suppress(Exception):
             subprocess.run([sys.executable, str(Path(coord.__file__)), "notify",
                             f"RAPHAEL conductor: {msg}"],
-                           env={**os.environ, "COORD_NO_TOAST": os.environ.get("COORD_NO_TOAST", "0")},
+                           env={**os.environ,
+                                "COORD_NOTIFY_NO_APPEND": "1",
+                                "COORD_NO_TOAST": os.environ.get("COORD_NO_TOAST", "0")},
                            capture_output=True, timeout=30)
 
     def _save_children(self) -> None:
@@ -522,6 +524,40 @@ class Conductor:
             self.children.pop(pid, None)
             self._save_children()
 
+    def check_sweep(self, st: dict) -> None:
+        """Backstop against pipeline stalls: if NO events are pending but some lane is
+        adopted, wave-active, unpaused and has an EMPTY inbox (nobody has ever spoken to
+        it), wake the integrator for a board review. Lanes with any inbox content are
+        driven by their own task_done events instead; standby lanes (start conditions)
+        are excluded by wave_role. Runs at most once per sweep_s."""
+        interval = float(self.cfg.get("sweep_s", 600))
+        last = float(st.get("last_sweep", 0) or 0)
+        if now() - last < interval:
+            return
+        st["last_sweep"] = now()
+        if self.integrator_pending(st, self.cd) > 0:
+            return                      # the normal debounced wake handles events
+        if st.get("integrator_wakes_disabled"):
+            return
+        if any(m.get("kind") == "integrator" for m in self.children.values()):
+            return
+        if self.runs_last_hour() >= int(self.cfg.get("runs_per_hour", 12)):
+            return
+        stranded = [
+            lane for lane in LANES
+            if not st["lanes"].get(lane, {}).get("paused")
+            and st["lanes"].get(lane, {}).get("wave_role") == "active"
+            and st["lanes"].get(lane, {}).get("heartbeat")
+            and line_count(self.cd / "inbox" / f"{lane}.jsonl") == 0
+        ]
+        if stranded:
+            self.log(f"SWEEP: stranded lane(s) with empty inbox: {stranded}")
+            # wake through the normal path (ping-primary, headless fallback)
+            sig = ["sweep", int(now())]
+            st["last_wake_signature"] = sig
+            st["wake_misses"] = 0
+            self.wake_integrator(st)
+
     def check_stall(self, st: dict) -> None:
         if not self.cfg.get("api_check", False) or self.dry:
             return
@@ -553,6 +589,7 @@ class Conductor:
         # 2) compute + do all side effects WITHOUT holding the state lock
         self.refresh_from_events(st, self.cd)
         self.check_integrator(st)
+        self.check_sweep(st)
         self.check_wave(st)
         self.reap_children(st)
         self.drain_queue(st)
