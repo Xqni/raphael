@@ -2,7 +2,8 @@
 .env
 
 # Python
-.venv/
+# (patterns without a trailing slash so worktree shared-resource SYMLINKS are ignored too)
+.venv
 venv/
 __pycache__/
 *.pyc
@@ -11,7 +12,7 @@ __pycache__/
 *.egg-info/
 
 # Node / Electron
-node_modules/
+node_modules
 dist/
 out/
 .vite/
@@ -40,8 +41,8 @@ assets/reference/
 assets/orb-reference/
 
 # Wave-2 heavy artifacts (voice stack — weights/envs never in git)
-brain/voice/.venv-fish/
-brain/voice/models/
+brain/voice/.venv-fish
+brain/voice/models
 screenshot_test.jpg
 assets/acks/
-brain/voice/vendor/
+brain/voice/vendor
