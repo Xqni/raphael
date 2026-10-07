@@ -1,0 +1,59 @@
+# CI-heavy — the cloud test battery (keeps the laptop free, user mandate 2026-10-07)
+#
+# Philosophy: the laptop runs ONLY the smallest target while iterating
+# (AGENT_RULES rule 14). Every heavy sweep — full-brain, full-root, multi-suite
+# verification, orb npm gates — runs HERE on demand:
+#     gh workflow run tests-heavy.yml
+# Lanes/integrator: verify big changes with this workflow instead of local
+# pytest batteries. push/PR stays on ci.yml (fast per-commit signal).
+name: tests-heavy
+
+on:
+  workflow_dispatch:          # manual: gh workflow run tests-heavy.yml
+  schedule:
+    - cron: '0 6 * * 1'       # weekly Monday full sweep (cloud minutes, not laptop)
+
+jobs:
+  full-battery:
+    name: Full battery (all suites, one runner)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: tests/requirements.txt
+      - name: Install (no secrets)
+        run: python -m pip install --upgrade pip && pip install -r tests/requirements.txt
+      - name: root + supervisor (tests/run_all)
+        env: { RAPHAEL_INSTANCE: qa-security }
+        run: tests/run_all
+      - name: full brain dir (pytest brain — the 738-test import-hygiene/order battery)
+        env: { RAPHAEL_INSTANCE: qa-security }
+        run: python -m pytest -q brain
+      - name: conformance + contract (explicit, both directions)
+        env: { RAPHAEL_INSTANCE: qa-security }
+        run: python -m pytest -q tests/conformance tests/contract tests/regression tests/resilience
+      - name: core guard
+        run: python tests/core_guard.py
+
+  orb-gates:
+    name: Orb npm gates (node only)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: body/orb
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: body/orb/package-lock.json
+      - name: Install (electron skip — gates are pure node)
+        run: npm ci --ignore-scripts
+      - name: state-machine + orb-diff + wasm-free gates
+        run: npm test
