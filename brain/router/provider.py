@@ -29,6 +29,7 @@ class ChatResult:
     finish: str = "stop"
     usage: dict[str, int] = field(default_factory=lambda: {"input": 0, "output": 0})
     rate_limit: dict[str, Any] = field(default_factory=dict)
+    cost_usd: float | None = None    # provider-reported actual cost, if any
 
     def estimated_tokens(self) -> int:
         return int(self.usage.get("input", 0)) + int(self.usage.get("output", 0))
@@ -41,6 +42,8 @@ class Provider:
     caps: frozenset[str] = frozenset({"chat"})
     key_env: str | None = None
     gated: bool = False               # money gate applies (go/paid pool)
+    paid_selection_ok: bool = False   # vision-only paid slot: paid ids allowed
+                                      # (gated by chain membership + daily cap)
 
     def __init__(self, config: RouterConfig) -> None:
         self.config = config
@@ -93,8 +96,9 @@ class Provider:
     ) -> ModelInfo | None:
         models = await self.discover(force=force)
         # money gate (§7): paid-pool models never enter selection unless
-        # `providers.allow_paid_runtime` is on
-        if not self.config.providers.allow_paid_runtime:
+        # `providers.allow_paid_runtime` is on — or this provider IS the
+        # user-approved vision-only paid slot (gated by chain + daily cap)
+        if not self.paid_models_allowed:
             models = [m for m in models if not m.paid]
         return pick(
             models,
@@ -106,6 +110,16 @@ class Provider:
 
     def supports(self, capability: str) -> bool:
         return capability in self.caps
+
+    @property
+    def paid_models_allowed(self) -> bool:
+        """May this provider put a PAID model into selection?
+
+        Default follows `providers.allow_paid_runtime`; the user-approved
+        vision-only paid slot sets `paid_selection_ok = True` and is gated
+        elsewhere (only present in the vision chain, plus the daily cap).
+        """
+        return self.paid_selection_ok or self.config.providers.allow_paid_runtime
 
     @property
     def cached_models(self) -> list[ModelInfo]:

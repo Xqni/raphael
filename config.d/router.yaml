@@ -25,8 +25,8 @@ router:
     ack: fast
     vision: vision
   # per-provider budgets (requests / tokens per 60 s window)
-  rpm: { groq: 30, zen_free: 12, go: 10, ollama: 60, mock: 100000 }
-  tpm: { groq: 60000, zen_free: 12000, go: 30000, ollama: 200000, mock: 10000000 }
+  rpm: { groq: 30, zen_free: 12, go: 10, go_vision: 10, ollama: 60, mock: 100000 }
+  tpm: { groq: 60000, zen_free: 12000, go: 30000, go_vision: 30000, ollama: 200000, mock: 10000000 }
   # 429/5xx backoff with jitter (retry_after from headers overrides when short)
   max_retries: 2
   backoff_base_s: 0.4
@@ -41,3 +41,10 @@ router:
   # defensive byte cap on cloud vision payloads (caller pre-downscales to
   # vision.max_px / quality — PROTOCOL §7)
   vision_max_bytes: 4000000
+  # vision-only paid slot (USER APPROVAL 2026-10-06, docs/PAID_USAGE.md).
+  # USD per 1M tokens for cost accounting toward providers.vision_paid_daily_cap_usd.
+  # The approved model (`opencode-go/deepseek-v4-flash-vision-exp`) has no listed
+  # price, so the default is the NEAREST LISTED SIBLING upper bound from
+  # docs/MODEL_POLICY.md (deepseek-v4-pro 0.66/1.98) — over-estimating makes the
+  # $1.00/day hard stop trip EARLY. Update when the real price is verified.
+  vision_paid_price_per_mtok: { input: 0.66, output: 1.98 }
