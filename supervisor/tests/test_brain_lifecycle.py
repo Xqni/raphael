@@ -13,8 +13,11 @@ def test_kill_shell_uses_proper_pidfile_plus_legacy_fallback():
     assert shell.index("for f in") < shell.index("rm -f")
     # never a blind kill: the target's cmdline must be uvicorn brain.app
     assert 'grep -qa "uvicorn brain.app"' in shell
-    # pgrep fallback is guarded by the venv-python case match
-    assert 'case "$head" in brain/.venv/bin/python*)' in shell
+    # pgrep fallback guarded for BOTH relative and absolute venv launches
+    assert 'brain/.venv/bin/python*' in shell
+    assert '*/brain/.venv/bin/python*' in shell
+    # Bug G: stale pidfiles are recovered via the real listener (ss -tlnp)
+    assert "ss -tlnp" in shell and ':8765 ' in shell
 
 
 def test_kill_shell_instance_paths():
@@ -103,7 +106,9 @@ def test_supervisor_pidfile_write_and_remove(monkeypatch, tmp_path):
                         lambda inst=None, root=None: target)
     written = sup._write_supervisor_pidfile()
     assert written == target
-    assert target.read_text() == str(__import__("os").getpid())
+    lines = target.read_text().split()
+    assert lines[0] == str(__import__("os").getpid())   # pid first
+    assert any(t.startswith("side=") for t in lines)    # namespace marker (Bug G)
     sup._remove_supervisor_pidfile(target)
     assert not target.exists()
     sup._remove_supervisor_pidfile(None)           # no-op, never raises

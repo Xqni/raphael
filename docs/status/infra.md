@@ -1,6 +1,6 @@
 # infra — status
 
-Updated: 2026-10-06 (Wave 2 complete + coord-bus follow-ups; awaiting merge slot, AGENT_RULES §11/§13)
+Updated: 2026-10-07 (Wave 3 open — P0 Bug G + SPEED implemented, suites green; coord rule §13)
 
 ## Done (Wave 2 — all tasks, commits `0451dba..737e216` on `agent/infra`)
 
@@ -93,6 +93,56 @@ Updated: 2026-10-06 (Wave 2 complete + coord-bus follow-ups; awaiting merge slot
 - Waiting only for the merge slot (merge order: … → orb → **infra** →
   qa-security; voice merged, computer-use + orb ahead) / `wave_open`.
 
+## Wave 3 (current_wave=3 — open 2026-10-07 via coord `wave_open`)
+
+### Done (2026-10-07, branch rebased onto origin/main `66679c8`)
+
+12. **[P0-BugG] pid hygiene / zero-process teardown** —
+    (a) kill shell layered: pidfile → `ss -tlnp` real-listener resolution
+    (cmdline-verified) → guarded pgrep accepting relative AND absolute venv
+    paths; stale pidfiles can no longer make a kill silently no-op.
+    (b) cross-namespace liveness: `_pid_exists` on WSL probes `os.kill`
+    AND `tasklist.exe` (a Windows supervisor is no longer reported "dead"
+    from the WSL CLI); `_verify_windows_supervisor` gates legacy pidfiles
+    (PowerShell CommandLine must match our supervisor or taskkill is
+    REFUSED).
+    (c) supervisor pidfile side marker `side=windows|linux` (legacy
+    single-line still parses).
+    (d) `stop_wsl_side()`: one sh teardown of orb (cwd pinned to this
+    repo's `body/orb`), this instance's relay helper (exact port argv) and
+    keepalive loops + self-verifying survivor report; `raphael stop` now
+    fails unless endpoint-down AND wsl-side clean.
+    (e) orb truth: `launch_orb` adopts an already-running orb (no
+    double-spawn after a manual relaunch) and writes
+    `~/.raphael[/inst]/orb.pid`; the heartbeat resolves the REAL electron
+    pid once per heartbeat (never per tick — Rule 14).
+13. **[SPEED] tight restart loops (Rule 15)** — `backoff_cap` 300 s → 60 s,
+    PERMANENT_ERROR `slow_interval` 60 s → 15 s; probe tick (5 s), backoff
+    base (5 s) and heartbeat (300 s) unchanged. No shared contract pins
+    these numbers (checked PROTOCOL/ARCHITECTURE). Pinned by test.
+14. **qa-security requests answered** — `ollama-profile-gate` DONE (both
+    tripwires XPASS on the rebased tree), `instance-derivation` DONE for
+    the infra slice (residual xfail = `brain/app.py` literal → brain-core).
+
+**Live observation (reported, not touched):** a parent-less WSL keepalive
+loop (`sh -c while :; do sleep 3600; done`, pid 6079/6088, ~59 min,
+no supervisor process) — real-world evidence of Bug G's keepalive leak;
+left in place (another session's process; `stop_wsl_side` now removes this
+class on the next `raphael stop`). No orphans from this session (Rule 14).
+
+### Wave 3 test output (real runs, sequential — Rule 14, 2026-10-07)
+
+- `tests/.venv/bin/python -m pytest supervisor/tests -q` → **82 passed**
+  (Bug G file adds 16: kill-shell layering, cleanup-shell targets, side
+  marker roundtrip, dual-namespace probes, tasklist parsing, side-aware
+  stop incl. refusal path, orb adoption/heartbeat, SPEED defaults)
+- `cd tests && ./.venv/bin/python -m pytest -q .` → **187 passed,
+  9 xfailed, 2 xpassed** (the 2 xpass = qa's ollama tripwires; no failures)
+- `python -m pytest body -q` → **78 passed**
+- `cd brain && ./.venv/bin/pytest -q` → **393 passed, 4 skipped**
+- `python3 supervisor/main.py --selfcheck` → exit 0 ·
+  `scripts/secret-scan.sh` → exit 0 · `bash -n`/`py_compile` → OK
+
 ## Test output (real runs only — 2026-10-06)
 
 - `tests/.venv/bin/python -m pytest tests supervisor/tests -q` → **65 passed**
@@ -125,14 +175,14 @@ Updated: 2026-10-06 (Wave 2 complete + coord-bus follow-ups; awaiting merge slot
 
 ## Next
 
-- **WAIT for the merge slot / `wave_open`** (coord handoff 2026-10-06):
-  merge order is … → orb → **infra** → qa-security; voice already merged,
-  computer-use + orb ahead. Do not start Wave 3 until WAVES.md bumps
-  (AGENT_RULES §11).
-- Wave 3 note for the handoff: supervisor log rotation (5 MB × 3) already
-  exists and is selfcheck-verified — Wave 3 extends rotation to
-  brain/body/orb logs and adds crash reports with last-known state
-  (`/status` snapshot + supervisor's `procs`/backoff state at death).
+- Wave 3 lane list complete (P0-BugG + SPEED + qa request replies).
+  Awaiting the conductor's next ping (`coord mode` → exit regime): post
+  `task_done` now; `wave_done` only when the wave's gate-level exit
+  criteria are called by the integrator (AGENT_RULES §11 — exit criteria
+  are the human's).
+- Carry-over notes for later waves: Wave 3+ rotation/crash-report goal from
+  the old list is superseded by the P0 rewrite above; Wave 4 (resilience
+  scripts, Creative Mode) and Wave 5 (out-of-band rollback) still ahead.
 - Merge-order position: infra merges after `orb`, before `qa-security`
   (WAVES.md). Rebase on latest main at merge time; no conflicts expected
   (only my own paths + docs/requests/* + docs/{lanes,status}/infra.md edited).

@@ -1,5 +1,27 @@
 # qa-security → infra: ollama-profile-gate
-Status: OPEN
+Status: DONE   (infra answered 2026-10-07, head 66679c8)
+
+## Decision (infra, 2026-10-07)
+
+Both items implemented and merged with Wave 2; verified against YOUR
+tripwires on the rebased tree:
+
+- `tests/regression/test_cloudtemp_ollama.py::test_supervisor_gates_ollama_start_on_profile`
+  → **XPASS** (was xfail): `bring_up_wsl()` now consults `active_profile()`
+  (`RAPHAEL_PROFILE` env → config `profile:` → default `cloud_temp`);
+  non-`local` profiles issue ZERO ollama calls — no probe, no start, no
+  pulls/warm — while `profile local` keeps the original start path intact
+  (Wave 6 cutover). Covered again by `supervisor/tests/test_profile_ollama.py`
+  (call-surface assertions).
+- `tests/regression/test_cloudtemp_ollama.py::test_systemd_unit_does_not_want_ollama`
+  → **XPASS**: `brain/raphael-brain.service` dropped `Wants=ollama.service`
+  AND `After=ollama.service` (cleaner than ordering-only; `After=` alone
+  would still be harmless). Profile `local` may re-add via a systemd
+  drop-in (`systemctl edit raphael-brain`) — documented in the unit header,
+  never by editing the unit. `systemd-analyze verify` exit 0.
+
+Please flip the two xfail markers on your side when convenient (they now
+report XPASS); no further work on infra's side.
 
 ## What
 Under profile `cloud_temp` ("no local models — Ollama neither used nor

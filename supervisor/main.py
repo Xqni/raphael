@@ -107,10 +107,15 @@ DEFAULT_CONFIG = {
     "supervisor": {
         "health_url": HEALTH_URL,
         "health_interval": 5.0,     # health loop tick (spec: 5 s)
-        "slow_interval": 60.0,      # PERMANENT_ERROR slow poll (spec: 60 s)
+        "slow_interval": 15.0,      # PERMANENT_ERROR slow poll — 15 s, not 60:
+                                    # Rule 15 SPEED: recovery detection must
+                                    # stay near-instant even after a failure
+                                    # streak (probes, not restarts, detect it)
         "probe_timeout": 3.0,
         "backoff_base": 5.0,        # 5s -> 10s -> 20s ...
-        "backoff_cap": 300.0,       # ... cap 300 s
+        "backoff_cap": 60.0,        # ... cap 60 s (Rule 15: no multi-minute
+                                    # restart limbo in normal operation;
+                                    # was 300 s pre-Wave-3)
         "backoff_max_attempts": 10, # ... max 10 consecutive
         "bringup_timeout": 60.0,    # WSL bring-up poll budget (spec: 60 s)
         "bringup_poll": 5.0,
@@ -591,6 +596,7 @@ def _kill_brain_shell(cfg):
     """
     inst = cfg.get("instance") or inst_mod.instance_name()
     pidfiles = " ".join(inst_mod.wsl_pidfiles(inst))   # tilde-safe: sanitized
+    port = int((cfg.get("paths") or {}).get("brain_port") or 8765)
     return (
         'killed=""; '
         'for f in %s; do '
@@ -598,12 +604,23 @@ def _kill_brain_shell(cfg):
         'if [ -n "$p" ] && [ -r "/proc/$p/cmdline" ] && '
         'grep -qa "uvicorn brain.app" "/proc/$p/cmdline"; then '
         'kill "$p" 2>/dev/null; killed=1; break; fi; done; '
+        # Bug G: pidfiles go stale (dead or recycled pids made the kill a
+        # silent no-op) — resolve the REAL listener via ss -tlnp and verify
+        # its cmdline before killing. Catches systemd/manual launches too
+        # (absolute venv path, missed by the pgrep case below).
+        'if [ -z "$killed" ]; then '
+        'for p in $(ss -tlnp 2>/dev/null | grep ":%d " | grep -o "pid=[0-9]*" '
+        '| cut -d= -f2 | sort -u); do '
+        'if [ -r "/proc/$p/cmdline" ] && '
+        'grep -qa "uvicorn brain.app" "/proc/$p/cmdline"; then '
+        'kill "$p" 2>/dev/null; killed=1; fi; done; fi; '
         'if [ -z "$killed" ]; then '
         'for q in $(pgrep -f "uvicorn brain.app" 2>/dev/null); do '
         'head=$(tr "\\0" " " < /proc/$q/cmdline 2>/dev/null | cut -d" " -f1); '
-        'case "$head" in brain/.venv/bin/python*) kill "$q"; killed=1;; esac; '
+        'case "$head" in brain/.venv/bin/python*|*/brain/.venv/bin/python*) '
+        'kill "$q"; killed=1;; esac; '
         'done; fi; '
-        'rm -f %s; [ -n "$killed" ]' % (pidfiles, pidfiles)
+        'rm -f %s; [ -n "$killed" ]' % (pidfiles, port, pidfiles)
     )
 
 
@@ -638,6 +655,138 @@ def stop_brain(cfg, log):
              % " ".join(wsl_argv(cfg, "systemctl", "stop", unit,
                                  sudo=bool(cfg["paths"].get("wsl_sudo")))))
     return systemctl_action(cfg, log, "stop", unit)
+
+
+def _wsl_cleanup_shell(cfg):
+    """POSIX sh: full WSL-side teardown EXCEPT the brain (stop_brain owns
+    that) + zero-survivor report (Bug G — `raphael stop` must leave ZERO
+    processes on both sides).
+
+    Kills: orb electron/node (identified by cwd = this repo's body/orb —
+    never by bare 'electron', other worktrees' orbs survive), THIS
+    instance's relay helper (scoped by its exact port argv), and the
+    disposable keepalive sleep loops. Also removes the orb wrapper pidfile.
+    Retries the brain-port check briefly so an in-flight SIGTERM settles.
+    Exit 0 = clean; exit 1 + 'SURVIVORS:...' lines = leftovers.
+    """
+    inst = cfg.get("instance") or inst_mod.instance_name()
+    port = int((cfg.get("paths") or {}).get("brain_port") or 8765)
+    backend = inst_mod.relay_backend_port(port)
+    repo = _wsl_path(REPO_ROOT) or str(REPO_ROOT)
+    orb_frag = repo.rstrip("/") + "/body/orb"
+    # $HOME spelling — a QUOTED tilde would never expand in sh
+    orb_pf = inst_mod.wsl_data_dir(inst).replace("~", "$HOME", 1) + "/orb.pid"
+    relay_sig = "wsl-relay.py %d %d" % (backend, port)
+    kill_pass = (
+        'for p in $(pgrep -f "electron|npm start" 2>/dev/null); do '
+        'cwd=$(readlink /proc/$p/cwd 2>/dev/null); '
+        'case "$cwd" in *%s*) kill "$p" 2>/dev/null;; esac; done; '
+        'for p in $(pgrep -f "wsl-relay.py" 2>/dev/null); do '
+        'cmd=$(tr "\\0" " " < /proc/$p/cmdline 2>/dev/null); '
+        'case "$cmd" in *"%s"*) kill "$p" 2>/dev/null;; esac; done; '
+        'for p in $(pgrep -f "while :; do sleep 3600" 2>/dev/null); do '
+        'kill "$p" 2>/dev/null; done; '
+        'rm -f "%s"; '
+    ) % (orb_frag, relay_sig, orb_pf)
+    surv_pass = (
+        'for p in $(pgrep -f "electron|npm start" 2>/dev/null); do '
+        'cwd=$(readlink /proc/$p/cwd 2>/dev/null); '
+        'case "$cwd" in *%s*) surv="$surv orb:$p";; esac; done; '
+        'for p in $(pgrep -f "wsl-relay.py" 2>/dev/null); do '
+        'cmd=$(tr "\\0" " " < /proc/$p/cmdline 2>/dev/null); '
+        'case "$cmd" in *"%s"*) surv="$surv relay:$p";; esac; done; '
+        'for p in $(pgrep -f "while :; do sleep 3600" 2>/dev/null); do '
+        'surv="$surv keepalive:$p"; done; '
+    ) % (orb_frag, relay_sig)
+    return (
+        'surv=""; '
+        '%s'
+        'i=0; while ss -tlnp 2>/dev/null | grep -q ":%d " && [ "$i" -lt 8 ]; '
+        'do sleep 0.5; i=$((i+1)); done; '
+        'ss -tlnp 2>/dev/null | grep -q ":%d " && surv="$surv brainport:%d"; '
+        '%s'
+        'if [ -n "$surv" ]; then echo "SURVIVORS:$surv"; exit 1; fi; '
+        'echo "wsl-side clean"; exit 0'
+        % (kill_pass, port, port, port, surv_pass)
+    )
+
+
+def stop_wsl_side(cfg, log):
+    """Teardown everything WSL-side except the brain; True = clean.
+
+    Runs through wsl.exe from Windows, locally inside WSL. Called by
+    `raphael stop` AFTER stop_brain (brain SIGTERM settles during the
+    script's own port-wait loop)."""
+    shell = _wsl_cleanup_shell(cfg)
+    if IS_WINDOWS and find_wsl():
+        rc, out = wsl_run(cfg, "sh", "-c", shell, timeout=25)
+    else:
+        rc, out = run_cmd(["sh", "-c", shell], timeout=25)
+    for line in [ln for ln in out.splitlines() if ln.strip()]:
+        if line.startswith("SURVIVORS"):
+            log.error("wsl-side leftovers: %s" % line)
+        else:
+            log.info("wsl-side: %s" % line)
+    clean = rc == 0 and "SURVIVORS" not in out
+    if clean:
+        log.info("wsl-side teardown clean (orb/relay/keepalive/brain port)")
+    return clean
+
+
+def _resolve_orb_pid(cfg):
+    """The REAL orb pid inside WSL (Bug G): electron/node whose cwd is THIS
+    repo's body/orb. None = no orb. One wsl round-trip — callers throttle."""
+    repo = _wsl_path(REPO_ROOT) or str(REPO_ROOT)
+    frag = repo.rstrip("/") + "/body/orb"
+    shell = (
+        'for p in $(pgrep -f "electron|npm start" 2>/dev/null); do '
+        'cwd=$(readlink /proc/$p/cwd 2>/dev/null); '
+        'case "$cwd" in *%s*) echo "$p"; break;; esac; done' % frag)
+    if IS_WINDOWS and find_wsl():
+        rc, out = wsl_run(cfg, "sh", "-c", shell, timeout=10)
+    else:
+        rc, out = run_cmd(["sh", "-c", shell], timeout=10)
+    for tok in out.replace("\n", " ").split():
+        if tok.isdigit():
+            return int(tok)
+    return None
+
+
+class _ExternalOrb:
+    """An orb we did NOT spawn is running (Bug G: integrator relaunched it
+    manually). Adopted at bring-up so the supervisor never double-spawns
+    (Electron's single-instance lock would kill the new copy anyway) and
+    the heartbeat can show the truth."""
+
+    def __init__(self, pid, cfg=None):
+        self.pid = int(pid)
+        self.cfg = cfg
+
+    def poll(self):
+        return None                          # adopted snapshot; heartbeat re-resolves
+
+
+def _orb_heartbeat_txt(cfg, procs):
+    """Truthful orb status for the heartbeat (Bug G): the REAL electron pid
+    inside WSL, never the wsl.exe wrapper pid. Costs exactly one wsl
+    round-trip PER HEARTBEAT (default 300 s) — never per health tick
+    (Rule 14 RAM rule, Rule 15 speed: no extra load in normal operation)."""
+    proc = procs.get("orb")
+    real = _resolve_orb_pid(cfg)
+    if isinstance(proc, _ExternalOrb):
+        if real:
+            return "pid=%d (adopted external)" % real
+        return "exited (adopted pid=%d gone)" % proc.pid
+    wrapper = proc.pid if proc is not None and proc.poll() is None else None
+    if real:
+        if wrapper and real != wrapper:
+            return "pid=%d (wsl wrapper pid=%d)" % (real, wrapper)
+        return "pid=%d" % real
+    if wrapper:
+        return "wrapper pid=%d (electron unresolved)" % wrapper
+    if proc is None:
+        return "not launched"
+    return "exited (wrapper pid=%s rc=%s)" % (proc.pid, proc.poll())
 
 
 def restart_brain(cfg, log, procs=None):
@@ -859,7 +1008,18 @@ def launch_orb(cfg, log):
     The orb runs INSIDE WSL (start script = Linux-only `VAR=val electron`
     syntax + the WSLg window). Windows-side `npm start` used to die with no
     output, so the orb only ever appeared when a dev instance was up.
+
+    Bug G (Wave 3): first resolve whether an orb is ALREADY running (e.g.
+    relaunched manually during the live gate) and ADOPT it — a second copy
+    would lose Electron's single-instance lock while the supervisor tracked
+    a dead wrapper pid. The inner shell also writes
+    `~/.raphael[/instance]/orb.pid` so teardown can verify the real thing.
     """
+    existing = _resolve_orb_pid(cfg)
+    if existing:
+        log.info("orb: existing instance adopted (real pid=%d) — not "
+                 "spawning a second copy (Bug G)" % existing)
+        return _ExternalOrb(existing, cfg)
     orb_dir = _resolve(cfg["paths"].get("orb_dir") or "body/orb")
     if not (orb_dir / "package.json").is_file():
         log.warn("orb not ready — %s/package.json missing (owned by orb-dev); "
@@ -882,9 +1042,6 @@ def launch_orb(cfg, log):
     # RAPHAEL_ORB_TOKEN: the orb refuses to connect without it (config.js
     # token=null -> silent offline ALL DAY in production). The $(cat ...) is
     # expanded INSIDE the inner shell — the token never appears in any argv.
-    # RAPHAEL_ORB_TOKEN: the orb refuses to connect without it (config.js
-    # token=null -> silent offline ALL DAY in production). The $(cat ...) is
-    # expanded INSIDE the inner shell — the token never appears in any argv.
     # Instance triple (approved pc-control request): RAPHAEL_INSTANCE +
     # RAPHAEL_PORT + RAPHAEL_TOKEN_PATH, the last picked by EXISTENCE
     # (instance token first, shared main token fallback — WSL-side paths).
@@ -896,9 +1053,10 @@ def launch_orb(cfg, log):
                      "tp=%s/token; [ -f \"$tp\" ] || tp=$HOME/.raphael/token; "
                      "export RAPHAEL_TOKEN_PATH=\"$tp\"; "
                      "export RAPHAEL_ORB_TOKEN=$(cat \"$tp\" 2>/dev/null); "
+                     "echo $$ > %s/orb.pid; "
                      "cd %s && exec %s"
                      % (shlex.quote(inst), port, data_dir_home,
-                        shlex.quote(wsl_dir), wsl_cmd))
+                        data_dir_home, shlex.quote(wsl_dir), wsl_cmd))
     return _spawn(inner, orb_dir, log, "orb", inst_mod.log_path("orb"))
 
 
@@ -1750,14 +1908,12 @@ def run_health_loop(cfg, log, hooks, procs):
                               "body comes back" % (attempts, slow))
 
         # ---- heartbeat (only when healthy; never token, never secrets) ---
-        orb = procs.get("orb")
-        orb_txt = ("pid=%s" % orb.pid
-                   if orb is not None and orb.poll() is None
-                   else "not launched")
         if (not perm_brain and not perm_body and state != "down"
                 and bstate == "running" and now >= heartbeat_at):
+            # Bug G: resolve the REAL orb pid here (one wsl round-trip per
+            # heartbeat), not the wsl.exe wrapper — never every tick.
             log.info("healthy heartbeat — brain=%s body=running orb=%s"
-                     % (state, orb_txt))
+                     % (state, _orb_heartbeat_txt(cfg, procs)))
             heartbeat_at = now + heartbeat_iv
 
     while not hooks.stop_event.is_set():
@@ -2042,6 +2198,111 @@ def parse_args(argv=None):
     return parser.parse_args(argv)
 
 
+# --------------------------------------------------------------------------
+# Pid liveness across sides (Bug G, Wave 3): WSL and Windows have SEPARATE
+# pid namespaces — `os.kill` on a Windows pid from inside WSL says "dead"
+# while the process lives (that made `raphael stop` call a live supervisor
+# dead), and vice versa pidfiles can go stale across restarts.
+# --------------------------------------------------------------------------
+def _on_wsl() -> bool:
+    """True when running inside WSL (Linux with the Microsoft kernel tag)."""
+    if IS_WINDOWS:
+        return False
+    if os.environ.get("WSL_DISTRO_NAME") or os.environ.get("WSL_INTEROP"):
+        return True
+    try:
+        with open("/proc/sys/kernel/osrelease", "r") as fh:
+            return "microsoft" in fh.read().lower()
+    except OSError:
+        return False
+
+
+def _windows_pid_alive(pid) -> bool:
+    """Is `pid` a live WINDOWS process? Checked from WSL via tasklist.exe
+    interop (never os.kill — wrong namespace). False when tasklist itself
+    is unavailable (caller decides how to report 'unknown')."""
+    try:
+        proc = subprocess.run(
+            ["tasklist.exe", "/FI", "PID eq %d" % int(pid), "/NH"],
+            capture_output=True, timeout=10)
+    except (OSError, subprocess.SubprocessError, ValueError):
+        return False
+    out = _decode(proc.stdout) + _decode(proc.stderr)
+    if proc.returncode != 0:
+        return False
+    # alive: "name.exe   1234 Console   ..."  dead: "INFO: No tasks..."
+    return ("No tasks" not in out) and (str(pid) in out.split())
+
+
+def _linux_pid_exists(pid) -> bool:
+    """POSIX-namespace probe only (os.kill is meaningless across the
+    WSL/Windows pid boundary — see _pid_exists)."""
+    try:
+        os.kill(int(pid), 0)
+        return True
+    except (OSError, ValueError):
+        return False
+
+
+def _pid_exists(pid: int) -> bool:
+    """Side-correct liveness. On WSL a pid MAY be either a local Linux pid
+    (degraded supervisor/CLI runs inside WSL) or a Windows pid (the real
+    Windows supervisor) — probe both namespaces; a hit in EITHER is alive."""
+    pid = int(pid)
+    if IS_WINDOWS:
+        PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+        h = ctypes.windll.kernel32.OpenProcess(
+            PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+        if h:
+            ctypes.windll.kernel32.CloseHandle(h)
+            return True
+        return False
+    if _on_wsl():
+        if _linux_pid_exists(pid):
+            return True                      # local Linux pid
+        return _windows_pid_alive(pid)       # maybe the Windows supervisor
+    return _linux_pid_exists(pid)
+
+
+# --------------------------------------------------------------------------
+# Supervisor pidfile with a side marker: content = "<pid>\nside=<windows|linux>"
+# (Bug G: a bare pid is ambiguous across the WSL/Windows boundary — the
+# marker says which namespace to probe/kill in. Legacy single-line files
+# still parse: side=None -> caller probes conservatively.)
+# --------------------------------------------------------------------------
+def write_supervisor_pidfile(pid, side=None):
+    path = inst_mod.supervisor_pidfile()
+    side = side or ("windows" if IS_WINDOWS else "linux")
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("%d\nside=%s\n" % (int(pid), side), encoding="utf-8")
+        return path
+    except OSError as exc:
+        sys.stderr.write("supervisor: pidfile %s not written: %s\n"
+                         % (path, exc))
+        return None
+
+
+def read_supervisor_pidfile():
+    """-> (pid:int|None, side:'windows'|'linux'|None, path, stale:bool)."""
+    path = inst_mod.supervisor_pidfile()
+    try:
+        raw = path.read_text(encoding="utf-8", errors="replace").split()
+    except OSError:
+        return None, None, path, False
+    if not raw:
+        return None, None, path, True
+    try:
+        pid = int(raw[0])
+    except ValueError:
+        return None, None, path, True          # corrupt -> stale
+    side = None
+    for tok in raw[1:]:
+        if tok.startswith("side="):
+            side = tok.split("=", 1)[1].strip() or None
+    return pid, side, path, False
+
+
 def _write_supervisor_pidfile():
     """run/supervisor[_<instance>].pid — lets `raphael stop` find us.
 
@@ -2049,16 +2310,7 @@ def _write_supervisor_pidfile():
     before this and must never clobber the live supervisor's pidfile).
     Best effort: failure is logged, never fatal.
     """
-    path = inst_mod.supervisor_pidfile()
-    try:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(str(os.getpid()), encoding="utf-8")
-        return path
-    except OSError as exc:
-        LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
-        sys.stderr.write("supervisor: pidfile %s not written: %s\n"
-                         % (path, exc))
-        return None
+    return write_supervisor_pidfile(os.getpid())
 
 
 def _remove_supervisor_pidfile(path):
