@@ -563,6 +563,9 @@ async def _observe(d: Deps, cfg: VisionConfig, gate: CloudVisionGate,
     # UIA insufficient -> pixel path, remaining PROTOCOL §7 gates.
     if not vision_allowed:
         return Observation.refused(fg_str, gate.check_profile().reason)
+    decision = gate.check_debug_capture()   # §7(4) before ANY screenshot
+    if not decision.ok:
+        return Observation.refused(fg_str, decision.reason)
     try:
         data = await gateway.screenshot(cfg.max_px, cfg.quality)
     except Exception as e:       # noqa: BLE001 — unreachable capture (Bug F class)

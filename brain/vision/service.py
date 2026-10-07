@@ -59,6 +59,11 @@ async def capture_screen(gateway: Any, gate: CloudVisionGate,
     quality) -> bytes` (both async; a returned None = unverifiable = closed).
     """
     cfg = config or gate.config
+    # §7(4) at the egress point itself (defense in depth — see_screen checks
+    # earlier to skip the pointless capture; this covers any other caller).
+    decision = gate.check_debug_capture()
+    if not decision.ok:
+        raise GateRefused(decision)
     try:
         title = await gateway.foreground_window()
     except Exception as e:       # noqa: BLE001 — unreachable != unverifiable
@@ -101,6 +106,12 @@ async def see_screen(question: str, *, gateway: Any,
 
     # 2. profile legality (cloud ONLY under cloud_temp).
     decision = g.check_profile()
+    if not decision.ok:
+        return decision.reason
+
+    # 2b. §7(4): cloud send requires privacy.debug_capture false (in code,
+    # not assumed — qa-security vision-gate request item 4).
+    decision = g.check_debug_capture()
     if not decision.ok:
         return decision.reason
 

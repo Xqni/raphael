@@ -33,6 +33,7 @@ E_NO_FOREGROUND = "E_NO_FOREGROUND"
 E_TOO_LARGE = "E_TOO_LARGE"
 E_EMPTY_IMAGE = "E_EMPTY_IMAGE"
 E_UNREACHABLE = "E_UNREACHABLE"   # Body/probe unreachable — NOT a privacy verdict
+E_DEBUG_CAPTURE = "E_DEBUG_CAPTURE"  # §7(4): cloud send needs debug_capture false
 
 
 @dataclass(frozen=True)
@@ -139,6 +140,22 @@ class CloudVisionGate:
                 E_TOO_LARGE,
                 "The screenshot is larger than the size limit or unreadable — "
                 "refusing to send it.")
+        return Decision.allow()
+
+    # ---- 4. debug capture (PROTOCOL §7 condition (4)) -----------------------
+    def check_debug_capture(self) -> Decision:
+        """Cloud egress requires `privacy.debug_capture: false` (the image is
+        never logged/persisted). Enforced IN CODE, never assumed — qa-security
+        request …__vision-gate.md item 4. Local vision (profile local) is
+        unaffected: the image never leaves the machine either way."""
+        cfg = self.config
+        if cfg.provider != "cloud":
+            return Decision.allow()
+        if cfg.debug_capture:
+            return Decision.deny(
+                E_DEBUG_CAPTURE,
+                "Screenshot debugging is on — screenshots stay on this "
+                "machine.")
         return Decision.allow()
 
     # ---- 7. redaction -------------------------------------------------------

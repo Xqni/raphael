@@ -22,7 +22,7 @@ Wave 2 is MERGED; live gate was 3/5 — evidence + bug dossiers: `docs/BUGS-WAVE
 
 Wave 3 is MERGED + **GATE PASSED** (tag `wave-3-gate`, all six criteria live, acoustic voice included). Wave-4 theme per WAVES.md: hardening, resilience tests, audit fixes, crash recovery, evolution infrastructure. Rule 15 speed mandate still binds.
 
-- [ ] Observation hardening: UIA crash recovery, blocklist bypass attempt suite (privacy audit), foreground-probe failure matrix (locked/hidden/vanished windows), screenshot redaction re-verify.
+- [x] Observation hardening: UIA crash recovery, blocklist bypass attempt suite (privacy audit), foreground-probe failure matrix (locked/hidden/vanished windows), screenshot redaction re-verify. — `test_hardening.py` ×2 (19 tests): UIA crash → gated-vision recovery (+ debug-capture/body-gone variants); **process-field bypass closed** (`foreground_window()` now returns `title | process` composite, zero-identity window = fail-closed None); probe matrix (timeout/no-session/malformed/vanished → E_UNREACHABLE vs E_NO_FOREGROUND at runner AND service level); redaction re-verify (all 6 kinds in vision answers, UIA trees, action feedback). Plus qa-security vision-gate item 4: `gate.check_debug_capture()` (§7(4) enforced in code) — request flipped DONE with evidence.
 
 ## Later waves
 - Per docs/WAVES.md — do not start early (AGENT_RULES §11).
