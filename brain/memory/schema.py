@@ -105,4 +105,25 @@ def migrate(conn) -> None:
     )
     ''')
 
-    # (Wave-3 task 3 adds: schedules — same additive pattern.)
+    # --- schedules (timers / reminders / recurring) --------------------------
+    # due_at is INTEGER epoch; recurring rows stay 'pending' and advance
+    # due_at after each fire; attempts/last_error make failed fires visible.
+    cur.execute('''
+    CREATE TABLE IF NOT EXISTS schedules (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        kind TEXT NOT NULL,                    -- timer | reminder | recurring
+        due_at INTEGER NOT NULL,
+        label TEXT NOT NULL DEFAULT '',
+        pattern TEXT,                          -- 'every 30m' | 'daily 08:00'
+        payload TEXT NOT NULL DEFAULT '',      -- text submitted on fire
+        status TEXT NOT NULL DEFAULT 'pending',-- pending | fired | cancelled | error
+        attempts INTEGER NOT NULL DEFAULT 0,
+        last_error TEXT,
+        created_at INTEGER NOT NULL,
+        fired_at INTEGER
+    )
+    ''')
+    cur.execute('''
+    CREATE INDEX IF NOT EXISTS idx_schedules_due
+    ON schedules(status, due_at)
+    ''')

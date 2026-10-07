@@ -35,11 +35,19 @@ def _clean_state():
         conversation.shutdown(timeout=2.0)
         conversation.clear_turns()
         summary.clear_summaries()
+        try:                                  # schedule pump: no orphan threads
+            from brain.tools import schedule as _sc
+            _sc.disarm()
+            _sc._state['submit_fn'] = None
+            _sc._state['loop'] = None
+        except Exception:  # noqa: BLE001
+            pass
         conn = get_conn()
         try:
             conn.execute('DELETE FROM memories')
             conn.execute('DELETE FROM skills_index')
             conn.execute('DELETE FROM plugins_index')
+            conn.execute('DELETE FROM schedules')
             conn.commit()
         finally:
             conn.close()
