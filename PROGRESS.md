@@ -488,3 +488,7 @@ live_e2e=false) when wanted.
 - **router wave-4 merged** (position 1): resilience suite (429/5xx/breaker/network-drop/
   exhaustion), crash-safe usage logging, 2 qa requests closed with evidence. 144 router
   tests (+24), core guard OK.
+- **brain-core wave-4 merged** (position 2, $MERGED): journal replay hardening, kill-safety
+  matrix + engine.shutdown speech-kill FIX, outage drills, lock stress. infra wave_done
+  queued@7 (corrected my position mislabel), orb fps-audit approved with isolation
+  conditions (mock-brain, separate instance, kill-verify).
