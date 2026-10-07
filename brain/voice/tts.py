@@ -226,7 +226,8 @@ class FishSpeechServer:
         self.proc: Optional[subprocess.Popen] = None
         self._starting: Optional[asyncio.Task] = None
         self.base = f"http://{cfg.fish_host}:{cfg.fish_port}"
-        self.log_path = _LOG_DIR / "fish_server.log"
+        self.log_dir = cfg.log_dir                # instance-derived (INTERFACES §d)
+        self.log_path = self.log_dir / "fish_server.log"
         self.last_error: Optional[str] = None
         self.startup_ms: Optional[float] = None
 
@@ -259,7 +260,7 @@ class FishSpeechServer:
                "--device", device]
         if device == "cuda":
             cmd.append("--half")
-        _LOG_DIR.mkdir(parents=True, exist_ok=True)
+        self.log_dir.mkdir(parents=True, exist_ok=True)
         logf = open(self.log_path, "ab")  # noqa: SIM115 — lives with subprocess
         env = dict(os.environ)
         env.setdefault("HF_HUB_OFFLINE", "1")   # weights are local
