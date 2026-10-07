@@ -221,7 +221,19 @@ def test_vision_error_maps_to_code():
     assert out == "Vision is unavailable right now (E_PROVIDER_429)."
 
 
-def test_missing_router_seam_degrades():
+def test_missing_router_seam_degrades(monkeypatch):
+    """Seam absent -> ImportError branch -> E_OFFLINE, environment-independent.
+
+    Found by the tests-heavy cloud run (37702802093): with vision_fn=None the
+    lazy `from brain.router import vision` SUCCEEDED and the real router ran —
+    keyed boxes happened to return E_OFFLINE, keyless CI returned
+    E_PROVIDER_AUTH. The intent is the MISSING-SEAM branch, so simulate it
+    exactly: a brain.router module without the vision attr (no network, no
+    keys, identical on every runner)."""
+    import sys
+    import types
+    fake_router = types.ModuleType("brain.router")  # deliberately no vision attr
+    monkeypatch.setitem(sys.modules, "brain.router", fake_router)
     out = run(see_screen("q", gateway=FakeGateway(), config=cfg(),
                          gate=CloudVisionGate(cfg()), vision_fn=None,
                          is_private=lambda: False))
