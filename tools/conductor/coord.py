@@ -89,7 +89,7 @@ def write_cursors(cd: Path, cursors: dict) -> None:
 CONDUCTOR_TOP_KEYS = {
     "conductor_seen_wave", "wave_launches", "run_queue",
     "integrator_pending_since", "last_wake_signature", "wake_misses",
-    "last_sweep", "integrator_wakes_disabled",
+    "integrator_wake_ts", "last_sweep", "integrator_wakes_disabled",
 }
 CONDUCTOR_LANE_KEYS = {
     "heartbeat", "last_activity", "last_event_type", "session_id",

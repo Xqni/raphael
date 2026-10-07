@@ -183,6 +183,7 @@ class TestFailureCaps(CBase):
 class TestLoopGuard(CBase):
     def test_two_unadvanced_wakes_disable_integrator(self):
         coord.main(["post", "--lane", "infra", "--type", "error", "--msg", "boom"])
+        self.cfg["wake_grace_s"] = 0.15   # patient guard, sped up for the test
         c = self.mk(dry=False)      # integrator_cmd = /bin/true (runs, cursor never advances)
         disabled = False
         for _ in range(12):
@@ -203,6 +204,20 @@ class TestLoopGuard(CBase):
         launches2 = [r for r in coord.read_jsonl(self.d / "logs" / "runs.jsonl")
                      if r.get("kind") == "integrator"]
         self.assertEqual(len(launches2), n)
+
+
+class TestPatientGuard(CBase):
+    def test_no_miss_within_grace_window(self):
+        coord.main(["post", "--lane", "infra", "--type", "error", "--msg", "boom"])
+        self.cfg["wake_grace_s"] = 600   # long grace
+        c = self.mk(dry=False)
+        for _ in range(6):
+            c.tick_once()
+            time.sleep(0.05)
+        st = self.st()
+        self.assertEqual(st.get("wake_misses", 0), 0,
+                         "guard counted a miss inside the grace window")
+        self.assertFalse(st.get("integrator_wakes_disabled"))
 
 
 class TestTimeout(CBase):

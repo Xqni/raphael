@@ -73,5 +73,7 @@
  "ping_msg": "coord wake: read ~/.raphael-coord/inbox/{lane}.jsonl (your inbox) and ~/.raphael-coord/prompts/lane_continue.md, then continue your work loop from docs/WAVES.md + docs/lanes/{lane}.md. Rebase on main first. Report via coord.",
  "sweep_s": 600,
  "_sweep": "stranded-lane backstop: adopted + wave-active + empty inbox + no pending events -> board-review wake",
- "_model_note": "user directive 2026-10-06: Go models for anything needing an LLM (nothing local until RAM upgrade)"
+ "_model_note": "user directive 2026-10-06: Go models for anything needing an LLM (nothing local until RAM upgrade)",
+ "wake_grace_s": 600,
+ "_guard_note": "patient loop guard: grace per wake attempt, 1 re-ping, then escalate (interactive turns take minutes)"
 }

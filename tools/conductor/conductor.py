@@ -419,15 +419,31 @@ class Conductor:
         sig = list(tuple(read_cursors(self.cd).get(l, 0) for l in LANES) + (pending,))
         # NOTE: compare as list — tuples round-trip through JSON as lists
         if st.get("last_wake_signature") == sig:
-            if not self.dry:   # dry wakes never execute; only real runs count
-                st["wake_misses"] = int(st.get("wake_misses", 0)) + 1
-                if st["wake_misses"] >= 2:
-                    st["integrator_wakes_disabled"] = True
-                    self.attention("loop guard: integrator woke twice without advancing the "
-                                   "event cursor — wakes disabled until a human resets")
+            # unchanged since the wake attempt. Interactive ping-turns legitimately
+            # take MINUTES (observed: guard tripped 30s after successful pings) —
+            # wait out wake_grace_s first, re-ping once, escalate only after that.
+            grace = float(self.cfg.get("wake_grace_s", 600))
+            wake_ts = float(st.get("integrator_wake_ts", 0) or 0)
+            if wake_ts and now() - wake_ts < grace:
+                return                      # wake in flight — be patient
+            if self.dry:
+                return                      # dry wakes never execute; no counting
+            st["wake_misses"] = int(st.get("wake_misses", 0)) + 1
+            if st["wake_misses"] >= 2:
+                st["integrator_wakes_disabled"] = True
+                self.attention(
+                    "loop guard: integrator did not advance the event cursor after two "
+                    f"patient wake attempts ({int(grace)}s grace each) — wakes disabled "
+                    "until a human resets")
+                return
+            st["integrator_wake_ts"] = now()
+            self.log(f"integrator wake: no cursor advance after {int(grace)}s grace — "
+                     f"re-ping (miss {st['wake_misses']}/2)")
+            self.wake_integrator(st)
             return
         st["last_wake_signature"] = sig
         st["wake_misses"] = 0
+        st["integrator_wake_ts"] = now()
         self.wake_integrator(st)
 
     def check_wave(self, st: dict) -> None:
@@ -507,7 +523,9 @@ class Conductor:
             if meta["kind"] == "integrator":
                 if code == 0:
                     self.log(f"integrator handler exited 0 ({round(now() - meta['start'], 1)}s)")
-                    st["wake_misses"] = 0
+                    # NOTE: wake_misses is NOT reset here — only an actual cursor
+                    # advance (sig change in check_integrator) proves the wake worked;
+                    # resetting on exit 0 let a no-op handler loop forever.
                 else:
                     self.attention(f"integrator handler failed (exit {code}) — see {meta.get('log')}")
             elif meta["kind"] == "lane":
@@ -559,6 +577,7 @@ class Conductor:
             sig = ["sweep", int(now())]
             st["last_wake_signature"] = sig
             st["wake_misses"] = 0
+            st["integrator_wake_ts"] = now()
             self.wake_integrator(st)
 
     def check_stall(self, st: dict) -> None:
@@ -710,7 +729,8 @@ def cmd_status(args) -> int:
     if (cd / "STOP").exists():
         print("  STOP file: PRESENT (kill switch armed — start will refuse)")
     st = read_state(cd)
-    pending = sum(max(0, line_count(cd / "events" / f"{l}.jsonl") - st["cursors"].get(l, 0))
+    cursors = read_cursors(cd)
+    pending = sum(max(0, line_count(cd / "events" / f"{l}.jsonl") - cursors.get(l, 0))
                   for l in LANES)
     print(f"  wave={st['current_wave']} conductor_seen_wave={st.get('conductor_seen_wave')} "
           f"pending_events={pending}")
