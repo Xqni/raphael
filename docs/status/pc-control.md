@@ -95,7 +95,7 @@ $ cd body/win && python3 -c "import ws_client, actions; print(len(actions.action
 
 Honest note: ONE earlier run of the brain suite reported `1 failed, 69 passed`
 before any name could be captured (the `.pytest_cache/lastfailed` was cleared
-by the next green run). The identical sequence was then repeated9 times — all
+by the next green run). The identical sequence was then repeated 9 times — all
 `70 passed`, `lastfailed = {}`. The pc-control tests (88) were green in every
 single run; the transient sits in the pre-existing brain suite (timing-class),
 not in this lane's tests. Re-run `pytest brain` if it reappears and report the
