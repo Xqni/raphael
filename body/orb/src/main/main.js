@@ -520,6 +520,59 @@ function popupOrbMenu() {
   if (win && !win.isDestroyed()) menu.popup({ window: win });
 }
 
+// ---------------------------------------------------------------------------
+// Wave 5 — live palette reload. A persona.tier switch edits
+// config.d/evolution-persona.yaml; the orb must re-skin WITHOUT a restart
+// (evolution-persona__to__orb__ciel-gold-palette.md requirement 2).
+// Stat the config files at most once a second, on orb_state transitions — a
+// stat is ~1µs and the read only happens when a mtime actually changed.
+// ---------------------------------------------------------------------------
+const CONFIG_ROOT = path.join(__dirname, '..', '..', '..', '..');
+const CONFIG_SOURCES = [path.join(CONFIG_ROOT, 'config.yaml'), path.join(CONFIG_ROOT, 'config.d')];
+let lastPaletteCheck = 0;
+let lastConfigSig = null;
+
+function configSignature() {
+  const parts = [];
+  try {
+    for (const p of CONFIG_SOURCES) {
+      const st = fs.statSync(p);
+      parts.push(`${p}:${st.mtimeMs}`);
+      if (st.isDirectory()) {
+        for (const f of fs.readdirSync(p).sort()) {
+          if (!/\.ya?ml$/.test(f)) continue;
+          parts.push(`${f}:${fs.statSync(path.join(p, f)).mtimeMs}`);
+        }
+      }
+    }
+  } catch (e) { return null; }
+  return parts.join('|');
+}
+
+function maybePushPalette() {
+  const now = Date.now();
+  if (now - lastPaletteCheck < 1000) return;
+  lastPaletteCheck = now;
+  const sig = configSignature();
+  if (!sig) return;
+  if (lastConfigSig === null) { lastConfigSig = sig; return; }
+  if (sig === lastConfigSig) return;
+  lastConfigSig = sig;
+  try {
+    config = new Config();
+    if (win && !win.isDestroyed()) {
+      win.webContents.send('orb-palette', {
+        theme: config.theme, personaTier: config.personaTier,
+        vibrance: config.vibrance, themeTokens: config.themeTokens,
+      });
+    }
+    updateTrayMenu();
+    console.log(`[orb] config changed -> palette re-resolved (theme=${config.theme} tier=${config.personaTier})`);
+  } catch (e) {
+    console.error('[orb] palette reload failed:', e && e.message);
+  }
+}
+
 function setupIPC() {
   ipcMain.on('orb-input', (_evt, msg) => {
     statusWS && statusWS.sendOrbInput(msg);
@@ -574,6 +627,7 @@ function startStatusWS() {
       win.webContents.send('orb-state', statusWS.getOrbState());
     }
     updateTrayMenu();
+    maybePushPalette();   // Wave 5: catches a persona.tier switch (throttled)
   });
   statusWS.on('subtitle', (t) => {
     if (win && !win.isDestroyed()) {

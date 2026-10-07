@@ -9,6 +9,7 @@ contextBridge.exposeInMainWorld('raphael', {
   onJobs: (cb) => ipcRenderer.on('orb-jobs', (_e, j) => cb(j)),
   onAnswer: (cb) => ipcRenderer.on('answer', (_e, a) => cb(a)),
   onReport: (cb) => ipcRenderer.on('report', (_e, r) => cb(r)),
+  onPalette: (cb) => ipcRenderer.on('orb-palette', (_e, p) => cb(p)),
   onJobList: (cb) => ipcRenderer.on('job-list', (_e, jobs) => cb(jobs)),
   onGlide: (cb) => ipcRenderer.on('orb-glide', (_e, g) => cb(g)), // velocity feed for lag/blur
   sendOrbInput: (msg) => ipcRenderer.send('orb-input', msg),

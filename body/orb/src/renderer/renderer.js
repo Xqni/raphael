@@ -2,10 +2,10 @@ import * as THREE from 'three';
 import { vertexShader, sphereVert } from './shaders/vertex.glsl.js';
 import { fragmentShader, glowShader } from './shaders/fragment.glsl.js';
 import { blurVert, blurFrag } from './shaders/blur.glsl.js';
-import { initSageCore, updateSageCore, lockSageCore, projectShape } from './sagecore.js';
-import { initAnswerMode, updateAnswerMode, lockAnswerMode } from './answermode.js';
+import { initSageCore, updateSageCore, lockSageCore, projectShape, applySagePalette } from './sagecore.js';
+import { initAnswerMode, updateAnswerMode, lockAnswerMode, applyAnswerPalette } from './answermode.js';
 import { initDataRings, updateDataRings, lockDataRings } from './datarings.js';
-import { initJobDots, updateJobDots, lockJobDots } from './jobdots.js';
+import { initJobDots, updateJobDots, lockJobDots, applyJobPalette } from './jobdots.js';
 import { resolvePalette } from './palette.js';
 import { makeMorphTarget, MORPH_SHAPES, BASE_VERTEX_COUNT } from './morphtargets.js';
 import { createGlRecovery } from './glrecovery.js';
@@ -18,9 +18,16 @@ const cfg = window.orbConfig || {
   theme: 'raphael', vibrance: 1.15, motionBlur: 'auto', startupSpinTauMs: 1400,
 };
 
-// §5 theme hook + §3.7 vibrance: resolved ONCE at page load (a design token,
-// not a runtime state) — see docs/orb/THEMES.md. MUST come after `cfg`.
-const PAL = resolvePalette(cfg);
+// §5 theme hook + §3.7 vibrance — resolved at page load, then RE-RESOLVED live
+// when main reports the config changed (persona.tier switch, see docs/orb/THEMES.md).
+// MUST come after `cfg`.
+let PAL = resolvePalette(cfg);
+/** Push the current palette into every themed uniform (cheap, no reallocation). */
+function applyPalette() {
+  applySagePalette(sage, PAL);
+  applyAnswerPalette(AM, PAL);
+  applyJobPalette(JD, PAL);
+}
 const palInt = (hex) => parseInt(String(hex).replace('#', ''), 16);
 
 let sizePx = cfg.sizePx;
@@ -1205,7 +1212,8 @@ window.__orbTrace = () => ({
   jobFan: JD ? !!JD.fan : false,
   jobGroups: JD ? JD.groups : 0,
   jobSpokes: JD ? (JD.spokes.geometry.drawRange.count || 0) : 0,
-  theme: { requested: cfg.theme, personaTier: cfg.personaTier },
+  theme: { requested: cfg.theme, personaTier: cfg.personaTier,
+           glyph: PAL.glyph_color, haze: PAL.haze_lime, privateRing: PAL.private_ring },
   poseLocked: poseLock,
   rx: TRACE_RX.slice(-50),
   stats: window.__orbStats ? window.__orbStats() : null,
@@ -1274,6 +1282,12 @@ if (window.raphael) {
     // state-name text REMOVED (user: "text flashes when switching states") —
     // only explicit subtitles (spoken narration) are ever shown.
     if (s.subtitle) updateSubtitle(s.subtitle);
+  });
+  window.raphael.onPalette((p) => {
+    // Wave 5: a persona.tier switch re-skins without restarting the orb.
+    traceRx('palette', { theme: p && p.theme, tier: p && p.personaTier });
+    PAL = resolvePalette(p);
+    applyPalette();
   });
   window.raphael.onAnswer((a) => { traceRx('answer', a); updateAnswer(a); });
   window.raphael.onReport((r) => { traceRx('report', r); updateReport(r); });
