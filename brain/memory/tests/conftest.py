@@ -38,6 +38,8 @@ def _clean_state():
         conn = get_conn()
         try:
             conn.execute('DELETE FROM memories')
+            conn.execute('DELETE FROM skills_index')
+            conn.execute('DELETE FROM plugins_index')
             conn.commit()
         finally:
             conn.close()

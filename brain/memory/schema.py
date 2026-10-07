@@ -69,5 +69,40 @@ def migrate(conn) -> None:
     )
     ''')
 
-    # (Wave-3 tasks add: skills_index, plugins_index, schedules — same
-    #  additive pattern.)
+    # --- skills index (addendum §4 — sidecar counters; the FILE is the
+    # source of truth for content/status/confidence, this table mirrors it
+    # + owns usage counters and dedup bookkeeping) ---------------------------
+    cur.execute('''
+    CREATE TABLE IF NOT EXISTS skills_index (
+        name TEXT PRIMARY KEY,
+        path TEXT NOT NULL,
+        description TEXT NOT NULL DEFAULT '',
+        category TEXT NOT NULL DEFAULT 'general',
+        tags TEXT NOT NULL DEFAULT '[]',
+        status TEXT NOT NULL DEFAULT 'draft',
+        confidence REAL NOT NULL DEFAULT 0.0,
+        source TEXT NOT NULL DEFAULT 'learned',
+        content_hash TEXT NOT NULL DEFAULT '',
+        dedup_hits INTEGER NOT NULL DEFAULT 0,
+        uses INTEGER NOT NULL DEFAULT 0,
+        last_used TIMESTAMP,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP
+    )
+    ''')
+
+    # --- plugins index (user-authored manifests; mirrored for visibility) ----
+    cur.execute('''
+    CREATE TABLE IF NOT EXISTS plugins_index (
+        name TEXT PRIMARY KEY,
+        path TEXT NOT NULL,
+        description TEXT NOT NULL DEFAULT '',
+        version TEXT NOT NULL DEFAULT '',
+        enabled INTEGER NOT NULL DEFAULT 0,
+        tools TEXT NOT NULL DEFAULT '[]',
+        last_error TEXT,
+        updated_at TIMESTAMP
+    )
+    ''')
+
+    # (Wave-3 task 3 adds: schedules — same additive pattern.)
