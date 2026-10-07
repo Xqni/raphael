@@ -492,3 +492,6 @@ live_e2e=false) when wanted.
   matrix + engine.shutdown speech-kill FIX, outage drills, lock stress. infra wave_done
   queued@7 (corrected my position mislabel), orb fps-audit approved with isolation
   conditions (mock-brain, separate instance, kill-verify).
+- **pc-control wave-4 merged** (position 3): 17-tool failure tables, lock-release audit,
+  partial-failure matrix, E2E injection. Board: router ✓ brain-core ✓ pc-control ✓ →
+  voice(4) next, then computer-use(5), orb(6), infra(7), qa(8 incl. flake fix), tools(9), evo(10).
