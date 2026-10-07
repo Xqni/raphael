@@ -3,6 +3,9 @@
 Updated: 2026-10-07 (Wave 3)
 
 ## Done
+- Wave 3 **closed for this lane (2026-10-07)** — `wave_done` posted (merge position 10/10, closes the
+  wave-3 merge board); conductor VERIFIED the design-notes refresh (2e3c534; core guard exit 0;
+  Notice anchor + core_guard-as-manifest + config.d tier switch match the assignment; no P0s for this lane).
 - Wave 2 (2026-10-05): design notes `docs/evolution/01-self-evolution-infra.md` (Wave 4 infra) +
   `02-persona-tiers.md` (Wave 5) + request `evolution-persona__to__brain-core__shadow-instance-row.md`.
 - Coord adoption (2026-10-06): heartbeat posted, lane hold taken, rule 13 (coord post every
