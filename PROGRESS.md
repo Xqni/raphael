@@ -411,3 +411,6 @@ land, the integrator re-runs the full six-criterion live gate for `wave-2-gate`.
 - **voice wave-3 MERGED** — Bug D lands: JP great-sage reference required on EVERY
   synthesis (loud fail + zero audio otherwise), per-synthesis proof line, phrase cache
   ref-sha1 namespaced. Voice 93 + brain 152 green post-merge. orb wave_done queued@6.
+- **computer-use wave-3 MERGED** — Bug F lands (honest reachability-vs-privacy verdicts,
+  blocklist on every observation, terminal-foreground tests, 1-probe speed). Queue plug
+  cleared: orb(6) can now merge when its turn comes, then infra(7), qa(8).
