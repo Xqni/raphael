@@ -1,0 +1,7 @@
+# brain-core lane fragment (loader contract: docs/INTERFACES.md §c)
+# Deep-merged over config.yaml — only THIS lane's knobs live here.
+agent:
+  max_tool_steps: 6            # tool-calling loop cap per job (call->execute->feed back)
+  history_max_messages: 24     # multi-turn context: oldest user/assistant turns dropped first
+  history_max_chars: 8000      # ...once the char budget is exceeded
+  tool_result_max_chars: 4000  # single tool output fed back to the model (untrusted wrap on top)

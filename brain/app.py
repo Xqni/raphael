@@ -9,6 +9,7 @@ Endpoints:
 - POST /jobs/{job_id}/cancel  {scope: gui|full}
 - POST /control             {action, persist} (PROTOCOL §3 control actions)
 - GET  /status              mode + engine stats
+- POST /say                 {text, job?} speak + subtitle (CLI voice-out)
 
 Lifespan wires the agent loop (fastpath → router seam → tools → narrate) to the
 WS hub and marks interrupted jobs at startup (PROTOCOL §5).
@@ -18,6 +19,7 @@ from contextlib import asynccontextmanager
 from typing import Any, Dict, List, Optional
 
 from fastapi import Depends, FastAPI, Header, HTTPException, WebSocket
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from . import auth as auth_mod
@@ -25,7 +27,7 @@ from . import tools as tool_reg  # noqa: F401 — registers built-in tools on im
 from .control import apply_control
 from .jobs import store
 from .jobs.engine import get_engine
-from .loop import start_loop, stop_loop
+from .loop import narrate_now, start_loop, stop_loop
 from .mode import get_mode
 from .ws import SERVER_V, get_hub
 
@@ -36,12 +38,25 @@ hub = get_hub()
 async def lifespan(app: FastAPI):
     engine = get_engine()
     hub.engine = engine
+    from . import orbstate
+    orbstate.attach(hub)
     # narration fanout: job_event → all roles; orb_state refresh on transitions
     engine.sink = lambda frame: hub.broadcast(frame)
-    engine.on_state = lambda frame: hub.refresh_orb_state()
+
+    def _on_job_state(frame):
+        # INTERFACES §e: failed jobs put the orb into `error` (transient).
+        if frame.get('status') == 'failed':
+            orbstate.mark_error()
+        hub.refresh_orb_state()
+
+    engine.on_state = _on_job_state
+    # boot snapshot while the engine is not ready (INTERFACES §e `starting`)
+    orbstate.emit('starting', hub=hub, engine=engine)
     start_loop(hub=hub)            # wires runner, starts workers, marks interrupted
     await hub.start()
     get_mode()                     # load persisted mode flags
+    orbstate.finish_boot()
+    orbstate.refresh(hub=hub, engine=engine)
     # Pre-warm Fish TTS in the background: a COLD fish server made the user's
     # first spoken reply silent in the wild (spawn window + empty fallback
     # after the phrase cache was cleared). warmup() never raises.
@@ -58,9 +73,19 @@ async def lifespan(app: FastAPI):
     # Authoritative pidfile for supervisor's process-mode recycle: written by
     # the RUNNING uvicorn itself (the launch-time shell `echo $$` drifted by
     # one process layer; supervisor verifies the cmdline before any kill).
+    # Instance isolation (INTERFACES §d): the real pidfile lives in the
+    # instance data-dir (out of world-writable /tmp). Instance `main` ALSO
+    # writes the legacy /tmp/raphael-brain.pid so the current supervisor keeps
+    # byte-compatible behavior until the infra lane adopts config.pidfile().
     try:
-        with open('/tmp/raphael-brain.pid', 'w') as _pf:
-            _pf.write(str(os.getpid()))
+        from . import config as appcfg
+        pf = appcfg.pidfile()
+        pf.parent.mkdir(parents=True, exist_ok=True)
+        pf.write_text(str(os.getpid()))
+        legacy = appcfg.legacy_pidfile()
+        if legacy is not None:
+            with open(legacy, 'w') as _pf:
+                _pf.write(str(os.getpid()))
     except OSError:
         pass
     try:
@@ -173,3 +198,27 @@ async def status(auth: bool = Depends(token_auth)) -> Dict[str, Any]:
     engine = get_engine()
     return {'ok': True, 'server_v': SERVER_V, 'mode': get_mode().label(),
             'sessions': get_hub().session_counts(), **engine.stats()}
+
+
+# ---- POST /say (CLI voice-out; request: docs/requests/brain-core__to__
+# integrator__rest-say-endpoint.md) ------------------------------------------
+class SayIn(BaseModel):
+    text: str
+    job: Optional[str] = None        # correlation id for the frames (optional)
+
+
+@app.post('/say')
+async def say(body: SayIn, auth: bool = Depends(token_auth)):
+    """Speak + subtitle an arbitrary line (CLI voice-out). 202 — narration is
+    async; TTS fallback/notice handles a cold Fish server."""
+    import uuid
+    text = (body.text or '').strip()
+    if not text:
+        raise HTTPException(status_code=422, detail='text is required')
+    if len(text) > 4000:
+        raise HTTPException(status_code=422, detail='text too long (4000 max)')
+    job_id = (body.job or '').strip() or f'say_{uuid.uuid4().hex[:8]}'
+    narrate_now(hub, job_id, text, engine=get_engine())
+    return JSONResponse(status_code=202,
+                        content={'ok': True, 'job': job_id,
+                                 'chars': len(text)})
