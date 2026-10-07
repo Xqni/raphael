@@ -52,14 +52,17 @@ async def capture_screen(gateway: Any, gate: CloudVisionGate,
     Order note: the foreground check runs BEFORE the capture so a blocked
     window is never even captured locally (the brief's screenshot→blocklist
     order is preserved functionally — blocklist still gates every send).
+    Bug F: a probe FAILURE (body unreachable) raises GateRefused with the
+    E_UNREACHABLE verdict — it is never collapsed into the privacy verdict
+    (check_foreground(None)).
     `gateway` seam: `foreground_window() -> str|None`, `screenshot(max_px,
-    quality) -> bytes` (both async; any exception = unverifiable = closed).
+    quality) -> bytes` (both async; a returned None = unverifiable = closed).
     """
     cfg = config or gate.config
     try:
         title = await gateway.foreground_window()
-    except Exception:            # noqa: BLE001 — missing/failed op = fail closed
-        title = None
+    except Exception as e:       # noqa: BLE001 — unreachable != unverifiable
+        raise GateRefused(gate.unreachable(CloudVisionGate.err_hint(e))) from None
     decision = gate.check_foreground(title)
     if not decision.ok:
         raise GateRefused(decision)

@@ -283,20 +283,41 @@ def test_confirm_timeout_aborts_with_speakable_text():
     assert gw.acts == []
 
 
-def test_blocklisted_window_always_asks_before_interacting():
+def test_blocklisted_window_refused_before_anything():
+    """Bug F gate-hole fix: the blocklist now gates EVERY observation — a
+    KeePass foreground is refused before UIA/vision/chat, so its screen text
+    can never reach a cloud model (ARCHITECTURE §4 blocklist intent)."""
     gw = ScriptedGateway(foreground="KeePass - vault", trees=[DEFAULT_TREE])
-    chat = ScriptedChat([action_reply("uia", {"op": "click",
-                                              "args": {"target": {"name": "Copy"}}}),
-                         final_reply("Clicked copy.")])
-
-    async def yes(q):
-        assert "KeePass" in q
-        return "yes"
-
-    d = make_deps(gateway=gw, chat=chat, confirm=yes)
+    chat = ScriptedChat([])                        # must never be reached
+    d = make_deps(gateway=gw, chat=chat)
     out = run(run_task("copy the password entry", d))
-    assert out == "Clicked copy."
-    assert gw.action_names() == ["uia"]
+    assert "KeePass" in out and "won't send" in out
+    assert gw.acts == [] and gw.uia_calls == 0
+    assert chat.calls == []
+
+
+def test_fg_probe_failure_reports_unreachable():
+    """Bug F: body unreachable during a restart must speak the availability
+    verdict, not the privacy one."""
+    gw = ScriptedGateway(foreground=RuntimeError("boom"))
+    chat = ScriptedChat([])
+    d = make_deps(gateway=gw, chat=chat)
+    out = run(run_task("what is on screen", d))
+    assert "can't reach the Body" in out
+    assert "can't verify" not in out
+    assert gw.acts == [] and gw.uia_calls == 0 and gw.screenshot_calls == 0
+    assert chat.calls == []
+
+
+def test_terminal_foreground_runs_the_full_loop():
+    """Dossier ask: terminal foreground ('Ubuntu-26.04') must run end-to-end."""
+    gw = ScriptedGateway(foreground="Ubuntu-26.04", trees=[DEFAULT_TREE])
+    chat = ScriptedChat([final_reply("A terminal window is in front.")])
+    d = make_deps(gateway=gw, chat=chat)
+    out = run(run_task("what is on screen", d))
+    assert out == "A terminal window is in front."
+    assert gw.foreground_calls == 1      # Rule 15: exactly one probe
+    assert gw.screenshot_calls == 0      # UIA sufficient -> no pixels needed
 
 
 # ---- structured act failures ----------------------------------------------

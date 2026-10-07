@@ -132,8 +132,26 @@ def test_blocklist_refusal_never_captures():
     assert gw.foreground_calls == 1
 
 
-def test_unverifiable_foreground_fails_closed():
+def test_probe_failure_reports_unreachable_not_unverifiable():
+    """Bug F: a failed probe (body gone / op error) must NOT speak the privacy
+    verdict — availability problems get their own honest message."""
     gw = FakeGateway(raise_on="foreground")
+
+    def no_vision(*a, **k):
+        raise AssertionError("vision must not run when the probe failed")
+
+    out = run(see_screen("what is this?", gateway=gw, config=cfg(),
+                         gate=CloudVisionGate(cfg()), vision_fn=no_vision,
+                         is_private=lambda: False))
+    assert "can't reach the Body" in out
+    assert "can't verify" not in out
+    assert gw.screenshot_calls == 0
+
+
+def test_missing_foreground_fails_closed_with_privacy_verdict():
+    """A probe that SUCCEEDS but yields no window keeps the fail-closed
+    privacy message."""
+    gw = FakeGateway(title=None)
 
     def no_vision(*a, **k):
         raise AssertionError("vision must not run without a verified foreground")
@@ -141,8 +159,22 @@ def test_unverifiable_foreground_fails_closed():
     out = run(see_screen("what is this?", gateway=gw, config=cfg(),
                          gate=CloudVisionGate(cfg()), vision_fn=no_vision,
                          is_private=lambda: False))
-    assert "won't send" in out
+    assert "can't verify which window" in out
     assert gw.screenshot_calls == 0
+
+
+def test_terminal_foreground_passes_the_gate():
+    """Bug F dossier: Windows Terminal titled 'Ubuntu-26.04' is NOT a
+    blocklist app — it must reach vision, with exactly ONE fg probe (Rule 15
+    speed: no extra round trips on the happy path)."""
+    gw = FakeGateway(title="Ubuntu-26.04")
+    out = run(see_screen("what app is this?", gateway=gw,
+                         config=cfg(), gate=CloudVisionGate(cfg()),
+                         vision_fn=vision_ok("Windows Terminal running WSL."),
+                         is_private=lambda: False))
+    assert out == "Windows Terminal running WSL."
+    assert gw.foreground_calls == 1     # exactly one probe
+    assert gw.screenshot_calls == 1
 
 
 def test_profile_local_blocks_cloud_send():

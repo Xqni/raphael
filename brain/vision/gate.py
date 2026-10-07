@@ -32,6 +32,7 @@ E_BLOCKED = "E_BLOCKED"
 E_NO_FOREGROUND = "E_NO_FOREGROUND"
 E_TOO_LARGE = "E_TOO_LARGE"
 E_EMPTY_IMAGE = "E_EMPTY_IMAGE"
+E_UNREACHABLE = "E_UNREACHABLE"   # Body/probe unreachable — NOT a privacy verdict
 
 
 @dataclass(frozen=True)
@@ -102,6 +103,31 @@ class CloudVisionGate:
                 f"A sensitive window ({hit}) is in front — I won't send the "
                 "screen anywhere.")
         return Decision.allow()
+
+    # ---- probe failures (Bug F: honest verdicts) -----------------------------
+    @staticmethod
+    def unreachable(detail: str = "") -> Decision:
+        """The Body/capture path could not be REACHED (probe raised — body
+        session gone, act timeout, unsupported op). Fail closed with an
+        HONEST, distinguishable message: this is an availability problem, not
+        the privacy verdict of E_NO_FOREGROUND (Bug F: a mid-restart body
+        disconnect was being reported as 'can't verify which window')."""
+        hint = " ".join(str(detail).split())[:60]
+        suffix = f" ({hint})" if hint else ""
+        return Decision.deny(
+            E_UNREACHABLE,
+            f"I can't reach the Body right now{suffix} — try again in a moment.")
+
+    @staticmethod
+    def err_hint(e: BaseException) -> str:
+        """Short, speech-safe hint for a failed probe: structured detail/code
+        when the exception carries one, else just the type name. Never raw
+        str(e) (arbitrary text must not reach speech/journal)."""
+        for attr in ("detail", "code"):
+            val = getattr(e, attr, None)
+            if isinstance(val, str) and val.strip():
+                return val.strip()
+        return type(e).__name__
 
     # ---- 5. downscale verification -----------------------------------------
     def check_image(self, data: Optional[bytes]) -> Decision:

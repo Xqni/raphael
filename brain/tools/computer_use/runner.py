@@ -528,13 +528,28 @@ def _summarize_result(name: str, result: Any) -> str:
 
 async def _observe(d: Deps, cfg: VisionConfig, gate: CloudVisionGate,
                    vision_allowed: bool) -> Observation:
-    """UIA-first; gated vision only when the tree is insufficient."""
+    """UIA-first; gated vision only when the tree is insufficient.
+
+    Gate order (Bug F fix): foreground probe FIRST —
+      probe raised          -> E_UNREACHABLE (honest availability verdict,
+                               never misreported as 'can't verify')
+      title None / missing  -> E_NO_FOREGROUND (privacy, fail closed)
+      blocklist match       -> E_BLOCKED — applies to EVERY observation, not
+                               just the vision path: UIA text also reaches
+                               cloud chat (ARCHITECTURE §4 blocklist intent)
+    then the UIA tree; pixels only when the tree is thin.
+    """
     gateway = d.gateway
     try:
         fg = await gateway.foreground_window()
-    except Exception:            # noqa: BLE001 — unverifiable title -> '' (gate closed on vision)
-        fg = None
+    except Exception as e:       # noqa: BLE001 — unreachable != unverifiable
+        return Observation.refused(
+            "", gate.unreachable(CloudVisionGate.err_hint(e)).reason)
     fg_str = str(fg) if fg is not None else ""
+    decision = gate.check_foreground(fg)   # None -> closed; blocklist -> refused
+    if not decision.ok:
+        return Observation.refused(fg_str, decision.reason)
+
     tree = ""
     try:
         tree = (await gateway.uia_tree()).strip()
@@ -545,16 +560,14 @@ async def _observe(d: Deps, cfg: VisionConfig, gate: CloudVisionGate,
         text = gate.redact(tree)[:MAX_OBS_CHARS]
         return Observation("uia", fg_str, text, _fingerprint("uia", fg_str, text))
 
-    # UIA insufficient -> pixel path, full PROTOCOL §7 gates.
-    decision = gate.check_foreground(fg)     # None/'' handling: None denies
-    if not decision.ok:
-        return Observation.refused(fg_str, decision.reason)
+    # UIA insufficient -> pixel path, remaining PROTOCOL §7 gates.
     if not vision_allowed:
         return Observation.refused(fg_str, gate.check_profile().reason)
     try:
         data = await gateway.screenshot(cfg.max_px, cfg.quality)
-    except Exception:            # noqa: BLE001
-        return Observation.refused(fg_str, "I couldn't capture the screen right now.")
+    except Exception as e:       # noqa: BLE001 — unreachable capture (Bug F class)
+        return Observation.refused(
+            fg_str, gate.unreachable(CloudVisionGate.err_hint(e)).reason)
     decision = gate.check_image(data)
     if not decision.ok:
         return Observation.refused(fg_str, decision.reason)
