@@ -224,9 +224,9 @@ def _load_persona_tier(data: Dict[str, Any]) -> str:
     """Effective persona tier for tier-scoped voice profiles (Wave 5).
 
     Source order: RAPHAEL_PERSONA_TIER (explicit/test) -> `persona.tier` in a
-    merged config (`data`) -> the evolution-persona lane's fragment
-    config.d/evolution-persona.yaml (read-only, we never edit it). Unknown /
-    missing fails CLOSED to great_sage — same rule as their tier_of().
+    merged config (`data`) -> lane fragments config.d/*.yaml (sorted; read-only
+    — we never edit another lane's file). Unknown / missing fails CLOSED to
+    great_sage — same rule as their tier_of().
 
     The tier cannot raise itself (addendum §14 / design 01 §6 rule 1): a diff
     that changes it is a proposal, never an auto-promote.
@@ -235,19 +235,22 @@ def _load_persona_tier(data: Dict[str, Any]) -> str:
     if not tier:
         tier = str((((data or {}).get("persona") or {}).get("tier")) or "")
     if not tier:
-        frag = REPO_ROOT / "config.d" / "evolution-persona.yaml"
-        try:
-            if frag.exists():
+        # lane fragments (INTERFACES §c): sorted by filename, LAST wins
+        for frag in sorted((REPO_ROOT / "config.d").glob("*.yaml")):
+            try:
                 d = yaml.safe_load(frag.read_text(encoding="utf-8")) or {}
-                tier = str((((d or {}).get("persona") or {}).get("tier")) or "")
-        except (yaml.YAMError, OSError):
-            tier = ""
+            except (yaml.YAMLError, OSError):
+                continue
+            found = str((((d or {}).get("persona") or {}).get("tier")) or "")
+            if found:
+                tier = found
     return tier if tier in ("great_sage", "raphael", "ciel") else "great_sage"
 
 
 def load_voice_config(config_path: Optional[Path] = None) -> VoiceConfig:
     path = config_path or CONFIG_PATH
     section: Dict[str, Any] = {}
+    vp: Dict[str, Any] = {}
     data: Dict[str, Any] = {}
     profile = "cloud_temp"
     if path.exists():
@@ -256,10 +259,29 @@ def load_voice_config(config_path: Optional[Path] = None) -> VoiceConfig:
         except (yaml.YAMLError, OSError):
             data = {}
         section = dict(data.get("voice") or {})
+        vp = dict(data.get("voice_personality") or {})
         # profile source: RAPHAEL_PROFILE wins (INTERFACES §c) — resolved
         # BEFORE the overlay merge so the overlay picked is the effective one
         profile = _env("RAPHAEL_PROFILE",
                        str(data.get("profile") or "cloud_temp"), str)
+        # lane fragments (INTERFACES §c): config.d/*.yaml sorted by filename,
+        # their `voice:` / `voice_personality:` mappings deep-merge over the
+        # base (evolution-persona ships voice.tts_voice_ciel; tier overlays
+        # ride voice_personality). Read-only — lanes never edit each other's
+        # fragments, and we only consume the sections this lane owns keys in.
+        for frag in sorted((REPO_ROOT / "config.d").glob("*.yaml")):
+            try:
+                d = yaml.safe_load(frag.read_text(encoding="utf-8")) or {}
+            except (yaml.YAMLError, OSError):
+                continue
+            if not isinstance(d, dict):
+                continue
+            v = d.get("voice")
+            if isinstance(v, dict):
+                section = {**section, **v}
+            p = d.get("voice_personality")
+            if isinstance(p, dict):
+                vp = {**vp, **p}
         # profile overlay (INTERFACES §c): profiles.<profile>.voice merges over
         # the base voice section (profiles.local.voice = {stt_engine: local}).
         overlays = data.get("profiles")
@@ -279,7 +301,6 @@ def load_voice_config(config_path: Optional[Path] = None) -> VoiceConfig:
         "fish_venv", "fish_vendor",
     }
     extra = {k: v for k, v in section.items() if k not in known}
-    vp = data.get("voice_personality") or {}
     cfg = VoiceConfig(
         profile=profile,
         stt_engine=str(section.get("stt_engine", "groq")),
