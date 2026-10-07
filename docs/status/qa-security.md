@@ -1,6 +1,27 @@
 # qa-security — status
 
-Updated: 2026-10-06 (Wave 2 complete — handoff below)
+Updated: 2026-10-07 (Wave 3 open; CI ownership fix done)
+
+## Wave 3 (current — docs/WAVES.md current_wave: 3)
+
+- **DONE 2026-10-07 (urgent):** CI ownership self-check un-hardcoded
+  (`.github/workflows/ci.yml`, commit 67e64f3): lane derived from the ref
+  (`agent/<lane>` → per-lane gate; main/integrator/other → `--lane
+  integrator` by design — evidence run 37574556616 flagged every non-qa
+  push); BASE fallback handles zero-sha (`merge-base origin/main` for
+  branches, `HEAD~1` for main). YAML-validated, derivation table tested
+  locally (5 ref shapes), qa-security diff (1 file) + integrator path both
+  exit 0.
+- Also on latest main: infra's ollama-profile-gate tripwires promoted to
+  strict (both landed); Wave-2 work confirmed merged (this branch now sits
+  on 048b0c1).
+- **Suite (2026-10-07, real run): `255 passed, 9 xfailed, 0 failed`
+  (tests + supervisor/tests), core_guard OK, ownership OK.**
+- Queue for next wakes (per inbox): P0-REGRESSIONS (4 gate-bug tests from
+  docs/BUGS-WAVE2.md) → order-flake quarantine → Wave-3 goals from
+  docs/lanes/qa-security.md + docs/WAVES.md (speed mandate Rule 15).
+
+## Wave 2 (MERGED 2026-10-06/07 — do not re-debug verified pieces)
 
 ## Done (Wave 2 — all 5 brief items)
 
