@@ -527,8 +527,8 @@ def test_audio_path_listening_and_voice_confirm(token_path, fake_chat,
     voice = get_voice()
     monkeypatch.setattr(
         voice, 'transcribe_result',
-        lambda buf, sample_rate=None: SimpleNamespace(text='yes', lang='en',
-                                                      rtf=0.1))
+        lambda buf, sample_rate=None, reason=None: SimpleNamespace(
+            text='yes', lang='en', rtf=0.1))
     fake_chat([{'text': 'on it'}])
     from brain.jobs import store as job_store
 
