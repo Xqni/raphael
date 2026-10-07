@@ -33,6 +33,7 @@ from ._spec import SpecError, ToolSpec
 from .automation import SPECS as _AUTOMATION
 from .launch import SPECS as _LAUNCH
 from .powershell import SPECS as _POWERSHELL
+from .report import SPECS as _REPORT
 from .system import SPECS as _SYSTEM
 from .window import SPECS as _WINDOW
 
@@ -42,6 +43,7 @@ _GROUPS = {
     'window': _WINDOW,
     'automation': _AUTOMATION,
     'powershell': _POWERSHELL,
+    'report': _REPORT,
 }
 
 SPECS: Dict[str, ToolSpec] = {}

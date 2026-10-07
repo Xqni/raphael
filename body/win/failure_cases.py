@@ -39,6 +39,7 @@ INVALID_ARGS = {
     'brightness': {'level': -1},
     'notify': {'text': ''},
     'list_running_apps': {'bogus': 1},
+    'report': {'op': 'save', 'title': 't', 'body': 'not json', 'format': 'json'},
 }
 
 # action -> (FakeWin method that raises BackendError, happy args)
@@ -60,6 +61,8 @@ CRASH_CASES = {
     'brightness': ('set_brightness', {'level': 10}),
     'notify': ('notify', {'text': 'crash'}),
     'list_running_apps': ('list_processes', {}),
+    'report': ('reports_dir', {'op': 'save', 'title': 'Crash',
+                               'body': 'crash body'}),
 }
 
 

@@ -67,6 +67,11 @@ class FakeWin:
         self.cursor: Tuple[int, int] = overrides.pop('cursor', (100, 100))
         self.powershell_result: Dict[str, Any] = overrides.pop(
             'powershell_result', {'rc': 0, 'out': '[]', 'err': ''})
+        import pathlib as _pathlib
+        import tempfile as _tempfile
+        self.reports_path = _pathlib.Path(overrides.pop(
+            'reports_path', _pathlib.Path(_tempfile.gettempdir())
+            / 'raphael-fake-reports'))
         self.uia_data: Dict[str, Any] = overrides.pop('uia_data', {})
         # --- failure injection ------------------------------------------
         self.fail_methods: set = set()          # BackendError on these calls
@@ -268,3 +273,9 @@ class FakeWin:
     def capture(self, max_px: int, quality: int) -> bytes:
         self._rec('capture', max_px, quality)
         return b'\xff\xd8' + b'FAKEJPEG' * 32 + b'\xff\xd9'
+
+    # -- report delivery --------------------------------------------------
+    def reports_dir(self) -> str:
+        # _rec applies delay/failure injection — crash drills work here too
+        self._rec('reports_dir')
+        return str(self.reports_path)

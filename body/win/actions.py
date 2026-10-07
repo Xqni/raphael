@@ -44,12 +44,13 @@ DEFAULT_TIMEOUT_MS = 30000    # loop.py sends 30000; tolerate absent/None
 MAX_TIMEOUT_MS = 120000       # hard cap even if the sender asks for more
 LOG_MAX_BYTES = 5 * 1024 * 1024  # rotate the action log (1 backup)
 
-# Actions pending addition to the PROTOCOL §7 enum — tracked in
-# docs/requests/pc-control__to__integrator__protocol-act-req-enum.md so the
-# conformance test can assert registry == §7 enum + these three.
-# 2026-10-06: the integrator added list_windows / foreground_info /
-# list_running_apps to §7, so the pending set is now EMPTY (the request file
-# stays as the audit trail; the test's union assertion still holds).
+# Actions pending addition to the PROTOCOL §7 enum. Each pending name MUST
+# appear in some docs/requests/pc-control__to__*.md file (enforced by the
+# conformance test).
+# 2026-10-06: list_windows / foreground_info / list_running_apps landed via
+# protocol-act-req-enum.md (pending set emptied).
+# 2026-10-07: `report` landed via protocol-report-act.md (APPROVED AS
+# PROPOSED, integrator edited §7 by hand) — pending set empty again.
 PENDING_PROTO_ADDITIONS = ()
 
 
@@ -76,7 +77,7 @@ class Action:
 
 ACTIONS: Dict[str, Action] = {}
 _GROUPS = ('act_launch', 'act_powershell', 'act_capture', 'act_uia',
-           'act_input', 'act_window', 'act_system')
+           'act_input', 'act_window', 'act_system', 'act_report')
 _groups_loaded = False
 
 
@@ -204,8 +205,10 @@ _REDACT_KEY_RE = re.compile(
     r'private[_-]?key|auth)', re.I)
 _REDACT_WORD_RE = re.compile(
     r'\b(api[_-]?key|token|password|passwd|secret|credential|card|cvv)\b', re.I)
-# Actions whose 'text' field carries user/clipboard/screen CONTENT: length only.
-_CONTENT_ACTIONS = {'clipboard', 'uia', 'input'}
+# Actions whose content keys ('text'/'body') carry user/clipboard/screen
+# CONTENT: length only, never the value (reports may hold sensitive findings).
+_CONTENT_ACTIONS = {'clipboard', 'uia', 'input', 'report'}
+_CONTENT_KEYS = {'text', 'body'}
 _MAX_STR = 120
 
 
@@ -224,7 +227,7 @@ def summarize_args(action: str, args: Any, _depth: int = 0) -> Any:
         for k, v in args.items():
             if _REDACT_KEY_RE.search(str(k)):
                 out[k] = '***'
-            elif str(k) == 'text' and action in _CONTENT_ACTIONS:
+            elif str(k) in _CONTENT_KEYS and action in _CONTENT_ACTIONS:
                 out[k] = '[len=%d]' % len(v) if isinstance(v, str) else '***'
             else:
                 out[k] = summarize_args(action, v, _depth + 1)

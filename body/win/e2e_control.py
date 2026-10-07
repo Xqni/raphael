@@ -94,6 +94,11 @@ POSITIVE_MATRIX = [
     ('list_windows', {}, False, True),
     ('foreground_info', {}, False, True),
     ('list_running_apps', {}, False, True),
+    ('report', {'op': 'save', 'title': 'E2E Wave 5 Report',
+                'body': '# Findings\n- none\nconfidence: high'}, False, True),
+    ('report', {'op': 'save', 'title': 'Second', 'body': '{"ok": true}',
+                'format': 'json'}, False, True),
+    ('report', {'op': 'list'}, False, True),
 ]
 
 NEGATIVE_MATRIX = [
@@ -131,6 +136,11 @@ async def mock_suite() -> int:
 
     fake = FakeWin()
     fake.uia_data['find'] = {'name': 'Field', 'control_type': 'Edit'}
+    # Isolate report delivery into a temp dir (Wave-5 report act).
+    import shutil
+    import tempfile as _tf
+    report_dir = pathlib.Path(_tf.mkdtemp(prefix='raphael-e2e-reports-'))
+    fake.reports_path = report_dir
     winlayer.set_backend(fake)
     ws = FakeWS()
     failures = []
@@ -260,6 +270,7 @@ async def mock_suite() -> int:
             os.unlink(log_path)
         except OSError:
             pass
+        shutil.rmtree(report_dir, ignore_errors=True)
 
     print('E2E-MOCK: %s (%d checks failed)'
           % ('PASS' if not failures else 'FAIL', len(failures)), flush=True)

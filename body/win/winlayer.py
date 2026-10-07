@@ -679,6 +679,15 @@ class WindowsBackend:
         capture = _sibling('capture')  # lazy: mss + Pillow installs
         return capture.capture_screenshot(int(max_px), int(quality))
 
+    # ---- report delivery (Wave 5) ---------------------------------------
+    def reports_dir(self) -> str:
+        """FIXED per-user reports folder — the `report` act may write HERE
+        and nowhere else (the model never supplies a path)."""
+        import pathlib
+        base = pathlib.Path.home() / 'Documents' / 'Raphael' / 'reports'
+        base.mkdir(parents=True, exist_ok=True)
+        return str(base)
+
 
 class NullBackend:
     """Non-Windows guard: every call fails loudly (never half-executes)."""
