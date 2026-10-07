@@ -1,6 +1,6 @@
 # brain-core — status
 
-Updated: 2026-10-07 (Wave 3 goals underway: job-concurrency polish done; Notice request + memory hooks next)
+Updated: 2026-10-07 (Wave 3 goals: concurrency polish + memory hook DONE; Notice blocked on PROTOCOL decision)
 
 ## Done (Wave 3 goals, 2026-10-07)
 - **Job-concurrency polish — input-lock fairness + per-job cancel** (`brain/jobs/lock.py`, `engine.py`, `loop.py`):
@@ -57,6 +57,7 @@ Updated: 2026-10-07 (Wave 3 goals underway: job-concurrency polish done; Notice 
 - Nudge: PROTOCOL §7 act_req gained `list_windows`/`foreground_info`/`list_running_apps` — auto-covered once pc's tools register through discovery; no change needed from me.
 
 ## Test output (real runs only — never claim unrun tests)
+- (concurrency batch) brain 143 / router 120 / voice 82+2skip / pc 10 / computer_use 49+2skip = **403 passed, 4 skipped** (sequential, Rule 14); root **187 passed, 9 xfailed, 2 xpassed**
 - `./brain/.venv/bin/python -m pytest -q brain/tests brain/router/tests brain/voice/tests brain/tools/pc/tests brain/tools/computer_use/tests` → **367 passed, 4 skipped** (wave-3 new: fastpath open/search 5, Bug E flicker 3, /status router block 1; round-3 was 346+2)
 - `cd tests && ./.venv/bin/python -m pytest -q .` → **187 passed, 9 xfailed, 2 xpassed** (xpasses = qa's ollama-gate xfails awaiting infra — unrelated to brain-core)
 - Hermetic: no live providers, no real stack, **no Fish touched or spawned** (path-scoped TTS mock), no Ollama (AGENT_RULES §5/§7); router faked at the INTERFACES §a seam, STT faked at `voice.transcribe_result`.

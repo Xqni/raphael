@@ -80,6 +80,12 @@ def set_task(kind: Optional[str]):
     _task_kind = kind if kind in allowed else 'none'
 
 
+def current_task_kind() -> str:
+    """Public accessor for the foreground task kind (loop passes it to the
+    conversation-memory hook)."""
+    return _task_kind
+
+
 def clear_task():
     global _task_kind
     _task_kind = 'none'

@@ -42,6 +42,11 @@ Wave 2 is MERGED; live gate was 3/5 — evidence + bug dossiers: `docs/BUGS-WAVE
 - [x] `fastpath open+search mapping` (Bug B router half, APPROVED): "open youtube and search lo-fi" → `search_youtube{query}`, new `search `/`search for `/`youtube ` intents, all existing open branches unchanged → `brain/fastpath.py` + `brain/tests/test_fastpath_open_search.py`.
 - [x] `surface-usage-in-status` (APPROVED): additive `router` key on `GET /status` via lazy `brain.router.usage_status()` — `{}` until router's branch merges, `{'error': 'unavailable'}` on failure, endpoint never goes down → `brain/app.py` + test.
 
+## Wave 3 — goals (after P0)
+- [x] Job concurrency polish (input-lock fairness, per-job cancel) — `brain/jobs/lock.py` fairness guard + `engine.on_job_cancelled` per-job speech interrupt + `stats().input_lock.job` fix; 8 tests (fbb9d07).
+- [x] Conversation-memory hooks to tools-memory — producer side wired in `brain/loop.py::_conversation_hook` (fail-silent, absent-module no-op), API proposed in `docs/requests/brain-core__to__tools-memory__conversation-hook.md`; e2e test w/ fake module incl. raising-hook survival.
+- [ ] Proactive Notice events — **contract first**: `docs/requests/brain-core__to__integrator__notice-events.md` filed (PROTOCOL §3 row + emitters). BLOCKED pending decision; no frame emitted before approval.
+
 ## Later waves
 - Per docs/WAVES.md — do not start early (AGENT_RULES §11).
 - Wave 3 (when current_wave=3): job concurrency polish (input-lock fairness, per-job cancel), conversation-memory hooks to tools-memory, proactive Notice events.
