@@ -115,6 +115,13 @@ class VadSegmenter:
                         # playback chunks 40-225 peaky, real speech 2000+)
     # NOTE: measured data killed the naive rule — speech RMS is PEAKY
     # (225,64,143,81...) so thresholds must clear the valleys, not peaks.
+    ECHO_OPEN_RMS = 400  # echo guard (Wave 2 task 2): while Raphael is
+                        # speaking, a new segment must reach SPEECH-level
+                        # energy to open — her playback (measured 40-225 at
+                        # the mic) can't self-trigger, real user speech
+                        # (measured 2000+) opens normally (barge-in works).
+                        # Only affects OPENING; open-segment hysteresis below
+                        # is untouched (live-tested behavior preserved).
 
     def __init__(self):
         self.noise = self.ABS_FLOOR
@@ -127,6 +134,7 @@ class VadSegmenter:
         self._len = 0
         self._pre = []          # pre-roll deque (last2 chunks)
         self.seen_segments = 0
+        self.echo_guard = False  # True while TTS playback is active (audio_out)
 
     @staticmethod
     def _rms(chunk: bytes) -> float:
@@ -142,10 +150,15 @@ class VadSegmenter:
         events = []
 
         if not self.open:
-            # track noise floor only while quiet (robust to music/talk bleed)
-            if rms < thr:
+            # Echo guard: while Raphael's TTS is playing, her voice must not
+            # open a segment (self-trigger). Only OPENING is guarded — the
+            # open-state hysteresis below keeps its live-tested behavior.
+            open_thr = max(thr, self.ECHO_OPEN_RMS) if self.echo_guard else thr
+            # track noise floor only while quiet (robust to music/talk bleed);
+            # her playback is NOT ambient, so the floor freezes while guarded
+            if not self.echo_guard and rms < thr:
                 self.noise = self.NOISE_EMA * self.noise + (1 - self.NOISE_EMA) * rms
-            self._hits.append(1 if rms >= thr else 0)
+            self._hits.append(1 if rms >= open_thr else 0)
             self._pre.append(chunk)          # rolling pre-roll (incl. valleys)
             if len(self._pre) > 3:
                 self._pre.pop(0)
@@ -245,6 +258,7 @@ class WakeStream:
                 "encoding": "pcm_s16le", "reason": "wake"}
             while not self._stop:
                 chunk = await self._queue.get()
+                self.vad.echo_guard = self._playback_active()
                 for kind, data in self.vad.feed(chunk):
                     if kind == 'start':
                         self.log("[audio_in] wake segment OPEN "
@@ -271,6 +285,20 @@ class WakeStream:
 
     async def stop(self):
         self._stop = True
+
+    @staticmethod
+    def _playback_active() -> bool:
+        """True while Raphael's TTS is coming out of the speaker (audio_out).
+        Lazy import (module may run as body.win.audio_in or flat audio_in);
+        any failure = no guard, never a dead mic task."""
+        try:
+            if __package__:
+                from . import audio_out
+            else:
+                import audio_out
+            return bool(audio_out.playback_active())
+        except Exception:  # noqa: BLE001
+            return False
 
     # seq per segment restarts at... keep monotonic via vad._len mod u32 ✓
 

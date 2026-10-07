@@ -8,10 +8,10 @@ Engine resolution order for speak(text):
                              (brain/voice/.venv-fish + vendor repo v1.5.0 +
                               brain/voice/models/fish-speech-1.5), resampled to
                               config voice.tts_sample_rate (24000)
-  3. Wave-file fallback   -> any cached wav for the phrase, else a short
-                             placeholder tone + `notice` on the events so
-                             loop.py can subtitle the truth
-                             ("TTS engine unavailable ...").
+  3. Degraded fallback    -> SUBTITLE-ONLY: no audio chunks, plus a ONE-TIME
+                             `notice` on the end event so loop.py can subtitle
+                             the truth ("TTS engine unavailable ...") instead
+                             of the reply arriving as mysterious silence.
 
 Reference voice: config voice.tts_voice (assets/raphael_reference.wav). When
 the asset exists it is sent as an in-context reference (base64 JSON per
@@ -47,6 +47,7 @@ import httpx
 import numpy as np
 
 from .config import VoiceConfig, load_voice_config
+from .activation import get_playback_echoes
 from .wake import normalize_text
 
 TTS_SAMPLE_RATE_DEFAULT = 24000
@@ -226,7 +227,8 @@ class FishSpeechServer:
         self.proc: Optional[subprocess.Popen] = None
         self._starting: Optional[asyncio.Task] = None
         self.base = f"http://{cfg.fish_host}:{cfg.fish_port}"
-        self.log_path = _LOG_DIR / "fish_server.log"
+        self.log_dir = cfg.log_dir                # instance-derived (INTERFACES §d)
+        self.log_path = self.log_dir / "fish_server.log"
         self.last_error: Optional[str] = None
         self.startup_ms: Optional[float] = None
 
@@ -259,7 +261,7 @@ class FishSpeechServer:
                "--device", device]
         if device == "cuda":
             cmd.append("--half")
-        _LOG_DIR.mkdir(parents=True, exist_ok=True)
+        self.log_dir.mkdir(parents=True, exist_ok=True)
         logf = open(self.log_path, "ab")  # noqa: SIM115 — lives with subprocess
         env = dict(os.environ)
         env.setdefault("HF_HUB_OFFLINE", "1")   # weights are local
@@ -403,6 +405,22 @@ class TTSEngine:
         self.cache = PhraseCache(self.cfg.ack_cache_path)
         self.fish = FishSpeechServer(self.cfg)
         self.stats = SpeakStreamStats()
+        self._notice_shown = False      # degraded-mode notice: ONCE per process
+
+    def _once(self, message: str) -> Optional[str]:
+        """Returns `message` the first time, None afterwards (one-time notice)."""
+        if self._notice_shown:
+            return None
+        self._notice_shown = True
+        return message
+
+    def fallback_notice(self) -> Optional[str]:
+        """One-time degraded-mode notice (Wave 2 task 3): the FIRST reply after
+        Fish becomes unavailable tells the user why there is no voice; every
+        later reply stays quiet (subtitles still carry the text) instead of
+        repeating the apology — or playing a placeholder tone forever."""
+        return self._once("TTS engine unavailable — replies are shown as "
+                          "subtitles until Fish-Speech is back.")
 
     @property
     def sample_rate(self) -> int:
@@ -458,6 +476,10 @@ class TTSEngine:
         sentences = split_sentences(text)
         if not sentences:
             return
+        # Playback-echo bookkeeping: remember what she is about to say so the
+        # activation gate can drop her own voice when it bounces back through
+        # the mic (self-trigger loop prevention — activation.py).
+        get_playback_echoes().remember(text)
         self.stats = SpeakStreamStats(sentences=len(sentences))
 
         # --- 1. cache check (whole phrase) ---------------------------------
@@ -535,8 +557,9 @@ class TTSEngine:
                 except TTSError as e:
                     # engine died mid-stream: finish what we have + notice
                     fish_ok = False
-                    notice = (f"TTS engine error ({e.code}) — partial speech; "
-                              f"{e.detail[:120]}")
+                    notice = self._once(
+                        f"TTS engine error ({e.code}) — partial speech; "
+                        f"{e.detail[:120]}")
                     break
                 # stream the sentence NOW while the next one generates
                 chunk_evs, next_seq = self._chunk_events(pcm, seq, job, False,
@@ -563,29 +586,19 @@ class TTSEngine:
                 except Exception:  # noqa: BLE001 — cache write is best-effort
                     pass
 
-        # --- 2c. degraded fallback ------------------------------------------
+        # --- 2c. degraded fallback (SUBTITLE-ONLY, one-time notice) ---------
         if not fish_ok and not synthesized:
+            # Wave 2 task 3: Fish unavailable -> no audio at all (never a
+            # placeholder tone), loop.py already subtitles the reply; the
+            # ONE-TIME notice explains the missing voice instead of silence
+            # being mysterious (or the apology repeating on every reply).
             self.stats.engine = "fallback"
-            notice = notice or (
-                "TTS engine unavailable — placeholder tone; "
-                "subtitle carries the actual reply")
-            pcm = self.cache.load(text)
-            played_from_cache = pcm is not None
-            if pcm is None:
-                tone = _placeholder_tone_pcm(rate)
-                pcm = tone
-            else:
-                pcm, _ = wav_bytes_to_s16le_pcm(pcm, rate)  # cached wav found
-            chunk_evs, next_seq = self._chunk_events(pcm, seq, job,
-                                                     played_from_cache,
-                                                     "fallback")
-            for ev in chunk_evs:
-                if cancel is not None and cancel.is_set():
-                    seq = ev["seq"]
-                    yield _end(interrupted=True, notice=notice)
-                    return
-                seq = ev["seq"] + 1
-                yield ev
+            notice = notice or self.fallback_notice()
+            if cancel is not None and cancel.is_set():
+                yield _end(interrupted=True, notice=notice)
+                return
+            yield _end(interrupted=False, notice=notice)
+            return
 
         yield _end(interrupted=False, notice=notice)
 

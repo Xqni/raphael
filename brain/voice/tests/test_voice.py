@@ -197,25 +197,25 @@ def _collect(events):
     return list(events)
 
 
-def test_tts_fallback_events_shape():
+def test_tts_fallback_events_shape(tmp_path):
+    """Fish unavailable -> subtitle-only + ONE-TIME notice (no placeholder
+    tone, no repeated apology — Wave 2 task 3)."""
     from brain.voice.tts import TTSEngine
 
-    eng = TTSEngine(VoiceConfig(ack_cache=str(Path(__file__).parent / "_tcache")))
+    eng = TTSEngine(VoiceConfig(ack_cache=str(tmp_path)))
     events = _collect(asyncio.run(
         _consume(eng.speak("Task complete.", force_fallback=True))))
     kinds = [e["event"] for e in events]
-    assert kinds[0] == "start" and kinds[-1] == "end" and "chunk" in kinds
-    start = events[0]
-    assert start["type"] == "speak" and start["v"] == 1
-    assert start["sample_rate"] == 24000
-    for e in events:
-        if e["event"] == "chunk":
-            assert 0.0 <= e["amplitude"] <= 1.0
-            assert e["payload"]                          # raw s16le bytes
-    end = events[-1]
-    assert end.get("notice")                             # degraded-mode notice
-    assert events[-2]["engine"] == "fallback" or \
-        any(e.get("engine") == "fallback" for e in events)
+    assert kinds[0] == "start" and kinds[-1] == "end"
+    assert "chunk" not in kinds                  # subtitle-only: no fake audio
+    assert eng.stats.engine == "fallback"
+    assert events[-1].get("notice")              # first degraded reply explains
+    assert "TTS engine unavailable" in events[-1]["notice"]
+    # one-time: the next degraded reply stays quiet (subtitle carries it)
+    events2 = _collect(asyncio.run(
+        _consume(eng.speak("Task complete again.", force_fallback=True))))
+    assert events2[-1].get("notice") is None
+    assert [e["event"] for e in events2] == ["start", "end"]
 
 
 def test_tts_cancel_before_start():
@@ -238,10 +238,27 @@ def test_tts_cancel_before_start():
     assert all(e["event"] != "chunk" for e in events)
 
 
-def test_tts_interrupt_mid_stream():
+def _seed_cache_wav(eng, text, seconds=6.0, sr=24000):
+    """Store a real wav in the phrase cache so the cache path streams chunks
+    (used where the fallback no longer emits audio)."""
+    pytest.importorskip("soundfile")   # brain/.venv has it; lean venvs may not
+    import soundfile as sf
+
+    t = np.arange(int(sr * seconds), dtype=np.float32) / sr
+    x = 0.25 * np.sin(2 * np.pi * 180.0 * t)
+    import io
+
+    buf = io.BytesIO()
+    sf.write(buf, x, sr, format="WAV", subtype="PCM_16")
+    eng.cache.store(text, buf.getvalue())
+
+
+def test_tts_interrupt_mid_stream(tmp_path):
     from brain.voice.tts import TTSEngine
 
-    eng = TTSEngine(VoiceConfig(ack_cache=str(Path(__file__).parent / "_tcache2")))
+    eng = TTSEngine(VoiceConfig(ack_cache=str(tmp_path)))
+    _seed_cache_wav(eng, "This is a fairly long sentence used to generate many "
+                         "chunks so interruption lands mid stream.")
     cancel = asyncio.Event()
 
     async def _run():
@@ -249,13 +266,16 @@ def test_tts_interrupt_mid_stream():
         async for e in eng.speak(
                 "This is a fairly long sentence used to generate many chunks "
                 "so interruption lands mid stream.", cancel=cancel,
-                force_fallback=True):
+                force_fallback=False):
             out.append(e)
             if e["event"] == "chunk" and len(out) == 3:   # interrupt early
                 cancel.set()
         return out
 
     events = asyncio.run(_run())
+    chunks = [e for e in events if e["event"] == "chunk"]
+    assert len(chunks) >= 1                        # really did cut mid-stream
+    assert all(0.0 <= c["amplitude"] <= 1.0 for c in chunks)
     assert events[-1]["event"] == "end" and events[-1].get("interrupted") is True
 
 

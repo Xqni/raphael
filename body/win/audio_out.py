@@ -131,9 +131,24 @@ class StreamPlayer:
                     'bytes_out': self.bytes_out, 'underruns': self.underruns,
                     'buffered': len(self._buf)}
 
+    def active(self) -> bool:
+        """True while Raphael's voice is (or is about to be) coming out of the
+        speaker. The mic lane (audio_in) uses this for echo suppression: while
+        she speaks, the VAD only opens on speech-LEVEL energy, so her own
+        playback can't re-trigger the wake chain — but the user talking over
+        her still opens a segment (barge-in keeps working)."""
+        with self._lock:
+            return self._stream is not None and (bool(self._buf) or self._playing)
+
 
 # module singleton — one device handle for the whole body process
 PLAYER = StreamPlayer()
+
+
+def playback_active() -> bool:
+    """True while TTS audio is being rendered (echo-suppression signal for
+    audio_in.WakeStream). Safe to call from the asyncio side any time."""
+    return PLAYER.active()
 
 
 # -- legacy/simple API (ws binary path calls this) --------------------------

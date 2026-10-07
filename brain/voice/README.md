@@ -1,14 +1,22 @@
 # brain/voice — Raphael voice stack (voice-dev handoff)
 
-STT: faster-whisper `small` (config `voice.stt_model`), device `auto`
-(cuda→float16, cpu→int8), silero VAD filter for clean segment boundaries.
+STT (profile `cloud_temp`, current): utterances are segmented body-side by the
+lightweight VAD (`body/win/audio_in.py`) and transcribed through
+`router.transcribe()` → Groq Whisper (INTERFACES §a) — one segment = one
+call, silence never leaves the machine, and profile cloud_temp FORCES the
+cloud engine. Local faster-whisper `small` (config `voice.stt_model`, device
+`auto`) stays in the repo but is reachable only with `profile local`
+(`voice.stt_engine: local`).
 TTS: Fish-Speech v1.5.0 (`fishaudio/fish-speech-1.5` checkpoint, 1.4 GB,
 Apache code @ tag v1.5.0 cloned to `brain/voice/vendor/fish-speech`) served
 from an ISOLATED venv `brain/voice/.venv-fish` (fish-speech pins
 numpy≤1.26.4 / pydantic==2.9.2 / torch≤2.4.1 — installing it into
 `brain/.venv` would downgrade the live brain stack; the two venvs coexist).
-Wake word `raphael`, PTT gating, barge-in interrupts: logic in `wake.py`
-(pure, tested); live mic-lane wiring is phase 2 (ws.py audio handlers).
+Wake word `raphael`, PTT gating, barge-in interrupts: `wake.py` (pure, tested)
++ `activation.py` (pre-STT cloud gate + playback-echo rejection); live mic
+lane is wired in ws.py audio handlers. Fish port and voice log dir derive
+from `RAPHAEL_INSTANCE` (INTERFACES §d — main keeps 8777 and
+`brain/voice/logs/`).
 
 ## Install / model artifacts (already done — 2026-10-05)
 
@@ -39,9 +47,12 @@ await voice.warmup()         # resume hook: pre-starts fish server (non-fatal)
 # binary kind=1 payload (PCM s16le 16k mono, ≤50ms frames)  -> append to buf
 # audio_end ->:
 try:
-    res = await asyncio.to_thread(voice.transcribe_result, buf)   # VAD inside
+    res = await asyncio.to_thread(voice.transcribe_result, buf,
+                                  reason=reason)      # pre-STT gate + VAD-era
+                                                      # silence short-circuit
     hub.broadcast(stt_final_frame(res.text, res.lang, res.rtf), roles={'body','ui'})
-    match = voice.wake.gate(res.text, reason=reason)   # reason from audio_start
+    match = voice.wake.gate(res.text, reason=reason)   # ActivationGate: wake
+        # gate + playback-echo rejection (her own words -> kind='none')
     if match.kind != 'none':
         # match.command = transcript with wake word stripped ('wake' kind)
         engine.submit(text=match.command, priority='user_facing', source='voice')
@@ -51,10 +62,17 @@ except VoiceSTTError as e:
 
 - `transcribe(pcm_bytes) -> str` — blocking; ALWAYS `asyncio.to_thread`
   (ARCHITECTURE §4: no blocking calls on the loop).
-- Silence/empty PCM returns `''` gracefully (no exception).
-- Model unavailable → `VoiceSTTError(code, detail)` with PROTOCOL §10 codes
-  (`E_OFFLINE` weights missing + no network, `E_INTERNAL` otherwise) —
+- Silence/empty PCM returns `''` gracefully (no exception) and never calls a
+  provider. Passing `reason` lets the pre-gate drop wake segments when
+  `voice.always_listen: false` (omitted = fail open; see
+  `docs/requests/voice__to__integrator__audio-end-pass-reason.md`).
+- Engine unavailable → `VoiceSTTError(code, detail)` with PROTOCOL §10 codes
+  (`E_PROVIDER_429`/`E_OFFLINE`/`E_PROVIDER_AUTH`/`E_TIMEOUT`/`E_INTERNAL`) —
   broadcast `error_frame(...)`, never crash.
+- Voice confirmations: `brain.voice.voice_confirmation_answer(text,
+  low_risk=...)` → `'yes'|'no'|None` for LOW-risk confirmations only
+  (high-risk always None — see `docs/requests/
+  voice__to__brain-core__voice-confirm-wiring.md`).
 
 ### 2) Barge-in (interrupt) — BEFORE submitting the new command
 
@@ -66,6 +84,13 @@ The `speak()` iterator checks its cancel event between chunks and ends with
 `{"event":"end","interrupted":true}` — stale chunks are dropped; control
 returns to the listener immediately (PROTOCOL §5: user voice interrupts,
 job announcements queue behind speech).
+
+Self-trigger protection (while she speaks): `body/win/audio_in.py` raises the
+VAD open threshold to speech level while `audio_out.PLAYER.active()` (her
+measured bleed 40-225 can't open a segment, real speech 2000+ still can — so
+wake-word barge-in keeps working), and `activation.PlaybackEchoRegistry`
+drops any transcript that matches what she just said (her "Raphael online."
+greeting can never become a job).
 
 ### 3) Narration → speak frames (replaces `hub.narrate` for spoken text)
 
@@ -122,10 +147,12 @@ sends it automatically as an in-context reference (base64 JSON per fish
 
 If the fish server cannot start/synthesize (venv missing, checkpoint gone,
 OOM):
-1. cached wav for the phrase if present → played normally;
-2. else a short 440 Hz placeholder tone (clearly labeled `engine:"fallback"`)
-   + `notice` on every frame → loop.py MUST subtitle the notice + the reply
-   text. This is NOT presented as Raphael's voice.
+1. cached wav for the phrase if present → played normally (`engine:"cache"`);
+2. else **SUBTITLE-ONLY**: no audio chunks at all, plus a **ONE-TIME**
+   `notice` on the `end` frame ("TTS engine unavailable — replies are shown
+   as subtitles until Fish-Speech is back.") which loop.py MUST subtitle
+   together with the reply text. Later degraded replies stay quiet — no
+   repeated apology, no placeholder tone (`engine:"fallback"`).
 
 Exact blockers if fallback is active at runtime: see OPEN ISSUES in
 `.opencode/research/wave2-voice-phase1.md` (reference wav missing; VRAM
@@ -146,22 +173,34 @@ The adapter spawns it on demand (`warmup()`), waits ≤240 s for model load.
 
 ## Tests
 
-- `brain/voice/tests/test_voice.py` — unit + integration (pytest, runs in
-  `brain/.venv`; fish-dependent tests self-skip when the server is down).
-- `brain/voice/smoke_test.py` — end-to-end: silence/sine PCM → STT graceful
-  empty; TTS speak-frame dicts (real fish synthesis when server up); real
+- `brain/voice/tests/` — the whole lane suite (pytest, runs in `brain/.venv`):
+  - `test_voice.py` — core units + fish-dependent integration tests
+    (self-skip when the server is down; run with `-m "not integration"` for
+    the pure mock run);
+  - `test_instance.py` — RAPHAEL_INSTANCE port/path derivation;
+  - `test_stt_cloud.py` — cloud STT seam (stubbed `router.transcribe`),
+    PROTOCOL error mapping, "no local model under cloud_temp" assertions;
+  - `test_activation.py` — pre-STT gate, playback-echo registry, body echo
+    guard (sounddevice stubbed — no mic, no pip);
+  - `test_confirmation.py` — yes/no/modify parsing + high-risk = non-voice;
+  - `test_voice_path.py` — whole path: fake mic PCM → VAD → stub STT → wake
+    gate → command, and fake Fish → speak JSON + binary frames (amplitude,
+    §6 wrapper, 500 ms cap) → barge-in → degraded mode.
+- `brain/voice/smoke_test.py` — REAL end-to-end (integrator only): silence/
+  sine PCM → STT graceful empty; real fish synthesis speak frames; real
   TTS→STT round-trip; binary frame encode check.
 
 ```bash
-brain/.venv/bin/python -m pytest brain/voice/tests -q
-brain/.venv/bin/python brain/voice/smoke_test.py
+brain/.venv/bin/python -m pytest brain/voice/tests -q -m "not integration"
+brain/.venv/bin/python -m pytest brain/voice/tests -q          # + integration
+brain/.venv/bin/python brain/voice/smoke_test.py               # needs fish
 ```
 
 ## Phase-2 TODOs (explicit, not hidden)
 
-1. **Live mic wiring** — ws.py `_on_audio_start/_on_audio_end` + binary kind=1
-   buffering → `transcribe_result` (logic exists; needs brain-dev's hub
-   access; PTT hotkey body-side is "voice phase 3" per PROGRESS.md).
+1. ~~Live mic wiring~~ DONE — ws.py `_on_audio_start/_on_audio_end` +
+   binary kind=1 buffering → `transcribe_result` (audio_end should pass
+   `reason=`; request OPEN to integrator).
 2. **Real amplitude from playback** — current amplitude = RMS of synthesized
    chunk (real audio, honest); orb-side sync (amplitude → actual speaker
    output level) needs the Body playback ack loop.
@@ -169,3 +208,6 @@ brain/.venv/bin/python brain/voice/smoke_test.py
    when VRAM budget allows (optional field; orb degrades gracefully).
 4. **Endianness alignment** with body-dev for §6 u32 seq (I used big-endian).
 5. **assets/raphael_reference.wav** — user must provide; adapter auto-wires.
+6. **Voice-confirm wiring** — parser ships (`brain/voice/confirmation.py`);
+   needs brain-core's `voice_safe(rowid)` + integrator's ws.py resolve branch
+   (request OPEN).
