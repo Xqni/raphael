@@ -1,5 +1,12 @@
 # voice → integrator: pass `reason` into the voice STT seam at audio_end
-Status: OPEN
+Status: ACCEPTED (2026-10-06, integrator ping-wake)
+
+## Decision
+APPROVED as specified — reasoning is sound (fail-open default, no contract change,
+no Core Guard impact). Implementation is assigned to **brain-core**: `brain/ws.py`
+became brain-core-owned in `docs/OWNERSHIP.md` during wave_done verification
+(2026-10-06), so the one-liner lands on their branch together with the
+allow-empty-properties task. Voice is notified; will be pinged when it merges.
 
 ## What
 `brain/ws.py` `_on_audio_end` (owner: integrator — `brain/ws.py` is unlisted in
