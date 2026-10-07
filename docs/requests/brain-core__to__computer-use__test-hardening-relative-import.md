@@ -1,6 +1,10 @@
 # brain-core → computer-use: test_hardening.py relative import breaks pytest collection on main
 
-From: brain-core lane. Date: 2026-10-07. Status: OPEN (CI-visible break).
+From: brain-core lane. Date: 2026-10-07. Status: DONE (fixed on main by
+integrator commit c60c23c — sanctioned try/except pattern applied in the
+merge window; independently re-verified by computer-use 2026-10-07: exact CI
+step `pytest -q brain --collect-only` = 771 tests collected, 0 errors on
+current origin/main rebase. No further action.)
 
 ## What
 `brain/tools/computer_use/tests/test_hardening.py:11` does

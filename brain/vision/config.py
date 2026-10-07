@@ -21,7 +21,6 @@ import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[2]      # brain/vision/config.py -> repo root
 CONFIG_PATH = REPO_ROOT / "config.yaml"
-CONFIG_D = REPO_ROOT / "config.d"
 
 DEFAULT_PROFILE = "cloud_temp"
 
@@ -37,8 +36,47 @@ def _deep_merge(base: Dict[str, Any], over: Dict[str, Any]) -> Dict[str, Any]:
     return out
 
 
+# ---- Core-Guard authority guard (brain-core request 2026-10-07, mirror of
+# brain/config.py::_merge_fragment — same rationale, AGENT_RULES §3/§8) -----
+# Top-level keys NO config.d fragment may touch: a fragment could otherwise
+# empty privacy.redact/blocklist_apps, flip vision.provider/max_px (PROTOCOL
+# §7 pre-send gates), pivot the provider chain, or rewrite the profile overlay.
+# `vision`/`profile` are added beyond brain-core's set because they ARE the
+# §7 gate surface this loader serves. Stripped = base values kept, violation
+# recorded loudly, NEVER raised (a bad lane yaml must not kill the gate).
+AUTHORITY_KEYS = ("safety", "privacy", "providers", "profiles", "profile",
+                  "vision")
+
+_authority_violations: list = []
+
+
+def authority_violations() -> list:
+    """{file, keys} records from this process's loads — empty on a clean tree
+    (tests assert both directions)."""
+    return list(_authority_violations)
+
+
+def _authority_guard(frag_name: str, frag: Dict[str, Any]) -> Dict[str, Any]:
+    stripped = [k for k in AUTHORITY_KEYS if k in frag]
+    if not stripped:
+        return frag
+    _authority_violations.append({"file": frag_name, "keys": stripped})
+    print(f"[vision-config] AUTHORITY VIOLATION in config.d/{frag_name}: "
+          f"stripped {stripped} — privacy/vision/providers/profiles are "
+          f"integrator-only (AGENT_RULES §3/§8); base values kept", flush=True)
+    return {k: v for k, v in frag.items() if k not in stripped}
+
+
 def load_raw(config_path: Optional[Path] = None) -> Dict[str, Any]:
-    """Merged raw config tree (base + config.d + profile overlay)."""
+    """Merged raw config tree (base + config.d + profile overlay).
+
+    Authority guard (mirror of brain-core's `brain/config.py::_merge_fragment`,
+    request …__vision-loader-authority-guard.md): lane fragments may NOT touch
+    the top-level keys the PROTOCOL §7 gate depends on — a buggy/hostile
+    `config.d/*.yaml` could empty `privacy.redact`/`blocklist_apps` or flip
+    `vision.provider`. Violations are STRIPPED (base values kept), recorded
+    loudly, never raised (a bad lane yaml must not kill the gate).
+    """
     path = Path(config_path) if config_path else CONFIG_PATH
     merged: Dict[str, Any] = {}
     if path.is_file():
@@ -46,7 +84,9 @@ def load_raw(config_path: Optional[Path] = None) -> Dict[str, Any]:
         if isinstance(loaded, dict):
             merged = loaded
     # config.d fragments, sorted by filename, deep-merged over the base
-    d = path.parent / "config.d" if path.parent == REPO_ROOT else CONFIG_D
+    # (path-relative: repo config.yaml -> repo config.d; a test tree gets its
+    # own config.d so guard behavior is testable hermetically)
+    d = path.parent / "config.d"
     if d.is_dir():
         for frag in sorted(d.glob("*.yaml")):
             try:
@@ -54,7 +94,7 @@ def load_raw(config_path: Optional[Path] = None) -> Dict[str, Any]:
             except (OSError, yaml.YAMLError):
                 continue          # a broken foreign fragment must not kill the gate
             if isinstance(data, dict):
-                merged = _deep_merge(merged, data)
+                merged = _deep_merge(merged, _authority_guard(frag.name, data))
     # active profile overlay (INTERFACES §c)
     profile = os.environ.get("RAPHAEL_PROFILE") or merged.get("profile") or DEFAULT_PROFILE
     overlay = (merged.get("profiles") or {}).get(profile) or {}
