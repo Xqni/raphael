@@ -10,7 +10,6 @@
 import re
 from pathlib import Path
 
-import pytest
 
 from harness.wssession import WSSession
 
@@ -54,11 +53,9 @@ def test_router_never_touches_ollama_url_during_a_job(client, qa_token,
     assert router_to_mock.completions_count >= 1   # it really went to zen mock
 
 
-@pytest.mark.xfail(strict=False,
-                   reason='supervisor/main.py bring_up_wsl() starts the '
-                          'ollama unit UNCONDITIONALLY — violates cloud_temp '
-                          '"Ollama neither used nor started" (request: '
-                          'qa-security -> infra ollama-profile-gate)')
+# PINNED STRICT 2026-10-07 (was xfail): infra landed the profile gate —
+# supervisor only starts ollama when the profile/local_model allows it
+# (request qa-security -> infra ollama-profile-gate).
 def test_supervisor_gates_ollama_start_on_profile():
     src = (REPO / 'supervisor' / 'main.py').read_text()
     # find the ollama start block and require a profile/enabled gate nearby
@@ -70,10 +67,8 @@ def test_supervisor_gates_ollama_start_on_profile():
         'ollama start is unconditional (no profile/enabled gate above it)'
 
 
-@pytest.mark.xfail(strict=False,
-                   reason='brain/raphael-brain.service has Wants=ollama'
-                          '.service — pulls Ollama in even under cloud_temp '
-                          '(request: qa-security -> infra ollama-profile-gate)')
+# PINNED STRICT 2026-10-07 (was xfail): infra removed the ollama pull-in
+# from the unit (request qa-security -> infra ollama-profile-gate).
 def test_systemd_unit_does_not_want_ollama():
     unit = (REPO / 'brain' / 'raphael-brain.service').read_text()
     active = [ln for ln in unit.splitlines()
