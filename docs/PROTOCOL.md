@@ -51,8 +51,10 @@ Every JSON frame: `{"type": str, "v": 1, ...fields}`. Optional correlation: `"jo
 |---|---|---|---|
 | `auth_ok` / `auth_fail` | all | §2 | handshake result |
 | `ack` | all | `job`, `text_id?` | request accepted (used for instant cached ack) |
-| `job_event` | all | see §5 | job lifecycle/progress |
+| `job_event` | all | see §5 + optional `kind` (`chat\|analysis\|simulation\|act`) + optional `parent` (fan-out correlation) | job lifecycle/progress (kind/parent additive 2026-10-07 integrator-approved: styling + parallel-minds tag; absent when unknown) |
 | `notice` | ui, cli | `text`, `level: info\|warn`, `ts`, `job?` | proactive heads-up (additive, 2026-10-07 integrator-approved — **no state change**: `orb_state` stays the single state authority; ratelimited + fail-silent; no key/log data) |
+| `answer` | ui, cli | `job`, `text`, `provider?`, `model?`, `format: answer` | THE final conversational reply (additive 2026-10-07, integrator-approved: emitted once per final reply incl. fastpath; provider/model only on router hops — omitted in Private Mode; alongside subtitle/speak, which are unchanged) |
+| `report` | ui, cli | `job`, `title`, `summary` (<=500), `sections[<=10] {heading, text<=2000}`, `format: report` | long-form/Analysis on-screen artifact (additive 2026-10-07; caps enforced server-side before emit; spoken reply stays <=2 sentences; NOT an orb state) |
 | `act_req` | body | `job`, `action`, `args`, `lock: bool`, `timeout_ms` | perform a Body action (§7). `lock:true` requires holding the input lock. |
 | `speak` | body, ui | `job`, `seq`, `event: start\|chunk\|end`, `sample_rate: 24000`, `text?`, `amplitude?` (0–1 per chunk), `cached: bool` | TTS stream for playback; `chunk` payloads are binary frames (§6) |
 | `stt_final` | body, ui | `job?`, `text`, `lang`, `rtf` | final transcript of an utterance |
