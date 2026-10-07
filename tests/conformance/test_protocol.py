@@ -11,6 +11,8 @@ BRAIN_TO_CLIENT_FRAMES = {
     'ack',                       # request accepted
     'job_event',                 # job lifecycle/progress
     'notice',                    # additive 2026-10-07 (no state change)
+    'answer',                    # final reply (additive 2026-10-07, integrator hand-edit with §3 row)
+    'report',                    # long-form/Analysis artifact (additive 2026-10-07, same hand-edit)
     'act_req',                   # Body action (§7)
     'speak',                     # TTS stream (JSON side)
     'stt_final',                 # final transcript

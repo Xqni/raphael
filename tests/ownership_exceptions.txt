@@ -10,3 +10,4 @@ docs/INTERFACES.md =brain-core  # 2026-10-07 integrator decision (inbox, shadow 
 brain/config.py =brain-core  # 2026-10-07 integrator decision named this file explicitly ('_INSTANCES in brain/config.py' — shadow row 8911/11)
 brain/ws.py =brain-core  # 2026-10-07 voice__to__brain-core STT-outage APPROVED + IMPLEMENTED (broadcast in _on_audio_end, both except branches)
 brain/formats.py =brain-core  # 2026-10-07 integrator APPROVED contract (brain-core__to__integrator__output-formats-and-job-kinds.md): answer+report emitters
+tests/conformance/test_protocol.py =integrator  # 2026-10-07 atomic pair with my §3 hand-edit (answer/report rows): whitelist+doc must land together or conformance goes red — qa notified to rebase
