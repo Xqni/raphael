@@ -106,6 +106,22 @@ Updated: 2026-10-06 (Wave 2 complete for this lane — handoff below)
   requests. Wave 3 tasks (utterance-end handling, `spoken_reply_max_sentences`
   short replies) only when WAVES.md bumps the wave (AGENT_RULES §11).
 
+## Handoff (voice lane, Wave 2 — READY FOR MERGE REVIEW)
+- Scope delivered: everything in `docs/lanes/voice.md` Wave 2 (session brief
+  items 0-5), 6 commits `b0124da..8ead9d3` on `agent/voice`, no files outside
+  this lane's owned paths except the two `docs/requests/` files (its own
+  mechanism) and `docs/{lanes,status}/voice.md` (its own docs).
+- Not run here, on purpose (integrator's job): real mic, real Fish, real
+  Groq, the live stack (AGENT_RULES §5/§12 — the scheduled task stays
+  Disabled).
+- Dependencies this lane waits on: router must implement
+  `brain.router.transcribe()` (INTERFACES §a) before live voice STT works;
+  `router.transcribe` is already consumed + mocked in the tests.
+- Merge-order position: `voice` merges after `pc-control` (WAVES.md) — the
+  only cross-file touch point is `body/win/audio_*` (owned by this lane).
+- To resume: read this file + `docs/lanes/voice.md`; the two OPEN requests
+  need their owners' decisions.
+
 ## Test output (real runs only — never claim unrun tests)
 
 ```
