@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import json
 import threading
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 
@@ -66,6 +67,7 @@ class ScriptedServer:
                         "path": self.path,
                         "headers": {k.lower(): v for k, v in self.headers.items()},
                         "body": body,
+                        "ts": time.monotonic(),   # failover-ordering assertions
                     })
 
             def _send(self, status: int, body: bytes,

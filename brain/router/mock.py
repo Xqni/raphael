@@ -160,7 +160,8 @@ class MockProvider(Provider):
                          prompt: str | None = None, *,
                          timeout: float) -> dict[str, Any]:
         self.calls.append({"kind": "transcribe", "model": model.id,
-                           "bytes": len(audio), "language": language})
+                           "bytes": len(audio), "language": language,
+                           "prompt": prompt})
         return {"text": f"Mock transcript ({len(audio)} bytes)", "model": model.id}
 
 

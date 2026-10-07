@@ -66,6 +66,7 @@ def make_config(
     vision_provider: str = "cloud",
     stt_engine: str = "groq",
     ollama_url: str = "http://127.0.0.1:9",
+    wake_word: str = "",
     blocklist: tuple[str, ...] = ("1Password", "KeePass", "Banking"),
     profile: str | None = None,
     **settings_kw,
@@ -104,7 +105,7 @@ def make_config(
         privacy=PrivacySettings(blocklist_apps=tuple(blocklist)),
         vision=VisionSettings(provider=vision_provider,
                               max_bytes=int(kw.get("vision_max_bytes", 4_000_000))),
-        voice=VoiceSettings(stt_engine=stt_engine),
+        voice=VoiceSettings(stt_engine=stt_engine, wake_word=wake_word),
     )
 
 

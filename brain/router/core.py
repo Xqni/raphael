@@ -532,6 +532,7 @@ class Router:
         require_capability: str | None = None,
         estimate: int = 100,
     ) -> tuple[str, str, ChatResult]:
+        started = time.monotonic()
         errors: list[RouterError] = []
         for provider in self._chain():
             try:
@@ -549,7 +550,19 @@ class Router:
                     stats.circuit.record_failure(time.monotonic())
                 continue
             return provider.name, model.id, result
+        await self._log_failures(errors, purpose,
+                                 (time.monotonic() - started) * 1000.0)
         raise self._exhausted(errors)
+
+    async def _log_failures(self, errors: list[RouterError], purpose: str,
+                            latency_ms: float) -> None:
+        """One FAILED usage line per provider that failed (per-provider error
+        counts in usage_status(), audit trail in usage.jsonl)."""
+        for err in errors:
+            await self._log_usage(err.provider or "chain", err.model or "",
+                                  purpose, {"input": 0, "output": 0},
+                                  Outcome.FAILED, err.code,
+                                  latency_ms=latency_ms)
 
     def _exhausted(self, errors: list[RouterError]) -> RouterError:
         if not errors:
@@ -712,6 +725,7 @@ class Router:
                                   Outcome.SUCCESS, None,
                                   latency_ms=(time.monotonic() - start) * 1000)
             return
+        await self._log_failures(errors, purpose, 0.0)
         raise self._exhausted(errors)
 
     def _role_for(self, purpose: str, tools: list[dict[str, Any]] | None) -> str:
@@ -745,6 +759,7 @@ class Router:
 
         # free chain first; the paid slot is the LAST resort and is charged to
         # the daily cap (user approval, docs/PAID_USAGE.md)
+        round_started = time.monotonic()
         spend = self._vision_spend
         price = self.config.providers.vision_paid_price_per_mtok
         errors: list[RouterError] = []
@@ -792,6 +807,8 @@ class Router:
             return {"text": result.text, "provider": provider.name,
                     "model": model.id}
 
+        await self._log_failures(errors, purpose,
+                                 (time.monotonic() - round_started) * 1000.0)
         if cap_blocked and all(
             e.reason in ("no_model", "chain_exhausted", "vision_paid_cap",
                          "circuit_open", "missing_key", "cooldown",
@@ -844,6 +861,7 @@ class Router:
                     "rtf": (out or {}).get("rtf")}
 
         errors: list[RouterError] = []
+        round_started = time.monotonic()
         filename = _audio_filename(audio)
         mime = guess_audio_format(audio, filename)
         for provider in self._chain():
@@ -879,6 +897,8 @@ class Router:
             duration = _wav_duration(audio)
             rtf = (elapsed / duration) if duration else None
             return {"text": text, "rtf": rtf}
+        await self._log_failures(errors, "stt",
+                                 (time.monotonic() - round_started) * 1000.0)
         raise self._exhausted(errors)
 
     # ------------------------------------------------------------------ #
@@ -1131,7 +1151,21 @@ def _usage_json(ev: UsageEvent) -> str:
 
 
 def _append_line(path: Path, line: str) -> None:
+    """Append one JSON line — crash-safe: a torn last line (process killed
+    mid-write) gets terminated first so the NEXT event stays parseable
+    instead of fusing onto the fragment (usage-log integrity audit, Wave 4)."""
+    torn = False
+    try:
+        with path.open("rb") as fh:
+            fh.seek(0, 2)
+            if fh.tell() > 0:
+                fh.seek(-1, 2)
+                torn = fh.read(1) != b"\n"
+    except OSError:
+        torn = False
     with path.open("a", encoding="utf-8") as fh:
+        if torn:
+            fh.write("\n")
         fh.write(line + "\n")
 
 
