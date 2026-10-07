@@ -263,7 +263,9 @@ Base `github.*` and `safety.confirm_actions` are read-only for me (never redecla
 
 Wave 3 is MERGED + **GATE PASSED** (tag `wave-3-gate`, all six criteria live, acoustic voice included). Wave-4 theme per WAVES.md: hardening, resilience tests, audit fixes, crash recovery, evolution infrastructure. Rule 15 speed mandate still binds.
 
-- [ ] Memory/plugin hardening: sqlite crash-safety (kill-during-write), FTS corruption recovery, skills/plugins sandbox audit (prompt-injection probes through memory retrieval), MCP stdio orphan/failure modes.
+- [x] Memory/plugin hardening: sqlite crash-safety (kill-during-write), FTS corruption recovery, skills/plugins sandbox audit (prompt-injection probes through memory retrieval), MCP stdio orphan/failure modes. **✅ DONE 2026-10-07** — 19 tests (crash 3 / FTS 4 / injection 7 / MCP 5), real fixes: untrusted-block marker neutralization (framing escape), bool-confidence fail-open, MCP wedged-child evict+kill, FTS keyword-fallback + self-heal + pinned-always.
+- [x] Session-brief wave-4 scope: skill dedup/aging + memory export/delete controls. **✅ DONE 2026-10-07** — `audit_skills()` (stale-unused-published → draft, file+index in sync; `find_duplicates()` report-only), `export.py` (`export_all` 0600 JSONL owner-scoped; `wipe('all'|'memories'|'conversations')` surgical + owner-filtered; deliberately NOT model tools — destructive power stays with the user). 10 tests; `skills.audit_grace_days: 30` in config fragment.
+- **Wave 4 COMPLETE → wave_done posted (merge-ready).**
 
 ## Later waves
 - Per docs/WAVES.md — do not start early (AGENT_RULES §11).

@@ -31,6 +31,14 @@ def has_personal(records: Optional[Iterable[Dict[str, Any]]]) -> bool:
     return False
 
 
+def _neutralize(text: str) -> str:
+    """Kill framing-marker spoofing: record text can never reproduce the
+    block's own header/footer tokens (whitespace is already collapsed, so a
+    record also can never start its own line/section)."""
+    return (text.replace('[/UNTRUSTED', '[/ UNTRUSTED')
+                .replace('[UNTRUSTED', '[ UNTRUSTED'))
+
+
 def build_untrusted_block(records: Optional[Iterable[Dict[str, Any]]], *,
                           include_personal: bool = True,
                           max_chars: Optional[int] = None,
@@ -59,7 +67,7 @@ def build_untrusted_block(records: Optional[Iterable[Dict[str, Any]]], *,
         for r in rows:
             cat = str(r.get('category') or 'fact')
             ts = str(r.get('ts') or '')[:10]
-            text = ' '.join(str(r.get('text') or '').split())
+            text = _neutralize(' '.join(str(r.get('text') or '').split()))
             line = f'- ({cat}{", " + ts if ts else ""}): {text}'
             room = max_chars - used - footer_cost   # footer ALWAYS fits
             if len(line) + 1 > room:

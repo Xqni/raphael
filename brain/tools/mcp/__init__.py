@@ -261,6 +261,15 @@ def refresh(force: bool = False) -> Dict[str, Any]:
             out['errors'][sname] = f'{type(e).__name__}: {e}'
             _inventory[sname] = {'callable': [], 'hidden': 0,
                                  'error': f'{type(e).__name__}: {e}'}
+            # NEVER keep a wedged/handicapped child (timeout, EOF, dead
+            # handshake): evict + close so no orphan survives a failed refresh
+            with _lock:
+                stale = _clients.pop(sname, None)
+            if stale is not None:
+                try:
+                    stale.close()
+                except Exception:  # noqa: BLE001
+                    pass
     return out
 
 

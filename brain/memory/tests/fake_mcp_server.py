@@ -11,6 +11,9 @@ import time
 
 MODE = sys.argv[1] if len(sys.argv) > 1 else 'normal'
 
+if MODE == 'diefast':
+    sys.exit(3)                      # dies before the handshake can complete
+
 TOOLS = [
     {'name': 'echo',
      'description': 'echo text back',
@@ -58,6 +61,8 @@ for _line in sys.stdin:
             'protocolVersion': '2024-11-05',
             'capabilities': {'tools': {}},
             'serverInfo': {'name': 'fake', 'version': '1.0'}}})
+        if MODE == 'dieafterinit':
+            sys.exit(0)              # dies right after the handshake reply
     elif method == 'tools/list':
         _send({'jsonrpc': '2.0', 'id': mid, 'result': {'tools': TOOLS}})
     elif method == 'tools/call':

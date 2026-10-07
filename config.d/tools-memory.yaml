@@ -18,6 +18,7 @@ skills:
   gate_confidence: 0.6           # below this OR status=draft -> never auto-injected
   dedup_jaccard: 0.82            # >= this similarity at creation -> bump usage, no new skill
   inject_drafts: false
+  audit_grace_days: 30           # wave-4 aging: published+never-used+older -> demoted to draft
 
 plugins:
   dir: plugins                   # user-authored manifests; enabled only by the user

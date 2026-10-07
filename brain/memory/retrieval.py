@@ -116,11 +116,25 @@ def retrieve(query: Any, k: Optional[int] = None, *,
             r['score'] = float('inf')              # pinned sorts first by design
 
         toks = _tokens(query)
+        matches: List[Dict[str, Any]] = []
         if toks:
-            if _fts.available():
-                matches = _fts_matches(conn, toks, owner, k + len(pinned_ids))
-            else:
-                matches = _keyword_matches(conn, toks, owner, k + len(pinned_ids))
+            try:
+                if _fts.available():
+                    try:
+                        matches = _fts_matches(conn, toks, owner,
+                                               k + len(pinned_ids))
+                    except Exception:  # noqa: BLE001 — corrupt/unusable index:
+                        try:
+                            _fts.rebuild(conn)  # self-heal for the next query
+                        except Exception:  # noqa: BLE001
+                            pass
+                        matches = _keyword_matches(  # degrade, keep the turn
+                            conn, toks, owner, k + len(pinned_ids))
+                else:
+                    matches = _keyword_matches(conn, toks, owner,
+                                               k + len(pinned_ids))
+            except Exception:  # noqa: BLE001 — catastrophic: pinned still ship
+                matches = []
             # rank by the FINAL score: base (BM25/overlap) + category boost +
             # recency — boosts must actually be able to reorder results.
             matches.sort(key=lambda d: -d['score'])

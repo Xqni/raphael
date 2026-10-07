@@ -92,10 +92,13 @@ def _validate(meta: Dict[str, Any], body: str) -> Dict[str, Any]:
     source = str(meta.get('source') or 'learned')
     if source not in SOURCES:
         raise SkillError(f'invalid source {source!r} (one of {SOURCES})')
+    raw_conf = meta.get('confidence')
+    if isinstance(raw_conf, bool):         # `confidence: true` must not = 1.0
+        raise SkillError(f'invalid confidence {raw_conf!r} (boolean)')
     try:
-        confidence = float(meta.get('confidence') or 0.0)
+        confidence = float(raw_conf or 0.0)
     except (TypeError, ValueError):
-        raise SkillError(f'invalid confidence {meta.get("confidence")!r}')
+        raise SkillError(f'invalid confidence {raw_conf!r}')
     if not 0.0 <= confidence <= 1.0:
         raise SkillError(f'confidence {confidence} outside [0, 1]')
     tags = meta.get('tags') or []
@@ -266,7 +269,8 @@ def _list_rows() -> List[Dict[str, Any]]:
     try:
         rows = conn.execute(
             'SELECT name, path, description, category, tags, status, '
-            'confidence, source, uses, last_used, dedup_hits FROM skills_index '
+            'confidence, source, uses, last_used, dedup_hits, created_at '
+            'FROM skills_index '
             'ORDER BY name').fetchall()
         return [dict(r) for r in rows]
     finally:
@@ -358,6 +362,8 @@ def _set_meta(name: str, **fields: Any) -> bool:
         return False
     for k, v in fields.items():
         if k == 'confidence':
+            if isinstance(v, bool):         # True must not coerce to 1.0
+                raise SkillError(f'invalid confidence {v!r} (boolean)')
             v = float(v)
             if not 0.0 <= v <= 1.0:
                 raise SkillError(f'confidence {v} outside [0, 1]')
@@ -431,3 +437,71 @@ def delete_skill(name: str) -> bool:
         return removed_row or file_existed
     except Exception:  # noqa: BLE001
         return False
+
+
+# ---- wave-4: aging audit + dedup hardening ----------------------------------
+def _age_days(created_at: Any) -> int:
+    """Days since the index row was created (fail-silent -> 0)."""
+    try:
+        import datetime as _dt
+        created = _dt.datetime.strptime(str(created_at)[:19],
+                                         '%Y-%m-%d %H:%M:%S')
+        now = _dt.datetime.now(_dt.timezone.utc).replace(tzinfo=None)
+        return max(0, (now - created).days)
+    except Exception:  # noqa: BLE001
+        return 0
+
+
+def find_duplicates(directory: Optional[Path] = None) -> List[Dict[str, Any]]:
+    """Dedup hardening: detect duplicates ALREADY on disk (two skills at/over
+    the `skills.dedup_jaccard` similarity). Report-only — never auto-merges
+    existing files (merging user-visible content = user's call)."""
+    out: List[Dict[str, Any]] = []
+    try:
+        gate = float(_cfg('skills.dedup_jaccard', 0.82) or 0.82)
+        rows = _list_rows()
+        d = Path(directory) if directory else None
+        recs = []
+        for row in rows:
+            rec = get_skill(row['name'], directory=d) if d else get_skill(row['name'])
+            if rec:
+                recs.append((row['name'],
+                             _tokens(rec['description'] + '\n' + rec['body'])))
+        for i in range(len(recs)):
+            for j in range(i + 1, len(recs)):
+                sim = jaccard(recs[i][1], recs[j][1])
+                if sim >= gate:
+                    out.append({'a': recs[i][0], 'b': recs[j][0],
+                                'similarity': round(sim, 3)})
+    except Exception:  # noqa: BLE001 — audit must never raise
+        return out
+    return out
+
+
+def audit_skills(*, grace_days: Optional[int] = None) -> Dict[str, Any]:
+    """Periodic aging audit (addendum §4 demote flow): a PUBLISHED skill that
+    has NEVER been used and is older than the grace window is demoted back to
+    draft — it stops auto-injecting until reviewed/used again. Report-only for
+    everything else; never deletes; fail-silent -> empty report on errors."""
+    report: Dict[str, Any] = {'demoted': [], 'kept': [], 'duplicates': [],
+                              'grace_days': None}
+    try:
+        grace = int(grace_days if grace_days is not None
+                    else _cfg('skills.audit_grace_days', 30) or 30)
+        report['grace_days'] = grace
+        for row in _list_rows():
+            if row.get('status') != 'published':
+                report['kept'].append(row['name'])   # drafts age naturally
+                continue
+            age = _age_days(row.get('created_at') or row.get('last_used'))
+            if int(row.get('uses') or 0) == 0 and age > grace:
+                if set_status(row['name'], 'draft'):
+                    report['demoted'].append(row['name'])
+                else:
+                    report['kept'].append(row['name'])
+            else:
+                report['kept'].append(row['name'])
+        report['duplicates'] = find_duplicates()
+        return report
+    except Exception:  # noqa: BLE001 — a FAILED audit must look failed,
+        return {}       # never like a clean one (empty report = error)

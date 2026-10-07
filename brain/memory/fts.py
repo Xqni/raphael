@@ -59,6 +59,29 @@ def available() -> bool:
     return bool(_state['ok'])
 
 
+def integrity_check(conn) -> str:
+    """FTS5 external-content check against `memories`. Returns 'ok' or a
+    description of the mismatch. Never raises."""
+    try:
+        conn.execute("INSERT INTO memories_fts(memories_fts, rank) "
+                     "VALUES ('integrity-check', 1)")
+        return 'ok'
+    except Exception as e:  # noqa: BLE001 — mismatch/corruption -> reported
+        return f'mismatch: {type(e).__name__}: {e}'
+
+
+def rebuild(conn) -> bool:
+    """Rebuild the index FROM the content table (the corruption cure).
+    Returns True on success, False when FTS5 is unavailable/broken."""
+    try:
+        conn.execute("INSERT INTO memories_fts(memories_fts) "
+                     "VALUES ('rebuild')")
+        conn.commit()
+        return True
+    except Exception:  # noqa: BLE001
+        return False
+
+
 def reset_for_tests() -> None:
     with _lock:
         _state['checked'] = False
