@@ -24,7 +24,7 @@ process.env.RAPHAEL_INSTANCE = process.env.RAPHAEL_INSTANCE || 'orb';
 
 const path = require('path');
 const fs = require('fs');
-const { spawn } = require('child_process');
+const { spawn, execSync } = require('child_process');
 const { MockBrain } = require('./mock-brain.cjs');
 const { connect } = require('./cdp.cjs');
 const { decode, encode, average } = require('./png.cjs');
@@ -493,6 +493,29 @@ async function runWave5(cdp, brain, rec) {
   add('theme_follows_persona_tier',
       t.theme && t.theme.requested === 'auto' && t.theme.personaTier === 'great_sage',
       t.theme ? `orb.theme=${t.theme.requested} persona.tier=${t.theme.personaTier}` : 'theme probe missing');
+
+  // LIVE palette reload (evolution-persona request, requirement 2): main stats
+  // the config files on orb_state and re-pushes the palette. Touch MY OWN lane
+  // fragment — content byte-identical, only mtime moves — then drive a state so
+  // the watcher fires. No other lane's file is touched.
+  const cfgFile = path.join(ROOT, 'config.d', 'orb.yaml');
+  const before = fs.readFileSync(cfgFile);
+  try {
+    execSync(`touch ${JSON.stringify(cfgFile)}`, { stdio: 'ignore' });
+    brain.step('thinking');
+    await sleep(1300);
+    brain.step('idle');            // second transition clears the 1s throttle
+    await sleep(1500);
+    const t3 = await cdp.evaluateJson('JSON.stringify(window.__orbTrace())');
+    const paletteRx = (t3.rx || []).filter((r) => r.kind === 'palette');
+    add('palette_reloads_live_without_restart', paletteRx.length > 0,
+        `orb-palette frames received: ${paletteRx.length}` +
+        (paletteRx.length ? ` last=${JSON.stringify(paletteRx[paletteRx.length - 1].data)}` : ''));
+    add('palette_content_unchanged', fs.readFileSync(cfgFile).equals(before),
+        'config.d/orb.yaml must be byte-identical (only mtime changed)');
+  } finally {
+    fs.writeFileSync(cfgFile, before);   // never leave the lane config modified
+  }
 
   const out = { pass: checks.every((c) => c.ok), checks };
   rec('wave5', out);

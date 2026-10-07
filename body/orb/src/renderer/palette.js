@@ -17,6 +17,29 @@ const RAPHAEL = {
   ring_color: '#FFFFFF',
   glyph_color: '#FFB000',
   accent: '#2DD4BF',
+  // SEMANTIC, never themed: the Private-Mode ring (ORB_REBUILD §3 names teal
+  // #2DD4BF explicitly). Keeping it out of the theme means Private stays
+  // unmistakable over ANY palette — including the gold-leaning Ciel one — and
+  // never collides with paused/offline greys.
+  private_ring: '#2DD4BF',
+};
+
+// CIEL — tier 3, gold-leaning (docs/evolution/02-persona-tiers.md §5.3,
+// requested by evolution-persona in evolution-persona__to__orb__ciel-gold-
+// palette.md). Direction is theirs; the exact swatches are this lane's design
+// authority: a warm gold/amber family built on #E8B84B, distinctly warmer than
+// Raphael's white + green/teal/blue haze. `great_sage`/`raphael` are untouched
+// and must stay byte-identical (asserted in tests/palette.test.mjs).
+const CIEL = {
+  core_tint: '#FFF6E3',   // warm white-hot (Raphael: pure white)
+  haze_lime: '#E8B84B',   // the base they named
+  haze_teal: '#F0A45C',   // amber, warmer stand-in for Raphael's teal
+  haze_blue: '#D98C3A',   // burnt amber
+  haze_magenta: '#E0674F',// warm coral
+  ring_color: '#FFE9B8',  // pale gold orbit ring
+  glyph_color: '#FFC247', // gold, warmer than Raphael's #FFB000
+  accent: '#E8B84B',      // orbiting job beads
+  private_ring: '#2DD4BF',// SAME teal — semantic, see RAPHAEL.private_ring
 };
 
 // `ciel` is currently an ALIAS of raphael (THEMES.md §4) — same tokens, so a
@@ -24,7 +47,7 @@ const RAPHAEL = {
 // `great_sage` is the IDENTITY tier (docs/evolution/04-tier-switch-test-plan.md
 // A2: it changes nothing) — so it renders exactly like Raphael today. Adding a
 // Ciel look later means editing this map, not the renderer.
-const THEMES = { great_sage: RAPHAEL, raphael: RAPHAEL, ciel: RAPHAEL };
+const THEMES = { great_sage: RAPHAEL, raphael: RAPHAEL, ciel: CIEL };
 
 // --- tiny hex<->hsl helpers (no THREE dependency) ---------------------------
 function hexToRgb(hex) {
@@ -91,7 +114,10 @@ function resolvePalette(cfg) {
   const raw = (cfg && wanted === 'custom')
     ? { ...named, ...(cfg.themeTokens || {}) }
     : { ...named };
-  const v = (cfg && Number.isFinite(cfg.vibrance)) ? cfg.vibrance : 1.15;
+  // 0.8..1.5 per THEMES.md. config.js clamps too, but this is the point of
+  // use, so an out-of-range value from any caller cannot slip through.
+  const rawV = (cfg && Number.isFinite(cfg.vibrance)) ? cfg.vibrance : 1.15;
+  const v = Math.min(1.5, Math.max(0.8, rawV));
   const out = {};
   for (const k of Object.keys(RAPHAEL)) {
     // unknown/absent custom token falls back to the Raphael default, so a

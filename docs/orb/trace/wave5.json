@@ -42,6 +42,18 @@
       "ok": true,
       "detail": "orb.theme=auto persona.tier=great_sage",
       "pass": true
+    },
+    {
+      "name": "palette_reloads_live_without_restart",
+      "ok": true,
+      "detail": "orb-palette frames received: 1 last={\"theme\":\"auto\",\"tier\":\"great_sage\"}",
+      "pass": true
+    },
+    {
+      "name": "palette_content_unchanged",
+      "ok": true,
+      "detail": "config.d/orb.yaml must be byte-identical (only mtime changed)",
+      "pass": true
     }
   ]
 }

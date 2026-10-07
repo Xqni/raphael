@@ -207,6 +207,16 @@ function finish(J, jobList, jobsActive, result) {
   return result;
 }
 
+/** Re-apply palette tokens live (beads + fan spokes). */
+export function applyJobPalette(J, pal) {
+  if (!J || !pal) return;
+  for (const d of J.dots) {
+    d.mat.uniforms.uColor.value.set(pal.accent);
+    d.haloMat.color.set(pal.haze_teal);
+  }
+  J.spokes.material.color.set(pal.accent);
+}
+
 export function updateJobDots(J, ctx) {
   const dt = Math.min(Math.max(ctx.dt, 1), 100);
   const layout = computeLayout(J, ctx.jobList, ctx.jobs | 0);

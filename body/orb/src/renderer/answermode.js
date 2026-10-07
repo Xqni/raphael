@@ -388,6 +388,13 @@ export function lockAnswerMode(AM, state, opts = {}) {
   return AM;
 }
 
+/** Re-apply palette tokens live. Ring 0 carries the theme's glyph colour;
+ *  rings 1-2 keep the ORB_REBUILD §2.2 golds in every tier. */
+export function applyAnswerPalette(AM, pal) {
+  if (!AM || !pal || !AM.rings || !AM.rings[0]) return;
+  AM.rings[0].glyphMat.uniforms.uTint.value.set(pal.glyph_color);
+}
+
 // --- per-frame update -------------------------------------------------------
 // ctx = { t (s), dt (ms), state, amp, glide: {x, y} }
 export function updateAnswerMode(AM, ctx) {

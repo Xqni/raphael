@@ -864,3 +864,60 @@ States remain distinguishable **without** shape morphing — colour, mode
 overlays, jobs dots, Data Rings and the amplitude pulse carry the whole
 distinctness gate on their own. Screenshots + `docs/orb/matrix/` regenerated
 by the same run.
+
+---
+
+# Wave 5 — Ciel gold palette (request from evolution-persona)
+
+`docs/requests/evolution-persona__to__orb__ciel-gold-palette.md` → **Status:
+DONE**, decision recorded in the file. All three requirements met:
+
+| requirement | how |
+|---|---|
+| **1. gold-leaning palette + delivery point** | Swatches in `src/renderer/palette.js → CIEL` (this lane's design authority, per the request). Base `#E8B84B`, warm core `#FFF6E3`, amber/coral haze, `#FFC247` glyph, gold beads. Delivery point = **`persona.tier` → `orb.theme: auto` → `THEMES`** — flipping the tier needs **no code change**. |
+| **2. tier switch changes the palette LIVE** | `main.js` stats `config.yaml` + `config.d/*.yaml` on every `orb_state` (throttled ≥1 s), rebuilds `Config`, pushes `orb-palette`; renderer re-resolves and calls `applySagePalette`/`applyAnswerPalette`/`applyJobPalette` → nebula, orbit rings, glyph ring, beads and fan spokes re-tint **without a restart**. |
+| **3. private/paused keep working over gold** | New **`private_ring`** token, teal in **every** theme (ORB_REBUILD §3 names `#2DD4BF` — semantic, not decoration). Paused keeps hardcoded steel `#9fb6d8`, Offline its grey — neither themed. |
+
+**Existing tiers byte-identical — asserted, not assumed.** The first draft of
+the test failed twice and both failures were real findings:
+
+1. my frozen snapshot used the *raw* config colours, but `vibrance` 1.15 is
+   applied to every token (`#B8E02A → #C3EF29`) — the snapshot now freezes what
+   actually renders;
+2. `vibrance` was only clamped in `config.js`, so `resolvePalette({vibrance:
+   0.1})` passed 0.1 straight through — **the documented 0.8–1.5 range now
+   lives at the point of use too**.
+
+```
+$ node tests/palette.test.mjs
+All 8 palette tests passed
+  ok great_sage and raphael are BYTE-IDENTICAL palettes
+  ok raphael palette equals the frozen 2026-10-07 snapshot
+  ok great_sage / raphael / ciel all resolve under theme:auto
+  ok ciel is gold-leaning and distinctly warmer than raphael
+  ok private ring is the SAME teal in every theme (semantic, never themed)
+  ok paused steel is untouched by any theme (hardcoded in sagecore)
+  ok vibrance is applied and clamped to 0.8..1.5
+  ok custom overrides still win, unknown tier falls back to raphael
+
+$ npm run orb:trace -- --only=wave5
+Wave 5: PASS (9/9)   [was 7/7 — the two new checks:]
+  ok palette_reloads_live_without_restart: orb-palette frames received: 1
+  ok palette_content_unchanged: config.d/orb.yaml byte-identical (only mtime moved)
+```
+
+The live probe touches **only my own** `config.d/orb.yaml` (mtime bump,
+content byte-identical, restored in a `finally`) — no other lane's file is
+read, written or restored by the test.
+
+## Full gate after the palette work
+
+```
+npm run test:unit   PASS — 7 morph + 4 gl-recovery + 5 morph-clock + 8 palette
+                              + 8 port-safety + state-machine
+npm run orb:trace   startup 7/7 · transparency PASS · BugC 6/6 · wave5 9/9 ·
+                     interaction 19/19 · shape directive ok ["circle"] ·
+                     distinctness PASS (104 pairs)
+npm run orb:size    PASS (12 combos, worst drift 4.6% of 12%)
+node test/orb-diff.cjs  PASS
+```

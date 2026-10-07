@@ -349,7 +349,7 @@ export function initSageCore(THREE, group, scene, pal) {
   L.privateMat = new THREE.ShaderMaterial({
     vertexShader: ringVert, fragmentShader: ringFrag,
     uniforms: { uTime: { value: 0 }, uAlpha: { value: 0 }, uSeed: { value: 0.63 },
-                uTint: { value: new THREE.Color(pal.accent) } },   // §5 accent token
+                uTint: { value: new THREE.Color(pal.private_ring || pal.accent) } }, // semantic teal (never themed)
     side: THREE.DoubleSide, transparent: true, depthWrite: false,
     blending: THREE.AdditiveBlending,
   });
@@ -404,6 +404,21 @@ export function initSageCore(THREE, group, scene, pal) {
   group.add(L.spark);
 
   return L;
+}
+
+/** Re-apply palette tokens live (Wave 5, tier switch without a restart). */
+export function applySagePalette(L, pal) {
+  if (!L || !pal || !L.nebulaMat) return;
+  const u = L.nebulaMat.uniforms;
+  u.cLime.value.set(pal.haze_lime);
+  u.cTeal.value.set(pal.haze_teal);
+  u.cBlue.value.set(pal.haze_blue);
+  u.cMagenta.value.set(pal.haze_magenta);
+  L.ringBackMat.uniforms.uTint.value.set(pal.ring_color);
+  L.ringFrontMat.uniforms.uTint.value.set(pal.ring_color);
+  const pr = pal.private_ring || pal.accent;   // semantic teal — same in every tier
+  L.privateMat.uniforms.uTint.value.set(pr);
+  L.privateMat2.uniforms.uTint.value.set(pr);
 }
 
 // --- Pose lock (test hook, W2.1) --------------------------------------------
