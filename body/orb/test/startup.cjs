@@ -47,7 +47,7 @@ function analyze(samples) {
   const w = findWindow(samples);
   if (!w) {
     add('window', false, 'omega never exceeded its rest value — no spin-down found');
-    return { pass: false, checks, window: null };
+    return { pass: false, checks, window: null, fit: { r2: 0, impliedTau: 0, cfgTau: samples[0].tau || 1400 } };
   }
   const seg = samples.slice(w.peakIdx, w.endIdx + 1);
   const rest = w.rest, delta = w.delta;
@@ -98,7 +98,8 @@ function analyze(samples) {
     for (const [x, y] of pts) { sxx += (x - mx) ** 2; sxy += (x - mx) * (y - my); syy += (y - my) ** 2; }
     const slope = sxy / (sxx || 1);
     r2 = (sxy * sxy) / ((sxx * syy) || 1);
-    impliedTau = slope < -1e-9 ? -1000 / slope : Infinity; // t is in ms
+    // t is in ms, so slope = -1/tau_ms  ->  tau_ms = -1/slope
+    impliedTau = slope < -1e-9 ? -1 / slope : Infinity;
   }
   const cfgTau = samples[0].tau;
   add('exponential_like',
@@ -151,13 +152,17 @@ function renderPlot(samples, report, outFile) {
   const W = 1180, H = 700;
   const img = create(W, H, [14, 15, 18, 255]);
   const w = report.window;
+  const cfgTau = (report.fit && report.fit.cfgTau) || samples[0].tau || 1400;
+  const fitR2 = report.fit ? report.fit.r2 : 0;
+  const fitTau = report.fit ? report.fit.impliedTau : 0;
 
   text(img, 'RAPHAEL ORB - STARTUP SPIN-DOWN', 24, 20, [240, 242, 248, 255], 3);
   const verdict = report.pass ? 'PASS' : 'FAIL';
   const vc = report.pass ? [110, 231, 138, 255] : [248, 113, 113, 255];
   text(img, verdict, 24, 54, vc, 3);
-  text(img, `TAU ${report.fit.cfgTau} MS   PEAK ${report.fit && w ? w.peak.toFixed(3) : '?'} RAD/S   ` +
-       `REST ${w ? w.rest.toFixed(3) : '?'} RAD/S   WINDOW ${w ? w.durationMs : '?'} MS`,
+  text(img, `TAU ${cfgTau} MS   PEAK ${w ? w.peak.toFixed(3) : '?'} RAD/S   ` +
+       `REST ${w ? w.rest.toFixed(3) : '?'} RAD/S   WINDOW ${w ? w.durationMs : '?'} MS   ` +
+       `FIT R2 ${fitR2.toFixed(3)} / TAU ${Number.isFinite(fitTau) ? fitTau.toFixed(0) : 'INF'} MS`,
        130, 58, [190, 196, 210, 255], 2);
 
   // Chart 1: raw omega (rad/s) with the exponential fit overlaid
@@ -165,7 +170,7 @@ function renderPlot(samples, report, outFile) {
   if (w) {
     for (const s of samples) {
       fitValues.push(s.t >= w.t0
-        ? w.rest + w.delta * Math.exp(-(s.t - w.t0) / report.fit.cfgTau)
+        ? w.rest + w.delta * Math.exp(-(s.t - w.t0) / cfgTau)
         : NaN);
     }
   }

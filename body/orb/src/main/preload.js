@@ -36,4 +36,9 @@ contextBridge.exposeInMainWorld('orbConfig', {
   reducedMotion: cfg.reduced_motion || false,
   instance: cfg.instance,
   cdpPort: cfg.cdpPort,
+  theme: cfg.theme,
+  vibrance: cfg.vibrance,
+  motionBlur: cfg.motionBlur,
+  startupSpinTauMs: cfg.startupSpinTauMs,
+  themeTokens: cfg.themeTokens,
 });

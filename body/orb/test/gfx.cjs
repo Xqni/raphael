@@ -27,13 +27,18 @@ function rect(img, x0, y0, w, h, c) {
 }
 
 function line(img, x0, y0, x1, y1, c) {
+  // Round up front: Bresenham on fractional endpoints can step past the
+  // rounded target and then never match the break condition (infinite loop).
+  x0 = Math.round(x0); y0 = Math.round(y0); x1 = Math.round(x1); y1 = Math.round(y1);
+  if (!Number.isFinite(x0) || !Number.isFinite(y0) || !Number.isFinite(x1) || !Number.isFinite(y1)) return;
   const dx = Math.abs(x1 - x0), dy = Math.abs(y1 - y0);
   const sx = x0 < x1 ? 1 : -1, sy = y0 < y1 ? 1 : -1;
   let err = dx - dy;
-  let x = Math.round(x0), y = Math.round(y0);
-  for (;;) {
+  let x = x0, y = y0;
+  const guard = dx + dy + 4;
+  for (let step = 0; step <= guard; step++) {
     px(img, x, y, c);
-    if (x === Math.round(x1) && y === Math.round(y1)) break;
+    if (x === x1 && y === y1) break;
     const e2 = 2 * err;
     if (e2 > -dy) { err -= dy; x += sx; }
     if (e2 < dx) { err += dx; y += sy; }
@@ -138,7 +143,7 @@ function chart(img, opts) {
   const all = series.flatMap((s) => s.values.filter((v) => Number.isFinite(v)));
   const yMax = ymax !== undefined ? ymax : Math.max(...all, 1e-9);
   const yMin = ymin !== undefined ? ymin : Math.min(...all, 0);
-  const xMax = xmax !== undefined ? xmax : Math.max(...series[0].values.length - 1, 1);
+  const xMax = xmax !== undefined ? xmax : Math.max(series[0].values.length - 1, 1);
   const n = series[0].values.length;
 
   // frame + grid

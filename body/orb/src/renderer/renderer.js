@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { vertexShader, sphereVert } from './shaders/vertex.glsl.js';
 import { fragmentShader, glowShader } from './shaders/fragment.glsl.js';
+import { blurVert, blurFrag } from './shaders/blur.glsl.js';
 import { initSageCore, updateSageCore, lockSageCore } from './sagecore.js';
 import { initAnswerMode, updateAnswerMode, lockAnswerMode } from './answermode.js';
 import { initDataRings, updateDataRings, lockDataRings } from './datarings.js';
@@ -143,6 +144,82 @@ let JD = null; // jobs_active orbiting dots (PROTOCOL §8)
 // Pose lock (test hook): see __orbLockPose(). Production never sets it.
 let poseLock = false;
 const POSE_T = 2.0; // pinned animation clock used while locked
+let lastNow = 0;    // previous rAF tick (dt source — see animate())
+const ft = { last: 0, ema: 0, n: 0 }; // frame-time probe (§2/§4)
+
+// --- §2 cheap motion blur ---------------------------------------------------
+// One LOW-RES angular smear of the scene we already rendered, mixed in by the
+// existing edge-mask pass (so: zero extra full-resolution passes). Velocity
+// gated — when the orb is calm the pass is not executed at all, which is what
+// keeps idle cost identical to before.
+let blurRT = null, blurScene = null, blurCam = null, blurMat = null;
+const blurState = { amount: 0, angle: 0, taps: 0, skipped: true, reason: 'init' };
+let motionBlurOverride = null;  // 'off' | 'force' | null (measurement hook)
+const BLUR_CALM = 0.35;         // rad/s — below this the rim moves <0.1 deg/frame
+const BLUR_FAST = 1.60;         // rad/s — full smear at/above this
+const BLUR_MAX_ANGLE = 0.12;    // rad — cap so a hitch can never smear wildly
+// Physical rotation (§1). ONE angular-velocity source drives the whole
+// assembly: `angle` is integrated state (never reset, never eased), and
+// `omega` relaxes exponentially toward its target with a configurable tau, so
+// velocity is C1 across every hand-off. `omega` is a MAGNITUDE — GROUP_SPIN
+// carries the direction, which keeps omega positive so a genuine reversal
+// shows up as a zero crossing in the trace instead of hiding in a sign flip.
+//
+// BASELINE (2026-10-06, before this rewrite) measured against the old
+// bell-curve `genSpin` velocity profile:
+//   peak 21.12 rad/s, rest 0.50 rad/s, +6.13 rad/s JUMP at the hand-off,
+//   fit R^2 0.89 / implied tau 977 ms, and only 6.9% of the delta left at
+//   1.5x tau — i.e. it eased out far too early and then stopped decelerating.
+let spin = null;
+const SPIN_REST = 0.003 * 60;   // the group's rest rate at the 60 fps design point (rad/s)
+const SPIN_PEAK = 3.2;          // startup spin-up target (rad/s)
+const SPIN_UP_MS = 400;         // smooth rise into the peak — omega is never snapped
+function ensureSpin() {
+  if (!spin) {
+    spin = {
+      angle: 0,
+      omega: SPIN_REST,
+      target: SPIN_REST,
+      tau: SPIN_UP_MS,
+      rest: SPIN_REST,
+      peak: SPIN_PEAK,
+      tauStartup: (cfg && cfg.startupSpinTauMs) || 1400,
+      phase: 'run',       // run -> spinup -> settle -> run
+      phaseStart: 0,
+    };
+  }
+  return spin;
+}
+/** Begin a startup sequence: relax omega UP to the peak, then decay it. */
+function armStartup(now) {
+  ensureSpin();
+  spin.phase = 'spinup';
+  spin.tau = SPIN_UP_MS;
+  spin.target = spin.peak;
+  spin.phaseStart = now;
+}
+/** dt-based integration, dt already clamped by the caller. */
+function stepSpin(now, dt) {
+  const s = ensureSpin();
+  if (s.phase === 'spinup' && now - s.phaseStart >= SPIN_UP_MS) {
+    s.phase = 'settle';
+    s.tau = s.tauStartup;      // the configured orb.startup.spin_tau_ms
+    s.target = s.rest;
+    s.phaseStart = now;
+  } else if (s.phase === 'settle' &&
+             Math.abs(s.omega - s.rest) < 0.05 * Math.max(s.peak - s.rest, 1e-6)) {
+    s.phase = 'run';           // no snap: target stays at rest, relax continues
+  }
+  s.omega += (s.target - s.omega) * (1 - Math.exp(-dt / s.tau));
+  if (s.omega < 0) s.omega = 0; // magnitude, never negative
+  s.angle += s.omega * (dt / 1000);
+  return s;
+}
+/** True while the startup spin-down is still visibly in progress (§1: the
+ *  frame-time governor must not change quality mid-startup and cause a hitch). */
+function spinSettling() {
+  return !!spin && (spin.phase !== 'run' || orbState.orbState === 'starting');
+}
 let edgeRT = null, maskScene = null, maskCam = null, maskMat = null;
 const sceneStats = { calls: 0, tris: 0 }; // cached AFTER the scene pass (mask pass resets renderer.info)
 
@@ -231,15 +308,21 @@ function initScene() {
   maskScene = new THREE.Scene();
   maskCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
   maskMat = new THREE.ShaderMaterial({
-    uniforms: { tScene: { value: edgeRT.texture }, uCA: { value: 0 } },
+    uniforms: { tScene: { value: edgeRT.texture }, uCA: { value: 0 },
+                tBlur: { value: null }, uBlur: { value: 0 } },
     vertexShader: 'varying vec2 vUv; void main() { vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }',
     fragmentShader: [
       'precision mediump float;',
       'varying vec2 vUv;',
       'uniform sampler2D tScene;',
+      'uniform sampler2D tBlur;',
       'uniform float uCA;',
+      'uniform float uBlur;',
       'void main() {',
       '  vec4 c = texture2D(tScene, vUv);',
+      // §2: mix in the low-res angular smear. BOTH inputs are premultiplied
+      // RGBA, so the mix is too — no dark box, halo or ghost on any wallpaper.
+      '  if (uBlur > 0.001) c = mix(c, texture2D(tBlur, vUv), uBlur);',
       // chromatic aberration at the outer edge while Answer Mode is active
       '  vec2 rc = vUv - 0.5;',
       '  vec2 off = rc * 0.010 * uCA * smoothstep(0.35, 0.75, length(rc));',
@@ -255,9 +338,38 @@ function initScene() {
   });
   maskScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), maskMat));
 
+  // §2: the low-res blur target + its fullscreen quad. Created once; the
+  // runtime decides every frame whether the pass runs at all.
+  blurScene = new THREE.Scene();
+  blurCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+  blurMat = new THREE.ShaderMaterial({
+    uniforms: {
+      tScene: { value: edgeRT.texture },
+      uAngle: { value: 0 },
+      uRadius: { value: 1.0 },
+      uTaps: { value: 4 },
+    },
+    vertexShader: blurVert,
+    fragmentShader: blurFrag,
+    depthTest: false,
+    depthWrite: false,
+    blending: THREE.NoBlending,
+  });
+  blurScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), blurMat));
+  blurRT = new THREE.WebGLRenderTarget(2, 2, {
+    minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter,
+    format: THREE.RGBAFormat, depthBuffer: false, stencilBuffer: false,
+  });
+  maskMat.uniforms.tBlur.value = blurRT.texture;
+
   function resizeEdgeRT(w, h) {
-    if (edgeRT) edgeRT.setSize(Math.max(2, Math.round(w * renderer.getPixelRatio())),
-                               Math.max(2, Math.round(h * renderer.getPixelRatio())));
+    const dpr = renderer.getPixelRatio();
+    const ew = Math.max(2, Math.round(w * dpr));
+    const eh = Math.max(2, Math.round(h * dpr));
+    if (edgeRT) edgeRT.setSize(ew, eh);
+    // the blur target is a fixed FRACTION of the scene target — §2 forbids a
+    // full-resolution post pass
+    if (blurRT) blurRT.setSize(Math.max(2, Math.round(ew * 0.5)), Math.max(2, Math.round(eh * 0.5)));
   }
   resizeEdgeRT(sizePx, sizePx);
 
@@ -485,6 +597,52 @@ function getStateTint(s) {
   return 0xffffff;                                // idle / private_overlay
 }
 
+/**
+ * §2 motion blur — VELOCITY GATED. Returns the uniforms for the one low-res
+ * angular smear, or `on:false` when the orb is calm (in which case the pass is
+ * not executed at all and idle costs exactly what it did before).
+ *
+ * Gates, in order: `orb.motion_blur: off` -> `reduced_motion` -> quality tier
+ * `low` -> the frame-time governor (if it has already downshifted, cut the
+ * tap budget) -> the velocity threshold itself.
+ */
+function computeMotionBlur(dt) {
+  const want = cfg.motionBlur || 'auto';
+  blurState.speed = spin ? spin.omega : 0;
+  const off = (reason) => {
+    Object.assign(blurState, { amount: 0, angle: 0, taps: 0, skipped: true, reason });
+    return { on: false, angle: 0, taps: 0, amount: 0 };
+  };
+  if (motionBlurOverride === 'off') return off('override-off');
+  if (cfg.reducedMotion) return off('reduced_motion');
+  if (want === 'off') return off('motion_blur-off');
+
+  // speed: the physical assembly spin, plus whichever overlay layer is turning
+  // fastest right now (Answer-Mode glyph bands / prismatic data rings)
+  let speed = spin ? spin.omega : 0;
+  if (AM && Math.max(AM.wFull, AM.wQuiet) > 0.15) speed = Math.max(speed, 0.55);
+  if (DR && DR.w > 0.15) speed = Math.max(speed, 0.45);
+  const raw = motionBlurOverride === 'force'
+    ? 1
+    : Math.max(0, Math.min(1, (speed - BLUR_CALM) / (BLUR_FAST - BLUR_CALM)));
+  if (raw <= 0.02) return off('calm');          // idle rest spin -> no cost
+
+  let taps;
+  if (want === 'low') taps = 2;
+  else if (want === 'high') taps = 6;
+  else if (cfg.quality === 'low') taps = 0;
+  else if (cfg.quality === 'medium') taps = 3;
+  else if (cfg.quality === 'high') taps = 6;
+  else taps = 4;                                 // auto
+  if (GOV.on && GOV.idx < GOV.ceiling) taps = Math.min(taps, 2); // governor wins
+  if (taps <= 0) return off('quality-tier');
+
+  const angle = Math.min(BLUR_MAX_ANGLE, speed * (Math.min(dt, 50) / 1000));
+  const amount = 0.9 * raw;
+  Object.assign(blurState, { amount, angle, taps, skipped: false, reason: 'on', speed });
+  return { on: true, angle, taps, amount };
+}
+
 function animate(now) {
   requestAnimationFrame(animate);
   if (DEMO && !manualState && window.__orbDemoTimeline === true) {
@@ -503,9 +661,23 @@ function animate(now) {
     ? (typeof orbState.amplitude === 'number' ? orbState.amplitude : 0)
     : speakAmp;
   const pulse = 1 + reactiveAmp * 0.25;
-  // dt: real while animating; deliberately large while pose-locked so every
-  // damped uniform converges to its target within a couple of frames.
-  const dt = poseLock ? 1000 : (now - lastFrame);
+  // dt (§1): time since the PREVIOUS animation tick, clamped to 50 ms so a
+  // hitch or a throttled tab cannot distort the curve. It used to be
+  // `now - lastFrame` (time since the last RENDER), which double-counted
+  // between renders on the 30 fps idle cap and made every 300-600 ms blend
+  // run ~1.5x fast. Pose-locked captures use a deliberately large dt so all
+  // damped uniforms converge to their targets within a couple of frames.
+  const dtRaw = now - lastNow;
+  lastNow = now;
+  const dt = poseLock ? 1000 : Math.max(1, Math.min(dtRaw, 50));
+  // frame-time probe (§2/§4 evidence): rolling EMA of real tick intervals
+  if (ft.last > 0) {
+    const d = now - ft.last;
+    if (d > 0 && d < 500) ft.ema = ft.ema ? ft.ema + 0.1 * (d - ft.ema) : d;
+    if (ft.n < 1e9) ft.n++;
+  }
+  ft.last = now;
+  if (!poseLock) stepSpin(now, dt);
   // Damping weights based on current orb state
   // state-shape morph: each state morphs the cyan lattice to its signature shape
   if (orbState.orbState !== lastShapeState) {
@@ -526,6 +698,10 @@ function animate(now) {
       speakAmp = 0;
       speakPitch = null;
     }
+    // §1: a NEW startup sequence relaxes omega up to the peak and then lets it
+    // decay with orb.startup.spin_tau_ms. omega itself is never snapped, and
+    // every other state change leaves it alone (C1 continuity).
+    if (orbState.orbState === 'starting' && !poseLock) armStartup(now);
   }
   const target = modeTarget(orbState.orbState, orbState.mode);
   layerWeights.coreScale = damp(layerWeights.coreScale, target.coreScale, MORPH_DURATION, dt);
@@ -557,11 +733,16 @@ function animate(now) {
   if (JD) updateJobDots(JD, { t, dt, jobs: orbState.jobsActive, lock: poseLock });
   if (AM && maskMat) maskMat.uniforms.uCA.value = AM.wFull; // chromatic aberration at outer edge (Answer Mode)
   if (!poseLock) {
-    rays.rotation.z += 0.01;
-    rings[0].rotation.z += 0.008;
-    rings[1].rotation.z -= 0.006;
-    lattice.rotation.y += 0.004;
-    group.rotation.y += 0.003 * GROUP_SPIN;
+    // dt-based, never per-tick (§1): the old fixed `+= 0.01` style scaled with
+    // the frame RATE, so a hitch or a throttled tab visibly changed speed.
+    const dtSec = dt / 1000;
+    rays.rotation.z += 0.60 * dtSec;
+    rings[0].rotation.z += 0.48 * dtSec;
+    rings[1].rotation.z -= 0.36 * dtSec;
+    lattice.rotation.y += 0.24 * dtSec;
+    // the whole assembly's rotation IS the integrated omega — angle is never
+    // reset or eased, only omega relaxes (see stepSpin)
+    group.rotation.y = (spin ? spin.angle : 0) * GROUP_SPIN;
   }
   group.rotation.x = Math.sin(t * 0.045) * 0.05; // gentle bounded sway on x (not one flat plane)
 
@@ -590,12 +771,22 @@ function animate(now) {
   if (!poseLock) updateMorph(now);
   // Render scene -> offscreen target, then composite through the edge mask
   // (soft 8% fade on every side: no content ever meets the window box hard).
+  const blur = computeMotionBlur(dt);   // §2 — evaluated before the pass runs
   if (edgeRT) {
     renderer.setRenderTarget(edgeRT);
     renderer.render(scene, camera);
     sceneStats.calls = renderer.info.render.calls;
     sceneStats.tris = renderer.info.render.triangles;
+    // §2: ONE extra LOW-RES pass (edgeRT -> blurRT), and only while moving.
+    // It never runs in the calm case, so idle cost is unchanged.
+    if (blur.on) {
+      blurMat.uniforms.uAngle.value = blur.angle;
+      blurMat.uniforms.uTaps.value = blur.taps;
+      renderer.setRenderTarget(blurRT);
+      renderer.render(blurScene, blurCam);
+    }
     renderer.setRenderTarget(null);
+    maskMat.uniforms.uBlur.value = blur.on ? blur.amount : 0;
     renderer.render(maskScene, maskCam);
   } else {
     renderer.render(scene, camera);
@@ -604,7 +795,9 @@ function animate(now) {
   }
 
   // --- frame-time governor: measure achieved intervals, drift the tier ---
-  if (GOV.on && !document.hidden) {
+  // §1: it must NOT change quality while the startup spin is still running —
+  // a mid-startup dpr shift is exactly the "animation visibly hitches" cause.
+  if (GOV.on && !document.hidden && !spinSettling()) {
     const d = GOV.lastAt ? (now - GOV.lastAt) : 0;
     GOV.lastAt = now;
     GOV.seen++;
@@ -721,6 +914,54 @@ window.__orbLockPose = () => {
 };
 window.__orbUnlockPose = () => { poseLock = false; };
 window.__orbPoseLocked = () => poseLock;
+
+// ---------------------------------------------------------------------------
+// SPIN PROBE (§1). Reads the live rotation state without touching it, so the
+// harness can plot omega/angle through `starting -> idle` BEFORE and AFTER the
+// physical-rotation rewrite and assert on the real numbers.
+//   omega      — the physical angular velocity once the rewrite is in, else null
+//                (the harness then finite-differences `angles.cage`)
+//   angles.*   — raw accumulated rotation of each assembly, radians
+//   genT       — the wireframe build clock (ms) used by the startup sequence
+// ---------------------------------------------------------------------------
+window.__orbSpin = () => ({
+  t: Math.round(performance.now()),
+  angle: group ? group.rotation.y : null,   // primary rotation (integrates omega)
+  omega: spin ? spin.omega : null,
+  rest: spin ? spin.rest : null,
+  peak: spin ? spin.peak : null,
+  tau: spin ? spin.tau : null,
+  phase: spin ? spin.phase : null,
+  state: orbState.orbState,
+  genT: sage ? sage.genT : null,
+  bright: core ? core.material.uniforms.uBright.value : null,
+  coreScale: core ? core.scale.x : null,
+  angles: {
+    group: group ? group.rotation.y : null,
+    cage: sage && sage.cage ? sage.cage.rotation.y : null,
+    poly: sage ? sage.poly.rotation.y : null,
+    lattice: lattice ? lattice.rotation.y : null,
+    rays: rays ? rays.rotation.z : null,
+  },
+  weights: {
+    lattice: layerWeights.latticeOpacity,
+    halo: layerWeights.haloOpacity,
+    coreScale: layerWeights.coreScale,
+  },
+  govActed: GOV ? GOV.acted : 0,
+  govDpr: GOV ? GOV_LADDER[GOV.idx] : null,
+  frame: renderer ? renderer.info.render.frame : null,
+});
+
+// --- §2 / §4 probes ---------------------------------------------------------
+window.__orbMotionBlur = () => ({ ...blurState, reducedMotion: !!cfg.reducedMotion,
+                                  quality: cfg.quality, config: cfg.motionBlur });
+// 'off' forces the pass out (baseline measurement), 'force' ignores the
+// velocity gate so the COST of the pass can be measured in a calm state,
+// null restores normal gating. Test-only; production never calls it.
+window.__orbSetMotionBlur = (m) => { motionBlurOverride = m || null; return window.__orbMotionBlur(); };
+window.__orbFrameTime = () => ({ ema: ft.ema, n: ft.n });
+window.__orbResetFrameTime = () => { ft.ema = 0; ft.n = 0; return true; };
 
 
 // W2.1 trace probe: what the renderer RECEIVED + what it APPLIED (weights and

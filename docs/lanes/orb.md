@@ -4,34 +4,64 @@ Read: docs/AGENT_RULES.md -> docs/WAVES.md -> this file. Status log: docs/status
 
 Merge-order position: see docs/WAVES.md
 
-## Wave 2 tasks (docs/WAVES.md current_wave: 2)
+Base spec: `docs/ORB_REBUILD_TASK.md`. The fidelity pass below REFINES it (never contradicts it).
+Run everything with `RAPHAEL_INSTANCE=orb`.
 
-- [ ] **W2.0 Instance isolation** — derive CDP port, single-instance key/userData, WS port + token path from `RAPHAEL_INSTANCE` (INTERFACES §d: orb row = WS 8906, CDP 9406, userData `~/.raphael/<instance>/orb/`). No hardcoded ports.
-- [ ] **W2.1 FIX: orb graphics do not change between states** (diagnose end-to-end, no guessing):
-  - [ ] build `npm run orb:trace` — mock-brain WS server in `body/orb/test/` replaying the full `orb_state` sequence (starting, idle, listening, thinking, acting, speaking, confirm, error, reconnecting, offline, private/paused modes); logs frames received / state applied / uniform+weight values per frame.
-  - [ ] run it through the existing CDP screenshot harness; capture every state.
-  - [ ] check the listed likely causes (frames arriving, state-name mismatch, layer-weight mapping, crossfade/dt, frame-time governor, reduced_motion/rest_motion, renderer pause/throttle, amplitude wiring).
-  - [ ] automated test that FAILS when two states render near-identical (pixel-diff threshold).
-  - [ ] save per-state screenshots (dark/light/busy) to `docs/orb/`.
-  - [ ] if the Brain isn't emitting `orb_state`, file `docs/requests/orb__to__brain-core__<slug>.md` with frame-trace evidence and keep going.
-- [ ] **W2.2 Full state mapping per docs/PROTOCOL §8** — all lifecycle states, private/paused overlays, jobs_active dots, shape_hint morphs, amplitude reactivity (mic for listening, TTS for speaking), subtitle, provider/model in right-click menu.
-- [ ] **W2.3 Typed input (TODO §3e)** — double-click opens a text box -> `command` frame (`source: orb`). Menu: pause/resume, private on/off, restart, open logs, job list/cancel.
+## Already finished (verified — see docs/status/orb.md)
 
-## Wave 2 leftovers (from the pre-existing lane list)
-- [ ] Renderer coverage: every INTERFACES §e state renders distinctly (incl. mode overlays private/paused, jobs_active dots, provider/model). *(absorbed into W2.2)*
-- [ ] Fake-brain harness drives full transition sequences *(absorbed into W2.1)*
-- [ ] Refresh per-state screenshot matrix (docs/orb/matrix) = Wave 2 exit evidence. *(absorbed into W2.1)*
-- [ ] Demo/CDP runs use instance-derived userData + CDP port. *(= W2.0)*
-- [x] State-machine unit tests green (baseline re-run each task).
+- [x] **W2.0 instance isolation** — WS/CDP/token/userData derive from `RAPHAEL_INSTANCE`.
+- [x] **W2.1 "orb graphics don't change between states"** — `npm run orb:trace`
+      harness (mock Brain + CDP + frame trace), root causes fixed, pixel-diff
+      gate `npm run orb:diff` **PASS: 91/91 pairs, noise floor 0.000**.
+      Request filed to brain-core (emission).
+- [x] **W2.2 state mapping** — mode overlays (private teal / paused steel),
+      jobs dots, server `shape_hint`, TTS amplitude cleared, listening
+      amplitude channel, subtitle, provider/model plumbed to the menu.
+- [ ] **W2.3 typed input + menu** — NOT done; deferred, see "Deferred" below.
 
-## Wave 3 (do not start early — AGENT_RULES §11)
-- Answer Mode polish per docs/ORB_REBUILD_TASK.md; sub-orb indicators for parallel jobs; confirm-state UX (amber + readable question).
+## Fidelity pass (current)
 
-## Wave 4
-- Reconnect/offline visual robustness, reduced-motion correctness, trace tool kept as a regression test.
+- [ ] **§1 startup spin-down** — diagnose then make rotation physical:
+      `angle += omega*dt` (never reset/eased), omega = exponential approach to
+      rest with `orb.startup.spin_tau_ms` (1200-1800), C1 at the hand-off,
+      dt clamped to 50 ms, build progress eased and overlapping the spin-down,
+      governor silent during startup. Evidence: `npm run orb:trace` records
+      omega/angle/core brightness/layer weights through `starting -> idle` +
+      assertions; `docs/orb/startup-curve.png`, `docs/orb/startup-filmstrip.png`.
+- [ ] **§2 cheap motion blur** — velocity-gated analytic 4-6 tap angular blur
+      (or low-res feedback trail), premultiplied-alpha clean on white/dark/busy,
+      `orb.motion_blur: auto|off|low|high`, off when `reduced_motion`, scaled
+      by quality tier and by the governor. Report in `docs/orb/PERFORMANCE.md`
+      (idle unchanged; active +<=25%).
+- [ ] **§3 fidelity upgrades** — core (hot centre + wide bloom + faint warm
+      tint + 4-6 diffraction spikes); idle Sage Core; thinking (fewer lines,
+      not tangled yarn); speaking (saturated gold #FFB000/#FF9A1F/#FFE08A,
+      12-sided ring, 2 counter-rotating glyph rings, diamond frame, radial
+      streaks); private = base brightness + teal ring; details (fewer/larger
+      panes, slightly thicker lines, 85-90% of content_px); `orb.vibrance`
+      (default 1.15); verify every other state; **extend the pixel-diff test so
+      EVERY pair of states differs — failing the test = failing the task.**
+- [ ] **§4 quality gates** — per-state screenshots dark/light/busy in
+      `docs/orb/` (replace old), filmstrip for speaking (amp low/high) +
+      thinking, transparency check with blur on (no box/fringe/clipping),
+      performance report, governor not regressed.
+- [ ] **§5 theme hook** — `orb.theme: raphael|ciel|custom` + palette tokens
+      read by the shaders, reserved `evolve_stage` on `orb_state` (documented,
+      inert), `docs/orb/THEMES.md`.
+- [ ] **§6 hand-off** — `docs/status/orb.md` with what changed, evidence,
+      known gaps, cross-lane requests. Then stop.
 
-## Wave 5
-- Notice/Report/Answer visual flourishes; per-persona-tier palette (great_sage, raphael, ciel) via config.
+## Deferred (was Wave-2 W2.3, not part of the fidelity pass)
+
+- [ ] Typed input: double-click -> text box -> `command` frame
+      (`source: orb`); menu items pause/resume, private on/off, restart,
+      open logs, job list/cancel. IPC plumbing already exists
+      (`sendCommand`/`requestJobList`/`cancelJob`/`sendControl` in preload;
+      `sendCommand`/`requestJobList`/`cancelJob` in ws-status) — only the
+      renderer UI + native menu are missing. Needs mouse hit-testing through
+      `setIgnoreMouseEvents` first.
 
 ## Never
-- No performance optimization work (WAVES global constraint).
+- No performance optimization work beyond what §2 measures (WAVES global constraint).
+- Never commit reference imagery; `assets/orb-reference/` stays gitignored.
+- Do not start the live stack / real Brain — mocks only (AGENT_RULES §5).

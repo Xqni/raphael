@@ -35,6 +35,15 @@ const MIN_CHANGED = 0.007;  // >=0.7% of pixels must actually move — a guard
                             // against "the mean moved because of one blurred
                             // edge" and the primary catch for total clones
 
+// PROTOCOL §8 lists `private_overlay` as a state while INTERFACES §e says
+// private is a MODE. They are two names for ONE visual (base look + teal ring,
+// ORB_REBUILD §3.5), so comparing them as if they were different states would
+// be wrong. Instead they are aliased: pairs across the alias are skipped, and
+// the gate ASSERTS they stay near-identical (divergence would be a bug).
+const ALIASES = { private_overlay: 'private' };
+const ALIAS_MAX = 1.0;      // mean |ΔRGB| — the two spellings must agree
+const aliasOf = (s) => ALIASES[s] || s;
+
 function meanAbsDiff(a, b) {
   if (!a || !b || a.length !== b.length) return 255;
   let sum = 0;
@@ -53,24 +62,38 @@ function changedRatio(a, b, perPx = 12) {
   return n / (a.length / 4);
 }
 
-function loadShots(dir) {
+function loadShots(dirs) {
   const shots = new Map(); // "scene|bg|rep" -> rgba
-  const files = fs.readdirSync(dir).filter((f) => f.endsWith('.png'));
-  for (const f of files) {
-    const m = /^(.+)--(dark|light|busy)(?:--r(\d+))?\.png$/.exec(f);
-    if (!m) continue;
-    const key = `${m[1]}|${m[2]}|${m[3] || '1'}`;
-    try {
-      shots.set(key, decode(fs.readFileSync(path.join(dir, f))));
-    } catch (e) {
-      console.error(`[orb-diff] cannot decode ${f}: ${e.message}`);
+  const list = Array.isArray(dirs) ? dirs : [dirs];
+  for (const dir of list) {
+    if (!fs.existsSync(dir)) continue;
+    for (const f of fs.readdirSync(dir)) {
+      if (!f.endsWith('.png')) continue;
+      // Explicit, unambiguous suffix patterns (a single greedy regex with
+      // `-{1,2}` mis-split `scene--bg--r2.png` into a phantom scene `scene-`
+      // and produced 30 fake "scenes" with no captures):
+      //   docs/orb/<scene>-<bg>.png             rep 1 (§4 deliverable)
+      //   docs/orb/trace/<scene>--<bg>.png      rep 1 (legacy naming)
+      //   docs/orb/trace/<scene>--<bg>--r2.png  rep 2 (noise reference)
+      const m = /^(.*)--(dark|light|busy)--r(\d+)\.png$/.exec(f) ||
+                /^(.*)--(dark|light|busy)\.png$/.exec(f) ||
+                /^(.*)-(dark|light|busy)\.png$/.exec(f);
+      if (!m) continue;
+      const rep = m[3] || '1';
+      const key = `${m[1]}|${m[2]}|${rep}`;
+      if (shots.has(key)) continue; // first dir wins
+      try {
+        shots.set(key, decode(fs.readFileSync(path.join(dir, f))));
+      } catch (e) {
+        console.error(`[orb-diff] cannot decode ${f}: ${e.message}`);
+      }
     }
   }
   return shots;
 }
 
-function runDistinctness(dir, outFile) {
-  const shots = loadShots(dir);
+function runDistinctness(dirs, outFile) {
+  const shots = loadShots(dirs);
   const scenes = new Set();
   const bgs = new Set();
   for (const k of shots.keys()) {
@@ -101,24 +124,39 @@ function runDistinctness(dir, outFile) {
   const threshold = Math.max(ABS_FLOOR, NOISE_FACTOR * worstNoise);
 
   const pairs = [];
+  const aliasChecks = [];
+  const worstPair = (aName, bName) => {
+    let worst = { diff: 0, bg: null, changed: 0 };
+    const shared = (bgsOf.get(aName) || []).filter((b) => (bgsOf.get(bName) || []).includes(b));
+    for (const b of shared) {
+      const a = shots.get(`${aName}|${b}|1`);
+      const c = shots.get(`${bName}|${b}|1`);
+      if (!a || !c) continue;
+      const d = meanAbsDiff(a.data, c.data);
+      if (d > worst.diff) worst = { diff: d, bg: b, changed: changedRatio(a.data, c.data) };
+    }
+    return worst;
+  };
   for (let i = 0; i < sceneList.length; i++) {
     for (let j = i + 1; j < sceneList.length; j++) {
-      let worst = { diff: 0, bg: null, changed: 0 };
-      const shared = (bgsOf.get(sceneList[i]) || []).filter((b) => (bgsOf.get(sceneList[j]) || []).includes(b));
-      for (const b of shared) {
-        const a = shots.get(`${sceneList[i]}|${b}|1`);
-        const c = shots.get(`${sceneList[j]}|${b}|1`);
-        if (!a || !c) continue;
-        const d = meanAbsDiff(a.data, c.data);
-        if (d > worst.diff) worst = { diff: d, bg: b, changed: changedRatio(a.data, c.data) };
+      const aName = sceneList[i], bName = sceneList[j];
+      if (aliasOf(aName) === aliasOf(bName)) {
+        // two protocol spellings of ONE visual: assert they AGREE instead
+        const w = worstPair(aName, bName);
+        if (w.bg !== null) {
+          aliasChecks.push({ pair: [aName, bName], ...w, pass: w.diff <= ALIAS_MAX });
+        }
+        continue;
       }
+      const worst = worstPair(aName, bName);
       if (worst.bg === null) continue;
       const pass = worst.diff >= threshold && worst.changed >= MIN_CHANGED;
-      pairs.push({ pair: [sceneList[i], sceneList[j]], ...worst, pass });
+      pairs.push({ pair: [aName, bName], ...worst, pass });
     }
   }
 
-  const failures = pairs.filter((p) => !p.pass);
+  const failures = pairs.filter((p) => !p.pass)
+    .concat(aliasChecks.filter((p) => !p.pass));
   const weakest = pairs.slice().sort((a, b) => a.diff - b.diff)[0] || null;
   const report = {
     scenes: sceneList, backgrounds: bgList,
@@ -128,6 +166,7 @@ function runDistinctness(dir, outFile) {
     threshold, minChanged: MIN_CHANGED,
     pairCount: pairs.length,
     pairs,
+    aliasChecks,
     failures: failures.length,
     failingPairs: failures.slice(0, 40),
     weakest,
@@ -158,24 +197,31 @@ function table(report) {
 }
 
 if (require.main === module) {
-  const dir = process.argv[2] || path.join(__dirname, '..', '..', '..', 'docs', 'orb', 'trace');
-  if (!fs.existsSync(dir)) {
-    console.error(`[orb-diff] no screenshots in ${dir} — run \`npm run orb:trace\` first`);
+  const docs = process.argv[2] || path.join(__dirname, '..', '..', '..', 'docs', 'orb');
+  const dirs = [docs, path.join(docs, 'trace')];
+  if (!dirs.some((d) => fs.existsSync(d))) {
+    console.error(`[orb-diff] no screenshots in ${docs} — run \`npm run orb:trace\` first`);
     process.exit(1);
   }
-  const report = runDistinctness(dir, path.join(dir, 'distinctness.json'));
+  const report = runDistinctness(dirs, path.join(docs, 'trace', 'distinctness.json'));
   console.log(`scenes=${report.scenes.length} backgrounds=${report.backgrounds.length} ` +
               `pairs=${report.pairCount} shots=${report.shots}`);
   console.log(`temporal noise floor = ${report.noise.worst.toFixed(3)} -> threshold ${report.threshold.toFixed(3)}`);
   console.log(table(report));
-  if (report.missing.length) {
-    console.error('MISSING captures:\n  ' + report.missing.join('\n  '));
+  for (const a of report.aliasChecks || []) {
+    console.log(`  alias ${a.pair.join('~')}: diff=${a.diff.toFixed(3)} (must be <= ${ALIAS_MAX}) ${a.ok !== undefined ? a.ok : a.pass ? 'ok' : 'FAIL'}`);
   }
-  if (report.failures) {
-    console.error(`\nFAIL: ${report.failures} near-identical pair(s):`);
-    for (const f of report.failingPairs.slice(0, 15)) {
-      console.error(`  ${f.pair[0]} vs ${f.pair[1]} @${f.bg}: diff=${f.diff.toFixed(2)} ` +
-                    `changed=${(f.changed * 100).toFixed(1)}% (need ${report.threshold.toFixed(2)})`);
+  if (report.missing.length) {
+    console.error(`\nFAIL: ${report.missing.length} missing/incomplete capture(s):`);
+    for (const m of report.missing.slice(0, 20)) console.error('  ' + m);
+  }
+  if (report.failures || report.missing.length) {
+    if (report.failures) {
+      console.error(`\nFAIL: ${report.failures} near-identical pair(s):`);
+      for (const f of report.failingPairs.slice(0, 15)) {
+        console.error(`  ${f.pair[0]} vs ${f.pair[1]} @${f.bg}: diff=${f.diff.toFixed(2)} ` +
+                      `changed=${(f.changed * 100).toFixed(1)}% (need ${report.threshold.toFixed(2)})`);
+      }
     }
     process.exit(1);
   }

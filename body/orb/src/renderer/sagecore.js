@@ -394,23 +394,25 @@ export function updateSageCore(L, ctx) {
   const w = L.w;
   const listening = state === 'listening' ? 1 : 0;
 
-  // --- STARTING generation sequence (user spec): outer cage grows from zero
-  // (random spin) -> inner cage -> sun ignites -> quick finishing spin ---
+  // --- STARTING build sequence (§1): the wireframe builds edge-by-edge from
+  // the core outward with an EASE-IN-OUT on build PROGRESS (no hard stop),
+  // while the physical spin-down (renderer.js stepSpin) decays underneath it —
+  // the two overlap instead of fighting. The build clock only advances while
+  // unlocked and only while `starting`; core brightness follows genSun, so the
+  // sun ramps smoothly instead of popping on.
   if (state !== L.prevState) {
     if (state === 'starting') L.genT = 0;
     L.prevState = state;
   }
-  if (!ctx.lock && L.genT >= 0 && state === 'starting') L.genT = Math.min(L.genT + dt, 9000); // MUST exceed the spin window end (8300) or the spin freezes mid-strength
+  if (!ctx.lock && L.genT >= 0 && state === 'starting') L.genT = Math.min(L.genT + dt, 9000);
   const gt = (state === 'starting' && L.genT >= 0) ? L.genT : 99999;
-  const ease3 = (x) => 1 - Math.pow(1 - Math.min(Math.max(x, 0), 1), 3);
-  const genOuter = ease3(gt / 1400);
-  const genInner = ease3((gt - 900) / 1200);
-  const genSun = ease3((gt - 1700) / 900);
-  const spinProg = Math.min(Math.max((gt - 2300) / 6000, 0), 1);
-  const skew = Math.pow(spinProg, 0.4); // peak early, LONG gentle tail
-  const sinP = Math.sin(Math.PI * skew);
-  // sin^2 with skewed timeline: eases over ~6s all the way into the idle spin
-  const genSpin = (gt > 2300 && gt < 8300) ? sinP * sinP * 7 : 0;
+  const easeInOut3 = (x) => {
+    const c = Math.min(Math.max(x, 0), 1);
+    return c < 0.5 ? 4 * c * c * c : 1 - Math.pow(-2 * c + 2, 3) / 2;
+  };
+  const genOuter = easeInOut3(gt / 1400);
+  const genInner = easeInOut3((gt - 900) / 1200);
+  const genSun = easeInOut3((gt - 1700) / 900);
   const errOn = state === 'error' ? 1 : 0; // error: white cages, CRANKED glow
 
   // --- glide lag: solar-system inertia (sun leads; layers trail by factor) ---
@@ -461,11 +463,11 @@ export function updateSageCore(L, ctx) {
   const outerS = Math.min(1.12, 1 + 0.45 * ((ctx.ballScale || 1) - 1));
   L.poly.scale.setScalar(outerS * genOuter);
   if (L.nodes) L.nodes.scale.setScalar(outerS * genOuter);
-  L.poly.rotation.y += w.spin * spinDt * L.dir.polyY + genSpin * spinDt * 0.0012 * L.dir.polyY;
-  L.poly.rotation.x += w.spin * spinDt * 0.5 * L.dir.polyX + genSpin * spinDt * 0.0007 * L.dir.polyX;
+  L.poly.rotation.y += w.spin * spinDt * L.dir.polyY;
+  L.poly.rotation.x += w.spin * spinDt * 0.5 * L.dir.polyX;
   if (L.cage) {
-    L.cage.rotation.y += w.spin * spinDt * L.dir.cageY * 1.7 + genSpin * spinDt * 0.0016 * L.dir.cageY;
-    L.cage.rotation.x += w.spin * spinDt * 0.7 * L.dir.cageX + genSpin * spinDt * 0.0009 * L.dir.cageX;
+    L.cage.rotation.y += w.spin * spinDt * L.dir.cageY * 1.7;
+    L.cage.rotation.x += w.spin * spinDt * 0.7 * L.dir.cageX;
     if (ctx.ballScale) L.cage.scale.setScalar(0.56 * ctx.ballScale * genInner); // breathes WITH the ball + gen reveal
   }
   L.speed.rotation.y += w.spin * spinDt * 0.4 * L.dir.speedY;

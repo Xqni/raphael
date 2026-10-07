@@ -134,6 +134,11 @@ class MockBrain {
         return this.broadcast({ type: 'orb_state', ...base, state: 'reconnecting', jobs_active: 0, mode: 'normal', shape_hint: 'circle', task_kind: 'none' });
       case 'private':
         return this.broadcast({ type: 'orb_state', ...base, state: 'idle', jobs_active: 0, mode: 'private', shape_hint: 'circle', task_kind: 'none', private: true });
+      case 'private_overlay':
+        // PROTOCOL §8 legacy spelling: private expressed as a STATE (this is
+        // what brain-core actually sends today — ws.py:264). It means the same
+        // thing as mode:'private', so it must render identically.
+        return this.broadcast({ type: 'orb_state', ...base, state: 'private_overlay', jobs_active: 0, mode: 'private', shape_hint: 'circle', task_kind: 'none', private: true });
       case 'paused':
         return this.broadcast({ type: 'orb_state', ...base, state: 'idle', jobs_active: 0, mode: 'paused', shape_hint: 'circle', task_kind: 'none' });
       case 'private_speaking':

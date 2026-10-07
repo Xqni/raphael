@@ -28,11 +28,13 @@ const { spawn } = require('child_process');
 const { MockBrain } = require('./mock-brain.cjs');
 const { connect } = require('./cdp.cjs');
 const { decode, encode, average } = require('./png.cjs');
+const { analyze: analyzeStartup, renderPlot: renderStartupPlot, renderFilmstrip: renderStartupFilmstrip } = require('./startup.cjs');
 const Instance = require('../src/main/instance');
 const { runDistinctness } = require('./orb-diff.cjs');
 
 const ROOT = path.join(__dirname, '..', '..', '..');
 const OUT = path.join(ROOT, 'docs', 'orb', 'trace');
+const DOCS_ORB = path.join(ROOT, 'docs', 'orb');
 const BGS = ['dark', 'light', 'busy'];
 const BG_STYLES = {
   transparent: 'transparent',
@@ -42,10 +44,15 @@ const BG_STYLES = {
 };
 const SCENES = [
   'starting', 'idle', 'listening', 'thinking', 'acting', 'speaking',
-  'confirm', 'error', 'private', 'paused', 'jobs', 'private_speaking',
+  'confirm', 'error', 'private', 'private_overlay', 'paused', 'jobs',
+  'private_speaking',
 ];
 const SETTLE_MS = 1400;      // > the 600ms worst-case damp/morph window
 const LOCK_SETTLE_MS = 600;  // damped uniforms after the pose snap
+const STARTUP_SAMPLE_MS = 50;   // omega/angle sampling rate for §1
+const STARTUP_MS = 8000;        // window covering starting (5400ms) -> idle
+const STARTUP_FRAME_EVERY = 750; // filmstrip cadence across the startup
+const HANDOFF_MS = 5400;        // matches renderer's natural boot hand-off
 const TRACE_TOKEN = 'trace-test-token'; // harness-only value, not a secret
 
 const log = (...a) => console.log('[orb-trace]', ...a);
@@ -76,8 +83,140 @@ async function launchOrb(cdpPort) {
   return child;
 }
 
+/**
+ * §2 budget check (docs/orb/PERFORMANCE.md). Two questions, measured:
+ *   - does an ACTIVE state stay within ~25% with the blur ON vs OFF?
+ *   - does IDLE cost anything? (it must not — the pass is skipped when calm)
+ * Frame time = rolling EMA of real animation-tick intervals, sampled for 2.5 s
+ * per condition after a 1.6 s settle.
+ */
+async function runBlurPerf(cdp, brain, rec) {
+  const sample = async (ms) => {
+    await cdp.evaluate('window.__orbResetFrameTime()');
+    await sleep(ms);
+    return await cdp.evaluateJson('JSON.stringify(window.__orbFrameTime())');
+  };
+  brain.step('speaking');
+  await sleep(1600);
+  await cdp.evaluate("window.__orbSetMotionBlur('off')");
+  const off = await sample(2500);
+  await cdp.evaluate("window.__orbSetMotionBlur('force')");
+  const on = await sample(2500);
+  await cdp.evaluate('window.__orbSetMotionBlur(null)');
+
+  brain.step('idle');
+  await sleep(1600);
+  const idle = await sample(2500);
+  const idleBlur = await cdp.evaluateJson('JSON.stringify(window.__orbMotionBlur())');
+
+  const pct = off.ema > 0 ? ((on.ema - off.ema) / off.ema) * 100 : 0;
+  const out = {
+    sampleMs: 2500,
+    off, on,
+    pctOverhead: pct,
+    idle: { ema: idle.ema, reason: idleBlur.reason, skipped: idleBlur.skipped, speed: idleBlur.speed },
+    activeBlur: await cdp.evaluateJson('JSON.stringify(window.__orbMotionBlur())'),
+  };
+  rec('blur_perf', out);
+  fs.writeFileSync(path.join(OUT, 'blur-perf.json'), JSON.stringify(out, null, 2) + '\n');
+  return out;
+}
+
+async function runStartupPhase(cdp, brain, rec) {
+  // §1 evidence: drive a FULL starting -> idle sequence and sample omega,
+  // angle, core brightness and layer weights every 50 ms through it, plus a
+  // filmstrip of the visual result.
+  brain.step('idle');
+  await sleep(1500); // known rest state before the sequence starts
+
+  const cfgTau = await cdp.evaluateJson('JSON.stringify((window.orbConfig && window.orbConfig.startupSpinTauMs) || 1400)');
+  const samples = [];
+  const frames = [];
+  const labels = [];
+  let handedOff = false;
+
+  brain.step('starting');          // t = 0 of the scripted sequence
+  await sleep(30);
+  const start = Date.now();
+  let nextFrameAt = 0;
+  while (Date.now() - start < STARTUP_MS) {
+    const s = await cdp.evaluateJson('JSON.stringify(window.__orbSpin())');
+    s.rel = Date.now() - start;
+    samples.push(s);
+    // reproduce the natural boot hand-off (renderer flips starting -> idle
+    // 5400 ms after load; a re-triggered sequence must be driven the same way)
+    if (!handedOff && s.rel >= HANDOFF_MS) { brain.step('idle'); handedOff = true; }
+    if (s.rel >= nextFrameAt) {
+      frames.push(decode(await cdp.screenshot()));
+      labels.push('T=' + s.rel);
+      nextFrameAt += STARTUP_FRAME_EVERY;
+    }
+    await sleep(STARTUP_SAMPLE_MS);
+  }
+
+  // omega: explicit once the physical rewrite is in; otherwise finite-difference
+  // the cage rotation (the layer the current genSpin drives) with a canonical
+  // sign so a genuine reversal still shows up as a zero crossing.
+  if (samples.some((s) => s.omega === null || s.omega === undefined)) {
+    const d = [];
+    for (let i = 1; i < samples.length; i++) {
+      const dt = (samples[i].rel - samples[i - 1].rel) / 1000;
+      const a = samples[i - 1].angles.cage, b = samples[i].angles.cage;
+      d.push(dt > 0 && a !== null && b !== null ? (b - a) / dt : 0);
+    }
+    let best = 0;
+    for (const v of d) if (Math.abs(v) > Math.abs(best)) best = v;
+    const sign = best >= 0 ? 1 : -1;
+    samples[0].omega = (d[0] || 0) * sign;
+    for (let i = 1; i < samples.length; i++) samples[i].omega = (d[i - 1] || 0) * sign;
+  }
+
+  // fill rest / peak / tau when the renderer does not publish them
+  const omegas = samples.map((s) => s.omega);
+  const tail = omegas.slice(Math.floor(omegas.length * 0.85)).slice().sort((a, b) => a - b);
+  const rest = tail.length ? tail[Math.floor(tail.length / 2)] : 0;
+  const peak = Math.max(...omegas);
+  for (const s of samples) {
+    if (s.rest === null || s.rest === undefined) s.rest = rest;
+    if (s.peak === null || s.peak === undefined) s.peak = peak;
+    // always the CONFIGURED startup tau: the live one is the spin-UP tau for
+    // the first ~400 ms and the analysis must judge the spin-DOWN against it
+    s.tau = cfgTau;
+    if (s.angle === null || s.angle === undefined) s.angle = s.angles ? s.angles.group : null;
+  }
+
+  fs.writeFileSync(path.join(OUT, 'startup-samples.json'), JSON.stringify(samples));
+  frames.labels = labels;
+  renderStartupFilmstrip(frames, path.join(ROOT, 'docs', 'orb', 'startup-filmstrip.png'));
+
+  const report = analyzeStartup(samples);
+  renderStartupPlot(samples, report, path.join(ROOT, 'docs', 'orb', 'startup-curve.png'));
+  rec('startup', {
+    samples: samples.length, durationMs: samples[samples.length - 1].rel,
+    handedOff, pass: report.pass,
+    window: report.window, fit: report.fit,
+    checks: report.checks,
+    peak, rest, cfgTau,
+  });
+  log(`startup: ${report.pass ? 'PASS' : 'FAIL'} over ${samples.length} samples ` +
+      `(${samples[samples.length - 1].rel} ms), peak=${peak.toFixed(3)} rest=${rest.toFixed(3)} rad/s`);
+  for (const c of report.checks) {
+    log(`  ${c.ok ? 'ok  ' : 'FAIL'} ${c.name}: ${c.detail}`);
+  }
+  return report;
+}
+
 async function main() {
   fs.mkdirSync(OUT, { recursive: true });
+  // Clear stale deliverables first: a state we no longer capture on a given
+  // background would otherwise linger from an older build and be diffed
+  // against fresh images (it did — 4 old offline/reconnecting shots survived).
+  for (const f of fs.readdirSync(DOCS_ORB)) {
+    if (/^[a-z_]+-(dark|light|busy)\.png$/.test(f)) fs.unlinkSync(path.join(DOCS_ORB, f));
+  }
+  for (const f of fs.readdirSync(OUT)) {
+    if (/^[a-z_]+--(dark|light|busy)(--r\d+)?\.png$/.test(f)) fs.unlinkSync(path.join(OUT, f));
+  }
   const cdpPort = Instance.cdpPort();
   const wsPort = Instance.wsPort();
   log(`instance=${Instance.instance()} ws=${wsPort} cdp=${cdpPort}`);
@@ -105,9 +244,18 @@ async function main() {
     rec('auth', { authed, mockReceivedTypes: brain.received.map((r) => r.frame && r.frame.type) });
     if (!authed) throw new Error('orb never authenticated against the mock brain');
 
-    // let the natural boot story (starting -> idle @5.4s) finish first, so the
-    // scripted `starting` capture is not raced by the boot timeout.
-    await sleep(6000);
+    // let the natural boot story (starting -> idle @5.4s) finish first, so a
+    // scripted `starting` is not raced by the boot timeout.
+    await sleep(6500);
+
+    // --- §1 startup spin-down evidence --------------------------------------
+    let startupReport = null;
+    try {
+      startupReport = await runStartupPhase(cdp, brain, rec);
+    } catch (e) {
+      log('startup phase FAILED:', e && e.message);
+      rec('startup_error', { message: String(e && e.message) });
+    }
 
     // Capture strategy: the orb is continuously animated (rotating rings,
     // shimmer, flicker), so ONE screenshot differs from the next purely
@@ -139,10 +287,12 @@ async function main() {
       await cdp.evaluate('window.__orbLockPose && window.__orbLockPose()');
       await sleep(LOCK_SETTLE_MS);     // uniforms (uBright/uTint) damp to target
       const { A, B } = await grabBurst();
-      fs.writeFileSync(path.join(OUT, `${scene}--${bg}.png`), encode(A));
+      // rep 1 = the §4 deliverable in docs/orb/ (replaces the old screenshot),
+      // rep 2 stays in docs/orb/trace/ as the noise-floor reference.
+      fs.writeFileSync(path.join(DOCS_ORB, `${scene}-${bg}.png`), encode(A));
       fs.writeFileSync(path.join(OUT, `${scene}--${bg}--r2.png`), encode(B));
       const trace = await cdp.evaluateJson('JSON.stringify(window.__orbTrace ? window.__orbTrace() : null)');
-      rec('applied', { scene, bg, shot: path.relative(ROOT, path.join(OUT, `${scene}--${bg}.png`)),
+      rec('applied', { scene, bg, shot: path.relative(ROOT, path.join(DOCS_ORB, `${scene}-${bg}.png`)),
                        applied: trace && trace.applied, weights: trace && trace.weights,
                        uniforms: trace && trace.uniforms, amp: trace && trace.amp,
                        poseLocked: trace && trace.poseLocked, stats: trace && trace.stats });
@@ -153,6 +303,16 @@ async function main() {
 
     for (const scene of SCENES) {
       for (const bg of BGS) await capture(scene, bg);
+    }
+
+    // --- §2 performance: blur cost with it OFF vs ON, plus the idle proof ---
+    try {
+      const blurPerf = await runBlurPerf(cdp, brain, rec);
+      log(`blur perf: idle=${blurPerf.idle.reason} active off=${blurPerf.off.ema.toFixed(1)}ms ` +
+          `on=${blurPerf.on.ema.toFixed(1)}ms (+${blurPerf.pctOverhead.toFixed(1)}%)`);
+    } catch (e) {
+      log('blur perf FAILED:', e && e.message);
+      rec('blur_perf_error', { message: String(e && e.message) });
     }
 
     // --- connection states (client-owned per INTERFACES §e) ----------------
@@ -201,16 +361,22 @@ async function main() {
     log(`trace.jsonl written (${lines.length} lines)`);
 
     // --- distinctness gate ---------------------------------------------------
-    const verdict = runDistinctness(OUT, path.join(OUT, 'distinctness.json'));
+    const verdict = runDistinctness([DOCS_ORB, OUT], path.join(OUT, 'distinctness.json'));
     log(`distinctness: pass=${verdict.pass} weakest=${verdict.weakest && verdict.weakest.pair
       ? verdict.weakest.pair.join(' vs ') + ' = ' + verdict.weakest.diff.toFixed(2) : 'n/a'}`);
 
+    let failed = false;
     if (!verdict.pass) {
       console.error('[orb-trace] FAIL: two or more states render near-identical');
-      process.exitCode = 1;
+      failed = true;
     } else {
       log('PASS: every scene renders measurably differently');
     }
+    if (startupReport && !startupReport.pass) {
+      console.error('[orb-trace] FAIL: startup spin-down assertions did not hold');
+      failed = true;
+    }
+    if (failed) process.exitCode = 1;
   } finally {
     if (cdp) cdp.close();
     if (process.argv.includes('--keep')) {
