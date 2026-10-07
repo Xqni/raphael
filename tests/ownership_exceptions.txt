@@ -9,3 +9,4 @@ brain/tools/computer_use/tests/test_see_screen.py =qa-security  # 2026-10-07 inb
 docs/INTERFACES.md =brain-core  # 2026-10-07 integrator decision (inbox, shadow row): add the approved 'shadow' instance row to INTERFACES §d alongside brain/config.py
 brain/config.py =brain-core  # 2026-10-07 integrator decision named this file explicitly ('_INSTANCES in brain/config.py' — shadow row 8911/11)
 brain/ws.py =brain-core  # 2026-10-07 voice__to__brain-core STT-outage APPROVED + IMPLEMENTED (broadcast in _on_audio_end, both except branches)
+brain/formats.py =brain-core  # 2026-10-07 integrator APPROVED contract (brain-core__to__integrator__output-formats-and-job-kinds.md): answer+report emitters
