@@ -125,6 +125,29 @@ def test_prompt_block_lists_every_tool_and_matches_extract_protocol():
     assert json.loads(reply)['tool'] in pc.SPECS
 
 
+def test_registry_receives_schemas_so_tools_are_offered():
+    """The Brain offers only tools with a registered schema
+    (registry.tool_specs()); this guards the brain-core conformance test
+    `test_tool_specs_only_offers_conforming_schemas` against my overwrite."""
+    offered = {s['function']['name'] for s in registry.tool_specs()}
+    for name, spec in pc.SPECS.items():
+        meta = registry.describe(name)
+        if spec.properties:                      # non-empty schema
+            assert meta['schema'] == spec.schema(), name
+            assert name in offered, name
+        else:
+            # No-arg tools: registry currently rejects empty `properties`
+            # (request open with brain-core) — interim: not offered, still
+            # reachable via prompt_block() and validated by the body.
+            assert meta['schema'] is None, name
+            assert name not in offered, name
+    # Every pc tool WITH args must be model-offerable; only the 3 no-arg
+    # tools are pending the brain-core empty-properties decision.
+    no_arg = {n for n, s in pc.SPECS.items() if not s.properties}
+    assert no_arg == {'list_windows', 'foreground_info', 'list_running_apps'}
+    assert offered >= (set(pc.SPECS) - no_arg)
+
+
 def test_descriptions_carry_usage_rules():
     # Cloud models rely on these (they cannot see the body implementation).
     assert 'http' in pc.SPECS['launch_url'].description
