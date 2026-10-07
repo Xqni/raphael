@@ -1,6 +1,25 @@
 # tools-memory — status
 
-Updated: 2026-10-07 (wave 3 COMPLETE — handoff, awaiting merge pos 9)
+Updated: 2026-10-07 (wave 4 COMPLETE — handoff below the wave-4 record)
+
+## Wave 4 (current_wave=4, gate: lane checkbox in docs/lanes/tools-memory.md)
+
+**DONE — two batches, both green:**
+
+1. **Hardening checklist (lane wave-4 item)** — 19 new tests:
+   - *sqlite crash-safety*: SIGKILL mid-write → `integrity_check ok`, only whole commits survive (count % 50 == 0), `get_conn`/`init_db` stay usable, WAL preserved; concurrent parent+child writers (100 parent rows all survive); locked-DB `_persist` drops fast (~500 ms, <3 s asserted) then recovers — no hang, no corruption.
+   - *FTS corruption recovery*: new `fts.integrity_check()` (external-content check) + `fts.rebuild()`; ghost-row and missing-entry probes detected+cured; retrieval now DEGRADES (FTS exception → keyword fallback + one-shot self-heal rebuild) and pinned rows ship even if both match paths die.
+   - *Injection probes (7)*: memory smuggle stays one neutralized framed line (**framing-escape FIXED**: record text can no longer spoof `[UNTRUSTED`/`[/UNTRUSTED` markers), personal-split not bypassable, fake-frontmatter skill body stays body (draft, gate-closed), status strings strict, **bool confidence fail-open FIXED** (`confidence: true` was coercing to 1.0), plugin stringly-bool + path-name manifests fail closed.
+   - *MCP failure modes (5)*: dead handshake reaped (no zombie, no cached client), death-after-initialize recorded, **wedged timeout child evicted+KILLED (fix)**, killed child transparently respawned next call, failed servers leak no dynamic tools.
+2. **Session-brief wave-4 scope** — 10 new tests:
+   - *skill aging*: `audit_skills()` demotes published+never-used+older-than-`audit_grace_days` (30) back to draft (file AND index updated, gate closes, nothing deleted); `find_duplicates()` detects on-disk duplicates at ≥0.82 (report-only — never auto-merges user-visible files); failed audit returns `{}` (never a clean-looking empty report).
+   - *export/delete controls*: `export_all()` → typed JSONL (memory/turn/summary), owner-scoped, mode **0600**, local-only; `wipe(scope)` surgical (`memories` vs `conversations` vs `all`), owner-filtered for memories (PR #2404), invalid scope raises; **deliberately NOT registered as model tools** — destructive power stays with the user (CLI/UI wiring = infra/integrator).
+
+**Post-rebase/verification runs (2026-10-07):** `brain/memory/tests` **145 passed** | `brain/tests` **164 passed** | root `tests/` **197 passed, 9 xfailed** — all after the pc-control wave-4 merge base.
+
+**Wave 4 done → `wave_done` posted; awaiting merge / next wave.**
+
+## Wave 3 (MERGED 9355dd5, gate PASSED `wave-3-gate`)
 
 ## Done
 
