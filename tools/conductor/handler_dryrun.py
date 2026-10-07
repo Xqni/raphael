@@ -211,9 +211,10 @@ def main(argv=None) -> int:
 
     # 1) gather unread
     unread: dict[str, list] = {}
+    cursors = coord.read_cursors(cd)
     for lane in LANES:
         evs = read_jsonl(cd / "events" / f"{lane}.jsonl")
-        cur = int(st["cursors"].get(lane, 0))
+        cur = int(cursors.get(lane, 0))
         if len(evs) > cur:
             unread[lane] = evs[cur:]
     if not unread:

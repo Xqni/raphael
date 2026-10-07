@@ -171,8 +171,9 @@ class TestCoordE2E(unittest.TestCase):
             self.assertIn('"wave_open"', inbox)
         # cursors advanced -> wave bumped 2 -> 3
         self.assertEqual(self.state()["current_wave"], 3)
+        curs = json.loads((self.d / "cursors.json").read_text())
         for ln in ("router", "voice"):
-            self.assertEqual(self.state()["cursors"][ln],
+            self.assertEqual(curs[ln],
                              len((self.d / "events" / f"{ln}.jsonl").read_text().splitlines()))
 
         # idempotent rerun: no new events

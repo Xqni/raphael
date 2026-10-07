@@ -21,6 +21,7 @@ CDIR = HERE.parent
 sys.path.insert(0, str(CDIR))
 
 import conductor as cond  # noqa: E402
+from coord import line_count  # noqa: E402
 import coord  # noqa: E402
 
 BASE_CFG = {
@@ -281,6 +282,28 @@ class TestSweep(CBase):
         c.tick_once()                  # inside the interval -> must NOT fire again
         wakes = [e for e in coord.read_jsonl(c.dry_path) if e["lane"] == "integrator"]
         self.assertEqual(len(wakes), 1, f"sweep fired twice inside one interval: {wakes}")
+
+
+class TestCursorDurability(CBase):
+    """Regression: a conductor tick must never clobber integrator-written state
+    (2026-10-06: a stale full-overwrite reverted 8 cursor advances mid-turn)."""
+
+    def test_cursor_advance_survives_conductor_tick(self):
+        coord.main(["post", "--lane", "voice", "--type", "task_done", "--msg", "x"])
+        coord.main(["cursor", "--lane", "voice", "--set", "1"])   # review-start advance
+        c = self.mk(dry=True)
+        c.tick_once()                       # refresh + conductor merge-write
+        self.assertEqual(coord.read_cursors(self.d).get("voice"), 1,
+                         "conductor tick reverted a cursor advance")
+        ev = line_count(self.d / "events" / "voice.jsonl")
+        self.assertEqual(ev - coord.read_cursors(self.d)["voice"], 0)
+
+    def test_wave_bump_survives_conductor_tick(self):
+        coord.main(["wave-bump", "--wave", "7"])
+        c = self.mk(dry=True)
+        c.tick_once()
+        self.assertEqual(coord.read_state(self.d)["current_wave"], 7,
+                         "conductor tick reverted current_wave")
 
 
 class TestPauseResume(CBase):

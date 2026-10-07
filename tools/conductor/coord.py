@@ -54,6 +54,71 @@ def coord_dir() -> Path:
     return Path(os.environ.get("RAPHAEL_COORD_DIR") or (Path.home() / ".raphael-coord"))
 
 
+# ---------------------------------------------------------------- cursors
+# Cursors live in their OWN file (cursors.json), single writer = the integrator
+# handler via `coord cursor`. state.json is written by the conductor on every
+# tick — keeping cursors out of it eliminates the lost-update race where a
+# tick started before an advance and wrote after it (observed 2026-10-06).
+
+def read_cursors(cd: Path) -> dict:
+    p = cd / "cursors.json"
+    if p.exists():
+        with flock(cd / "locks" / "write.lock"):
+            try:
+                return {k: int(v) for k, v in json.loads(p.read_text(encoding="utf-8")).items()}
+            except (json.JSONDecodeError, ValueError, OSError):
+                pass
+    # one-time seed: state.json carries the last authoritative values (migration);
+    # persist immediately so the file becomes the single source of truth.
+    legacy = read_state(cd).get("cursors") or {}
+    cursors = {ln: int(legacy.get(ln, 0)) for ln in LANES}
+    write_cursors(cd, cursors)
+    return cursors
+
+
+def write_cursors(cd: Path, cursors: dict) -> None:
+    with flock(cd / "locks" / "write.lock"):
+        tmp = cd / "cursors.json.tmp"
+        tmp.write_text(json.dumps(cursors, indent=1), encoding="utf-8")
+        os.replace(tmp, cd / "cursors.json")
+
+
+# keys the CONDUCTOR owns in state.json — its tick write overlays ONLY these
+# onto a FRESH read, so integrator-written keys (current_wave, merged_wave,
+# status resets, session-register) can never be clobbered by a stale tick.
+CONDUCTOR_TOP_KEYS = {
+    "conductor_seen_wave", "wave_launches", "run_queue",
+    "integrator_pending_since", "last_wake_signature", "wake_misses",
+    "last_sweep", "integrator_wakes_disabled",
+}
+CONDUCTOR_LANE_KEYS = {
+    "heartbeat", "last_activity", "last_event_type", "session_id",
+    "branch_head", "failures", "backoff_until", "wave_role", "paused",
+    "last_ping",
+}
+
+
+def merge_conductor_state(cd: Path, st: dict) -> None:
+    """Apply the conductor's own keys from its (possibly stale) working copy onto
+    a freshly-read state.json — the only safe write given both writers exist."""
+    with flock(cd / "locks" / "state.lock"):
+        fresh = _read_state_unlocked(cd)
+        for k in CONDUCTOR_TOP_KEYS:
+            if k in st:
+                fresh[k] = st[k]
+        for ln, meta in st.get("lanes", {}).items():
+            fm = fresh["lanes"].setdefault(ln, {})
+            for k in CONDUCTOR_LANE_KEYS:
+                if k in meta:
+                    fm[k] = meta[k]
+        fresh["updated"] = time.time()
+        p = cd / "state.json"
+        p.parent.mkdir(parents=True, exist_ok=True)
+        tmp = p.with_suffix(".tmp")
+        tmp.write_text(json.dumps(fresh, indent=1, ensure_ascii=False), encoding="utf-8")
+        os.replace(tmp, p)
+
+
 # ---------------------------------------------------------------- locking / io
 
 @contextlib.contextmanager
@@ -362,12 +427,13 @@ def cmd_inbox(args) -> int:
 def cmd_status(args) -> int:
     cd = coord_dir()
     st = read_state(cd)
+    cursors = read_cursors(cd)
     pid = conductor_running(cd)
     lanes_out = {}
     pend_total = 0
     for ln in LANES:
         ev_n = line_count(cd / "events" / f"{ln}.jsonl")
-        pend = max(0, ev_n - st["cursors"].get(ln, 0))
+        pend = max(0, ev_n - cursors.get(ln, 0))
         pend_total += pend
         inbox_n = line_count(cd / "inbox" / f"{ln}.jsonl")
         inbox_unread = max(0, inbox_n - _read_cursor(cd, ln))
@@ -498,12 +564,11 @@ def cmd_cursor(args) -> int:
     if args.lane not in LANES:
         sys.exit(f"coord: unknown lane {args.lane!r}")
     cd = coord_dir()
-    n = args.set if args.set is not None else line_count(cd / "events" / f"{args.lane}.jsonl")
-
-    def _c(st):
-        st["cursors"][args.lane] = n
-    mutate_state(cd, _c)
-    print(f"coord: cursor {args.lane} -> {n}")
+    cursors = read_cursors(cd)
+    cursors[args.lane] = args.set if args.set is not None else \
+        line_count(cd / "events" / f"{args.lane}.jsonl")
+    write_cursors(cd, cursors)
+    print(f"coord: cursor {args.lane} -> {cursors[args.lane]}")
     return 0
 
 

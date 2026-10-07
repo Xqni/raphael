@@ -41,8 +41,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import coord  # noqa: E402
 from coord import (  # noqa: E402
-    LANES, append_jsonl, coord_dir, flock, line_count, read_jsonl, read_state,
-    write_state,
+    LANES, append_jsonl, coord_dir, flock, line_count, merge_conductor_state,
+    read_cursors, read_jsonl, read_state,
 )
 
 TMUX_SESSION = "raphael-conductor"
@@ -394,8 +394,9 @@ class Conductor:
 
     @staticmethod
     def integrator_pending(st: dict, cd: Path) -> int:
+        cursors = read_cursors(cd)
         return sum(max(0, line_count(cd / "events" / f"{lane}.jsonl")
-                       - int(st["cursors"].get(lane, 0))) for lane in LANES)
+                       - int(cursors.get(lane, 0))) for lane in LANES)
 
     def check_integrator(self, st: dict) -> None:
         pending = self.integrator_pending(st, self.cd)
@@ -415,7 +416,7 @@ class Conductor:
         if self.runs_last_hour() >= int(self.cfg.get("runs_per_hour", 12)):
             self.log("integrator wake: runs/hour cap reached — waiting")
             return
-        sig = list(tuple(st["cursors"].get(l, 0) for l in LANES) + (pending,))
+        sig = list(tuple(read_cursors(self.cd).get(l, 0) for l in LANES) + (pending,))
         # NOTE: compare as list — tuples round-trip through JSON as lists
         if st.get("last_wake_signature") == sig:
             if not self.dry:   # dry wakes never execute; only real runs count
@@ -596,8 +597,10 @@ class Conductor:
         self.reap_children(st)
         self.drain_queue(st)
         self.check_stall(st)
-        # 3) write state back (short lock, released)
-        write_state(self.cd, st)
+        # 3) write back CONDUCTOR-OWNED KEYS ONLY onto a fresh read — a full
+        #    blind overwrite here clobbered integrator cursor advances once
+        #    already (lost update); never again.
+        merge_conductor_state(self.cd, st)
 
     # ------------------------------------------------------------ main loop
     def cleanup_children(self) -> None:

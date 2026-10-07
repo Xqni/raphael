@@ -16,7 +16,11 @@ then exit. No new events = exit immediately (idempotent).
 
 ## Handle every unread event, then advance its cursor
 
-Advance with `coord cursor --lane <L>` ONLY after that lane's batch is fully handled.
+Advance with `coord cursor --lane <L> --set N` ONLY after that lane's batch is fully
+handled, and **N = the line count you captured when you STARTED reviewing** — lanes post
+events WHILE you work; advancing to the end-of-turn line count silently swallows whatever
+arrived mid-turn (it happened: set --set to your review-start capture, never to a fresh
+`wc -l`). Events posted during your turn stay pending for the next wake.
 
 - **task_done / test_result** → note it in `PROGRESS.md`, then **review + assign the next
   task** (this is the hand-off loop — lanes never wonder what's next):
