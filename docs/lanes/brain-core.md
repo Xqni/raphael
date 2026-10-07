@@ -57,7 +57,7 @@ Wave 3 is MERGED + **GATE PASSED** (tag `wave-3-gate`, all six criteria live, ac
 
 Wave 4 is MERGED + **GATE PASSED** (tag `wave-4-gate`, 10/10 lanes, mock 308 green). Wave-5 theme per WAVES.md: Raphael features — Answer/Notice/Report formats, Analysis, Simulation, parallel-minds visuals, persona tiers. Rule 15 speed mandate binds; shared-contract changes go through integrator requests. Carried items are noted in WAVES.md gate record (shadow row; C1+C2 residual).
 
-- [ ] Output-format engine: Answer/Notice/Report format emitters per WAVES wave 5 (notice frame already in §3 — extend the contract for Report/Answer shapes via integrator request first), Analysis + Simulation job kinds (fastpath + engine), parallel-minds job fan-out seams.
+- [ ] Output-format engine: Answer/Notice/Report format emitters per WAVES wave 5 (notice frame already in §3 — extend the contract for Report/Answer shapes via integrator request first), Analysis + Simulation job kinds (fastpath + engine), parallel-minds job fan-out seams. **IN PROGRESS** — contract request FILED (`brain-core__to__integrator__output-formats-and-job-kinds.md`: answer/report frames + optional job_event `kind`/`parent` + submit `kind`/`parent`); contract-free internals DONE: engine `kind`/`parent` in-memory metadata (validated KINDS, runner snapshot carries them), `submit_fanout()` parallel-minds seam, fastpath `analyze/analyse/simulate` triggers (IntentResult.job_kind), Simulation jobs run with tools=[] + prompt-block suppressed (e2e), Analysis keeps tools + kind recorded (e2e). Emitters WAIT for the decision.
 
 ## Later waves
 - Per docs/WAVES.md — do not start early (AGENT_RULES §11).

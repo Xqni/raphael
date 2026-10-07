@@ -285,3 +285,86 @@ def test_lock_fairness_and_cancel_while_waiting():
             pass
         reg._registry.pop('t_lock_hold', None)
         reg._META.pop('t_lock_hold', None)
+
+
+# ---- Wave-5: job kinds + fan-out seam (engine-internal; wire pending) -------
+@pytest.mark.asyncio
+async def test_kind_and_parent_api_validated():
+    engine = get_engine()
+    started_here = not engine.started
+    if started_here:
+        engine.start(workers=1)
+    engine.pause()
+    try:
+        snap = await engine.submit(text='kind me', priority='normal',
+                                   source='text')
+        assert engine.kind_of(snap['id']) is None
+        assert engine.set_kind(snap['id'], 'simulation') is True
+        assert engine.kind_of(snap['id']) == 'simulation'
+        assert engine.kind_of(snap['job']) == 'simulation'   # ext id works
+        # typos never silently become kinds
+        assert engine.set_kind(snap['id'], 'simluation') is False
+        assert engine.kind_of(snap['id']) == 'simulation'
+        # submit kwargs
+        snap2 = await engine.submit(text='typed', priority='normal',
+                                    source='text', kind='analysis',
+                                    parent=snap['job'])
+        assert engine.kind_of(snap2['id']) == 'analysis'
+        assert engine.parent_of(snap2['id']) == snap['job']
+        assert snap2['kind'] == 'analysis' and snap2['parent'] == snap['job']
+        # runner receives kind/parent on the snapshot
+        seen = {}
+
+        async def probe(job):
+            seen['kind'] = job.get('kind')
+            seen['parent'] = job.get('parent')
+
+        engine.runner = probe
+        engine.resume()
+        await asyncio.sleep(0.05)
+        assert seen == {'kind': 'analysis', 'parent': snap['job']}, seen
+        engine.pause()
+        engine.runner = None
+        # cleanup: leave rows terminal
+        for s in (snap, snap2):
+            engine.cancel(s['job'])
+    finally:
+        engine.runner = None
+        engine.resume()
+        if started_here:
+            await engine.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_submit_fanout_correlates_children():
+    engine = get_engine()
+    started_here = not engine.started
+    if started_here:
+        engine.start(workers=1)
+    engine.pause()
+    made = []
+    try:
+        children = await engine.submit_fanout(
+            'j_20261007_9999', ['angle one', 'angle two', 'angle three'],
+            priority='normal', source='text')
+        made = [c['id'] for c in children]
+        assert len(children) == 3
+        assert [c['parent'] for c in children] == ['j_20261007_9999'] * 3
+        assert [c['kind'] for c in children] == ['analysis'] * 3
+        assert engine.parent_of(children[0]['id']) == 'j_20261007_9999'
+        assert all(engine.kind_of(c['id']) == 'analysis' for c in children)
+        # admission order preserved (same priority -> submission order)
+        assert [c['text'] for c in children] == ['angle one', 'angle two',
+                                                 'angle three']
+        # invalid kind coerced to analysis; empty input -> no jobs
+        c2 = await engine.submit_fanout('j_20261007_9998', ['x'],
+                                        kind='bogus')
+        assert engine.kind_of(c2[0]['id']) == 'analysis'
+        made.append(c2[0]['id'])
+        assert await engine.submit_fanout('j_x', []) == []
+    finally:
+        engine.resume()
+        for rowid in made:
+            engine.cancel(rowid)
+        if started_here:
+            await engine.shutdown()

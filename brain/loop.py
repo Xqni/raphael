@@ -505,7 +505,10 @@ def build_runner(hub=None):
             """Wave 2 task 2: persona + context + tool loop + streamed speech."""
             max_steps = int(_agent_setting('max_tool_steps', 6))
             result_chars = int(_agent_setting('tool_result_max_chars', 4000))
-            specs = tool_reg.tool_specs()
+            kind = engine.kind_of(rowid) or 'chat'
+            # Simulation jobs NEVER get tools (Wave-5: no side effects are
+            # possible in a simulation; prompt block suppressed with specs).
+            specs = [] if kind == 'simulation' else tool_reg.tool_specs()
             messages = _build_messages(text, specs)
             try:
                 spoken_max = int((appcfg.cfg_get(appcfg.get_config(),
@@ -648,6 +651,9 @@ def build_runner(hub=None):
             res = fastpath.run_intent(text, ctx)
             if res is not None:
                 orbstate.set_task(getattr(res, 'task_kind', None))
+                jk = getattr(res, 'job_kind', None)
+                if jk:
+                    engine.set_kind(rowid, jk)
             if res is not None and res.done:
                 if res.tool:
                     tool_name, tool_args = res.tool, dict(res.tool_args or {})
