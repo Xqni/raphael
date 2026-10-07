@@ -29,7 +29,7 @@ Wave 2 is MERGED; live gate was 3/5 — evidence + bug dossiers: `docs/BUGS-WAVE
 
 Wave 3 is MERGED + **GATE PASSED** (tag `wave-3-gate`, all six criteria live, acoustic voice included). Wave-4 theme per WAVES.md: hardening, resilience tests, audit fixes, crash recovery, evolution infrastructure. Rule 15 speed mandate still binds.
 
-- [ ] Orchestrate the wave-4 resilience matrix (owns the suite): kill/recovery drills green across brain/body/orb/supervisor, audit-fix verification passes, secret/redaction re-audit, encoding-class regression guard in CI matrix.
+- [x] Orchestrate the wave-4 resilience matrix (owns the suite): kill/recovery drills green across brain/body/orb/supervisor, audit-fix verification passes, secret/redaction re-audit, encoding-class regression guard in CI matrix.  (2026-10-07: `tests/resilience/` provider-storm+recovery + crash-recovery interrupted drills; §b/429/orb/vision/ollama/loopback fixes verified strict; matrix + re-review in `docs/reviews/2026-10-07-wave4.md`; full-brain import-hygiene CI step added)
 
 ## Later waves (do not start early — AGENT_RULES §11; beyond current_wave 3)
 - [ ] Wave 3: golden job transcripts (replayable recorded conversations/tool traces as regression baseline).

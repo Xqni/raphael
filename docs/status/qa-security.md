@@ -4,6 +4,27 @@ Updated: 2026-10-07 (Wave 3 open; CI ownership fix done)
 
 ## Waves 3–4 (docs/WAVES.md current_wave: 4 since 2026-10-07; wave-3 gate PASSED)
 
+- **DONE 2026-10-07: wave-4 resilience matrix + re-review (inbox [19])**
+  - New `tests/resilience/` (3 tests, all green): provider-outage storm →
+    §10 failures → breaker open → aged-breaker **recovery** + usage
+    accounting; seeded-crash-DB **real-restart** drill → every non-terminal
+    row `interrupted`, terminal immutable, never auto-resumed (PROTOCOL §5).
+    Shared spawn helpers extracted to `tests/harness/instance_proc.py`
+    (isolated ephemeral ports — live stack untouched, procs always stopped).
+  - Audit-fix verification: §b tool-spec tests **promoted to strict**
+    (landed API: schema= + BadToolSpec + discover full walk); risky-tool
+    dispatch gate pinned by a new strict flow test (benign text +
+    risky tool → confirm; deny → cancelled, no side effect); bind default
+    tightened to **exact loopback**; storm/usage tests added.
+  - **Re-review:** `docs/reviews/2026-10-07-wave4.md` (8 areas, request
+    census: 4 DONE + 1 SUPERSEDED + 6 implemented-awaiting-owner-flip +
+    11 genuinely open; C1/C2 voice-confirm = top residual).
+  - **Matrix + CI:** resilience matrix table in the review; new full-brain
+    CI step (import-hygiene/order-dependent guard — the class that caught
+    the registry pollution); encoding guard already in the OS matrix.
+- **Suites (2026-10-07, real runs): own `285 passed, 7 xfailed`; full
+  `pytest brain` `608 passed, 12 skipped, 0 failed`.**
+
 - **DONE 2026-10-07 (urgent):** CI ownership self-check un-hardcoded
   (`.github/workflows/ci.yml`, commit 67e64f3 — cherry-picked to main as
   be6814a): lane derived from the ref (`agent/<lane>` → per-lane gate;

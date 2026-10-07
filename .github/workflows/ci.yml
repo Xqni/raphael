@@ -69,6 +69,13 @@ jobs:
         env:
           RAPHAEL_INSTANCE: qa-security
         run: python -m pytest -q brain/tests brain/router/tests
+      - name: full brain suite (import-hygiene + order-dependent guards)
+        # catches the classes unit runs can't: the tools.* double-import
+        # registry pollution (e16ca0f) and cross-suite state leaks — the
+        # same reason the Windows conformance line exists.
+        env:
+          RAPHAEL_INSTANCE: qa-security
+        run: python -m pytest -q brain
       - name: ownership self-check (lane-derived vs OWNERSHIP.md)
         # Lane derivation (coord decision 2026-10-07 — hardcoding
         # `--lane qa-security` broke every non-qa push; evidence run

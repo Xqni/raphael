@@ -197,15 +197,15 @@ def test_only_expected_routes_exist(client, qa_token):
 
 
 def test_rest_bind_defaults_stay_documented():
-    """The listener posture is PROTOCOL §1's: WSL NAT 0.0.0.0 with token, or
-    127.0.0.1 in mirrored mode / explicit override. Nothing may default to a
-    LAN-exposed listener without auth."""
+    """PROTOCOL §1 (post wave-4, infra's loopback-bind landed): the brain
+    binds 127.0.0.1 in BOTH networking modes — never a LAN-exposed default.
+    RAPHAEL_BIND stays the explicit escape hatch."""
     import brain.run as run_mod
-    # no override, no wslinfo → NAT default (token mandatory per §2)
     import os
     old = os.environ.pop('RAPHAEL_BIND', None)
     try:
-        assert run_mod.detect_host() in ('0.0.0.0', '127.0.0.1')
+        assert run_mod.detect_host() == '127.0.0.1', \
+            f'loopback default broken: {run_mod.detect_host()!r}'
     finally:
         if old is not None:
             os.environ['RAPHAEL_BIND'] = old

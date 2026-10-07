@@ -136,6 +136,38 @@ def test_parse_free_text_fails_closed(answer, expected):
     assert parse_free_text(answer) == expected
 
 
+# PINNED STRICT 2026-10-07 (was a wave-2 finding/request): risky tool
+# metadata now gates LLM dispatch — `classify(text, tool=tool_name)` runs
+# BEFORE section 4 (request qa-security -> brain-core
+# risky-tool-confirm-gate; verified landed by source pin + this flow).
+def test_risky_tool_metadata_gates_llm_dispatch(client, qa_token,
+                                                router_to_mock):
+    from harness.wssession import WSSession
+    # file_trash: registry `risky: True` but NOT in RISKY_TOOLS + benign
+    # text matches no pattern -> exercises the metadata gate (tool_decision)
+    router_to_mock.push({'tool': {'name': 'file_trash',
+                                  'args': {'path': '/tmp/qa-never-exists-xyz'}}})
+    with WSSession(client, qa_token, role='cli') as cli:
+        # benign job TEXT — only the registry's risky metadata can trip this
+        cli.send({'type': 'command', 'v': 1,
+                  'text': 'summarize our deploy checklist', 'source': 'text'})
+        ack = cli.wait(lambda m: m.get('type') == 'ack', timeout=5)
+        job = ack['job']
+        conf = cli.wait(lambda m: m.get('type') == 'needs_confirm'
+                        and m.get('job') == job, timeout=10)
+        assert 'file_trash' in conf['question'], conf  # metadata reason surfaced
+        cli.send({'type': 'confirm_resp', 'v': 1, 'job': job, 'answer': 'no'})
+        final = _wait_terminal(cli, job, timeout=8)
+        assert final['status'] == 'cancelled', final   # never dispatched
+        # tool never dispatched: no tool-result narration, no trash side effect
+        cli.drain(quiet=0.4, cap=1.5)
+        subs = [f.get('text', '') for f in cli.frames
+                if f.get('type') == 'subtitle']
+        assert not any('Moved to trash' in t for t in subs), subs
+        import os as _os
+        assert not _os.path.exists('/tmp/qa-never-exists-xyz')
+
+
 # ---- voice-channel rules (tripwires) -------------------------------------
 @pytest.mark.xfail(strict=False,
                    reason='RVA §7 voice-first confirmation: a spoken "yes" '
