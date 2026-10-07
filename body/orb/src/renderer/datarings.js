@@ -112,9 +112,19 @@ export function initDataRings(THREE, group) {
   return DR;
 }
 
-// ctx = { t (s), dt (ms), state, amp, glide: {x, y} }
+// --- Pose lock (test hook, W2.1) --------------------------------------------
+export function lockDataRings(DR, state, opts = {}) {
+  DR.w = DR_STATES[state] || 0;
+  for (const R of DR.rings) R.ls.rotation.set(0, 0, 0);
+  DR.bars.ls.rotation.set(0, 0, 0);
+  DR.root.visible = DR.w > 0.005;
+  return DR;
+}
+
+// ctx = { t (s), dt (ms), state, amp, glide: {x, y}, lock }
 export function updateDataRings(DR, ctx) {
   const t = ctx.t, dt = Math.min(Math.max(ctx.dt, 1), 100), state = ctx.state;
+  const spinDt = ctx.lock ? 0 : dt; // pose-lock: damping runs, transforms don't
   DR.w = damp(DR.w, DR_STATES[state] || 0, DR_TAU, dt);
   const gx = ctx.glide ? ctx.glide.x : 0;
   const gy = ctx.glide ? ctx.glide.y : 0;
@@ -124,11 +134,11 @@ export function updateDataRings(DR, ctx) {
 
   const boost = 1 + (ctx.amp || 0) * 0.4;         // thinking brightness breathes
   for (const R of DR.rings) {
-    R.ls.rotation.z += R.dir * (0.5 + 0.5 * DR.w) * dt; // own speed + direction
+    R.ls.rotation.z += R.dir * (0.5 + 0.5 * DR.w) * spinDt; // own speed + direction
     R.mat.uniforms.uTime.value = t;
     R.mat.uniforms.uAlpha.value = R.base * DR.w * boost;
   }
-  DR.bars.ls.rotation.z += DR.barsDir * dt;
+  DR.bars.ls.rotation.z += DR.barsDir * spinDt;
   DR.bars.mat.uniforms.uTime.value = t;
   DR.bars.mat.uniforms.uAlpha.value = 0.8 * DR.w * boost;
 }

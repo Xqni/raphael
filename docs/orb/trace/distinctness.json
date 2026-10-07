@@ -1,0 +1,984 @@
+{
+  "scenes": [
+    "acting",
+    "confirm",
+    "error",
+    "idle",
+    "jobs",
+    "listening",
+    "offline",
+    "paused",
+    "private",
+    "private_speaking",
+    "reconnecting",
+    "speaking",
+    "starting",
+    "thinking"
+  ],
+  "backgrounds": [
+    "busy",
+    "dark",
+    "light"
+  ],
+  "shots": 76,
+  "noise": {
+    "worst": 0.000004251700680272109,
+    "samples": 38,
+    "perScene": [
+      {
+        "scene": "starting",
+        "bg": "light",
+        "diff": 0.000004251700680272109
+      },
+      {
+        "scene": "acting",
+        "bg": "busy",
+        "diff": 0
+      },
+      {
+        "scene": "acting",
+        "bg": "dark",
+        "diff": 0
+      },
+      {
+        "scene": "acting",
+        "bg": "light",
+        "diff": 0
+      },
+      {
+        "scene": "confirm",
+        "bg": "busy",
+        "diff": 0
+      }
+    ]
+  },
+  "threshold": 0.3,
+  "minChanged": 0.007,
+  "pairCount": 91,
+  "pairs": [
+    {
+      "pair": [
+        "acting",
+        "confirm"
+      ],
+      "diff": 5.487555272108843,
+      "bg": "dark",
+      "changed": 0.1914030612244898,
+      "pass": true
+    },
+    {
+      "pair": [
+        "acting",
+        "error"
+      ],
+      "diff": 9.503966836734694,
+      "bg": "dark",
+      "changed": 0.2241454081632653,
+      "pass": true
+    },
+    {
+      "pair": [
+        "acting",
+        "idle"
+      ],
+      "diff": 7.030918367346938,
+      "bg": "dark",
+      "changed": 0.19147959183673469,
+      "pass": true
+    },
+    {
+      "pair": [
+        "acting",
+        "jobs"
+      ],
+      "diff": 10.592942176870748,
+      "bg": "dark",
+      "changed": 0.2325127551020408,
+      "pass": true
+    },
+    {
+      "pair": [
+        "acting",
+        "listening"
+      ],
+      "diff": 13.62265731292517,
+      "bg": "dark",
+      "changed": 0.29678571428571426,
+      "pass": true
+    },
+    {
+      "pair": [
+        "acting",
+        "offline"
+      ],
+      "diff": 10.330459183673469,
+      "bg": "dark",
+      "changed": 0.24552295918367348,
+      "pass": true
+    },
+    {
+      "pair": [
+        "acting",
+        "paused"
+      ],
+      "diff": 10.211530612244898,
+      "bg": "dark",
+      "changed": 0.25204081632653064,
+      "pass": true
+    },
+    {
+      "pair": [
+        "acting",
+        "private"
+      ],
+      "diff": 7.5096513605442174,
+      "bg": "dark",
+      "changed": 0.21146683673469388,
+      "pass": true
+    },
+    {
+      "pair": [
+        "acting",
+        "private_speaking"
+      ],
+      "diff": 6.533397108843538,
+      "bg": "dark",
+      "changed": 0.21788265306122448,
+      "pass": true
+    },
+    {
+      "pair": [
+        "acting",
+        "reconnecting"
+      ],
+      "diff": 9.095267857142858,
+      "bg": "dark",
+      "changed": 0.20271683673469387,
+      "pass": true
+    },
+    {
+      "pair": [
+        "acting",
+        "speaking"
+      ],
+      "diff": 8.496011904761906,
+      "bg": "dark",
+      "changed": 0.2430357142857143,
+      "pass": true
+    },
+    {
+      "pair": [
+        "acting",
+        "starting"
+      ],
+      "diff": 8.905246598639456,
+      "bg": "dark",
+      "changed": 0.21854591836734694,
+      "pass": true
+    },
+    {
+      "pair": [
+        "acting",
+        "thinking"
+      ],
+      "diff": 10.034651360544217,
+      "bg": "dark",
+      "changed": 0.21872448979591838,
+      "pass": true
+    },
+    {
+      "pair": [
+        "confirm",
+        "error"
+      ],
+      "diff": 5.75390306122449,
+      "bg": "dark",
+      "changed": 0.1408673469387755,
+      "pass": true
+    },
+    {
+      "pair": [
+        "confirm",
+        "idle"
+      ],
+      "diff": 4.210038265306123,
+      "bg": "dark",
+      "changed": 0.1444515306122449,
+      "pass": true
+    },
+    {
+      "pair": [
+        "confirm",
+        "jobs"
+      ],
+      "diff": 12.368056972789116,
+      "bg": "dark",
+      "changed": 0.2573469387755102,
+      "pass": true
+    },
+    {
+      "pair": [
+        "confirm",
+        "listening"
+      ],
+      "diff": 17.39558673469388,
+      "bg": "dark",
+      "changed": 0.309515306122449,
+      "pass": true
+    },
+    {
+      "pair": [
+        "confirm",
+        "offline"
+      ],
+      "diff": 5.5355654761904765,
+      "bg": "dark",
+      "changed": 0.17567602040816327,
+      "pass": true
+    },
+    {
+      "pair": [
+        "confirm",
+        "paused"
+      ],
+      "diff": 5.554987244897959,
+      "bg": "dark",
+      "changed": 0.17565051020408162,
+      "pass": true
+    },
+    {
+      "pair": [
+        "confirm",
+        "private"
+      ],
+      "diff": 4.740837585034013,
+      "bg": "dark",
+      "changed": 0.16793367346938776,
+      "pass": true
+    },
+    {
+      "pair": [
+        "confirm",
+        "private_speaking"
+      ],
+      "diff": 7.904710884353742,
+      "bg": "dark",
+      "changed": 0.24613520408163264,
+      "pass": true
+    },
+    {
+      "pair": [
+        "confirm",
+        "reconnecting"
+      ],
+      "diff": 4.455909863945578,
+      "bg": "dark",
+      "changed": 0.11868622448979592,
+      "pass": true
+    },
+    {
+      "pair": [
+        "confirm",
+        "speaking"
+      ],
+      "diff": 11.346024659863945,
+      "bg": "dark",
+      "changed": 0.2724489795918367,
+      "pass": true
+    },
+    {
+      "pair": [
+        "confirm",
+        "starting"
+      ],
+      "diff": 4.005803571428571,
+      "bg": "dark",
+      "changed": 0.12599489795918367,
+      "pass": true
+    },
+    {
+      "pair": [
+        "confirm",
+        "thinking"
+      ],
+      "diff": 11.805072278911565,
+      "bg": "dark",
+      "changed": 0.24322704081632654,
+      "pass": true
+    },
+    {
+      "pair": [
+        "error",
+        "idle"
+      ],
+      "diff": 7.9457015306122445,
+      "bg": "dark",
+      "changed": 0.17723214285714287,
+      "pass": true
+    },
+    {
+      "pair": [
+        "error",
+        "jobs"
+      ],
+      "diff": 15.163711734693878,
+      "bg": "dark",
+      "changed": 0.2704591836734694,
+      "pass": true
+    },
+    {
+      "pair": [
+        "error",
+        "listening"
+      ],
+      "diff": 18.3103231292517,
+      "bg": "dark",
+      "changed": 0.3011479591836735,
+      "pass": true
+    },
+    {
+      "pair": [
+        "error",
+        "offline"
+      ],
+      "diff": 6.914851190476191,
+      "bg": "dark",
+      "changed": 0.1511607142857143,
+      "pass": true
+    },
+    {
+      "pair": [
+        "error",
+        "paused"
+      ],
+      "diff": 6.713890306122449,
+      "bg": "dark",
+      "changed": 0.15076530612244898,
+      "pass": true
+    },
+    {
+      "pair": [
+        "error",
+        "private"
+      ],
+      "diff": 8.47547193877551,
+      "bg": "dark",
+      "changed": 0.19988520408163266,
+      "pass": true
+    },
+    {
+      "pair": [
+        "error",
+        "private_speaking"
+      ],
+      "diff": 11.170076530612246,
+      "bg": "dark",
+      "changed": 0.2614158163265306,
+      "pass": true
+    },
+    {
+      "pair": [
+        "error",
+        "reconnecting"
+      ],
+      "diff": 6.117440476190477,
+      "bg": "dark",
+      "changed": 0.11753826530612245,
+      "pass": true
+    },
+    {
+      "pair": [
+        "error",
+        "speaking"
+      ],
+      "diff": 13.950216836734693,
+      "bg": "dark",
+      "changed": 0.2833290816326531,
+      "pass": true
+    },
+    {
+      "pair": [
+        "error",
+        "starting"
+      ],
+      "diff": 5.667087585034014,
+      "bg": "dark",
+      "changed": 0.11213010204081633,
+      "pass": true
+    },
+    {
+      "pair": [
+        "error",
+        "thinking"
+      ],
+      "diff": 14.585897108843538,
+      "bg": "dark",
+      "changed": 0.25637755102040816,
+      "pass": true
+    },
+    {
+      "pair": [
+        "idle",
+        "jobs"
+      ],
+      "diff": 10.414931972789116,
+      "bg": "dark",
+      "changed": 0.22308673469387755,
+      "pass": true
+    },
+    {
+      "pair": [
+        "idle",
+        "listening"
+      ],
+      "diff": 14.52842261904762,
+      "bg": "dark",
+      "changed": 0.2820918367346939,
+      "pass": true
+    },
+    {
+      "pair": [
+        "idle",
+        "offline"
+      ],
+      "diff": 8.223273809523809,
+      "bg": "dark",
+      "changed": 0.20567602040816327,
+      "pass": true
+    },
+    {
+      "pair": [
+        "idle",
+        "paused"
+      ],
+      "diff": 7.691096938775511,
+      "bg": "dark",
+      "changed": 0.20368622448979593,
+      "pass": true
+    },
+    {
+      "pair": [
+        "idle",
+        "private"
+      ],
+      "diff": 0.8231675170068027,
+      "bg": "light",
+      "changed": 0.025395408163265305,
+      "pass": true
+    },
+    {
+      "pair": [
+        "idle",
+        "private_speaking"
+      ],
+      "diff": 6.714102891156463,
+      "bg": "dark",
+      "changed": 0.22065051020408163,
+      "pass": true
+    },
+    {
+      "pair": [
+        "idle",
+        "reconnecting"
+      ],
+      "diff": 5.896543367346939,
+      "bg": "dark",
+      "changed": 0.14646683673469388,
+      "pass": true
+    },
+    {
+      "pair": [
+        "idle",
+        "speaking"
+      ],
+      "diff": 9.690068027210884,
+      "bg": "dark",
+      "changed": 0.2557780612244898,
+      "pass": true
+    },
+    {
+      "pair": [
+        "idle",
+        "starting"
+      ],
+      "diff": 6.271505102040816,
+      "bg": "dark",
+      "changed": 0.17145408163265305,
+      "pass": true
+    },
+    {
+      "pair": [
+        "idle",
+        "thinking"
+      ],
+      "diff": 9.841488095238095,
+      "bg": "dark",
+      "changed": 0.20901785714285714,
+      "pass": true
+    },
+    {
+      "pair": [
+        "jobs",
+        "listening"
+      ],
+      "diff": 14.20296343537415,
+      "bg": "dark",
+      "changed": 0.2886989795918367,
+      "pass": true
+    },
+    {
+      "pair": [
+        "jobs",
+        "offline"
+      ],
+      "diff": 17.13307823129252,
+      "bg": "dark",
+      "changed": 0.2847831632653061,
+      "pass": true
+    },
+    {
+      "pair": [
+        "jobs",
+        "paused"
+      ],
+      "diff": 16.49313775510204,
+      "bg": "dark",
+      "changed": 0.29292091836734696,
+      "pass": true
+    },
+    {
+      "pair": [
+        "jobs",
+        "private"
+      ],
+      "diff": 10.856275510204082,
+      "bg": "dark",
+      "changed": 0.24302295918367348,
+      "pass": true
+    },
+    {
+      "pair": [
+        "jobs",
+        "private_speaking"
+      ],
+      "diff": 8.103005952380952,
+      "bg": "dark",
+      "changed": 0.2099234693877551,
+      "pass": true
+    },
+    {
+      "pair": [
+        "jobs",
+        "reconnecting"
+      ],
+      "diff": 14.934085884353742,
+      "bg": "dark",
+      "changed": 0.2594642857142857,
+      "pass": true
+    },
+    {
+      "pair": [
+        "jobs",
+        "speaking"
+      ],
+      "diff": 10.183613945578232,
+      "bg": "dark",
+      "changed": 0.24485969387755102,
+      "pass": true
+    },
+    {
+      "pair": [
+        "jobs",
+        "starting"
+      ],
+      "diff": 15.379821428571429,
+      "bg": "dark",
+      "changed": 0.26668367346938776,
+      "pass": true
+    },
+    {
+      "pair": [
+        "jobs",
+        "thinking"
+      ],
+      "diff": 1.0918962585034013,
+      "bg": "dark",
+      "changed": 0.02107142857142857,
+      "pass": true
+    },
+    {
+      "pair": [
+        "listening",
+        "offline"
+      ],
+      "diff": 21.56266581632653,
+      "bg": "dark",
+      "changed": 0.3055612244897959,
+      "pass": true
+    },
+    {
+      "pair": [
+        "listening",
+        "paused"
+      ],
+      "diff": 20.88857568027211,
+      "bg": "dark",
+      "changed": 0.31258928571428574,
+      "pass": true
+    },
+    {
+      "pair": [
+        "listening",
+        "private"
+      ],
+      "diff": 14.864409013605442,
+      "bg": "dark",
+      "changed": 0.29377551020408166,
+      "pass": true
+    },
+    {
+      "pair": [
+        "listening",
+        "private_speaking"
+      ],
+      "diff": 13.365739795918367,
+      "bg": "dark",
+      "changed": 0.298890306122449,
+      "pass": true
+    },
+    {
+      "pair": [
+        "listening",
+        "reconnecting"
+      ],
+      "diff": 19.423494897959184,
+      "bg": "dark",
+      "changed": 0.30073979591836736,
+      "pass": true
+    },
+    {
+      "pair": [
+        "listening",
+        "speaking"
+      ],
+      "diff": 10.305880102040817,
+      "bg": "dark",
+      "changed": 0.2771811224489796,
+      "pass": true
+    },
+    {
+      "pair": [
+        "listening",
+        "starting"
+      ],
+      "diff": 19.734119897959182,
+      "bg": "dark",
+      "changed": 0.300344387755102,
+      "pass": true
+    },
+    {
+      "pair": [
+        "listening",
+        "thinking"
+      ],
+      "diff": 13.578176020408163,
+      "bg": "dark",
+      "changed": 0.2746811224489796,
+      "pass": true
+    },
+    {
+      "pair": [
+        "offline",
+        "paused"
+      ],
+      "diff": 1.4265986394557824,
+      "bg": "dark",
+      "changed": 0.0633545918367347,
+      "pass": true
+    },
+    {
+      "pair": [
+        "offline",
+        "private"
+      ],
+      "diff": 8.752585034013606,
+      "bg": "dark",
+      "changed": 0.22854591836734695,
+      "pass": true
+    },
+    {
+      "pair": [
+        "offline",
+        "private_speaking"
+      ],
+      "diff": 12.642614795918368,
+      "bg": "dark",
+      "changed": 0.2774744897959184,
+      "pass": true
+    },
+    {
+      "pair": [
+        "offline",
+        "reconnecting"
+      ],
+      "diff": 2.476058673469388,
+      "bg": "dark",
+      "changed": 0.138609693877551,
+      "pass": true
+    },
+    {
+      "pair": [
+        "offline",
+        "speaking"
+      ],
+      "diff": 16.254226190476192,
+      "bg": "dark",
+      "changed": 0.293890306122449,
+      "pass": true
+    },
+    {
+      "pair": [
+        "offline",
+        "starting"
+      ],
+      "diff": 2.0331122448979593,
+      "bg": "dark",
+      "changed": 0.11105867346938776,
+      "pass": true
+    },
+    {
+      "pair": [
+        "offline",
+        "thinking"
+      ],
+      "diff": 16.559047619047618,
+      "bg": "dark",
+      "changed": 0.2708035714285714,
+      "pass": true
+    },
+    {
+      "pair": [
+        "paused",
+        "private"
+      ],
+      "diff": 8.179481292517007,
+      "bg": "dark",
+      "changed": 0.22466836734693876,
+      "pass": true
+    },
+    {
+      "pair": [
+        "paused",
+        "private_speaking"
+      ],
+      "diff": 12.023184523809524,
+      "bg": "dark",
+      "changed": 0.284719387755102,
+      "pass": true
+    },
+    {
+      "pair": [
+        "paused",
+        "reconnecting"
+      ],
+      "diff": 2.1804889455782313,
+      "bg": "dark",
+      "changed": 0.12729591836734694,
+      "pass": true
+    },
+    {
+      "pair": [
+        "paused",
+        "speaking"
+      ],
+      "diff": 15.569464285714286,
+      "bg": "dark",
+      "changed": 0.3003571428571429,
+      "pass": true
+    },
+    {
+      "pair": [
+        "paused",
+        "starting"
+      ],
+      "diff": 1.9429506802721088,
+      "bg": "dark",
+      "changed": 0.10900510204081633,
+      "pass": true
+    },
+    {
+      "pair": [
+        "paused",
+        "thinking"
+      ],
+      "diff": 15.918996598639456,
+      "bg": "dark",
+      "changed": 0.2788775510204082,
+      "pass": true
+    },
+    {
+      "pair": [
+        "private",
+        "private_speaking"
+      ],
+      "diff": 6.192147108843537,
+      "bg": "dark",
+      "changed": 0.19885204081632654,
+      "pass": true
+    },
+    {
+      "pair": [
+        "private",
+        "reconnecting"
+      ],
+      "diff": 6.428456632653061,
+      "bg": "dark",
+      "changed": 0.16934948979591838,
+      "pass": true
+    },
+    {
+      "pair": [
+        "private",
+        "speaking"
+      ],
+      "diff": 10.075901360544218,
+      "bg": "dark",
+      "changed": 0.2721683673469388,
+      "pass": true
+    },
+    {
+      "pair": [
+        "private",
+        "starting"
+      ],
+      "diff": 6.801267006802721,
+      "bg": "dark",
+      "changed": 0.19410714285714287,
+      "pass": true
+    },
+    {
+      "pair": [
+        "private",
+        "thinking"
+      ],
+      "diff": 10.286045918367346,
+      "bg": "dark",
+      "changed": 0.22904336734693878,
+      "pass": true
+    },
+    {
+      "pair": [
+        "private_speaking",
+        "reconnecting"
+      ],
+      "diff": 10.506666666666666,
+      "bg": "dark",
+      "changed": 0.24900510204081633,
+      "pass": true
+    },
+    {
+      "pair": [
+        "private_speaking",
+        "speaking"
+      ],
+      "diff": 6.769613095238095,
+      "bg": "dark",
+      "changed": 0.21072704081632654,
+      "pass": true
+    },
+    {
+      "pair": [
+        "private_speaking",
+        "starting"
+      ],
+      "diff": 10.932359693877551,
+      "bg": "dark",
+      "changed": 0.25626275510204083,
+      "pass": true
+    },
+    {
+      "pair": [
+        "private_speaking",
+        "thinking"
+      ],
+      "diff": 7.663354591836734,
+      "bg": "dark",
+      "changed": 0.19741071428571427,
+      "pass": true
+    },
+    {
+      "pair": [
+        "reconnecting",
+        "speaking"
+      ],
+      "diff": 14.086364795918367,
+      "bg": "dark",
+      "changed": 0.276109693877551,
+      "pass": true
+    },
+    {
+      "pair": [
+        "reconnecting",
+        "starting"
+      ],
+      "diff": 1.366653911564626,
+      "bg": "dark",
+      "changed": 0.07116071428571429,
+      "pass": true
+    },
+    {
+      "pair": [
+        "reconnecting",
+        "thinking"
+      ],
+      "diff": 14.363073979591837,
+      "bg": "dark",
+      "changed": 0.2453954081632653,
+      "pass": true
+    },
+    {
+      "pair": [
+        "speaking",
+        "starting"
+      ],
+      "diff": 14.470442176870748,
+      "bg": "dark",
+      "changed": 0.27809948979591836,
+      "pass": true
+    },
+    {
+      "pair": [
+        "speaking",
+        "thinking"
+      ],
+      "diff": 9.729566326530612,
+      "bg": "dark",
+      "changed": 0.23215561224489795,
+      "pass": true
+    },
+    {
+      "pair": [
+        "starting",
+        "thinking"
+      ],
+      "diff": 14.806845238095239,
+      "bg": "dark",
+      "changed": 0.25269132653061227,
+      "pass": true
+    }
+  ],
+  "failures": 0,
+  "failingPairs": [],
+  "weakest": {
+    "pair": [
+      "idle",
+      "private"
+    ],
+    "diff": 0.8231675170068027,
+    "bg": "light",
+    "changed": 0.025395408163265305,
+    "pass": true
+  },
+  "pass": true,
+  "missing": []
+}

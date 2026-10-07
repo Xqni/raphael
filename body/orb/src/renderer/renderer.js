@@ -1,9 +1,10 @@
 import * as THREE from 'three';
 import { vertexShader, sphereVert } from './shaders/vertex.glsl.js';
 import { fragmentShader, glowShader } from './shaders/fragment.glsl.js';
-import { initSageCore, updateSageCore } from './sagecore.js';
-import { initAnswerMode, updateAnswerMode } from './answermode.js';
-import { initDataRings, updateDataRings } from './datarings.js';
+import { initSageCore, updateSageCore, lockSageCore } from './sagecore.js';
+import { initAnswerMode, updateAnswerMode, lockAnswerMode } from './answermode.js';
+import { initDataRings, updateDataRings, lockDataRings } from './datarings.js';
+import { initJobDots, updateJobDots, lockJobDots } from './jobdots.js';
 
 // Configuration injected via preload
 const cfg = window.orbConfig || { sizePx:280, contentPx:200, opacity:0.95, fpsCap:60, quality:'auto', backingDiscAlpha:0.0, reducedMotion:false };
@@ -43,12 +44,25 @@ let orbState = {
   private: false,
   paused: false,
   shapeHint: 'circle',
+  serverShapeHint: null, // last `shape_hint` that arrived on an orb_state frame
   taskKind: 'none',
+  provider: null,
+  model: null,
 };
 let speakAmp = 0;
 let speakPitch = null;
 let lastSpeakSeq = -1;
 let subtitleTimer = null;
+
+// --- W2.1 frame trace: every state/speak/subtitle frame the renderer RECEIVES
+// (IPC) plus the state it APPLIED. Read by test/orb-trace.cjs over CDP — this
+// is the renderer half of the end-to-end evidence chain.
+const TRACE_MAX = 200;
+const TRACE_RX = [];
+function traceRx(kind, data) {
+  TRACE_RX.push({ t: Math.round(performance.now()), kind, data });
+  if (TRACE_RX.length > TRACE_MAX) TRACE_RX.shift();
+}
 
 // Crossfade
 const CROSSFADE_DURATION = 300;
@@ -73,25 +87,48 @@ function damp(current, target, tau, dt) {
 
 // Layer weight targets per state. latticeOpacity = the CYAN morph lattice,
 // which now carries each state's signature SHAPE (user: "morph the states").
+// `paused` is reached through MODE (INTERFACES §e) and fully overrides the
+// base state's look — see modeTarget() below.
 const STATE_LAYER_TARGETS = {
-  idle: { coreScale:1, haloOpacity:0.25, latticeOpacity:0.22 },
+  idle: { coreScale:1, haloOpacity:0.25, latticeOpacity:0.14 },
   listening: { coreScale:1.1, haloOpacity:0.3, latticeOpacity:0.5 },
-  thinking: { coreScale:1.2, haloOpacity:0.35, latticeOpacity:0.5 },
-  acting: { coreScale:1.3, haloOpacity:0.4, latticeOpacity:0.55 },
-  speaking: { coreScale:1.2, haloOpacity:0.35, latticeOpacity:0.5 },
-  error: { coreScale:0.9, haloOpacity:0.2, latticeOpacity:0.55 },
-  reconnecting: { coreScale:1, haloOpacity:0.2, latticeOpacity:0.3 },
-  offline: { coreScale:0.8, haloOpacity:0.1, latticeOpacity:0.1 },
-  private_overlay: { coreScale:0.9, haloOpacity:0.2, latticeOpacity:0.35 },
-  confirm: { coreScale:1, haloOpacity:0.3, latticeOpacity:0.5 },
-  starting: { coreScale:1, haloOpacity:0.25, latticeOpacity:0.3 },
+  thinking: { coreScale:1.2, haloOpacity:0.35, latticeOpacity:0.85 },
+  acting: { coreScale:1.3, haloOpacity:0.4, latticeOpacity:0.6 },
+  speaking: { coreScale:1.2, haloOpacity:0.35, latticeOpacity:0.55 },
+  error: { coreScale:0.9, haloOpacity:0.2, latticeOpacity:0.75 },
+  reconnecting: { coreScale:1, haloOpacity:0.2, latticeOpacity:0.45 },
+  offline: { coreScale:0.8, haloOpacity:0.1, latticeOpacity:0.06 },
+  private_overlay: { coreScale:1, haloOpacity:0.25, latticeOpacity:0.14 },
+  confirm: { coreScale:1, haloOpacity:0.3, latticeOpacity:0.7 },
+  starting: { coreScale:1, haloOpacity:0.25, latticeOpacity:0.35 },
+  paused: { coreScale:0.85, haloOpacity:0.15, latticeOpacity:0.5 },
 };
+/** MODE wins over state for layer weights (private is an OVERLAY: base look). */
+function modeTarget(state, mode) {
+  if (mode === 'paused') return STATE_LAYER_TARGETS.paused;
+  return STATE_LAYER_TARGETS[state] || STATE_LAYER_TARGETS.idle;
+}
+
+/**
+ * Effective lattice shape (PROTOCOL §8 + ORB_REBUILD §3).
+ * Each state owns a signature shape; the server's `shape_hint` wins only while
+ * a foreground task is running (task_kind !== 'none'), which is exactly the
+ * "morph by task kind" case from config orb.shape_map. This keeps the per-state
+ * signature visible even though brain-core currently hardcodes `shape_hint:
+ * 'circle'` on every frame (docs/requests/orb__to__brain-core__…).
+ */
+function effectiveShape() {
+  const taskOwned = !!orbState.taskKind && orbState.taskKind !== 'none';
+  if (taskOwned && orbState.serverShapeHint) return orbState.serverShapeHint;
+  return STATE_SHAPE[orbState.orbState] || orbState.serverShapeHint || 'circle';
+}
 // State -> morph shape (600ms vertex morph, existing machinery). 'acting' is
 // owned by the task-kind map (config orb.shape_map / shapeHint, spec §3).
 const STATE_SHAPE = {
   idle: 'circle', listening: 'pentagon', thinking: 'octagram', acting: null,
   speaking: 'hexagon', error: 'triangle', confirm: 'square', starting: 'circle',
   reconnecting: 'circle', offline: 'circle', private_overlay: 'circle',
+  paused: 'circle',
 };
 let lastShapeState = null;
 let layerWeights = { coreScale:1, haloOpacity:0.25, latticeOpacity:0.35 };
@@ -102,6 +139,10 @@ let renderer, scene, camera, clock;
 let group, core, lattice, halo, rings = [], rays, starsMesh, sage, glowGhosts = [];
 let AM = null; // Answer Mode (gold magic-circle) module handle
 let DR = null; // Data Rings (prismatic thinking overlay) module handle
+let JD = null; // jobs_active orbiting dots (PROTOCOL §8)
+// Pose lock (test hook): see __orbLockPose(). Production never sets it.
+let poseLock = false;
+const POSE_T = 2.0; // pinned animation clock used while locked
 let edgeRT = null, maskScene = null, maskCam = null, maskMat = null;
 const sceneStats = { calls: 0, tris: 0 }; // cached AFTER the scene pass (mask pass resets renderer.info)
 
@@ -341,6 +382,7 @@ if (backingDiscAlpha > 0) {
   sage = initSageCore(THREE, group, scene); // Sage Core layers (spec §2.1)
   AM = initAnswerMode(THREE, group);        // Answer Mode gold look (spec §2.2)
   DR = initDataRings(THREE, group);         // Data Rings thinking overlay (spec §2.3)
+  JD = initJobDots(THREE, group);           // jobs_active dots (PROTOCOL §8)
   // User review fix: hide Phase-1 gold leftovers (halo/gold rings/orange ray
   // ring read as "a big flat golden 2D circle"). Sage Core supplies the glow
   // (core) + the white tilted orbit ring; later phases re-show what they need.
@@ -409,6 +451,7 @@ function runDemo(now) {
       }
       if (ev.shapeHint && ev.shapeHint !== orbState.shapeHint) {
         orbState.shapeHint = ev.shapeHint;
+        orbState.serverShapeHint = ev.shapeHint;
         startMorphTo(ev.shapeHint);
       }
       if (ev.taskKind) orbState.taskKind = ev.taskKind;
@@ -426,15 +469,20 @@ function runDemo(now) {
   }
 }
 
+// MODE first (INTERFACES §e): private/paused are overlays on whatever base
+// state is live, so a mode tint must never be reachable through `s` alone.
+// Private deliberately keeps the BASE look (ORB_REBUILD §3.5 — only the teal
+// ring says "cloud is off"); only paused/offline desaturate.
 function getStateTint(s) {
-  if (s === 'error') return 0xff0000;
-  if (s === 'confirm') return 0xffa500;
-  if (s === 'private_overlay' || orbState.private || orbState.mode === 'private') return 0x9aa5b1;
+  if (orbState.mode === 'paused') return 0x9fb6d8; // steel grey (spec §3)
+  if (s === 'error') return 0xff3b3d;
+  if (s === 'confirm') return 0xffb000;           // amber (spec §3)
   if (s === 'reconnecting') return 0x58c4f2;
-  if (s === 'offline') return 0x9aa5b1; // desaturated grey (spec §3: Paused/Offline) // starting stays idle-white (user: copy idle base)
+  if (s === 'offline') return 0x9aa5b1;           // desaturated grey (spec §3)
   if (s === 'acting') return 0xffd700;
-  if (s === 'speaking') return 0xffe9c0; // gold-white core (Answer Mode, spec §2.2)
-  return 0xffffff;
+  if (s === 'speaking') return 0xffe9c0;          // gold-white core (spec §2.2)
+  if (s === 'starting') return 0xfff4d6;
+  return 0xffffff;                                // idle / private_overlay
 }
 
 function animate(now) {
@@ -445,25 +493,41 @@ function animate(now) {
     // Scripts can enable the old showcase via window.__orbDemoTimeline = true.
     runDemo(now);
   }
-  const t = clock.getElapsedTime();
+  const t = poseLock ? POSE_T : clock.getElapsedTime();
   const pitchNorm = speakPitch ? Math.max(0.8, Math.min(1.2, speakPitch / 220)) : 1;
   const breathBase = 2 * pitchNorm;
   const breath = 1 + 0.08 * Math.sin(t * breathBase);
-  const pulse = 1 + speakAmp * 0.25;
+  // Amplitude source per state (ORB_REBUILD §6): mic RMS for `listening`
+  // (forwards on orb_state by brain-core), TTS chunks for `speaking`.
+  const reactiveAmp = orbState.orbState === 'listening'
+    ? (typeof orbState.amplitude === 'number' ? orbState.amplitude : 0)
+    : speakAmp;
+  const pulse = 1 + reactiveAmp * 0.25;
+  // dt: real while animating; deliberately large while pose-locked so every
+  // damped uniform converges to its target within a couple of frames.
+  const dt = poseLock ? 1000 : (now - lastFrame);
   // Damping weights based on current orb state
   // state-shape morph: each state morphs the cyan lattice to its signature shape
   if (orbState.orbState !== lastShapeState) {
     lastShapeState = orbState.orbState;
     // echo the visual state to main (roam gating + future features)
     try { if (window.raphael && window.raphael.sendOrbState) window.raphael.sendOrbState(orbState.orbState); } catch (e) { /* no preload */ }
-    const want = STATE_SHAPE[orbState.orbState] || orbState.shapeHint || 'circle';
+    // PROTOCOL §8: the SERVER's shape_hint is authoritative — the per-state
+    // default only applies when the frame carried none (and `acting` has no
+    // default of its own: it is owned by the task-kind map, config orb.shape_map).
+    const want = effectiveShape();
     if (want !== orbState.shapeHint) {
       orbState.shapeHint = want;
-      startMorphTo(want);
+      if (!poseLock) startMorphTo(want);
+    }
+    // TTS amplitude belongs to `speaking` only: a missed speak{end} must not
+    // keep pulsing every later state (W2.1 frame-trace finding).
+    if (orbState.orbState !== 'speaking' && window.orbDemoAmp === undefined) {
+      speakAmp = 0;
+      speakPitch = null;
     }
   }
-  const target = STATE_LAYER_TARGETS[orbState.orbState] || STATE_LAYER_TARGETS.idle;
-  const dt = now - lastFrame;
+  const target = modeTarget(orbState.orbState, orbState.mode);
   layerWeights.coreScale = damp(layerWeights.coreScale, target.coreScale, MORPH_DURATION, dt);
   layerWeights.haloOpacity = damp(layerWeights.haloOpacity, target.haloOpacity, MORPH_DURATION, dt);
   layerWeights.latticeOpacity = damp(layerWeights.latticeOpacity, target.latticeOpacity, MORPH_DURATION, dt);
@@ -483,18 +547,22 @@ function animate(now) {
     gh.mesh.material.uniforms.uAmp.value = core.material.uniforms.uAmp.value;
     gh.mesh.material.uniforms.color.value.copy(core.material.uniforms.color.value);
   }
-  halo.scale.setScalar(breath * (1 + speakAmp * 0.15));
+  halo.scale.setScalar(breath * (1 + reactiveAmp * 0.15));
   halo.material.opacity = 0.25 * layerWeights.haloOpacity;
   lattice.material.opacity = 0.35 * layerWeights.latticeOpacity;
-  updateSageCore(sage, { t, dt, state: orbState.orbState, amp: speakAmp, coreU: core.material.uniforms, ballScale, core, tint: getStateTint(orbState.orbState), glide: { x: GLX, y: GLY, blur: GLB } });
-  if (AM) updateAnswerMode(AM, { t, dt, state: orbState.orbState, amp: speakAmp, glide: { x: GLX, y: GLY } });
-  if (DR) updateDataRings(DR, { t, dt, state: orbState.orbState, amp: speakAmp, glide: { x: GLX, y: GLY } });
+  const mode = orbState.mode;
+  updateSageCore(sage, { t, dt, state: orbState.orbState, mode, lock: poseLock, amp: reactiveAmp, coreU: core.material.uniforms, ballScale, core, tint: getStateTint(orbState.orbState), glide: { x: GLX, y: GLY, blur: GLB } });
+  if (AM) updateAnswerMode(AM, { t, dt, state: orbState.orbState, mode, lock: poseLock, amp: reactiveAmp, glide: { x: GLX, y: GLY } });
+  if (DR) updateDataRings(DR, { t, dt, state: orbState.orbState, mode, lock: poseLock, amp: reactiveAmp, glide: { x: GLX, y: GLY } });
+  if (JD) updateJobDots(JD, { t, dt, jobs: orbState.jobsActive, lock: poseLock });
   if (AM && maskMat) maskMat.uniforms.uCA.value = AM.wFull; // chromatic aberration at outer edge (Answer Mode)
-  rays.rotation.z += 0.01;
-  rings[0].rotation.z += 0.008;
-  rings[1].rotation.z -= 0.006;
-  lattice.rotation.y += 0.004;
-  group.rotation.y += 0.003 * GROUP_SPIN;
+  if (!poseLock) {
+    rays.rotation.z += 0.01;
+    rings[0].rotation.z += 0.008;
+    rings[1].rotation.z -= 0.006;
+    lattice.rotation.y += 0.004;
+    group.rotation.y += 0.003 * GROUP_SPIN;
+  }
   group.rotation.x = Math.sin(t * 0.045) * 0.05; // gentle bounded sway on x (not one flat plane)
 
   const stateTint = getStateTint(orbState.orbState);
@@ -519,7 +587,7 @@ function animate(now) {
   if (document.hidden) return;
   if (now - lastFrame < frameInterval) return;
   lastFrame = now;
-  updateMorph(now);
+  if (!poseLock) updateMorph(now);
   // Render scene -> offscreen target, then composite through the edge mask
   // (soft 8% fade on every side: no content ever meets the window box hard).
   if (edgeRT) {
@@ -604,6 +672,96 @@ if (demoStateSel) {
   });
 }
 window.__orbDebug = { get state() { return orbState.orbState; } }; // LIVE render state (not the dropdown)
+
+// ---------------------------------------------------------------------------
+// POSE LOCK (test hook, W2.1 / quality gates).
+// The orb rotates continuously — a full polyhedron turn takes ~40 s — so two
+// screenshots of the SAME state taken seconds apart differ by 5-8/255 purely
+// from rotation. That self-noise is larger than several genuine state
+// differences, which made the pixel-diff gate unable to tell "paused renders
+// exactly like idle" from "paused adds a thin steel ring".
+//
+// Locking puts every layer back on a canonical pose, snaps every weight to its
+// target and pins the animation clock, so a captured frame becomes a pure
+// function of (state, mode, jobs, amplitude). The CDP harness locks before
+// shooting and unlocks right after; production never calls it.
+// ---------------------------------------------------------------------------
+window.__orbLockPose = () => {
+  const st = orbState.orbState;
+  const mode = orbState.mode;
+  poseLock = true;
+  lastShapeState = st;
+  const target = modeTarget(st, mode);
+  layerWeights = { ...target };
+  const want = effectiveShape();
+  orbState.shapeHint = want;
+  // snap the lattice morph instead of animating it
+  if (lattice) {
+    const posAttr = lattice.geometry.getAttribute('position');
+    const to = makeMorphTarget(want);
+    const n = Math.min(posAttr.array.length, to.length);
+    for (let i = 0; i < n; i++) posAttr.array[i] = to[i];
+    posAttr.needsUpdate = true;
+    morphActive = false; morphFrom = null; morphTo = null;
+  }
+  // clear every accumulated transform so all scenes share one pose
+  rays.rotation.set(Math.PI / 4, 0, 0);
+  rings[0].rotation.set(0, 0, 0);
+  rings[1].rotation.set(0, 0, 0);
+  lattice.rotation.set(0, 0, 0);
+  group.rotation.set(0, 0, 0);
+  const la = st === 'listening'
+    ? (typeof orbState.amplitude === 'number' ? orbState.amplitude : 0)
+    : (st === 'speaking' ? speakAmp : 0);
+  if (sage) lockSageCore(sage, st, mode, { tint: getStateTint(st), amp: la });
+  if (AM) lockAnswerMode(AM, st, { amp: la });
+  if (DR) lockDataRings(DR, st, { amp: la });
+  if (JD) lockJobDots(JD, orbState.jobsActive);
+  return window.__orbTrace ? window.__orbTrace().applied : null;
+};
+window.__orbUnlockPose = () => { poseLock = false; };
+window.__orbPoseLocked = () => poseLock;
+
+
+// W2.1 trace probe: what the renderer RECEIVED + what it APPLIED (weights and
+// the actual uniforms driving the GL) in one snapshot, so a screenshot can be
+// correlated with the exact numbers behind it.
+window.__orbTrace = () => ({
+  t: Math.round(performance.now()),
+  applied: {
+    state: orbState.orbState, mode: orbState.mode,
+    private: !!orbState.private, paused: !!orbState.paused,
+    jobsActive: orbState.jobsActive, shapeHint: orbState.shapeHint,
+    taskKind: orbState.taskKind, provider: orbState.provider || null,
+    model: orbState.model || null,
+    tint: '0x' + getStateTint(orbState.orbState).toString(16),
+  },
+  weights: {
+    layer: { ...layerWeights },
+    sage: sage ? Object.assign({}, sage.w) : null,
+    sagePrivateRing: sage ? sage.privateW : null,
+    answer: AM ? { full: AM.wFull, quiet: AM.wQuiet, ampS: AM.ampS } : null,
+    dataRings: DR ? { w: DR.w } : null,
+    latticeOpacity: lattice ? lattice.material.opacity : null,
+    haloOpacity: halo ? halo.material.opacity : null,
+  },
+  uniforms: core ? {
+    uBright: core.material.uniforms.uBright.value,
+    uAmp: core.material.uniforms.uAmp.value,
+    uColor: core.material.uniforms.color.value.getHexString(),
+    coreScale: core.scale.x,
+    polyAlpha: sage ? sage.polyMat.uniforms.uAlpha.value : null,
+    nodeAlpha: sage ? sage.nodeMat.uniforms.uAlpha.value : null,
+    nebulaOpacity: sage ? sage.nebulaMat.uniforms.uOpacity.value : null,
+    speedAlpha: sage ? sage.speedMat.uniforms.uAlpha.value : null,
+    ringAlpha: sage ? sage.ringFrontMat.uniforms.uAlpha.value : null,
+    drop: sage ? sage.polyMat.uniforms.uDrop.value : null,
+  } : null,
+  amp: { speak: speakAmp, pitch: speakPitch, mic: orbState.amplitude },
+  poseLocked: poseLock,
+  rx: TRACE_RX.slice(-50),
+  stats: window.__orbStats ? window.__orbStats() : null,
+});
 window.__orbStats = () => { // Phase-7 perf probe: true RENDERED frames + scene draw budget
   const r = renderer;
   if (!r) return { frame: -1 };
@@ -656,19 +814,31 @@ setTimeout(() => {
 
 if (window.raphael) {
   window.raphael.onOrbState((s) => {
+    traceRx('orb_state', s);
+    const prevState = orbState.orbState;
     const prevShape = orbState.shapeHint;
+    // PROTOCOL §8: `shape_hint` on the frame is authoritative; null means the
+    // frame carried none and the per-state default applies instead.
+    if ('shapeHint' in s) orbState.serverShapeHint = s.shapeHint || null;
     orbState = { ...orbState, ...s };
-    if (s.shapeHint && s.shapeHint !== prevShape) {
-      startMorphTo(s.shapeHint);
+    orbState.serverShapeHint = ('shapeHint' in s) ? (s.shapeHint || null) : orbState.serverShapeHint;
+    const want = effectiveShape();
+    if (want !== prevShape) {
+      orbState.shapeHint = want;
+      // when the STATE also changed, animate()'s state-change block owns the
+      // morph — morphing here too would restart the 600 ms ramp from scratch.
+      if (!poseLock && orbState.orbState === prevState) startMorphTo(want);
     }
     // state-name text REMOVED (user: "text flashes when switching states") —
     // only explicit subtitles (spoken narration) are ever shown.
     if (s.subtitle) updateSubtitle(s.subtitle);
   });
   window.raphael.onSubtitle((t) => {
+    traceRx('subtitle', t);
     if (t && t.text) updateSubtitle(t.text);
   });
   window.raphael.onSpeak((ev) => {
+    traceRx('speak', ev);
     if (ev && ev.seq !== undefined && ev.seq <= lastSpeakSeq) return;
     if (ev && ev.seq !== undefined) lastSpeakSeq = ev.seq;
     if (ev && ev.event === 'end') {

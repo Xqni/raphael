@@ -13,6 +13,15 @@ process.on('uncaughtException', (err) => {
 });
 const Config = require('./config');
 const StatusWS = require('./ws-status');
+const Instance = require('./instance');
+
+// Instance isolation (INTERFACES §d): userData MUST be re-pathed before app
+// ready — it decides where orb-position.json lives and, because Electron's
+// requestSingleInstanceLock() is scoped to userData, it is the per-instance
+// SINGLE-INSTANCE KEY (lane `orb` -> ~/.raphael/orb/orb/, main -> default).
+// Must happen before anything calls app.getPath('userData').
+const INSTANCE_USERDATA = Instance.userDataDir();
+if (INSTANCE_USERDATA) app.setPath('userData', INSTANCE_USERDATA);
 
 let win = null;
 let tray = null;
@@ -314,6 +323,10 @@ function createWindow() {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: false,
+      // ORB_REBUILD §5: "disable background throttling only for the orb
+      // window" — otherwise rAF collapses to ~1 Hz whenever the window is
+      // occluded/unfocused and the orb looks frozen (W2.1 cause list).
+      backgroundThrottling: false,
     },
   });
 
@@ -427,6 +440,8 @@ function setupIPC() {
   ipcMain.on('orb-input', (_evt, msg) => {
     statusWS && statusWS.sendOrbInput(msg);
   });
+  // W2.1 trace: frames the main process received off the WS (evidence chain).
+  ipcMain.handle('orb-trace-ws', () => (statusWS ? statusWS.traceFrames() : []));
 }
 
 function startStatusWS() {
@@ -447,6 +462,12 @@ function startStatusWS() {
     if (win && !win.isDestroyed()) {
       win.webContents.send('speak', ev);
     }
+  });
+  statusWS.on('confirm', (c) => {
+    if (win && !win.isDestroyed()) win.webContents.send('confirm', c);
+  });
+  statusWS.on('job_list', (jobs) => {
+    if (win && !win.isDestroyed()) win.webContents.send('job-list', jobs);
   });
   statusWS.start();
 }

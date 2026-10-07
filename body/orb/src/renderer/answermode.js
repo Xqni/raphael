@@ -185,7 +185,7 @@ export function initAnswerMode(THREE, group) {
     const pivot = new THREE.Group();     // precession axis (orbital motion)
     pivot.add(band);
     AM.root.add(pivot);
-    AM.rings.push({ pivot, band, glyphMat, dir: d.dir, base: d.op });
+    AM.rings.push({ pivot, band, glyphMat, dir: d.dir, base: d.op, tx: d.tx, ty: d.ty });
   }
 
   // --- 2) DIAMOND FRAME: 3 nested diamonds + mirrored right-angle circuit
@@ -339,6 +339,7 @@ export function initAnswerMode(THREE, group) {
       m, mat: m.material,
       rad: 0.5 + ((i * 23) % 9) / 9 * 0.75,
       ang: (i / 8) * Math.PI * 2,
+      ang0: (i / 8) * Math.PI * 2,
       z: ((i * 11) % 7) / 7 * 0.5 - 0.25,
       spd: 0.00006 + ((i * 19) % 5) / 5 * 0.00008,
       ph: i * 1.3,
@@ -362,7 +363,7 @@ export function initAnswerMode(THREE, group) {
     AM.root.add(m);
     AM.bokeh.push({
       m, mat, base: d[2],
-      rad: 0.55 + i * 0.24, ang: i * 1.7, z: -0.3 + i * 0.18,
+      rad: 0.55 + i * 0.24, ang: i * 1.7, ang0: i * 1.7, z: -0.3 + i * 0.18,
       spd: 0.00004 + i * 0.00001, ph: i * 2.1,
     });
   });
@@ -370,10 +371,24 @@ export function initAnswerMode(THREE, group) {
   return AM;
 }
 
+// --- Pose lock (test hook, W2.1) — canonical weights + canonical transforms ---
+export function lockAnswerMode(AM, state, opts = {}) {
+  const tgt = AM_STATES[state] || { full: 0, quiet: 0 };
+  AM.wFull = tgt.full;
+  AM.wQuiet = tgt.quiet;
+  AM.ampS = opts.amp || 0;
+  for (const R of AM.rings) { R.pivot.rotation.set(0, 0, 0); R.band.rotation.set(R.tx, R.ty, 0); }
+  for (const fk of AM.flakes) { fk.ang = fk.ang0; fk.m.rotation.z = 0; }
+  for (const bk of AM.bokeh) { bk.ang = bk.ang0; }
+  AM.root.visible = Math.max(AM.wFull, AM.wQuiet) > 0.005;
+  return AM;
+}
+
 // --- per-frame update -------------------------------------------------------
 // ctx = { t (s), dt (ms), state, amp, glide: {x, y} }
 export function updateAnswerMode(AM, ctx) {
   const t = ctx.t, dt = Math.min(Math.max(ctx.dt, 1), 100), state = ctx.state;
+  const spinDt = ctx.lock ? 0 : dt; // pose-lock: damping runs, transforms don't
   const tgt = AM_STATES[state] || { full: 0, quiet: 0 };
   AM.wFull = damp(AM.wFull, tgt.full, AM_TAU, dt);
   AM.wQuiet = damp(AM.wQuiet, tgt.quiet, AM_TAU, dt);
@@ -395,8 +410,8 @@ export function updateAnswerMode(AM, ctx) {
   for (let i = 0; i < AM.rings.length; i++) {
     const R = AM.rings[i];
     const a = (i === 0) ? F + Q * 0.4 : F;
-    R.pivot.rotation.y += R.dir * 0.55 * dt;                // orbital precession = band WRAPS the sphere
-    R.band.rotation.z += R.dir * (0.35 + 0.65 * F) * dt;    // glyphs travel along the tilted band
+    R.pivot.rotation.y += R.dir * 0.55 * spinDt;                // orbital precession = band WRAPS the sphere
+    R.band.rotation.z += R.dir * (0.35 + 0.65 * F) * spinDt;    // glyphs travel along the tilted band
     R.glyphMat.uniforms.uAlpha.value = a * 1.1; // glyphs only (glow = shader stroke-halo)
   }
 
@@ -425,16 +440,16 @@ export function updateAnswerMode(AM, ctx) {
 
   // flakes: slow drift + twinkle
   for (const fk of AM.flakes) {
-    fk.ang += fk.spd * dt;
+    fk.ang += fk.spd * spinDt;
     fk.m.position.set(Math.cos(fk.ang) * fk.rad, Math.sin(fk.ang) * fk.rad * 0.85,
                       fk.z + Math.sin(t * 0.001 + fk.ph) * 0.1);
-    fk.m.rotation.z += fk.rot * dt;
+    fk.m.rotation.z += fk.rot * spinDt;
     fk.mat.opacity = on * 0.7 * (0.55 + 0.45 * Math.sin(t * 0.9 + fk.ph));
   }
 
   // bokeh haze
   for (const bk of AM.bokeh) {
-    bk.ang += bk.spd * dt;
+    bk.ang += bk.spd * spinDt;
     bk.m.position.set(Math.cos(bk.ang) * bk.rad, Math.sin(bk.ang) * bk.rad * 0.9, bk.z);
     bk.mat.opacity = on * bk.base;
   }

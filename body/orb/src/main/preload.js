@@ -4,9 +4,23 @@ contextBridge.exposeInMainWorld('raphael', {
   onOrbState: (cb) => ipcRenderer.on('orb-state', (_e, s) => cb(s)),
   onSubtitle: (cb) => ipcRenderer.on('subtitle', (_e, t) => cb(t)),
   onSpeak: (cb) => ipcRenderer.on('speak', (_e, ev) => cb(ev)),
+  onConfirm: (cb) => ipcRenderer.on('confirm', (_e, c) => cb(c)),
+  onJobList: (cb) => ipcRenderer.on('job-list', (_e, jobs) => cb(jobs)),
+  onGlide: (cb) => ipcRenderer.on('orb-glide', (_e, g) => cb(g)), // velocity feed for lag/blur
   sendOrbInput: (msg) => ipcRenderer.send('orb-input', msg),
   sendOrbState: (s) => ipcRenderer.send('orb-visual-state', s), // main tracks it (roam gating)
-  onGlide: (cb) => ipcRenderer.on('orb-glide', (_e, g) => cb(g)), // velocity feed for lag/blur
+  // W2.3 typed input (TODO §3e): text box -> PROTOCOL §3 `command` (source: orb)
+  sendCommand: (text) => ipcRenderer.invoke('orb-command', text),
+  requestJobList: () => ipcRenderer.invoke('orb-job-list'),
+  cancelJob: (ref) => ipcRenderer.invoke('orb-cancel', ref),
+  sendControl: (action) => ipcRenderer.invoke('orb-control', action),
+  // Right-click menu / hover hit-testing (main owns the native menu)
+  openContextMenu: () => ipcRenderer.invoke('orb-context-menu'),
+  setMouseThrough: (through) => ipcRenderer.send('orb-mouse-through', through),
+  // W2.1 trace: frames the MAIN process received off the WS
+  traceWs: () => ipcRenderer.invoke('orb-trace-ws'),
+  // Instance info for the right-click menu header (no secrets)
+  instanceInfo: () => ipcRenderer.invoke('orb-instance-info'),
 });
 
 // Expose configuration values to renderer
@@ -20,4 +34,6 @@ contextBridge.exposeInMainWorld('orbConfig', {
   quality: cfg.quality || 'auto',
   backingDiscAlpha: cfg.backing_disc_alpha || 0.0,
   reducedMotion: cfg.reduced_motion || false,
+  instance: cfg.instance,
+  cdpPort: cfg.cdpPort,
 });
