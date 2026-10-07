@@ -382,6 +382,8 @@ class Conductor:
             last = evs[-1]
             meta = st["lanes"].setdefault(lane, {})
             meta["last_event_type"] = last.get("type")
+            if last.get("ts"):
+                meta["last_activity"] = last.get("ts")   # ANY event = the lane is alive
             if last.get("type") == "heartbeat":
                 meta["heartbeat"] = last.get("ts")
                 data = last.get("data") or {}
@@ -573,11 +575,11 @@ class Conductor:
             sid = meta.get("session_id")
             if not sid or sid not in active:
                 continue
-            hb = meta.get("heartbeat")
+            hb = meta.get("last_activity") or meta.get("heartbeat")
             if hb and now() - hb > limit and now() - self.stall_notified.get(lane, 0) > 3600:
                 self.stall_notified[lane] = now()
-                self.attention(f"lane '{lane}' session is running but its heartbeat is "
-                               f"{int(now() - hb)}s stale — check that session")
+                self.attention(f"lane '{lane}' session is running but its last coord "
+                               f"activity is {int(now() - hb)}s old — check that session")
 
     def tick_once(self) -> None:
         if (self.cd / "STOP").exists():
