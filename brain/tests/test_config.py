@@ -120,6 +120,7 @@ def test_main_instance_zero_change(monkeypatch):
     ('qa-security', 8908, 9408),
     ('tools-memory', 8909, 9409),
     ('evolution-persona', 8910, 9410),
+    ('shadow', 8911, 9411),   # evolution verification instance (approved row)
 ])
 def test_lane_instances_derive(monkeypatch, tmp_path, name, port, cdp):
     monkeypatch.setenv('RAPHAEL_INSTANCE', name)
