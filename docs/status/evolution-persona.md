@@ -42,4 +42,3 @@ Updated: 2026-10-07 (Wave 4)
 - 2026-10-07: `tests/.venv/bin/python -m pytest brain/persona/tests -q` → **14 passed in 0.10s**
 - 2026-10-07: `python3 tests/core_guard.py` → `Core Guard OK (4 files byte-stable)` (exit 0)
 - 2026-10-07: `tests/ownership_check.py --lane evolution-persona --files <11 new files>` → `ownership OK (11 checked)`
-- 2026-10-07: `python3 tests/core_guard.py` (Wave 3) → `Core Guard OK (4 files byte-stable)`
