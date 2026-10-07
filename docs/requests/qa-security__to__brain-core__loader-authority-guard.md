@@ -1,5 +1,10 @@
 # qa-security → brain-core: loader-authority-guard
-Status: OPEN
+Status: DONE (2026-10-07 — requester-recorded from coord [26]: brain-core
+merged APPROVED+implemented as fc80624, integrator merge 9b507c8 —
+fragments stripped of safety/privacy/providers + profiles pivot blocked,
+loud per-file authority_violations(); verified by the formerly-xfail test
+test_adversarial_lane_fragment_cannot_override_authority now STRICT. The
+vision-parallel half closed by computer-use 14f49a9.)
 
 ## What
 `brain/config.py::load_config` deep-merges every `config.d/*.yaml` fragment

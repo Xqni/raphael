@@ -158,3 +158,45 @@ def test_emitted_frames_are_protocol_documented():
                     if t not in documented}
     assert not undocumented, (
         f'production emits frames missing from PROTOCOL §3: {undocumented}')
+
+
+# ---- Wave-5 answer/report format rows (integrator atomic pair, [23]/[25]) --
+def _row(type_name: str) -> str:
+    content = Path("docs/PROTOCOL.md").read_text(encoding="utf-8")
+    row = next((l for l in content.splitlines()
+                if l.startswith(f"| `{type_name}` ")), None)
+    assert row is not None, f"{type_name} row missing from PROTOCOL §3"
+    return row
+
+
+def test_answer_frame_shape():
+    """§3 `answer` (additive 2026-10-07): ui,cli + job/text/provider?/
+    model?/format — emitted once per final reply; provider/model omitted in
+    Private Mode (contract: no router hop, no leak)."""
+    row = _row("answer")
+    assert "| ui, cli |" in row, row
+    for field in ("`job`", "`text`", "`provider?`", "`model?`",
+                  "`format: answer`"):
+        assert field in row, (field, row)
+
+
+def test_report_frame_shape():
+    """§3 `report` (additive 2026-10-07): ui,cli + job/title/summary<=500/
+    sections[<=10]{heading,text<=2000}/format — caps enforced server-side."""
+    row = _row("report")
+    assert "| ui, cli |" in row, row
+    for field in ("`job`", "`title`", "`summary` (<=500)", "sections[<=10]",
+                  "text<=2000", "`format: report`"):
+        assert field in row, (field, row)
+
+
+def test_job_event_kind_parent_row():
+    """§3 `job_event` gained optional kind (chat|analysis|simulation|act) +
+    parent (fan-out correlation) — styling/parallel-minds tags, absent when
+    unknown; must stay OPTIONAL (never required by clients)."""
+    row = _row("job_event")
+    assert "optional `kind`" in row, row
+    for kind in ("chat", "analysis", "simulation", "act"):
+        assert kind in row, (kind, row)
+    assert "optional `parent`" in row, row
+    assert "see §5" in row, row          # base shape still §5's

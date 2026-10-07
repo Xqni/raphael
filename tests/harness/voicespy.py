@@ -38,7 +38,9 @@ def install(monkeypatch) -> None:
         raise TTSError('E_LOCAL_DOWN', 'qa-security: TTS mocked in tests')
 
     async def _speak(self, text, *, job=None, cancel=None,
-                     force_fallback=False):
+                     force_fallback=False, **kwargs):
+        # **kwargs absorbs new voice-lane params (Wave 5 added
+        # max_sentences — an unknown kwarg here silently killed speech)
         SPEAK_CALLS.append({'text': text, 'job': job})
         rate = int(getattr(self.cfg, 'tts_sample_rate', 24000) or 24000)
         yield {'type': 'speak', 'v': 1, 'job': job, 'seq': 0, 'event': 'start',

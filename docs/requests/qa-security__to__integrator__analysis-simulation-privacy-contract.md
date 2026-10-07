@@ -1,5 +1,5 @@
 # qa-security → integrator: analysis-simulation-privacy-contract
-Status: OPEN
+Status: APPROVED (2026-10-07 — coord decision [24]: "APPROVED AS PROPOSED, all 6 points"; integrator lands §3 answer/report rows at brain-core merge
 
 ## What
 Wave 5 adds **Analysis** and **Simulation** (WAVES.md) plus Answer/Notice/

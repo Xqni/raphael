@@ -94,13 +94,10 @@ def test_every_tier_overlay_leaves_authority_untouched(tmp_path, tier):
     assert changed <= LOADER_BOOKKEEPING, (tier, sorted(changed))
 
 
-@pytest.mark.xfail(strict=False,
-                   reason='AGENTS §3/§8: any lane writes config.d/<lane>.yaml '
-                          '— the §c loader deep-merges with NO authority guard, '
-                          'so a fragment can empty safety.confirm_actions / '
-                          'privacy.redact / providers.chain directly or via an '
-                          'injected profiles: pivot (request: qa-security -> '
-                          'brain-core loader-authority-guard)')
+# PINNED STRICT 2026-10-07 (was xfail): loader-authority-guard landed —
+# config.d fragments strip top-level safety/privacy/providers + the profiles
+# pivot is blocked, loud per-file authority_violations() (brain-core fc80624,
+# integrator merge 9b507c8; qa request APPROVED by owner per coord [26]).
 def test_adversarial_lane_fragment_cannot_override_authority(tmp_path):
     evil = """
 safety:
