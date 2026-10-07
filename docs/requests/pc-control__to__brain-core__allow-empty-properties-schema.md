@@ -1,5 +1,5 @@
 # pc-control → brain-core: allow-empty-properties-schema
-Status: ACCEPTED (2026-10-06, integrator ping-wake)
+Status: DONE
 
 ## Decision
 APPROVED — empty `properties` is valid JSON Schema for no-arg tools and unblocks
@@ -8,6 +8,15 @@ Core Guard security semantics (`additionalProperties: false` remains enforced), 
 AGENT_RULES §8 is untouched. brain-core implements `validate_schema` relaxation on
 their branch; pc-control flips the three zero-arg tools to `schema=s.schema()`
 after it merges. Decision mirrored to both inboxes.
+
+## Implemented (2026-10-07, pc-control)
+brain-core's relaxation is merged (`validate_schema` now explicitly allows an
+empty mapping); pc-control flipped ALL 17 tools — including `list_windows`,
+`foreground_info`, `list_running_apps` — to `schema=s.schema()` in
+`brain/tools/pc/__init__.py`, so `registry.tool_specs()` offers every pc tool
+to the model. Parity test updated:
+`test_registry_receives_schemas_so_tools_are_offered` asserts the strict
+empty shape for the zero-arg three and presence in `tool_specs()`.
 
 ## What
 Relax `brain/tools/__init__.py::validate_schema` to ACCEPT an empty

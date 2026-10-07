@@ -39,7 +39,8 @@ SCRIPTS: Dict[str, Dict[str, Any]] = {
     'list_uwp_apps': {
         'title': 'list installed Start/UWP apps',
         'confirm': None,               # read-only
-        'timeout_s': 30.0,
+        'timeout_s': 15.0,             # fail fast: this is open_app's last
+                                       # resolution stage (Bug B / Rule 15)
         'json': True, 'array': True,
         'args': {},
         'argv': _cmd(

@@ -20,8 +20,11 @@ Merge-order position: see docs/WAVES.md
 
 Wave 2 is MERGED; live gate was 3/5 — evidence + bug dossiers: `docs/BUGS-WAVE2.md`. SPEED MANDATE: cloud is paid now — near-instant responses, fast model defaults (AGENT_RULES Rule 15, WAVES.md constraints).
 
-- [P0-BugB] Body half of BUGS-WAVE2 Bug B: `open_app` for "open YouTube and search lo-fi" opens a BLANK cmd window then fails with NO `act_res`. Make Windows launch robust (`Start-Process`/`os.startfile`, no console flash), always return an act_res (success or precise error), cover with a test.
-- [SPEED] Tool acts fire immediately on request (Rule 15).
+- [x] [P0-BugB] Body half of BUGS-WAVE2 Bug B: `open_app` for "open YouTube and search lo-fi" opens a BLANK cmd window then fails with NO `act_res`. Make Windows launch robust (`Start-Process`/`os.startfile`, no console flash), always return an act_res (success or precise error), cover with a test.
+      → (1) console flash: `winlayer.hidden_popen_kwargs()` (CREATE_NO_WINDOW + hidden STARTUPINFO) on EVERY PowerShell child spawn + `.bat/.cmd/.ps1/.vbs/.wsf` excluded from open_app launch candidates (explicit `open_path` still honors the default handler); UWP scan timeout 30→15 s. (2) act_res: ws_client act_req branch wraps dispatch — a dispatcher crash now answers `E_INTERNAL` instead of killing the receive loop, and prints a greppable `[body-win] act_res: <action> job=… ok=… ms=…` line (the gate grepped body.log and found none). (3) precise errors: not-found reports stage counts ("tried N PATH, N Start Menu, N App Paths, N UWP candidates; console scripts excluded"). Tests: +7 (act_res-always, evidence line, bat-skip, exe-over-bat, stage counts, hidden kwargs, UWP fail-fast).
+- [x] [SPEED] Tool acts fire immediately on request (Rule 15).
+      → dispatch has no artificial waits (0.1 s lock fast-fail only); slowest launch stage (PowerShell UWP scan) now fails at 15 s; router half (fastpath open+search mapping) landed with brain-core.
+- [x] Flip follow-up: all 17 pc tools register `schema=` (zero-arg three included after brain-core's empty-properties relaxation merged; request `allow-empty-properties-schema` → DONE, parity test updated).
 
 ## Later waves
 - Per docs/WAVES.md — do not start early (AGENT_RULES §11). Wave 3 (browser/CDP), Wave 4 (recycle-bin wrappers, activity viewer), Wave 5 (dry-run/Simulation) are NOT started: `current_wave` is still 2.
