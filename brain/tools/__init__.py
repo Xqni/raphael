@@ -51,28 +51,34 @@ def validate_schema(name: str, schema: Any) -> Dict[str, Any]:
     if schema.get('type') != 'object':
         raise BadToolSpec(f'tool {name!r}: schema.type must be "object"')
     props = schema.get('properties')
-    if not isinstance(props, dict) or not props:
+    if not isinstance(props, dict):
         raise BadToolSpec(f'tool {name!r}: schema.properties must be a '
-                          f'non-empty mapping')
-    for pname, pspec in props.items():
-        if not isinstance(pspec, dict):
-            raise BadToolSpec(f'tool {name!r}: property {pname!r} must be a dict')
-        ptype = pspec.get('type')
-        ok_types = (list(_JSON_TYPES) if isinstance(ptype, list) else [ptype])
-        if not ok_types or any(t not in _JSON_TYPES for t in ok_types):
-            raise BadToolSpec(
-                f'tool {name!r}: property {pname!r} needs a valid "type" '
-                f'(got {ptype!r}) — every property must be typed')
-        if not str(pspec.get('description') or '').strip():
-            raise BadToolSpec(
-                f'tool {name!r}: property {pname!r} needs a description')
+                          f'mapping (empty is allowed for zero-arg tools — '
+                          f'requires required=[] + additionalProperties=false)')
+    if props:                     # zero-arg tools (PROTOCOL §7 list_windows{},
+        for pname, pspec in props.items():   # foreground_info{}, list_running_apps{})
+            if not isinstance(pspec, dict):
+                raise BadToolSpec(f'tool {name!r}: property {pname!r} must be a dict')
+            ptype = pspec.get('type')
+            ok_types = (list(_JSON_TYPES) if isinstance(ptype, list) else [ptype])
+            if not ok_types or any(t not in _JSON_TYPES for t in ok_types):
+                raise BadToolSpec(
+                    f'tool {name!r}: property {pname!r} needs a valid "type" '
+                    f'(got {ptype!r}) — every property must be typed')
+            if not str(pspec.get('description') or '').strip():
+                raise BadToolSpec(
+                    f'tool {name!r}: property {pname!r} needs a description')
     required = schema.get('required')
     if not isinstance(required, list) or not all(isinstance(r, str) for r in required):
         raise BadToolSpec(f'tool {name!r}: schema.required must be a list of '
-                          f'property names (list every mandatory arg, even [])')
+                          f'property names (list every mandatory arg, even [] '
+                          f'for zero-arg tools)')
     missing = [r for r in required if r not in props]
     if missing:
         raise BadToolSpec(f'tool {name!r}: required {missing} not in properties')
+    if not props and required:
+        raise BadToolSpec(f'tool {name!r}: zero-arg tools must declare '
+                          f'required=[] (got {required})')
     if schema.get('additionalProperties') is not False:
         raise BadToolSpec(f'tool {name!r}: additionalProperties must be false')
     return schema
@@ -173,6 +179,45 @@ def load_errors() -> Dict[str, str]:
     return dict(_load_errors)
 
 
+def _spec_to_schema(tname: str, entry: Any) -> Dict[str, Any]:
+    """SPECS values come in two landed shapes: raw JSON-schema dicts
+    (computer_use.spec) and spec objects with a `.schema()` method
+    (pc._spec.ToolSpec). Normalize to a raw schema dict."""
+    if isinstance(entry, dict):
+        return entry
+    for attr in ('schema', 'to_schema', 'to_dict'):
+        val = getattr(entry, attr, None)
+        out = None
+        if isinstance(val, dict):
+            out = val
+        elif callable(val):
+            try:
+                out = val()
+            except Exception:  # noqa: BLE001 — try the next accessor
+                out = None
+        if isinstance(out, dict) and out.get('type'):
+            return out
+    raise BadToolSpec(
+        f'SPECS entry {tname!r}: unsupported spec object '
+        f'{type(entry).__name__} (need a JSON-schema dict or .schema())')
+
+
+def _apply_specs(module_name: str, specs: Dict[str, Any]) -> None:
+    """Apply a package's SPECS dict ({tool_name: schema}) — validate every
+    entry strictly (fail loud), then attach it to the registered tool's
+    metadata. register(schema=) alone still stands (pc's landed pattern);
+    SPECS wins when both are present (decision 2026-10-06)."""
+    for tname, tschema in specs.items():
+        raw = _spec_to_schema(tname, tschema)
+        validate_schema(tname, raw)                # raises BadToolSpec loudly
+        meta = _META.get(tname)
+        if meta is None:
+            raise BadToolSpec(
+                f'SPECS entry {tname!r} (from {module_name}) has no '
+                f'registered tool — call register() for it first')
+        meta['schema'] = raw                       # SPECS takes precedence
+
+
 # ---- model-facing specs ----------------------------------------------------
 def tool_specs() -> List[Dict[str, Any]]:
     """OpenAI function-tool list for chat(tools=...) — only tools that declare
@@ -246,6 +291,18 @@ def discover(force: bool = False) -> Dict[str, str]:
                         fn()
                 except Exception as e:  # noqa: BLE001 — a bad tool != dead brain
                     errors[info.name] = f'register() failed: {type(e).__name__}: {e}'
+            # SPECS convention (computer-use request ACCEPTED 2026-10-06):
+            # a package may expose SPECS = {tool_name: JSON Schema}. Each
+            # entry is validated (fail loud) and ATTACHED to the registered
+            # tool's meta — SPECS wins over a schema= passed to register(),
+            # register(schema=) alone still stands (pc's landed pattern kept).
+            specs = getattr(mod, 'SPECS', None)
+            if isinstance(specs, dict) and specs:
+                try:
+                    _apply_specs(info.name, specs)
+                except Exception as e:  # noqa: BLE001 — recorded, never fatal
+                    errors[info.name] = (errors.get(info.name, '') + ' | ' if errors.get(info.name) else '') \
+                        + f'SPECS invalid: {type(e).__name__}: {e}'
             _discovered.add(info.name)
     except Exception as e:  # noqa: BLE001 — pkgutil walk itself
         errors['__walk__'] = f'{type(e).__name__}: {e}'

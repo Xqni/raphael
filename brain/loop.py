@@ -464,6 +464,14 @@ def build_runner(hub=None):
                     out = res.get('result')
                 else:
                     out = await asyncio.to_thread(lambda: fn(**args))
+                # PROTOCOL §7(4): image bytes are NEVER persisted anywhere —
+                # summarize b64 payloads before they reach results, job_event
+                # journals or narration (computer-use request; the act_res
+                # journal in ws.py is summarized too).
+                if isinstance(out, dict) and 'b64' in out:
+                    out = {'b64': f'<omitted {len(out.get("b64") or "")} '
+                                  f'b64 chars>',
+                           'bytes': out.get('bytes')}
                 return (True, '' if out is None else str(out))
             except _JobAborted:
                 raise

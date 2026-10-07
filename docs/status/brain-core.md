@@ -1,6 +1,6 @@
 # brain-core — status
 
-Updated: 2026-10-06 (coord round 2: pc-control's APPROVED 4-item request done on rebased branch — re-posting wave_done)
+Updated: 2026-10-06 (coord round 3: 5-task batch resolved — 1 skipped (on main), 4 implemented; re-posting wave_done)
 
 ## Done
 - (bootstrap) shared contracts read (AGENT_RULES/WAVES/OWNERSHIP/INTERFACES).
@@ -20,7 +20,13 @@ Updated: 2026-10-06 (coord round 2: pc-control's APPROVED 4-item request done on
   2. **Tools reach the model** — native `llm.chat(messages, tools=specs, purpose='tool')` stays preferred; NEW `llm.prompt_block(specs)` renders the catalog into the system prompt in the exact `{"tool": name, "args": {...}}` format for providers without native tools; `_extract_tool_call` rewritten as a balanced-brace scanner (nested args + key-order safe — the old `[^{}]*` regex silently broke on nesting).
   3. **Dispatch-time confirm** — `classify(text, tool=...)` (existing) + NEW registry-`risky` fallback `confirm.tool_decision()`: a tool flagged `risky=True` outside `RISKY_TOOLS` still prompts (Core Guard strengthening; §8-approved direction).
   4. **Registry-level load rejection** — `register()` now rejects non-string/empty names, empty/descriptless entries and non-string categories on top of the existing strict schema validation.
-- **TTS hermeticity fix (rules compliance + determinism)** — `brain/tests/conftest.py` mocks `VoiceStack.speak`/`warmup`: a LIVE Fish server on :8777 was making speak-bound tests depend on real GPU synthesis (slow/flaky), and without one, lifespan warmup would have SPAWNED fish (INTERFACES §d forbids: "Never spawn Fish TTS … voice tests mock TTS"). brain tests now run hermetically (agent suite 19 s → 1 s).
+- **TTS hermeticity fix (rules compliance + determinism)** — `brain/tests/conftest.py` mocks `VoiceStack.speak`/`warmup`: a LIVE Fish server on :8777 was making speak-bound tests depend on real GPU synthesis (slow/flaky), and without one, lifespan warmup would have SPAWNED fish (INTERFACES §d forbids: "Never spawn Fish TTS … voice tests mock TTS"). brain tests now run hermetically (agent suite 19 s → 1 s). *(Superseded on main by 84e0154: integrator's per-test + path-scoped version — theirs landed, mine discarded on rebase.)*
+- **coord round 3 (2026-10-06) — 5-task batch, all resolved on rebased head:**
+  1. `reason=` STT pre-gate → already on main (8e2d9fb), **skipped** per inbox.
+  2. **`confirm.voice_safe(job_id)`** — the risk predicate piece of voice's request: True only for a pending confirmation with recorded risk=='low'; high/unknown/no-pending → False (fail-closed; the Core Guard split stays in confirm.py, voice never re-derives it).
+  3. **No-screenshot journaling** — `ws._on_act_res` writes `<omitted N b64 chars>` instead of the base64 fragment (delivery to the waiter unchanged), AND `loop._execute_tool` summarizes b64 payloads at the source so results/job_events/subtitles never persist image bytes either (PROTOCOL §7(4) end-to-end).
+  4. **Tool-integration hooks ×3** — SPECS loader convention (validates raw-schema dicts AND pc's `ToolSpec.schema()` objects, fail-loud, attaches with precedence over `register(schema=)`); `computer_use.wiring.bind_loop(running_loop)` called in the app lifespan (guarded import, loud non-fatal); six fastpath `see_screen` intents (`question` = full utterance, needs_lock false) for Wave 2 exit criterion #3.
+  5. **Zero-arg schema relaxation** — `validate_schema` accepts `properties:{}` iff `required=[]` + `additionalProperties:false`; missing `required` still rejected (t_bad2/t_bad3 green) — pc's three PROTOCOL §7 zero-arg tools now register with schemas.
 
 ## In progress
 - — (Wave 2 lane tasks all checked off)
@@ -40,6 +46,6 @@ Updated: 2026-10-06 (coord round 2: pc-control's APPROVED 4-item request done on
 - Nudge: PROTOCOL §7 act_req gained `list_windows`/`foreground_info`/`list_running_apps` — auto-covered once pc's tools register through discovery; no change needed from me.
 
 ## Test output (real runs only — never claim unrun tests)
-- `./brain/.venv/bin/python -m pytest -q brain/tests brain/router/tests brain/voice/tests` → **147 passed** (per-file: agent 17, config 20, confirm 16, health 3, jobs 10, llm 11, orb 6, say 4, tools 13, ws 17, router 10, voice 20 — round-2 new: tools +3, llm +1, agent +4)
+- `./brain/.venv/bin/python -m pytest -q brain/tests brain/router/tests brain/voice/tests brain/tools/pc/tests brain/tools/computer_use/tests` → **346 passed, 2 skipped** (round-3 new: confirm 18, tools 17, agent 19 — incl. voice_safe, SPECS, bind_loop, see_screen, b64-journal tests)
 - `cd tests && ./.venv/bin/python -m pytest -q .` → **10 passed**
-- Hermetic: no live providers, no real stack, **no Fish touched or spawned** (TTS mocked in `brain/tests/conftest.py`), no Ollama (AGENT_RULES §5/§7); router faked at the INTERFACES §a seam, STT faked at `voice.transcribe_result`.
+- Hermetic: no live providers, no real stack, **no Fish touched or spawned** (TTS mocked in `brain/tests/conftest.py`, path-scoped per main's 84e0154), no Ollama (AGENT_RULES §5/§7); router faked at the INTERFACES §a seam, STT faked at `voice.transcribe_result`.

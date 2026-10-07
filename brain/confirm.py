@@ -151,6 +151,26 @@ def classify(text: str, tool: Optional[str] = None) -> RiskDecision:
                         risk='high' if is_high else 'low')
 
 
+def voice_safe(job_id) -> bool:
+    """Voice-answer risk predicate (voice request piece 1, assigned
+    2026-10-06): True ONLY when a confirmation is pending for `job_id` and
+    its risk is exactly 'low'.
+
+    Risk unknown / pending gone / high → False. Callers must treat False as
+    high-risk (refuse voice answers) — the low/high split is Core Guard
+    semantics (AGENT_RULES §8) and is never re-derived by the voice lane.
+    Backed by the RiskDecision recorded when `needs_confirm` was emitted."""
+    from .jobs import store as job_store
+    from .jobs.engine import get_engine
+    rowid = job_store.parse_job_ref(job_id)
+    if rowid is None:
+        return False
+    confirmer = get_engine().confirmer
+    if rowid not in confirmer.pending_ids():
+        return False
+    return confirmer.risk_for(rowid) == 'low'
+
+
 def tool_decision(tool: str, text: str = '') -> RiskDecision:
     """Dispatch-time gate for a tool whose REGISTRY metadata says `risky`
     (pc-control item 3) even when its name is not in RISKY_TOOLS and the
