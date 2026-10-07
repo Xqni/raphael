@@ -444,6 +444,14 @@ class JobEngine:
             frame['tool'] = tool
         if error_code:
             frame['error_code'] = error_code
+        # Wave-5 approved additive fields: echo the job's kind/parent when
+        # known (absent otherwise — additive, consumers unaffected).
+        _kind = snap.get('kind') or (self._kinds.get(rowid) if rowid else None)
+        _parent = snap.get('parent') or (self._parents.get(rowid) if rowid else None)
+        if _kind:
+            frame['kind'] = _kind
+        if _parent:
+            frame['parent'] = _parent
         for hook in (self.sink, self.on_state):
             if hook is not None:
                 try:

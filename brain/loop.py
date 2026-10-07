@@ -33,7 +33,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from . import confirm as confirm_mod
 from . import config as appcfg
-from . import fastpath, llm, orbstate, tools as tool_reg
+from . import fastpath, formats, llm, orbstate, tools as tool_reg
 from .jobs import store
 from .jobs.engine import JobEngine, get_engine
 from .mode import get_mode
@@ -597,6 +597,13 @@ def build_runner(hub=None):
                     if not assistant_text:
                         assistant_text = 'Done.'
                     _remember(text, assistant_text, job=jid)
+                    # APPROVED answer/report frames (ui+cli only)
+                    formats.answer(hub, jid, assistant_text,
+                                   provider=final.get('provider'),
+                                   model=final.get('model'))
+                    if kind == 'analysis':
+                        formats.report(hub, jid, assistant_text,
+                                       title=f'Analysis — {text[:80]}')
                     store.transition(rowid, 'done', stage='done',
                                      progress=1.0, result=assistant_text[:500])
                     emit('done', stage='done', progress=1.0,
@@ -679,6 +686,7 @@ def build_runner(hub=None):
                     summary = out[:160] or f'{tool_name} done'
                     narrate(summary)
                     _remember(text, summary, job=jid)
+                    formats.answer(hub, jid, summary)
                     store.transition(rowid, 'done', stage='done',
                                      progress=1.0, result=summary)
                     emit('done', stage='done', progress=1.0, t=summary,
@@ -686,6 +694,7 @@ def build_runner(hub=None):
                     return
                 narrate(res.text)
                 _remember(text, res.text, job=jid)
+                formats.answer(hub, jid, res.text)
                 store.transition(rowid, 'done', stage='done', progress=1.0,
                                  result=res.text)
                 emit('done', stage='done', progress=1.0, t=res.text)
@@ -694,6 +703,9 @@ def build_runner(hub=None):
             # ---- 3. Private Mode: NO LLM calls, fast path only (task 4) ----
             if mode.private:
                 narrate(PRIVATE_NOTICE)     # spoken + subtitled
+                # uniform answer rule (APPROVED condition 2) — provider/model
+                # omitted naturally here: Private Mode makes no router hop
+                formats.answer(hub, jid, PRIVATE_NOTICE)
                 store.transition(rowid, 'done', stage='done', progress=1.0,
                                  result=PRIVATE_NOTICE)
                 emit('done', stage='done', progress=1.0, t=PRIVATE_NOTICE)
