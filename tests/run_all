@@ -1,0 +1,44 @@
+#!/usr/bin/env bash
+# tests/run_all — the mock suite entry point (qa-security lane).
+#
+#   tests/run_all                # qa suite: contract + regression + security
+#                                #            + harness + baseline tests
+#   tests/run_all --with-brain   # + brain suite (brain/tests, brain/router/tests)
+#   PYTHON=/path/python tests/run_all   # override interpreter (CI uses this)
+#
+# Rules honored here (AGENT_RULES §5):
+# - RAPHAEL_INSTANCE=qa-security is forced by tests/conftest.py;
+# - no network, no keys, no GPU, no Fish TTS, no Ollama (all mocked);
+# - never touches the live stack (contract tests spawn ONLY their own
+#   hermetic subprocesses on ephemeral ports).
+#
+# NOTE: --with-brain runs brain-core's suite with THEIR conftest, which
+# does NOT mock TTS — if a Fish-Speech server is already running on this
+# machine, brain tests will talk to it. Requests filed (brain-core:
+# mock-TTS-in-tests, pidfile-guard). Default (no flag) never does.
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO="$(dirname "$SCRIPT_DIR")"
+cd "$REPO"
+
+PYTHON="${PYTHON:-$SCRIPT_DIR/.venv/bin/python}"
+if [[ ! -x "$PYTHON" ]]; then
+    if command -v python3 >/dev/null 2>&1; then
+        PYTHON=python3
+        echo "run_all: tests/.venv not found — falling back to python3" >&2
+    else
+        echo "run_all: no interpreter found (set PYTHON=...)" >&2
+        exit 2
+    fi
+fi
+
+echo "== qa-security mock suite =="
+"$PYTHON" -m pytest -q "$SCRIPT_DIR"
+
+if [[ "${1:-}" == "--with-brain" ]]; then
+    echo "== brain suite (brain/tests, brain/router/tests) =="
+    "$PYTHON" -m pytest -q brain/tests brain/router/tests
+fi
+
+echo "run_all: OK"

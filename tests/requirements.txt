@@ -1,0 +1,15 @@
+# qa-security mock suite dependencies (NO secrets, NO network at test time).
+# Local:  tests/.venv already carries these; recreate with:
+#   python3 -m venv tests/.venv && tests/.venv/bin/pip install -r tests/requirements.txt
+# CI installs this file on both the Ubuntu (brain + mocks) and Windows
+# (Body unit tests) jobs.
+pytest>=8,<10
+pytest-asyncio>=0.24          # tests/body_win async hotkey test
+anyio>=4                      # timed TestClient WS receives
+fastapi>=0.115                # brain.app (contract/regression suites)
+starlette>=0.41               # TestClient websockets
+httpx>=0.27                   # starlette TestClient transport
+uvicorn>=0.30                 # two-instance isolation subprocesses
+numpy>=1.26                   # brain.voice (mocked TTS still imports it)
+PyYAML>=6.0                   # brain.voice config loader
+keyboard>=0.13                # body/win unit tests (Linux + Windows)
