@@ -42,6 +42,13 @@ def _clean_state():
             _sc._state['loop'] = None
         except Exception:  # noqa: BLE001
             pass
+        try:                                  # MCP children: no orphan processes
+            from brain.tools import mcp as _mcp
+            _mcp.shutdown_clients()
+            _mcp._inventory.clear()
+            _mcp._booted = False
+        except Exception:  # noqa: BLE001
+            pass
         conn = get_conn()
         try:
             conn.execute('DELETE FROM memories')

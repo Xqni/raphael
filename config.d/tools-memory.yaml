@@ -46,3 +46,5 @@ mcp:
   servers: []                    # [{name, transport: stdio, command: [argv], allow: [...]}]
                                  # allow: [] = fail-closed (visible, not callable)
                                  # servers start ONLY from this user-authored config
+  timeout_s: 10                  # keep small: unresponsive servers delay boot by this
+  max_result_chars: 65536        # per tools/call result cap
