@@ -427,3 +427,8 @@ land, the integrator re-runs the full six-criterion live gate for `wave-2-gate`.
   before ANY git write (single-shell cwd drift).
 - qa-security wave_done queued@8 (regressions strict incl. flipped Bug E, notice whitelist,
   flake quarantined, 263/9). tools-memory wave_done queued@9 pending its rebase fix.
+- **Merged in wave gate batch:** orb 8ec70be (Bug C + notice banner + de-flaked matrix),
+  infra 9446b26 (Bug G pid hygiene + zero-teardown + speed caps), qa-security 2cbd5d6
+  (gate-bug regressions STRICT incl. flipped Bug E, notice conformance row, flake
+  quarantined — root 263 green). Positions 1-8 of 10 DONE. Remaining: tools-memory@9
+  (rebase --skip pending its session), evolution-persona@10 (never started, pinged).
