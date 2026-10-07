@@ -363,3 +363,66 @@ $ brain/.venv/bin/python -m pytest brain/voice/tests -q -rs
    the 1 skip = an intelligibility check that needs local whisper — environmental)
 orphans after runs: zero (no tools.api_server spawned by me)
 ```
+
+## Wave 5 — spoken delivery + persona-tier voice profiles (2026-10-07)
+
+Rebased on main first; no requests addressed to this lane.
+
+1. **Report/Answer read-aloud pacing** — `TTSEngine.speak(max_sentences=)`
+   caps SENTENCES SYNTHESIZED at `voice_personality.
+   spoken_reply_max_sentences` (loaded by the voice config; default 2; `0`
+   disables). loop's `_SentenceSpeaker` already limits what it forwards, so
+   this is the voice-layer guarantee for every OTHER caller (narrate(),
+   REST `/say` with `max_sentences=0` opt-out) — and it means fish never
+   synthesizes audio nobody hears (Rule 15). The echo registry + phrase cache
+   are now keyed by the SPOKEN text, so a later cap change can't replay the
+   wrong audio.
+2. **Notice level-tinted phrasing** — `notice_spoken_text(text, level)`
+   (info unchanged; warn gets an idempotent `Warning: ` lead-in; unknown
+   levels coerce exactly like `brain/notice.build()`) + `VoiceStack.speak_
+   notice(text, level=...)` speaking it through the normal stream. Notices
+   are broadcast-only today, so the narrate call-site is brain-core's →
+   OPEN request `docs/requests/voice__to__brain-core__speak-warn-notices.md`.
+3. **Persona-tier voice profiles (config surface)** —
+   `persona.tier` resolution: `RAPHAEL_PERSONA_TIER` → config.yaml →
+   `config.d/evolution-persona.yaml` (read-only), fail-closed to
+   `great_sage` (same rule as their `tier_of()`; the tier can never
+   self-promote). Reference resolution (`VoiceConfig.tier_voice_path()`):
+   - great_sage / raphael → `voice.tts_voice` (the approved JP reference —
+     the raphael tier keeps "the current voice" per their tier table),
+   - ciel → `voice.tts_voice_ciel` slot (exactly the key their design §5
+     specifies, default `assets/ciel_reference.wav`), missing slot →
+     fall back to the approved reference + ONE-TIME subtitled notice
+     (never a default voice — Bug D intact),
+   - tier flips re-resolve on the next `speak()` (`refresh_reference()`)
+     and re-namespace the phrase cache LIVE — old-tier audio unreachable.
+4. **qa residual C1/C2 analysis (reported, not lane-owned):**
+   - C1 xfail fails BEFORE any voice code: its command text
+     ('echo voice approval path') matches fastpath's `echo ` intent and no
+     RISKY pattern → `needs_confirm` never fires → the test times out waiting
+     for it (verified with `--runxfail`). The voice wiring EXISTS
+     (ws.py `_clear_yes_no` → `resolve_oldest_pending(answer, via='voice')`)
+     and brain's own `test_audio_path_listening_and_voice_confirm` passes in
+     the 184-green consumer run. Suggested: qa re-targets the test at a
+     risky-triggering phrase (as their other tests do).
+   - C2 needs `confirm_resp.channel` in PROTOCOL §9 → integrator/brain-core
+     (their existing qa→integrator request); my
+     `voice_confirmation_answer(..., low_risk=False → None)` already encodes
+     the voice-side rule.
+
+### Test output (real runs, one suite at a time — Rule 14)
+
+```
+$ brain/.venv/bin/python -m pytest brain/voice/tests/test_personality_delivery.py -q
+11 passed in 0.24s
+$ brain/.venv/bin/python -m pytest brain/voice/tests/test_reference.py \
+      brain/voice/tests/test_personality_delivery.py -q
+21 passed in 0.27s
+$ brain/.venv/bin/python -m pytest brain/voice/tests -q
+115 passed, 1 skipped in 7.81s      # skip = whisper intelligibility (environmental)
+$ brain/.venv/bin/python -m pytest brain/tests -q          # consumer
+184 passed, 1 warning in 14.91s
+$ tests/.venv/bin/python -m pytest tests/regression/test_confirm_flow.py -q -rxX
+17 passed, 2 xfailed   # C1/C2 tripwires (analysis above)
+orphans: zero (no fish spawned)
+```
