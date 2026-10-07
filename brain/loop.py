@@ -688,6 +688,18 @@ def start_loop(hub=None, workers: Optional[int] = None) -> JobEngine:
     """Wire the runner to the engine and start workers (idempotent)."""
     engine = get_engine()
     engine.runner = build_runner(hub)
+
+    def _stop_job_speech(rowid: int, jid: str) -> None:
+        # per-job cancel polish (Wave 3): cancelling a job must stop ITS
+        # in-flight speech only (narrate/speaker register under the jid);
+        # other jobs' streams are untouched. InterruptController.interrupt is
+        # a no-op when nothing is registered under that key.
+        try:
+            get_voice().interrupts.interrupt(jid)
+        except Exception:  # noqa: BLE001 — cancel must never fail on this
+            pass
+
+    engine.on_job_cancelled = _stop_job_speech
     if not engine.started:
         engine.start(workers=workers)
     return engine
