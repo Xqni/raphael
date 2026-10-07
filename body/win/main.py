@@ -11,7 +11,14 @@ import atexit
 import pathlib
 
 # Simple cross‑process lock using a lock file.
-LOCK_PATH = pathlib.Path(os.getenv('TMP', '/tmp')) / 'raphael_body.lock'
+# Instance isolation (INTERFACES §d): %TMP%\raphael_body.lock for main,
+# %TMP%\raphael_body_<instance>.lock when RAPHAEL_INSTANCE is set.
+try:
+    from . import instance as _instance
+except ImportError:          # script mode (supervisor: python body/win/main.py)
+    import instance as _instance
+
+LOCK_PATH = _instance.body_lock_path()
 
 def _pid_alive(pid: int) -> bool:
     """True if the lock owner process still exists (Windows)."""

@@ -1,49 +1,67 @@
 """Async WebSocket client for the Windows Body.
 Responsibilities:
-- Connect to ws://127.0.0.1:8765/ws (URL from config.yaml).
+- Connect to ws://127.0.0.1:<port>/ws (port/token/lock derive from
+  RAPHAEL_INSTANCE — body/win/instance.py, INTERFACES §d; unset = main = 8765).
 - Perform token‑based auth handshake.
-- Handle act_req frames and stream mic audio.
+- Handle act_req frames (delegated to body/win/actions.py, PROTOCOL §7) and
+  stream mic audio.
+
+Import discipline: this module is stdlib-only at import time. Heavy deps
+(websockets, audio_in/audio_out, hotkeys) load lazily inside the functions
+that need them so unit tests and the mock e2e harness can import it on any OS
+without side effects (AGENT_RULES §5: prefer mocks).
 """
 import asyncio
 import json
-import os
-import random
 import pathlib
 import sys
-import struct
 from typing import Any
 
 try:
-    from . import hotkeys
-    from . import audio_in
-    from . import audio_out
-    from . import automation
+    from . import instance, actions
 except ImportError:
-    import hotkeys
-    import audio_in
-    import audio_out
-    import automation
-
-try:
-    import websockets
-except ImportError:
-    import subprocess
-    subprocess.check_call([sys.executable, '-m', 'pip', 'install', '--quiet', 'websockets==16.1.1'])
-    import websockets
-
-CONFIG_URL = "ws://127.0.0.1:8765/ws"
-TOKEN_PATHS = [
-    pathlib.Path(os.getenv('APPDATA', ''), 'Raphael', 'token'),
-    pathlib.Path.home() / '.raphael' / 'token',
-]
+    # Script mode (supervisor runs `python body/win/main.py`) has no package
+    # context — fall back to absolute imports via sys.path[0] (body/win).
+    import instance
+    import actions
 
 _current_ws = None
 
+
+def _import_late(name: str):
+    """Import a body/win module lazily (package or script mode).
+
+    hotkeys/audio_in/audio_out stay OUT of module import: they pull in the
+    `keyboard`/`sounddevice` stacks (and their pinned pip fallbacks), which
+    unit tests and the mock e2e harness must never trigger (AGENT_RULES §5).
+    """
+    import importlib
+    if __package__:
+        return importlib.import_module('.' + name, __package__)
+    return importlib.import_module(name)
+
+
+def _websockets():
+    """websockets with the original pinned pip fallback (live runs only)."""
+    try:
+        import websockets
+    except ImportError:
+        import subprocess
+        subprocess.check_call([sys.executable, '-m', 'pip', 'install',
+                               '--quiet', 'websockets==16.1.1'])
+        import websockets
+    return websockets
+
+
 def read_token() -> str:
-    for p in TOKEN_PATHS:
+    # Per-instance candidates (INTERFACES §d) — never crosses instances.
+    for p in instance.token_candidates():
         if p.is_file():
             return p.read_text().strip()
-    raise FileNotFoundError('Raphael token not found in any known location')
+    raise FileNotFoundError(
+        'Raphael token not found in any known location: %s'
+        % ', '.join(str(p) for p in instance.token_candidates()))
+
 
 async def send_auth(ws):
     token = read_token()
@@ -57,6 +75,7 @@ async def send_auth(ws):
     }
     await ws.send(json.dumps(auth_msg))
 
+
 async def handle_message(msg: Any, ws, mic_streamer):
     if isinstance(msg, bytes):
         if len(msg) < 9: return
@@ -64,6 +83,12 @@ async def handle_message(msg: Any, ws, mic_streamer):
         kind = msg[4]
         payload = msg[9:]
         if kind == 2: # speak audio
+            try:
+                audio_out = _import_late('audio_out')
+            except ImportError as e:
+                print(f"[body-win] TTS chunk dropped (audio_out unavailable: {e})",
+                      flush=True)
+                return
             await audio_out.play_tts_chunk(payload)
         return
 
@@ -82,78 +107,40 @@ async def handle_message(msg: Any, ws, mic_streamer):
         # lifecycle for the continuous player (binary kind=2 carries PCM;
         # these JSON events delimit utterances — old player had no lifecycle
         # and opened a fresh device stream PER CHUNK = the stutter).
+        try:
+            audio_out = _import_late('audio_out')
+        except ImportError as e:
+            print(f"[body-win] speak event ignored (audio_out unavailable: {e})",
+                  flush=True)
+            return
         ev = data.get('event')
         if ev == 'start':
             audio_out.speak_start()
         elif ev == 'end':
             asyncio.get_running_loop().create_task(audio_out.speak_end())
         return
-    
+
     elif msg_type == 'act_req':
         job = data.get('job')
         action = data.get('action')
         args = data.get('args', {})
-        lock_req = data.get('lock', False)
-        
-        print(f"[body-win] act_req: {action} for job {job}", flush=True)
-        res = {"type": "act_res", "v": 1, "job": job, "ok": False}
-        
-        try:
-            if lock_req:
-                if not await automation.acquire_input_lock(timeout=0.1):
-                    res["error"] = "E_LOCK_BUSY"
-                    await ws.send(json.dumps(res))
-                    return
+        lock_req = bool(data.get('lock', False))
+        timeout_ms = data.get('timeout_ms')
 
-            if action == 'launch_url':
-                import webbrowser
-                webbrowser.open(args.get('url', ''))
-                res["ok"] = True
-            elif action == 'open_app':
-                await automation.launch_app(args.get('name', ''))
-                res["ok"] = True
-            elif action == 'screenshot':
-                # script mode: relative import fails (orchestrator fix); the
-                # real API is capture_screenshot() -> bytes (not async, not
-                # take_screenshot) and bytes are not JSON-serializable.
-                try:
-                    from . import capture
-                except ImportError:
-                    import capture
-                shot = capture.capture_screenshot(int(args.get('max_px', 1280)))
-                res["result"] = {"b64": __import__('base64').b64encode(shot).decode(),
-                                 "bytes": len(shot)}
-                res["ok"] = True
-            elif action == 'uia':
-                await automation.perform_uia(args.get('op'), args.get('target', {}), args.get('args', {}))
-                res["ok"] = True
-            elif action == 'clipboard':
-                # pyperclip is NOT a dependency here (phantom dep — never
-                # installed); body already has a pywin32-based clipboard.
-                try:
-                    from . import clipboard as _clip
-                except ImportError:
-                    import clipboard as _clip
-                op = args.get('op')
-                if op == 'read':
-                    res["result"] = _clip.get_clipboard_text()
-                    res["ok"] = True
-                elif op == 'write':
-                    _clip.set_clipboard_text(args.get('text', ''))
-                    res["ok"] = True
-            else:
-                res["error"] = f"Unsupported action: {action}"
-        except Exception as e:
-            res["error"] = str(e)
-        finally:
-            if lock_req:
-                automation.release_input_lock()
-        
+        print(f"[body-win] act_req: {action} for job {job}", flush=True)
+        # PROTOCOL §7: allow-list, input-lock etiquette (E_LOCK_BUSY),
+        # timeout and action-log all live in actions.dispatch().
+        outcome = await actions.dispatch(
+            action, args, lock=lock_req, job=job, timeout_ms=timeout_ms)
+        res = {"type": "act_res", "v": 1, "job": job}
+        res.update(outcome)
         await ws.send(json.dumps(res))
+        return
 
 async def client_once(mic_streamer):
     global _current_ws
-    async with websockets.connect(CONFIG_URL) as ws:
+    websockets = _websockets()
+    async with websockets.connect(instance.ws_url()) as ws:
         _current_ws = ws
         control_task = asyncio.create_task(_drain_control_queue(ws))
         try:
@@ -169,6 +156,7 @@ async def client_once(mic_streamer):
                 pass
 
 async def _drain_control_queue(ws):
+    hotkeys = _import_late('hotkeys')
     while True:
         item = await hotkeys._control_queue.get()
         tries = 0
@@ -196,6 +184,19 @@ def _load_config() -> dict:
 
 async def start_client():
     global _current_ws
+    # Fail fast on a bad instance/port instead of spinning in reconnect
+    # (AGENT_RULES §5: never silently fall back to a default port).
+    try:
+        url = instance.ws_url()
+    except ValueError as e:
+        print(f"[body-win] instance isolation error: {e}", flush=True)
+        return
+    print(f"[body-win] instance={instance.instance_name()} -> {url}", flush=True)
+
+    _websockets()  # availability check before the retry loop
+    hotkeys = _import_late('hotkeys')
+    audio_in = _import_late('audio_in')
+
     hotkeys.set_loop(asyncio.get_running_loop())
     try:
         hotkeys.register_hotkeys(_load_config())
