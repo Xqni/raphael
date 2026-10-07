@@ -247,30 +247,10 @@ class WsHub:
             self.refresh_orb_state()
 
     def refresh_orb_state(self):
-        engine = self.engine
-        mode = get_mode()
-        if engine is None:
-            return
-        st = engine.stats()
-        if st.get('jobs_pending_confirm'):
-            state = 'confirm'
-        elif st.get('paused'):
-            state = 'idle'          # paused is a MODE overlay, not an orb state
-        elif st.get('jobs_active'):
-            state = 'thinking'
-        else:
-            state = 'idle'
-        if mode.private and state in ('idle',):
-            state = 'private_overlay'
-        frame = {
-            'type': 'orb_state', 'v': 1, 'state': state,
-            'jobs_active': st.get('jobs_active', 0),
-            'mode': mode.label(),
-            'shape_hint': 'circle', 'task_kind': 'none',
-        }
-        if mode.private:
-            frame['private'] = True
-        self.broadcast(frame, roles={'ui'})
+        # INTERFACES §e: one frame builder (brain/orbstate.py) — this stays the
+        # single entry point every caller already uses.
+        from . import orbstate
+        orbstate.refresh(hub=self, engine=self.engine)
 
     def get_body_session(self) -> Optional[Session]:
         """Returns the first authenticated session with role=body."""
@@ -527,24 +507,11 @@ class WsHub:
         self.refresh_orb_state()
 
     async def _on_state_req(self, s: Session, msg: Dict[str, Any]):
-        engine = self.engine
-        mode = get_mode()
-        st = engine.stats() if engine is not None else {}
-        if st.get('jobs_pending_confirm'):
-            state = 'confirm'
-        elif st.get('paused'):
-            state = 'idle'
-        elif st.get('jobs_active'):
-            state = 'thinking'
-        else:
-            state = 'idle'
-        if mode.private and state == 'idle':
-            state = 'private_overlay'
-        await self._send(s, {'type': 'orb_state', 'v': 1, 'state': state,
-                             'jobs_active': st.get('jobs_active', 0),
-                             'mode': mode.label(), 'shape_hint': 'circle',
-                             'task_kind': 'none',
-                             'server_v': SERVER_V})
+        # INTERFACES §e: same builder as every other emission, + server_v.
+        from . import orbstate
+        frame = orbstate.build(engine=self.engine,
+                               extra={'server_v': SERVER_V})
+        await self._send(s, frame)
 
     async def _on_job_list(self, s: Session, msg: Dict[str, Any]):
         await self._send(s, {'type': 'job_list', 'v': 1, 'jobs': store.list_jobs()})
@@ -602,11 +569,22 @@ class WsHub:
             
         # Clear buffer for new utterance
         s.audio_buf = bytearray()
-        
+
+        # INTERFACES §e: audio_start(reason wake|ptt) -> orb `listening`
+        # (takes precedence over any in-flight speaking).
+        from . import orbstate
+        orbstate.listening_on()
+        orbstate.emit('listening', hub=self, engine=self.engine)
+
         await self._send(s, {'type': 'ack', 'v': 1, 'audio': 'start'})
 
     async def _on_audio_end(self, s: Session, msg: Dict[str, Any]):
+        # INTERFACES §e: mic closed -> leave `listening` (idle if no job ran,
+        # thinking once a transcript submits a job — refresh happens below).
+        from . import orbstate
+        orbstate.listening_off()
         if not hasattr(s, 'audio_buf') or not s.audio_buf:
+            self.refresh_orb_state()
             await self._send(s, {'type': 'ack', 'v': 1, 'audio': 'end'})
             return
             
@@ -643,10 +621,13 @@ class WsHub:
                     await self.engine.submit(text=match.command, priority='user_facing', source='voice', session=s.sid)
                     
         except VoiceSTTError as e:
+            orbstate.mark_error()
             self.broadcast(error_frame(e.code, e.detail), roles={'body', 'ui'})
         except Exception as e:
+            orbstate.mark_error()
             self.broadcast(error_frame('E_INTERNAL', str(e)), roles={'body', 'ui'})
-            
+
+        self.refresh_orb_state()
         await self._send(s, {'type': 'ack', 'v': 1, 'audio': 'end'})
 
 

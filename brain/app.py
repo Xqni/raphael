@@ -36,12 +36,25 @@ hub = get_hub()
 async def lifespan(app: FastAPI):
     engine = get_engine()
     hub.engine = engine
+    from . import orbstate
+    orbstate.attach(hub)
     # narration fanout: job_event → all roles; orb_state refresh on transitions
     engine.sink = lambda frame: hub.broadcast(frame)
-    engine.on_state = lambda frame: hub.refresh_orb_state()
+
+    def _on_job_state(frame):
+        # INTERFACES §e: failed jobs put the orb into `error` (transient).
+        if frame.get('status') == 'failed':
+            orbstate.mark_error()
+        hub.refresh_orb_state()
+
+    engine.on_state = _on_job_state
+    # boot snapshot while the engine is not ready (INTERFACES §e `starting`)
+    orbstate.emit('starting', hub=hub, engine=engine)
     start_loop(hub=hub)            # wires runner, starts workers, marks interrupted
     await hub.start()
     get_mode()                     # load persisted mode flags
+    orbstate.finish_boot()
+    orbstate.refresh(hub=hub, engine=engine)
     # Pre-warm Fish TTS in the background: a COLD fish server made the user's
     # first spoken reply silent in the wild (spawn window + empty fallback
     # after the phrase cache was cleared). warmup() never raises.

@@ -31,6 +31,8 @@ class IntentResult:
     tool_args: Dict[str, Any] = field(default_factory=dict)
     needs_lock: bool = False         # execution touches mouse/keyboard/screen
     done: bool = True                # False → intent wants the LLM/router path
+    task_kind: Optional[str] = None  # orb shape/task kind (INTERFACES §e):
+    #                                  system|files|web|media|llm|gui|none
 
 
 @dataclass
@@ -100,13 +102,15 @@ def register_builtin_intents():
         if ' ' not in arg and '.' in arg:
             url = arg if '://' in arg else 'https://' + arg
             return IntentResult(text=f'Opening {arg}…',
-                                tool='launch_url', tool_args={'url': url})
+                                tool='launch_url', tool_args={'url': url},
+                                task_kind='web')
         return IntentResult(text=f'Opening {arg}…',
-                            tool='open_app', tool_args={'name': arg})
+                            tool='open_app', tool_args={'name': arg},
+                            task_kind='system')
 
     def _screenshot(text, ctx):
         return IntentResult(text='Taking a screenshot…', tool='screenshot',
-                            tool_args={'max_px': 1280})
+                            tool_args={'max_px': 1280}, task_kind='gui')
 
     def _now(text, ctx):
         from datetime import datetime

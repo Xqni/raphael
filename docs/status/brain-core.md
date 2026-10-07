@@ -11,8 +11,19 @@ Updated: 2026-10-06 (Wave 2 foundations landed — INTEGRATOR: items 1-4 below a
   4. **Router seam** — `brain/llm.py` now calls ONLY the INTERFACES §a facade `brain.router.chat(...)` (chat/vision/transcribe/health are the only doors). Until the router lane lands `chat`, a structured stub returns `LLMResult(ok=False, code='E_OFFLINE')`; `RouterError.code` → PROTOCOL §10 codes; `plan()` kept as compat wrapper; stream path normalizes deltas + final frame and never raises.
 - Requests filed for the integrator: pidfile table update (above), `POST /say` PROTOCOL §1 line (`.../rest-say-endpoint.md`).
 
+## Done (2026-10-06, second batch)
+- **Wave 2 task 1 — orb_state emission audit** → `brain/orbstate.py` (ONE frame builder, so §e is provable) + trigger wiring:
+  - `starting` boot snapshot (app lifespan, before engine ready) / `idle` after boot;
+  - `listening` on mic `audio_start` (both wake+ptt), back off on `audio_end` (+refresh so no-job → idle, job → thinking);
+  - `thinking` derived from job stats on every job_event; `acting` emitted on first `act_req` (+ input-lock hold derives acting);
+  - `speaking` on first speak `start`, returns to thinking/idle after speak `end` (per-job counter, multi-job safe);
+  - `confirm` on pending confirmation; `error` transient-then-idle (failed jobs, STT errors, provider failures — 3 s linger);
+  - `reconnecting/offline` remain orb-client-owned (never emitted here, per §e);
+  - EVERY frame carries `jobs_active`, `mode`, `shape_hint` (via config `orb.shape_map`), `task_kind`, plus `provider`/`model` once the router reports them; private/paused are MODE overlays, never states.
+  - Tests: `brain/tests/test_orb_states.py` — fake ui client asserts exact sequences (starting→idle→listening→idle; error→idle; private overlay) + e2e real-WS ui client asserts thinking→speaking→idle with contract fields; state_req full frame.
+
 ## In progress
-- Wave 2 task 1: orb_state emission audit vs INTERFACES §e (fake-ui-client sequence test).
+- Wave 2 task 2: conversational agent loop (persona, context trimming, tool-calling loop, streaming).
 
 ## Blocked
 - — (nothing; router `chat()` facade arrival only affects live providers, tests mock it)

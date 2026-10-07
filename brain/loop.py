@@ -16,7 +16,7 @@ import time
 from typing import Any, Dict, Optional
 
 from . import confirm as confirm_mod
-from . import fastpath, llm, tools as tool_reg
+from . import fastpath, llm, orbstate, tools as tool_reg
 from .jobs import store
 from .jobs.engine import JobEngine, get_engine
 from .mode import get_mode
@@ -84,8 +84,14 @@ def build_runner(hub=None):
         async def _async_narrate_voice(job_id, text, state):
             # Spoken narration to Body
             cancel = voice.interrupts.register(job_id)
+            spoke = False
             try:
                 async for ev in voice.speak(text, job=job_id, cancel=cancel):
+                    if not spoke and ev.get('event') in ('start', 'chunk'):
+                        # INTERFACES §e: first speak start -> `speaking`
+                        spoke = True
+                        orbstate.speak_start()
+                        orbstate.refresh(hub=hub, engine=engine)
                     # PROTOCOL §4 as AMENDED 2026-10-05 (protocol-architect,
                     # Option A): speak JSON -> body AND ui (amplitude drives
                     # the orb's speaking pulse per §8); binary audio stays
@@ -105,7 +111,10 @@ def build_runner(hub=None):
                 print(f"Narration error for {job_id}: {e}")
             finally:
                 voice.interrupts.done(job_id)
-            
+                if spoke:
+                    # back to thinking/idle per pending jobs (§e)
+                    orbstate.speak_end()
+                    orbstate.refresh(hub=hub, engine=engine)
             if state:
                 hub.refresh_orb_state()
 
@@ -114,6 +123,7 @@ def build_runner(hub=None):
             decision = confirm_mod.classify(text)
             if decision.needs:
                 store.set_pending_confirm(rowid, True)
+                orbstate.refresh(hub=hub, engine=engine)   # -> `confirm` (§e)
                 emit('awaiting_confirm', stage='routing', progress=0.1,
                      t=decision.question)
                 narrate(decision.question, state='confirm')
@@ -146,6 +156,8 @@ def build_runner(hub=None):
             # ---- 2. fast path (deterministic, no LLM) ----------------------
             ctx = fastpath.IntentCtx(engine=engine, mode=mode)
             res = fastpath.run_intent(text, ctx)
+            if res is not None:
+                orbstate.set_task(getattr(res, 'task_kind', None))
             tool_name: Optional[str] = None
             tool_args: Dict[str, Any] = {}
             needs_lock = False
@@ -173,12 +185,18 @@ def build_runner(hub=None):
                         hub.broadcast({'type': 'error', 'v': 1, 'job': jid,
                                        'code': llm_res.code or 'E_OFFLINE',
                                        'detail': llm_res.error})
+                    orbstate.mark_error()               # §e: errors -> `error`
+                    orbstate.refresh(hub=hub, engine=engine)
                     store.transition(rowid, 'failed', stage='done', progress=1.0,
                                      error_code=llm_res.code or 'E_OFFLINE',
                                      result=llm_res.error)
                     emit('failed', stage='done', progress=1.0,
                          t='Provider unavailable', error_code=llm_res.code)
                     return
+                # §e: provider/model = the router's current/last target
+                orbstate.set_provider(llm_res.provider, llm_res.model)
+                orbstate.set_task('llm')
+                orbstate.refresh(hub=hub, engine=engine)
                 tool_name, tool_args = _extract_tool_call(llm_res.text)
                 if tool_name:
                     # The plan asked for a tool — FALL THROUGH to section 4
@@ -215,6 +233,9 @@ def build_runner(hub=None):
                 # Integration: Act Pipeline (PROTOCOL §7)
                 # If the tool is GUI-class (requires body), send act_req instead of local exec
                 if meta.get('category') == 'gui':
+                    # INTERFACES §e: first act_req -> `acting` (+ gui shape)
+                    orbstate.set_task('gui')
+                    orbstate.emit('acting', hub=hub, engine=engine)
                     # send act_req to body session
                     body_sess = hub.get_body_session()
                     if body_sess is None:
@@ -245,6 +266,8 @@ def build_runner(hub=None):
                 emit('failed', stage='done', progress=1.0,
                      t=f'{tool_name} failed: {type(e).__name__}',
                      error_code='E_INTERNAL', tool=tool_name)
+                orbstate.mark_error()
+                orbstate.refresh(hub=hub, engine=engine)
                 narrate(f'{tool_name} failed.')
                 return
             finally:

@@ -9,7 +9,7 @@ Merge-order position: see docs/WAVES.md
 - [x] Instance derivation: RAPHAEL_INSTANCE -> port/pidfile/lock/mutex/CDP/data-dir (INTERFACES §d); unset = main, zero behavior change. → `brain/config.py` (pidfile moved out of /tmp, main dual-writes legacy — see docs/requests/brain-core__to__integrator__pidfile-out-of-tmp.md)
 - [x] Tool auto-discovery: walk brain.tools.* at import, validate strict JSON-Schema specs (INTERFACES §b). → `brain/tools/__init__.py` (+ `tool_specs()`, `validate_args()`, `as_untrusted()`)
 - [x] Router seam: llm.py talks only to `brain.router.chat` (INTERFACES §a), structured stub until the router lane lands. → `brain/llm.py`
-- [ ] orb_state emission audit vs INTERFACES §e (every state provably emitted; jobs_active/mode/shape_hint/task_kind/provider/model).
+- [x] orb_state emission audit vs INTERFACES §e (every state provably emitted; jobs_active/mode/shape_hint/task_kind/provider/model). → `brain/orbstate.py` (single frame builder) + triggers in app/loop/ws + fake-ui sequence tests
 - [ ] Conversational loop with persona: chat(stream=True) sentence streaming, ack-first, length-adaptive (persona per addendum §10).
 - [ ] Typed input channel: command source=text + orb submit_text path end-to-end.
 - [ ] Confirmation hardening: high-risk (config safety.confirm_actions) needs NON-voice confirm; voice yes only low-risk; timeout aborts.
