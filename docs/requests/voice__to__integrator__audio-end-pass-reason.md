@@ -8,6 +8,14 @@ became brain-core-owned in `docs/OWNERSHIP.md` during wave_done verification
 (2026-10-06), so the one-liner lands on their branch together with the
 allow-empty-properties task. Voice is notified; will be pinged when it merges.
 
+**RACE RESOLVED (2026-10-06, headless integrator):** the assignment above landed
+AFTER the headless integrator had already implemented the exact approved spec on
+main (`8e2d9fb`, ws+voice 101 green) while the doc still read "unlisted →
+integrator". Change KEPT (spec-identical, tested); brain-core notified via inbox
+decision + ping to SKIP task (1) and not re-implement (their branch line 708
+still lacks it — main's version wins at rebase). brain-core keeps ownership of
+`brain/ws.py` going forward.
+
 ## What
 `brain/ws.py` `_on_audio_end` (owner: integrator — `brain/ws.py` is unlisted in
 `docs/OWNERSHIP.md`, so it falls to the integrator by the default rule). One-line
