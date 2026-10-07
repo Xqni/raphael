@@ -11,6 +11,7 @@
 """
 from __future__ import annotations
 
+import os
 import asyncio
 import json
 import time
@@ -215,6 +216,10 @@ class GoVisionProvider(OpenAICompatProvider):
     """
 
     def __init__(self, config: RouterConfig) -> None:
+        # OpenCode Go requires a stable session id header for routing +
+        # prompt caching (opencode.ai/docs/go — "Where can I use it?").
+        # One stable id per provider instance (= per brain process) keeps
+        # the header honest without inventing per-request ids.
         super().__init__(
             config,
             name="go_vision",
@@ -223,5 +228,8 @@ class GoVisionProvider(OpenAICompatProvider):
             caps=frozenset({"vision"}),
             gated=False,
             assume_billed=True,
+            extra_headers={
+                "x-opencode-session": f"raphael-brain-{os.getpid()}",
+            },
         )
         self.paid_selection_ok = True

@@ -40,3 +40,12 @@ Rules: paid Zen models + Go models beyond the Go limits both draw on the same **
   STT = Groq Whisper, vision = approved Go slot ($1/day cap), TTS = LOCAL Fish-Speech (kept —
   Fish-Speech has no cloud API; swapping TTS to cloud would mean a different paid provider and
   losing the local Zira reference voice unless it supports cloning).
+
+## 2026-10-07 — broad paid-fast approval (user, verbatim)
+> "bruh we can use paid fast models as well lol dont worry about free stuff for
+> for now. my limit just reset for the month, and the 5hr is resetting in a
+> couple house as well so make the most of it while we can"
+
+Scope: ALL model usage (session, conductor runs, lanes, router tiers) — free-tier
+scarcity no longer applies for this window. Cost hygiene rules (caps, no local
+GPU, spend logging) stay in force.
