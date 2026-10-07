@@ -1,0 +1,43 @@
+# config.d/router.yaml — router-lane config fragment (AGENT_RULES §3).
+# Deep-merged over config.yaml (sorted by filename), then the active profile
+# overlay applies. Secrets NEVER appear here — they live in .env only.
+router:
+  # Capability words used to map LIVE-discovered model IDs into slots
+  # (brain/router/roles.py). NEVER exact model IDs: providers always fetch
+  # GET /models first and this only scores what came back.
+  role_hints:
+    fast: [instant, flash, small, tiny, lite, mini, 1b, 1.7b, 3b, 4b, 7b, 8b]
+    strong: [large, plus, pro, max, ultra, 9b, 12b, 24b, 27b, 32b, 70b, 90b, 120b]
+    vision: [vision, llava, multimodal, "-vl", "vl-", maverick, scout]
+    stt: [whisper, distil-whisper, speech-to-text]
+  # NEVER chat/vision: safety classifiers, TTS voices, embedders (Groq's live
+  # list carries llama-prompt-guard, gpt-oss-safeguard, orpheus TTS).
+  deny_hints: [prompt-guard, safeguard, guard, orpheus, tts, embed, moderation, rerank, whisper]
+  # Zen returns NO free flag (verified 2026-10-06) → free tier = id contains
+  # one of these; anything else is treated as PAID (money gate, AGENT_RULES §7).
+  # Add a confirmed-free id here ONLY after the integrator verifies it.
+  zen_free_hints: [free]
+  # purpose (INTERFACES §a) → role slot; usage tag + selection hint only
+  purpose_roles:
+    chat: fast
+    tool: strong
+    plan: strong
+    ack: fast
+    vision: vision
+  # per-provider budgets (requests / tokens per 60 s window)
+  rpm: { groq: 30, zen_free: 12, go: 10, ollama: 60, mock: 100000 }
+  tpm: { groq: 60000, zen_free: 12000, go: 30000, ollama: 200000, mock: 10000000 }
+  # 429/5xx backoff with jitter (retry_after from headers overrides when short)
+  max_retries: 2
+  backoff_base_s: 0.4
+  backoff_cap_s: 8.0
+  request_timeout_s: 45
+  stream_timeout_s: 90
+  discovery_timeout_s: 8
+  # Foreground-window blocklist (privacy.blocklist_apps): vision always
+  # refuses; chat refuses too unless this is false (cloud_temp has no local
+  # model to fall back to — ARCHITECTURE §4 says blocklist → local only).
+  block_chat_on_blocklist: true
+  # defensive byte cap on cloud vision payloads (caller pre-downscales to
+  # vision.max_px / quality — PROTOCOL §7)
+  vision_max_bytes: 4000000

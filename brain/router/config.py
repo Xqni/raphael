@@ -1,16 +1,41 @@
-"""Router configuration loading and validation."""
+"""Router configuration loading (INTERFACES §(c)).
+
+Load order, later wins:
+  1. `config.yaml` (base, integrator-owned)
+  2. `config.d/*.yaml` fragments — sorted by filename, deep-merged
+     (mappings merge recursively; lists/scalars replace)
+  3. the active profile overlay: `profiles.<profile>` from the merged tree
+Profile source: `RAPHAEL_PROFILE` env (wins) → top-level `profile:` → `cloud_temp`.
+
+Router-specific knobs live under the top-level `router:` key — this lane's
+fragment is `config.d/router.yaml` (AGENT_RULES §3: config changes go in
+`config.d/<lane>.yaml`, never in the base file).
+
+Secrets are NEVER read here. Providers read `GROQ_API_KEY` / `OPENCODE_API_KEY`
+at call time, presence-checked value-blind (INTERFACES §a).
+
+Env shortcuts (tests / lane isolation):
+  RAPHAEL_ROUTER_MOCK=1 → chain = ["mock"] (deterministic mock provider).
+"""
 from __future__ import annotations
 
-import json
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_CONFIG_PATH = REPO_ROOT / "config.yaml"
 
+try:  # PyYAML ships in brain/.venv; the fallback keeps bare-python imports alive
+    import yaml as _yaml
+except Exception:  # noqa: BLE001 — optional dependency
+    _yaml = None  # type: ignore[assignment]
 
+
+# --------------------------------------------------------------------------- #
+# Fallback loader (only used when PyYAML is unavailable)
+# --------------------------------------------------------------------------- #
 def _simple_yaml_load(path: Path) -> dict[str, Any]:
     """Minimal YAML loader for the flat/nested structure used in config.yaml."""
     result: dict[str, Any] = {}
@@ -18,20 +43,14 @@ def _simple_yaml_load(path: Path) -> dict[str, Any]:
     try:
         with path.open("r", encoding="utf-8") as f:
             for line in f:
-                if line.strip().startswith("#"):
-                    continue
-                if not line.strip():
+                if line.strip().startswith("#") or not line.strip():
                     continue
                 indent = len(line) - len(line.lstrip(" "))
                 content = line.strip()
-                if content.startswith("-"):
-                    # Top-level list item in this minimal form? not expected here
-                    continue
-                if ":" not in content:
+                if content.startswith("-") or ":" not in content:
                     continue
                 key, value = content.split(":", 1)
-                key = key.strip()
-                value = value.strip()
+                key, value = key.strip(), value.strip()
                 while current_stack and current_stack[-1][0] >= indent and len(current_stack) > 1:
                     current_stack.pop()
                 parent = current_stack[-1][1]
@@ -40,34 +59,97 @@ def _simple_yaml_load(path: Path) -> dict[str, Any]:
                     parent[key] = new_dict
                     current_stack.append((indent + 2, new_dict))
                 else:
-                    # Parse scalar
-                    if value.startswith("[") and value.endswith("]"):
-                        items_str = value[1:-1]
-                        if items_str.strip() == "":
-                            parent[key] = []
-                        else:
-                            items = [i.strip().strip("'\"") for i in items_str.split(",")]
-                            parent[key] = items
-                    elif value.lower() == "true":
-                        parent[key] = True
-                    elif value.lower() == "false":
-                        parent[key] = False
-                    elif value.isdigit():
-                        parent[key] = int(value)
-                    else:
-                        try:
-                            # float?
-                            if "." in value:
-                                parent[key] = float(value)
-                            else:
-                                raise ValueError
-                        except Exception:
-                            parent[key] = value.strip("'\"")
+                    parent[key] = _scalar(value)
     except FileNotFoundError:
         return result
     return result
 
 
+def _scalar(value: str) -> Any:
+    if value.startswith("[") and value.endswith("]"):
+        items = value[1:-1].strip()
+        return [] if not items else [i.strip().strip("'\"") for i in items.split(",")]
+    if value.startswith("{") and value.endswith("}"):
+        out: dict[str, Any] = {}
+        inner = value[1:-1].strip()
+        if not inner:
+            return out
+        for part in inner.split(","):
+            if ":" not in part:
+                continue
+            k, v = part.split(":", 1)
+            out[k.strip().strip("'\"")] = _scalar(v.strip())
+        return out
+    low = value.lower()
+    if low in ("true", "false"):
+        return low == "true"
+    if value.isdigit():
+        return int(value)
+    try:
+        return float(value) if "." in value else int(value)
+    except ValueError:
+        return value.strip("'\"")
+
+
+def _load_yaml(path: Path) -> dict[str, Any]:
+    if not path.exists():
+        return {}
+    try:
+        if _yaml is not None:
+            data = _yaml.safe_load(path.read_text(encoding="utf-8"))
+            return data if isinstance(data, dict) else {}
+        return _simple_yaml_load(path)
+    except Exception:  # noqa: BLE001 — a broken fragment must not kill boot
+        return {}
+
+
+def deep_merge(base: dict[str, Any], over: dict[str, Any]) -> dict[str, Any]:
+    """INTERFACES §(c): mappings merge recursively; lists/scalars replace."""
+    out: dict[str, Any] = dict(base)
+    for key, val in (over or {}).items():
+        if isinstance(val, dict) and isinstance(out.get(key), dict):
+            out[key] = deep_merge(out[key], val)
+        else:
+            out[key] = val
+    return out
+
+
+def _merge_fragments(base: dict[str, Any], config_d: Path) -> dict[str, Any]:
+    data = base
+    if not config_d.is_dir():
+        return data
+    for frag in sorted(config_d.glob("*.yaml")):
+        data = deep_merge(data, _load_yaml(frag))
+    return data
+
+
+# --------------------------------------------------------------------------- #
+# Defaults (code-side; config can override every one of them)
+# --------------------------------------------------------------------------- #
+from .roles import DEFAULT_DENY_HINTS, DEFAULT_PURPOSE_ROLES, DEFAULT_ROLE_HINTS  # noqa: E402
+
+DEFAULT_CHAIN = ["groq", "zen_free"]
+
+DEFAULT_RPM: dict[str, int] = {
+    "groq": 30,
+    "zen_free": 12,
+    "go": 10,
+    "ollama": 60,
+    "mock": 100000,
+}
+
+DEFAULT_TPM: dict[str, int] = {
+    "groq": 60000,
+    "zen_free": 12000,
+    "go": 30000,
+    "ollama": 200000,
+    "mock": 10_000_000,
+}
+
+
+# --------------------------------------------------------------------------- #
+# Settings dataclasses (defaults keep older constructions source-compatible)
+# --------------------------------------------------------------------------- #
 @dataclass(frozen=True)
 class ProviderEndpoints:
     zen_base_url: str = "https://opencode.ai/zen/v1"
@@ -85,17 +167,70 @@ class RouterSettings:
     discovery_interval_s: int
     max_calls_per_minute: int
     benchmark_ranking_path: str
+    # --- Wave 2 additions (defaults => older call sites keep working) ---
+    groq_base_url: str = "https://api.groq.com/openai/v1"
+    groq_key_env: str = "GROQ_API_KEY"
+    zen_key_env: str = "OPENCODE_API_KEY"
+    role_hints: dict[str, list[str]] = field(
+        default_factory=lambda: {k: list(v) for k, v in DEFAULT_ROLE_HINTS.items()}
+    )
+    deny_hints: list[str] = field(default_factory=lambda: list(DEFAULT_DENY_HINTS))
+    zen_free_hints: list[str] = field(default_factory=lambda: ["free"])
+    purpose_roles: dict[str, str] = field(
+        default_factory=lambda: dict(DEFAULT_PURPOSE_ROLES)
+    )
+    rpm: dict[str, int] = field(default_factory=lambda: dict(DEFAULT_RPM))
+    tpm: dict[str, int] = field(default_factory=lambda: dict(DEFAULT_TPM))
+    max_retries: int = 2
+    backoff_base_s: float = 0.4
+    backoff_cap_s: float = 8.0
+    request_timeout_s: float = 45.0
+    stream_timeout_s: float = 90.0
+    discovery_timeout_s: float = 8.0
+    usage_log_path: str = ""          # "" -> <repo_root>/brain/router/usage.jsonl
+    block_chat_on_blocklist: bool = True
+    vision_max_bytes: int = 4_000_000  # defensive cap; caller pre-downscales (§7)
+    local_stt_enabled: bool = True     # profile local: voice lane registers the seam
+
+    def rpm_for(self, provider: str) -> int:
+        return int(self.rpm.get(provider, self.max_calls_per_minute))
+
+    def tpm_for(self, provider: str) -> int:
+        return int(self.tpm.get(provider, 12000))
 
 
 @dataclass(frozen=True)
 class LocalModelSettings:
-    candidates: list[str]
-    text: str
-    vision: str
-    keep_alive: str
-    vision_keep_alive: str
-    max_concurrency: int
-    ollama_url: str
+    candidates: list[str] = field(default_factory=list)
+    text: str = "auto"
+    vision: str = "auto"
+    keep_alive: str = "5m"
+    vision_keep_alive: str = "0"
+    max_concurrency: int = 1
+    ollama_url: str = "http://127.0.0.1:11434"
+    enabled: bool = False              # profile cloud_temp -> False
+
+
+@dataclass(frozen=True)
+class PrivacySettings:
+    blocklist_apps: tuple[str, ...] = ()
+    redact: tuple[str, ...] = ("api_key", "token", "password", "card", "email", "phone")
+    debug_capture: bool = False
+
+
+@dataclass(frozen=True)
+class VisionSettings:
+    provider: str = "cloud"            # cloud (cloud_temp) | local (profile local)
+    max_px: int = 1280
+    quality: int = 70
+    max_bytes: int = 4_000_000
+
+
+@dataclass(frozen=True)
+class VoiceSettings:
+    stt_engine: str = "groq"           # groq (cloud_temp) | local (profile local)
+    stt_model: str = "small"           # faster-whisper size (local seam)
+    stt_language: str = ""
 
 
 @dataclass(frozen=True)
@@ -103,43 +238,140 @@ class RouterConfig:
     providers: RouterSettings
     local_model: LocalModelSettings
     repo_root: Path
+    profile: str = "cloud_temp"
+    privacy: PrivacySettings = field(default_factory=PrivacySettings)
+    vision: VisionSettings = field(default_factory=VisionSettings)
+    voice: VoiceSettings = field(default_factory=VoiceSettings)
+
+    @property
+    def usage_log_path(self) -> Path:
+        custom = (self.providers.usage_log_path or "").strip()
+        if custom:
+            p = Path(custom)
+            return p if p.is_absolute() else self.repo_root / p
+        return self.repo_root / "brain" / "router" / "usage.jsonl"
 
 
-def _get_nested(cfg: dict[str, Any], *keys: str, default: Any = None) -> Any:
-    cur: Any = cfg
-    for k in keys:
-        if not isinstance(cur, dict) or k not in cur:
-            return default
-        cur = cur[k]
-    return cur
+def _get(data: dict[str, Any], key: str) -> dict[str, Any]:
+    val = data.get(key)
+    return dict(val) if isinstance(val, dict) else {}
+
+
+def _as_str_list(val: Any, fallback: list[str]) -> list[str]:
+    if isinstance(val, list):
+        return [str(x) for x in val]
+    if isinstance(val, str) and val:
+        return [v.strip() for v in val.split(",") if v.strip()]
+    return list(fallback)
 
 
 def load_config(path: Path | None = None) -> RouterConfig:
-    cfg_path = path or DEFAULT_CONFIG_PATH
-    data = _simple_yaml_load(cfg_path) if cfg_path.exists() else {}
-    providers_data = _get_nested(data, "providers") or {}
-    local_data = _get_nested(data, "local_model") or {}
-    chain = providers_data.get("chain") or ["zen_free", "go", "ollama"]
-    if not isinstance(chain, list):
-        chain = [str(x) for x in chain]
+    """Load the effective config (base → config.d → profile overlay → env)."""
+    cfg_path = Path(path) if path else DEFAULT_CONFIG_PATH
+    data = _load_yaml(cfg_path)
+    data = _merge_fragments(data, cfg_path.parent / "config.d")
+
+    profile = os.environ.get("RAPHAEL_PROFILE") or str(data.get("profile") or "cloud_temp")
+    profiles = _get(data, "profiles")
+    overlay = profiles.get(profile)
+    if isinstance(overlay, dict):
+        data = deep_merge(data, overlay)
+
+    providers_data = _get(data, "providers")
+    local_data = _get(data, "local_model")
+    privacy_data = _get(data, "privacy")
+    vision_data = _get(data, "vision")
+    voice_data = _get(data, "voice")
+    router_data = _get(data, "router")
+
+    chain = _as_str_list(providers_data.get("chain"), DEFAULT_CHAIN)
+    if os.environ.get("RAPHAEL_ROUTER_MOCK") == "1":
+        chain = ["mock"]  # deterministic mock for other lanes' tests
+
+    rpm = dict(DEFAULT_RPM)
+    rpm.update({str(k): int(v) for k, v in _get(router_data, "rpm").items()})
+    tpm = dict(DEFAULT_TPM)
+    tpm.update({str(k): int(v) for k, v in _get(router_data, "tpm").items()})
+
+    role_hints = {k: list(v) for k, v in DEFAULT_ROLE_HINTS.items()}
+    for role, hints in _get(router_data, "role_hints").items():
+        role_hints[str(role)] = _as_str_list(hints, [])
+    deny_hints = _as_str_list(router_data.get("deny_hints"),
+                              list(DEFAULT_DENY_HINTS))
+    zen_free_hints = _as_str_list(router_data.get("zen_free_hints"), ["free"])
+    purpose_roles = dict(DEFAULT_PURPOSE_ROLES)
+    purpose_roles.update({str(k): str(v) for k, v in _get(router_data, "purpose_roles").items()})
+
     providers = RouterSettings(
         chain=chain,
         allow_go_runtime=bool(providers_data.get("allow_go_runtime", False)),
         allow_paid_runtime=bool(providers_data.get("allow_paid_runtime", False)),
-        allow_free_models_for_personal_data=bool(providers_data.get("allow_free_models_for_personal_data", False)),
-        zen_base_url=providers_data.get("zen_base_url", "https://opencode.ai/zen/v1"),
-        go_base_url=providers_data.get("go_base_url", "https://opencode.ai/zen/go/v1"),
+        allow_free_models_for_personal_data=bool(
+            providers_data.get("allow_free_models_for_personal_data", False)
+        ),
+        zen_base_url=str(providers_data.get("zen_base_url", "https://opencode.ai/zen/v1")),
+        go_base_url=str(providers_data.get("go_base_url", "https://opencode.ai/zen/go/v1")),
+        groq_base_url=str(
+            providers_data.get("groq_base_url", "https://api.groq.com/openai/v1")
+        ),
+        groq_key_env=str(providers_data.get("groq_key_env", "GROQ_API_KEY")),
+        zen_key_env=str(providers_data.get("zen_key_env", "OPENCODE_API_KEY")),
         discovery_interval_s=int(providers_data.get("discovery_interval_s", 3600)),
         max_calls_per_minute=int(providers_data.get("max_calls_per_minute", 12)),
-        benchmark_ranking_path=str(providers_data.get("benchmark_ranking_path", "brain/router/benchmark_ranking.json")),
+        benchmark_ranking_path=str(
+            providers_data.get("benchmark_ranking_path", "brain/router/benchmark_ranking.json")
+        ),
+        role_hints=role_hints,
+        deny_hints=deny_hints,
+        zen_free_hints=zen_free_hints,
+        purpose_roles=purpose_roles,
+        rpm=rpm,
+        tpm=tpm,
+        max_retries=int(router_data.get("max_retries", 2)),
+        backoff_base_s=float(router_data.get("backoff_base_s", 0.4)),
+        backoff_cap_s=float(router_data.get("backoff_cap_s", 8.0)),
+        request_timeout_s=float(router_data.get("request_timeout_s", 45.0)),
+        stream_timeout_s=float(router_data.get("stream_timeout_s", 90.0)),
+        discovery_timeout_s=float(router_data.get("discovery_timeout_s", 8.0)),
+        usage_log_path=str(router_data.get("usage_log_path", "")),
+        block_chat_on_blocklist=bool(router_data.get("block_chat_on_blocklist", True)),
+        vision_max_bytes=int(router_data.get("vision_max_bytes", 4_000_000)),
     )
     local_model = LocalModelSettings(
-        candidates=local_data.get("candidates") or [],
+        candidates=_as_str_list(local_data.get("candidates"), []),
         text=str(local_data.get("text", "auto")),
         vision=str(local_data.get("vision", "auto")),
         keep_alive=str(local_data.get("keep_alive", "5m")),
         vision_keep_alive=str(local_data.get("vision_keep_alive", "0")),
         max_concurrency=int(local_data.get("max_concurrency", 1)),
         ollama_url=str(local_data.get("ollama_url", "http://127.0.0.1:11434")),
+        enabled=bool(local_data.get("enabled", False)),
     )
-    return RouterConfig(providers=providers, local_model=local_model, repo_root=REPO_ROOT)
+    privacy = PrivacySettings(
+        blocklist_apps=tuple(str(a) for a in _as_str_list(privacy_data.get("blocklist_apps"), [])),
+        redact=tuple(str(a) for a in _as_str_list(
+            privacy_data.get("redact"),
+            ["api_key", "token", "password", "card", "email", "phone"],
+        )),
+        debug_capture=bool(privacy_data.get("debug_capture", False)),
+    )
+    vision = VisionSettings(
+        provider=str(vision_data.get("provider", "cloud")),
+        max_px=int(vision_data.get("max_px", 1280)),
+        quality=int(vision_data.get("quality", 70)),
+        max_bytes=int(router_data.get("vision_max_bytes", 4_000_000)),
+    )
+    voice = VoiceSettings(
+        stt_engine=str(voice_data.get("stt_engine", "groq")),
+        stt_model=str(voice_data.get("stt_model", "small")),
+        stt_language=str(voice_data.get("stt_language", "") or ""),
+    )
+    return RouterConfig(
+        providers=providers,
+        local_model=local_model,
+        repo_root=cfg_path.parent if cfg_path.parent.exists() else REPO_ROOT,
+        profile=profile,
+        privacy=privacy,
+        vision=vision,
+        voice=voice,
+    )
