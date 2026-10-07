@@ -52,6 +52,7 @@ Every JSON frame: `{"type": str, "v": 1, ...fields}`. Optional correlation: `"jo
 | `auth_ok` / `auth_fail` | all | §2 | handshake result |
 | `ack` | all | `job`, `text_id?` | request accepted (used for instant cached ack) |
 | `job_event` | all | see §5 | job lifecycle/progress |
+| `notice` | ui, cli | `text`, `level: info\|warn`, `ts`, `job?` | proactive heads-up (additive, 2026-10-07 integrator-approved — **no state change**: `orb_state` stays the single state authority; ratelimited + fail-silent; no key/log data) |
 | `act_req` | body | `job`, `action`, `args`, `lock: bool`, `timeout_ms` | perform a Body action (§7). `lock:true` requires holding the input lock. |
 | `speak` | body, ui | `job`, `seq`, `event: start\|chunk\|end`, `sample_rate: 24000`, `text?`, `amplitude?` (0–1 per chunk), `cached: bool` | TTS stream for playback; `chunk` payloads are binary frames (§6) |
 | `stt_final` | body, ui | `job?`, `text`, `lang`, `rtf` | final transcript of an utterance |

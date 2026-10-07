@@ -395,3 +395,8 @@ land, the integrator re-runs the full six-criterion live gate for `wave-2-gate`.
   voice → computer-use → orb → infra → qa-security (wave_done's queued: infra@7, qa@8,
   voice@4 once pc-control lands). voice's live `prove_reference.py` proof added to the
   wave-3-close gate checklist (BUGS-WAVE2 Bug D).
+- PROTOCOL §3 += `notice` frame (brain-core proposal APPROVED: ui+cli, info/warn,
+  no state change; emitters restart-recovery + ratelimited outage only; confirm-expiry
+  DEFERRED). qa nudged (conformance whitelist), orb/infra nudged (optional render).
+  pc-control Bug B body half verified (85/85) → next: wave_done (merge pos 3).
+  tools-memory woken with brain-core's conversation-hook request.
