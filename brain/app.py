@@ -58,9 +58,19 @@ async def lifespan(app: FastAPI):
     # Authoritative pidfile for supervisor's process-mode recycle: written by
     # the RUNNING uvicorn itself (the launch-time shell `echo $$` drifted by
     # one process layer; supervisor verifies the cmdline before any kill).
+    # Instance isolation (INTERFACES §d): the real pidfile lives in the
+    # instance data-dir (out of world-writable /tmp). Instance `main` ALSO
+    # writes the legacy /tmp/raphael-brain.pid so the current supervisor keeps
+    # byte-compatible behavior until the infra lane adopts config.pidfile().
     try:
-        with open('/tmp/raphael-brain.pid', 'w') as _pf:
-            _pf.write(str(os.getpid()))
+        from . import config as appcfg
+        pf = appcfg.pidfile()
+        pf.parent.mkdir(parents=True, exist_ok=True)
+        pf.write_text(str(os.getpid()))
+        legacy = appcfg.legacy_pidfile()
+        if legacy is not None:
+            with open(legacy, 'w') as _pf:
+                _pf.write(str(os.getpid()))
     except OSError:
         pass
     try:
