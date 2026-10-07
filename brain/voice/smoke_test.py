@@ -33,7 +33,9 @@ def main():
     cfg = VoiceConfig()
     print(f"python: {sys.version.split()[0]}")
     print(f"repo:   {_REPO}")
-    print(f"stt:    faster-whisper '{cfg.stt_model}' device={cfg.stt_device}")
+    print(f"stt:    engine={cfg.effective_stt_engine} (local fallback: "
+          f"faster-whisper '{cfg.stt_model}' device={cfg.stt_device}; "
+          f"profile {cfg.profile})")
     print(f"tts:    fish checkpoint={cfg.fish_checkpoint_path} "
           f"exists={cfg.fish_checkpoint_path.exists()}")
     print(f"voice:  reference asset={cfg.tts_voice_path} "
@@ -154,16 +156,21 @@ def main():
 
 
 def _fallback_demo(voice):
-    """When fish is unavailable: exercise degraded speak path for real."""
+    """When fish is unavailable: exercise degraded speak path for real
+    (subtitle-only + ONE-TIME notice — Wave 2 task 3)."""
     async def run(text):
         return [e async for e in voice.speak(text, force_fallback=True)]
     events = asyncio.run(run("Task complete."))
     frames = [speak_frame(e) for e in events]
     chunks = [e for e in events if e["event"] == "chunk"]
-    print(f"fallback speak -> {len(frames)} frames, {len(chunks)} chunks, "
-          f"amplitudes={[round(c['amplitude'],3) for c in chunks][:8]}")
+    notice = events[-1].get("notice")
+    print(f"fallback speak -> {len(frames)} frames, {len(chunks)} chunks "
+          f"(0 expected: subtitle-only), notice={notice!r}")
     print("start:", json.dumps(frames[0]))
     print("end  :", json.dumps(frames[-1]))
+    events2 = asyncio.run(run("Analysis complete."))
+    print(f"second degraded reply -> notice="
+          f"{events2[-1].get('notice')!r} (None expected: one-time notice)")
     print("SMOKE_TEST_DONE (fallback only)")
 
 
