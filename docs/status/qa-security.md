@@ -1,6 +1,55 @@
 # qa-security — status
 
-Updated: 2026-10-06 (Wave 2 complete — handoff below)
+Updated: 2026-10-07 (Wave 3 open; CI ownership fix done)
+
+## Wave 3 (current — docs/WAVES.md current_wave: 3)
+
+- **DONE 2026-10-07 (urgent):** CI ownership self-check un-hardcoded
+  (`.github/workflows/ci.yml`, commit 67e64f3 — cherry-picked to main as
+  be6814a): lane derived from the ref (`agent/<lane>` → per-lane gate;
+  main/integrator/other → `--lane integrator` by design — evidence run
+  37574556616 flagged every non-qa push); BASE fallback handles zero-sha
+  (`merge-base origin/main` for branches, `HEAD~1` for main).
+- **DONE 2026-10-07: P0-REGRESSIONS + order-flake quarantine**
+  (`tests/regression/test_gate_bug_regressions.py`, 5 tests):
+  1. Bug A — every go_vision HTTP request carries `x-opencode-session`
+     (strict, real provider call against the mock, header asserted per hit);
+  2. Bug B — `open_app` failure surfaces: act_req received, failed
+     job_event names the tool, spoken subtitle "open_app failed.",
+     act_res journaled `delivered: true` (strict);
+  3. Bug E — `speaking` held over `listening` mid-utterance → **xfail**,
+     request filed `qa-security__to__brain-core__bug-e-hold-speaking.md`
+     (derive precedence + ws.py comment contradict the dossier fix);
+  4. Bug F — non-blocklisted terminal titles never refuse vision; blocked
+     window refused BEFORE capture; `see_screen` terminal happy-path +
+     blocklist refusal with vision_fn never called (strict, 2 tests).
+  - Bonus: `as_untrusted` wrapper strict test (untrusted-tool-results
+    request landed by brain-core — loop uses it at the tool step).
+  - **FLAKE QUARANTINED:** `test_kind1_mic_pcm_accumulates_and_transcribes`
+    asserted `STT_CALLS[-1]` — a late `to_thread` from a prior test could
+    append after the per-test clear (order-dependent). Now drains before
+    the send and matches by unique payload (membership), never by index.
+    Suite ran 2× back-to-back + 3.12 run — stable.
+- Also on latest main: infra's ollama-profile-gate tripwires promoted to
+  strict (both landed); Wave-2 work confirmed merged (this branch now sits
+  on 048b0c1).
+- **DONE 2026-10-07: contract follow-ups after sync** (branch rebased on
+  main 9e44c5c):
+  - Bug E xfail **flipped green** — brain-core 18744b3 (speaking>listening
+    hold + emit guard) + integrator 7f0d337 (ws.py comment); test promoted
+    to STRICT; request marked SUPERSEDED by the decision on the bus.
+  - PROTOCOL §3 `notice` frame (additive, integrator-approved): added the
+    Brain→Client **whitelist test** (`tests/conformance/test_protocol.py`)
+    parsing §3 against `BRAIN_TO_CLIENT_FRAMES` (both directions: new frames
+    must be whitelisted deliberately, stale entries flagged) + `notice` row
+    shape test (ui,cli / text,level,ts,job — escaped-pipe-safe).
+- **Suite (2026-10-07, real runs): `263 passed, 9 xfailed, 0 failed` —
+  py3.14 + py3.12 CI recipe, core_guard OK, ownership OK (8 files).**
+- Next per inbox/Wave-3 list: Wave-3 goals (docs/lanes/qa-security.md +
+  docs/WAVES.md; SPEED MANDATE Rule 15) — wave close = re-run ALL six
+  WAVES criteria live (status table in docs/BUGS-WAVE2.md).
+
+## Wave 2 (MERGED 2026-10-06/07 — do not re-debug verified pieces)
 
 ## Done (Wave 2 — all 5 brief items)
 
