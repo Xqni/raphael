@@ -3,6 +3,12 @@
 Updated: 2026-10-07 (Wave 5)
 
 ## Done
+- **Wave 5 closed for this lane (2026-10-07)** — `wave_done` posted (final merge position 10).
+  Integrator decisions: `minds[]` **APPROVED as proposed**; `task_kind analysis|simulation` +
+  shape_map **APPROVED** (config.yaml entries `analysis: octagram`, `simulation: triangle` added by
+  integrator; job-type engine work assigned to brain-core; orb keeps final visual authority; qa nudged
+  for the optional-key conformance note). Voice Ciel-slot + orb palette requests forwarded to owners —
+  implementation of those three is on their lanes; formats already key on the approved values.
 - **Wave 5 part 1+2 (2026-10-07):**
   - **Shadow verification (Wave-4 carry-over, unblocked by brain-core's row merge 577f09c):**
     `brain/evolution/shadow.py` (shadow env, REAL derivation check instance=shadow/port=8911,
@@ -61,9 +67,10 @@ Updated: 2026-10-07 (Wave 5)
 - Full controller (`controller/worktree/promote`) still waits on: infra rollback-hook seam,
   qa-security golden-harness seam + CORE_GUARD_FILES extension, router weights ownership
   (all listed in `docs/evolution/03-wave4-spikes.md` § Dependencies).
-- Wave-5 shared-contract leftovers — **requests FILED 2026-10-07** (integrator ×2, voice, orb);
-  blocked on owner decisions per `docs/requests/README.md` workflow. Formats themselves are DONE
-  (`brain/persona/formats.py`, keying on the requested enum values as soon as they land).
+- Wave-5 shared-contract follow-through: integrator contracts **APPROVED** (minds[]; task_kind
+  analysis/simulation + shape_map in config.yaml); engine/render/voice implementation is now on
+  brain-core (job types), orb (minds render + gold palette), voice (Ciel slot) — my requests are
+  approved/forwarded, nothing unblocked left on this lane.
 
 ## Next
 - On ping: re-check requests to this lane + shadow request status; if landed, build `worktree.py` +

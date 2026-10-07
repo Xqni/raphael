@@ -64,6 +64,11 @@ Wave 4 is MERGED + **GATE PASSED** (tag `wave-4-gate`, 10/10 lanes, mock 308 gre
   job_done+analysis/simulation/digest class→Report, else/degenerate→Answer), per-format sentence caps
   from `voice_personality`, full detail on screen, private suppresses screen, never raises.
   77 persona tests green. 
+- [x] **Wave 5 WAVE_DONE posted 2026-10-07** (final merge position 10). Integrator decisions on both
+  integrator contracts: **minds[] APPROVED as proposed**; **task_kind analysis|simulation + shape_map
+  APPROVED** (analysis:octagram, simulation:triangle added to config.yaml by integrator; job-type
+  engine implementation assigned to brain-core). Voice Ciel-slot + orb palette requests forwarded to
+  owners. Formats already key on the approved enum values.
 - [ ] Wait for next coord ping (mode: exit) — at task start: `ls docs/requests/*__to__evolution-persona__*.md`.
 
 ## Later waves
