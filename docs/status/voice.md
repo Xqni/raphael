@@ -70,8 +70,51 @@ Updated: 2026-10-06 (Wave 2 complete for this lane — handoff below)
    command; fake Fish → `speak` JSON + binary frames with amplitude; cache
    hit; barge-in; degraded subtitle-only; self-trigger loop assertions.
 
+## Done (flake hardening, coordinator task 2026-10-06)
+
+Root cause of "fails 2/3 at plain `pytest brain/voice/tests`, 5-7 failures
+while suites run in parallel, green in isolation" — NOT timing sleeps (the
+suite has none): **cross-suite session state + a nondeterministic integration
+gate**. Reproduced with `pytest brain` (combined session) → 6 failures, then
+fixed:
+
+1. **Env leak from `brain/tests/test_config.py:62`** (`os.environ
+   ['RAPHAEL_PROFILE']='local'`, raw write, never restored) → my config test
+   now pins/deletes `RAPHAEL_PROFILE` + `RAPHAEL_STT_ENGINE` itself via
+   `monkeypatch` (immune to whatever the session inherited). Request filed:
+   `docs/requests/voice__to__brain-core__test-isolation-hygiene.md`.
+2. **`VoiceStack.speak` class-patched session-wide** by
+   `brain/tests/conftest.py` (their hermetic TTS mock, installed at import
+   time and never undone) → 4 `test_voice_path` tests got `['start','end']`.
+   My pipeline tests now go through **`voice.tts.speak`** (the real engine —
+   the correct seam anyway), and one explicit delegation test asserts
+   `VoiceStack.speak` forwards to the engine, **skipping honestly** when
+   another suite's mock is installed instead of failing on their session
+   state.
+3. **Integration tests spawned Fish** (up to 240 s startup, GPU contention,
+   port races — and a rule violation: INTERFACES §d says lanes never spawn
+   Fish) → new `_require_fish()` gate: **skip unless a server is already
+   healthy**; `RAPHAEL_FISH_SPAWN=1` is the explicit integrator opt-in.
+   Unit-tested both branches (no network: health/stubbed).
+4. **Mid-test fish death asserted instead of skipping** → environmental
+   (fallback/no-audio/empty-ASR) outcomes now skip with the reason; a
+   wrong-but-non-empty transcript still FAILS, so the real signal stays.
+5. **TOCTOU in phrase-cache eviction** (`exists()` then `unlink()`, and
+   non-atomic `write_bytes` letting a concurrent reader see a half file) →
+   `unlink(missing_ok=True)` + **atomic `store()`** (temp file + `os.replace`),
+   which also protects the live stack's cache.
+6. **Wall-clock rtf assertion** → deterministic stubbed clock
+   (`brain.voice.stt.time` patched in-test; `rtf == 0.25` exactly).
+7. **Nondeterministic ASR language auto-detect** in the round-trip test
+   (the one failure that survived every other fix) → `language="en"` pinned
+   (we synthesized English) and the bogus 24 kHz whisper pass removed.
+8. **Optional-dep failures in lean venvs** → `pytest.importorskip` for
+   `soundfile`/`faster_whisper`: the root suite in qa's python3.14 venv went
+   from **6 failed → 0 failed** (5 skips + my subtitle-only fallback fix let
+   `brain/tests/test_ws.py`'s speak test pass there too).
+
 ## In progress
-- — (Wave 2 items above are all implemented and tested)
+- — (flake-hardening task complete; awaiting `wave_open`)
 
 ## Blocked
 - —
@@ -124,25 +167,43 @@ Updated: 2026-10-06 (Wave 2 complete for this lane — handoff below)
 
 ## Test output (real runs only — never claim unrun tests)
 
+### Flake-hardening verification (2026-10-06, post-fix)
+
 ```
-# voice suite (the lane's documented runner), 2026-10-06
+# lane suite (integration included; fish DOWN -> deterministic skips, no spawn)
+$ brain/.venv/bin/python -m pytest brain/voice/tests -q
+84 passed in 10.75s            (earlier run under GPU contention: 82 passed, 2 skipped — 0 failed either way)
+$ brain/.venv/bin/python -m pytest brain/voice/tests -m integration -q -rs
+SKIPPED [2] fish server not running — lanes never spawn Fish (INTERFACES §d); start it or set RAPHAEL_FISH_SPAWN=1
+2 skipped, 82 deselected in 6.79s
+
+# combined session (the exact repro: 6 failures before the fix)
+$ brain/.venv/bin/python -m pytest brain -q
+290 passed, 1 skipped in 40.28s       # before: 6 failed, 283 passed
+
+# PARALLEL load (the pc-control scenario) — all green, exit code 0
+3x concurrent `pytest brain`            -> 290+290+289 passed, 0 failed
+2x concurrent `pytest brain` + 1x voice -> all rc=0
+3x concurrent round-trip/fish subset x3 rounds -> 9/9 rc=0
+
+# qa's lean root venv (python3.14, no soundfile/faster-whisper)
+$ tests/.venv/bin/python -m pytest -q .
+395 passed, 10 skipped, 1 failed         # before: 6 failed, 122 passed
+  the 1 failure is NOT lane-owned: tools/conductor/tests/test_e2e.py::
+  TestCoordE2E::test_full_scenario — passes alone (1 passed in 3.83s),
+  fails only in the full root run (shared ~/.raphael-coord state; my lane
+  lock is held by design). Reported to the coordinator, not touched by me.
+```
+
+### Earlier Wave 2 runs
+
+```
 $ brain/.venv/bin/python -m pytest brain/voice/tests -q -m "not integration"
 80 passed, 2 deselected in 2.88s
-
-# same suite under an isolated instance (AGENT_RULES §5)
-$ RAPHAEL_INSTANCE=voice brain/.venv/bin/python -m pytest brain/voice/tests -q -m "not integration"
+$ RAPHAEL_INSTANCE=voice ... -m "not integration"
 80 passed, 2 deselected in 3.19s
-
-# consumers of brain.voice (brain-core loop/ws + router), no regressions
 $ brain/.venv/bin/python -m pytest brain/tests brain/router/tests -q
 40 passed, 1 warning in 9.52s
-
-# full repo run in qa-security's lean venv (python3.14, no soundfile /
-# faster-whisper installed there) — 6 failures, ALL pre-existing and verified
-# identical on a stashed baseline (missing soundfile/faster-whisper in that
-# venv); my new TTS-dependent tests skip cleanly there instead of failing
-$ tests/.venv/bin/python -m pytest -q .
-6 failed, 122 passed, 4 skipped, 3 warnings in 27.47s
 ```
 
 Not run (on purpose): anything that spawns Fish, opens a real microphone,

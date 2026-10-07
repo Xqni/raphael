@@ -200,9 +200,14 @@ class PhraseCache:
         return None
 
     def store(self, text: str, wav: bytes) -> Optional[Path]:
+        """Atomic write (flake-hardening): a concurrent reader — another test
+        run, or the live stack — must never see a half-written wav. Write to a
+        per-process temp file, then os.replace() (atomic on POSIX + Windows)."""
         try:
             p = self.dir / self._hash_name(self.key_for(text))
-            p.write_bytes(wav)
+            tmp = p.with_name(f"{p.name}.{os.getpid()}.tmp")
+            tmp.write_bytes(wav)
+            os.replace(tmp, p)
             return p
         except OSError:
             return None

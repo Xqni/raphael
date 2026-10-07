@@ -70,19 +70,20 @@ def test_env_overrides_beat_derivation(monkeypatch):
     assert load_voice_config(_REPO / "config.yaml").fish_port == 8799
 
 
-def test_yaml_and_profile_overlay_parse():
+def test_yaml_and_profile_overlay_parse(monkeypatch):
+    # Hermetic: another suite in the same session may have leaked
+    # RAPHAEL_PROFILE/... into os.environ (brain/tests/test_config.py sets it
+    # raw), so pin the env ourselves instead of trusting the process state.
+    monkeypatch.delenv("RAPHAEL_PROFILE", raising=False)
+    monkeypatch.delenv("RAPHAEL_STT_ENGINE", raising=False)
     cfg = load_voice_config(_REPO / "config.yaml")
     # base config.yaml: profile cloud_temp, voice.stt_engine groq, always_listen
     assert cfg.profile == "cloud_temp"
     assert cfg.stt_engine == "groq"
     assert cfg.always_listen is True
     # RAPHAEL_PROFILE=local picks the profiles.local voice overlay
-    import os
-    os.environ["RAPHAEL_PROFILE"] = "local"
-    try:
-        cfg_local = load_voice_config(_REPO / "config.yaml")
-    finally:
-        os.environ.pop("RAPHAEL_PROFILE", None)
+    monkeypatch.setenv("RAPHAEL_PROFILE", "local")
+    cfg_local = load_voice_config(_REPO / "config.yaml")
     assert cfg_local.profile == "local"
     assert cfg_local.stt_engine == "local"
     assert cfg_local.effective_stt_engine == "local"   # allowed outside cloud_temp

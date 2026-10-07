@@ -140,9 +140,21 @@ def test_dict_result_without_rtf_computes_it(monkeypatch, _stub_router_transcrib
         return {"text": "hello there"}
 
     monkeypatch.setattr(router, "transcribe", no_rtf, raising=False)
+
+    # deterministic wall clock instead of the real one: exactly 0.25 s elapses
+    # between the two perf_counter() readings (no timing flake possible)
+    class _Clock:
+        def __init__(self):
+            self.t = 100.0
+
+        def perf_counter(self):
+            self.t += 0.25
+            return self.t
+
+    monkeypatch.setattr("brain.voice.stt.time", _Clock())
     res = CloudTranscriber(VoiceConfig()).transcribe(_pcm(seconds=1.0), 16000)
     assert res.text == "hello there"
-    assert res.rtf > 0                            # derived from wall clock
+    assert res.rtf == pytest.approx(0.25)      # derived from the stubbed clock
 
 
 # ---- profile gate: no local model under cloud_temp --------------------------
