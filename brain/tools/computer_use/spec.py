@@ -37,7 +37,33 @@ COMPUTER_USE_SCHEMA: Dict[str, Any] = {
     "additionalProperties": False,
 }
 
+GATHER_CONTEXT_SCHEMA: Dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "question": {
+            "type": "string",
+            "description": "what the analysis needs from the screen "
+                           "(guides the optional gated screenshot pass)",
+        },
+        "include_screen": {
+            "type": "boolean",
+            "description": "add a gated live-screen description (default true)",
+        },
+        "include_windows": {
+            "type": "boolean",
+            "description": "add the current open-window list (default true)",
+        },
+        "include_history": {
+            "type": "boolean",
+            "description": "add recent foreground-window history (default true)",
+        },
+    },
+    "required": [],
+    "additionalProperties": False,
+}
+
 SPECS: Dict[str, Dict[str, Any]] = {
     "see_screen": SEE_SCREEN_SCHEMA,
     "computer_use": COMPUTER_USE_SCHEMA,
+    "gather_context": GATHER_CONTEXT_SCHEMA,
 }

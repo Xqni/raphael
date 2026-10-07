@@ -28,6 +28,10 @@ _DESCRIPTIONS = {
                   "(PROTOCOL §7-gated screenshot -> vision)",
     "computer_use": "multi-step GUI task: observe (UIA-first) -> reason -> "
                     "act -> verify (step-capped, confirm-gated)",
+    "gather_context": "collect screen context for analysis/deep-dive requests: "
+                      "foreground window, open windows, recent window history, "
+                      "optional gated screen description (redacted, "
+                      "blocklist-filtered, Private-Mode safe)",
 }
 
 
@@ -50,6 +54,23 @@ def computer_use(task: str) -> str:
     return wiring.run_sync(run_task(task, wiring.get_deps()))
 
 
+def gather_context(question: str = "", include_screen: bool = True,
+                   include_windows: bool = True,
+                   include_history: bool = True) -> str:
+    """Analysis-mode context: foreground + open windows + window history +
+    optional gated screen description — every payload redacted (Wave 5)."""
+    from . import wiring
+    from brain.vision.context import gather_context as _impl
+
+    d = wiring.get_deps()
+    coro = _impl(question=question, include_screen=bool(include_screen),
+                 include_windows=bool(include_windows),
+                 include_history=bool(include_history),
+                 gateway=d.gateway, gate=d.gate, config=d.config,
+                 vision_fn=d.vision_fn, is_private=d.is_private)
+    return wiring.run_sync(coro)
+
+
 def register(_reg=None) -> None:
     """Discovery hook (INTERFACES §b): brain-core's walker calls this with the
     registry module. Also callable with no args (import-time path below)."""
@@ -62,9 +83,13 @@ def register(_reg=None) -> None:
                  risky=True, needs_lock=True, category="local",
                  description=_DESCRIPTIONS["computer_use"],
                  schema=SPECS["computer_use"])
+    reg.register("gather_context", gather_context,
+                 risky=False, needs_lock=False, category="local",
+                 description=_DESCRIPTIONS["gather_context"],
+                 schema=SPECS["gather_context"])
 
 
 # import-time registration (direct imports, tests, discovery's first walk)
 register()
 
-__all__ = ["SPECS", "see_screen", "computer_use", "register"]
+__all__ = ["SPECS", "see_screen", "computer_use", "gather_context", "register"]

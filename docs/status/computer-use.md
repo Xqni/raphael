@@ -1,6 +1,42 @@
 # computer-use — status
 
-Updated: 2026-10-07 (Wave 4: observation hardening done — handoff below)
+Updated: 2026-10-07 (Wave 5: Analysis context + 2 brain-core requests closed — handoff below)
+
+## Wave 5 (2026-10-07)
+
+1. **brain-core request `test-hardening-relative-import` → DONE** (already
+   fixed on main by integrator `c60c23c`; re-verified with the exact CI step:
+   `pytest -q brain --collect-only` = 771 collected, 0 errors at the time).
+2. **brain-core request `vision-loader-authority-guard` → IMPLEMENTED + DONE**
+   (`14f49a9`): `AUTHORITY_KEYS` = safety/privacy/providers/profiles/profile/
+   **vision** (vision+profile added: they ARE the §7 gate surface) stripped
+   from config.d fragments, `{file, keys}` recorded via
+   `authority_violations()`, loud print, never raises; fragment dir is now
+   path-relative for hermetic tests; 3 tests (hostile fragment keeps base
+   values + records + prints / clean fragment merges / real tree violation-
+   free).
+3. **Analysis-mode context gathering (lane checkbox):**
+   - New **`gather_context`** tool (`brain/vision/context.py` + registration
+     in `brain/tools/computer_use/`): foreground + open-window list + recent
+     window history + optional gated screen description, composed as one
+     redacted, bounded (3000 chars), untrusted-wrapped-by-the-loop payload.
+   - Window history: in-process ring (32 stored / 12 emitted, consecutive
+     dedup, timestamps) fed by every production `BodyGateway.foreground_window`
+     probe — memory only, never disk/logs.
+   - **Redaction/privacy discipline:** every section passes `gate.redact`;
+     blocklist entries filtered from windows AND history; blocked/unknown
+     foreground announced with GENERIC wording (app names never reach cloud
+     payloads — caught a leak where the Screen refusal reason would have
+     echoed "KeePass" into the model prompt); Private Mode = zero probes;
+     probe failures = honest E_UNREACHABLE text; optional screen pass runs
+     the full §7 gate chain (blocklist → profile → debug_capture → image
+     size → vision).
+   - No new frames/contracts needed (read-only §7 actions + self-registered
+     tool) → no integrator request required.
+4. **Known non-mine failure:** `tests/regression/test_instance_isolation.py::
+   test_interfaces_instance_table_is_collision_free` fails on current main
+   (table now has the APPROVED `shadow` row = 12 instances; test asserts 11).
+   Tracked by `brain-core__to__qa-security__shadow-row-count.md`.
 
 ## Wave 4 (2026-10-07)
 
