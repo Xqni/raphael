@@ -103,3 +103,58 @@ def test_orb_states_conformance():
     
     required = {"idle", "thinking", "speaking", "reconnecting", "offline"}
     assert required.issubset(expected_states), f"Missing core states: {required - expected_states}"
+
+
+# ---- Wave-5 format contract: emitters must match §3 ------------------------
+def _protocol_client_to_brain_types() -> set:
+    """Parse the CLIENT → Brain half of PROTOCOL §3 (before the marker)."""
+    content = Path("docs/PROTOCOL.md").read_text(encoding="utf-8")
+    start = content.find("## 3. Message envelope")
+    marker = "**Brain → Client:**"
+    assert start != -1 and content.find(marker) > start
+    types = set()
+    for line in content[start:content.find(marker)].splitlines():
+        if not line.startswith("|"):
+            continue
+        first_cell = line.strip("|").split("|")[0]
+        types.update(re.findall(r"`([a-z_]+)`", first_cell))
+    return types
+
+
+_PROD_FRAME = re.compile(
+    r"\{[^{}]*?'type':\s*'([a-z_]+)'[^{}]*?'v':\s*1[^{}]*\}", re.S)
+_PROD_FRAME_ALT = re.compile(
+    r"\{[^{}]*?'v':\s*1[^{}]*?'type':\s*'([a-z_]+)'[^{}]*\}", re.S)
+
+
+def _production_emitted_types() -> dict:
+    """Frame types emitted by PRODUCTION code (tests excluded — they
+    legitimately probe unknown types like `warp_drive`)."""
+    out: dict = {}
+    for p in Path("brain").rglob("*.py"):
+        if "venv" in p.parts or "__pycache__" in p.parts:
+            continue
+        if "tests" in p.parts or p.name.startswith("test_"):
+            continue
+        if p.name in ("manual_ws_client.py", "smoke_test.py", "benchmark.py"):
+            continue
+        src = p.read_text(encoding="utf-8")
+        for m in _PROD_FRAME.findall(src) + _PROD_FRAME_ALT.findall(src):
+            out.setdefault(m, set()).add(str(p))
+    return out
+
+
+def test_emitted_frames_are_protocol_documented():
+    """Format contract (Wave 5): every frame PRODUCTION emits must be
+    documented in PROTOCOL §3 (either half). A new Answer/Notice/Report
+    emitter without a §3 row goes red here; a §3 row without a whitelist
+    entry is caught by test_brain_to_client_frame_whitelist_matches_protocol."""
+    documented = (_protocol_client_to_brain_types()
+                  | _protocol_brain_to_client_types()
+                  | {'ping'})   # §1 heartbeat; the table documents pong only
+    emitted = _production_emitted_types()
+    assert emitted, 'frame scan found nothing — pattern broken?'
+    undocumented = {t: sorted(src) for t, src in emitted.items()
+                    if t not in documented}
+    assert not undocumented, (
+        f'production emits frames missing from PROTOCOL §3: {undocumented}')

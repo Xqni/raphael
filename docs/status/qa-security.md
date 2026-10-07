@@ -2,6 +2,29 @@
 
 Updated: 2026-10-07 (Wave 3 open; CI ownership fix done)
 
+## Wave 5 (current — docs/WAVES.md current_wave: 5; wave-4 GATE PASSED)
+
+- **DONE 2026-10-07: approved shadow-row count fix [22]** — instead of a
+  brittle `==11→==12` bump, `test_interfaces_instance_table_is_collision_free`
+  now does **cross-source equality**: the §d doc table must list EXACTLY
+  `brain/config.py::_INSTANCES` (+ per-row port equality). Green across the
+  merge boundary (11/11 today), and any future sanctioned row (shadow,
+  8911) must land in BOTH or the test goes red — sturdier than the count.
+- **DONE 2026-10-07: Wave-5 gate tests (lane bullet, all three):**
+  1. *Format contract:* production-emitter scan ⊆ PROTOCOL §3 (either half)
+     — new Answer/Report emitters without a §3 row go red; §3↔whitelist
+     two-way check already strict (`tests/conformance/`, now 5 tests).
+  2. *Tier-switch safety:* STRICT property over every `tiers.TIERS` member
+     (authority blocks byte-equal + only persona/voice_personality change)
+     + ADVERSARIAL-fragment xfail → request
+     `qa-security__to__brain-core__loader-authority-guard.md` (fragments
+     can override safety/privacy/providers incl. profiles pivot today).
+  3. *Analysis/Simulation privacy:* tripwire armed — skip-until-lands,
+     **fails-if-ungated** (private gate + redact + untrusted), contract
+     request filed first per the wave rule →
+     `qa-security__to__integrator__analysis-simulation-privacy-contract.md`.
+- **Suites (real run): 297 passed, 1 skipped, 8 xfailed.**
+
 ## Waves 3–4 (docs/WAVES.md current_wave: 4 since 2026-10-07; wave-3 gate PASSED)
 
 - **DONE 2026-10-07: wave-4 resilience matrix + re-review (inbox [19])**
