@@ -1,6 +1,6 @@
 const path = require('path');
 const fs = require('fs');
-const { app, BrowserWindow, Tray, Menu, ipcMain, nativeImage, screen } = require('electron');
+const { app, BrowserWindow, Tray, Menu, ipcMain, nativeImage, screen, shell } = require('electron');
 
 // Capture ANY uncaught main-process error to a file (so errors from launches
 // outside the orchestrator's logs are still diagnosable).
@@ -344,9 +344,12 @@ function createWindow() {
   if (typeof win.setVisibleOnAllWorkspaces === 'function') {
     win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
   }
-  // Fully click-through: the orb never eats input (user: no clicks at all;
-  // dropdown UI removed — tests drive state via window.__orbDemo instead).
-  win.setIgnoreMouseEvents(true);
+  // Fully click-through by DEFAULT (user: the orb never eats input) but with
+  // mouse events FORWARDED, so the renderer can see the pointer and stop being
+  // click-through only while the cursor is over the orb itself — otherwise a
+  // 280px transparent square would swallow clicks meant for the app below.
+  // Toggled by 'orb-mouse-through' (W2.3 right-click menu + typed input).
+  win.setIgnoreMouseEvents(true, { forward: true });
   // WSLg: Electron's alwaysOnTop never reaches the host HWND — apply the
   // (styling watcher spawns at module load - see topmostWatcher - so its
   // warmup overlaps Electron's boot and the taskbar never flashes)
@@ -436,12 +439,122 @@ function updateTrayMenu() {
   tray && tray.setContextMenu(menu);
 }
 
+// ---------------------------------------------------------------------------
+// W2.3 right-click menu (TODO §3e) — also the only place provider/model are
+// surfaced, which is the still-open half of Wave-2 checklist item #1.
+// ---------------------------------------------------------------------------
+let lastJobs = [];
+let mouseThrough = true;   // matches win.setIgnoreMouseEvents initial state
+
+function findLogsDir() {
+  const candidates = [
+    path.join(__dirname, '..', '..', '..', '..', 'logs'), // repo logs/
+    app.getPath('userData'),                             // main-errors.log lives here
+  ];
+  for (const d of candidates) {
+    try { if (fs.existsSync(d)) return d; } catch (e) { /* try next */ }
+  }
+  return app.getPath('userData');
+}
+
+/**
+ * The menu as DATA rather than a built Menu, so tests can assert its structure
+ * over IPC (`orb-menu-spec`) without popping a native window.
+ */
+function orbMenuTemplate() {
+  const s = statusWS ? statusWS.state : {};
+  const jobs = lastJobs.map((j) => ({
+    id: 'job-' + (j.job || ''),
+    label: `${(j.status || '?').toUpperCase()}  ${String(j.text || j.job || '').slice(0, 42)}`,
+    submenu: [{ id: 'cancel-' + (j.job || ''), label: 'Cancel this job', cancel: j.job }],
+  }));
+  return [
+    // INTERFACES §e: provider/model ride every orb_state frame — surfaced here
+    { id: 'info-provider', label: `Provider: ${s.provider || '(none yet)'}`, enabled: false },
+    { id: 'info-model', label: `Model: ${s.model || '(none yet)'}`, enabled: false },
+    { type: 'separator' },
+    { id: 'pause', label: s.paused ? 'Resume' : 'Pause', type: 'checkbox',
+      checked: !!s.paused, action: s.paused ? 'resume' : 'pause' },
+    { id: 'private', label: 'Private Mode', type: 'checkbox',
+      checked: !!s.private, action: s.private ? 'private_off' : 'private_on' },
+    { type: 'separator' },
+    { id: 'jobs', label: jobs.length ? `Jobs (${jobs.length})` : 'Jobs (idle)',
+      enabled: jobs.length > 0, submenu: jobs },
+    { type: 'separator' },
+    { id: 'logs', label: 'Open Logs', action: 'open_logs' },
+    { id: 'restart', label: 'Restart Orb', action: 'restart' },
+    { id: 'quit', label: 'Quit', action: 'quit' },
+  ];
+}
+
+function runMenuAction(it) {
+  if (it.cancel) { statusWS && statusWS.cancelJob(it.cancel); return; }
+  if (!it.action) return;
+  if (it.action === 'open_logs') { shell.openPath(findLogsDir()); return; }
+  if (it.action === 'restart') { app.relaunch(); app.exit(0); return; }
+  if (it.action === 'quit') { isQuitting = true; app.quit(); return; }
+  statusWS && statusWS.sendControl({ action: it.action });
+}
+
+function popupOrbMenu() {
+  const build = (items) => items.map((it) => {
+    if (it.type === 'separator') return { type: 'separator' };
+    const out = { label: it.label };
+    if (it.enabled === false) out.enabled = false;
+    if (it.type) out.type = it.type;
+    if (it.checked !== undefined) out.checked = it.checked;
+    if (it.submenu) { out.submenu = build(it.submenu); if (it.enabled === false) out.enabled = false; }
+    else out.click = () => runMenuAction(it);
+    return out;
+  });
+  const menu = Menu.buildFromTemplate(build(orbMenuTemplate()));
+  if (win && !win.isDestroyed()) menu.popup({ window: win });
+}
+
 function setupIPC() {
   ipcMain.on('orb-input', (_evt, msg) => {
     statusWS && statusWS.sendOrbInput(msg);
   });
   // W2.1 trace: frames the main process received off the WS (evidence chain).
   ipcMain.handle('orb-trace-ws', () => (statusWS ? statusWS.traceFrames() : []));
+
+  // --- W2.3 ---
+  ipcMain.on('orb-mouse-through', (_evt, through) => {
+    if (!win || win.isDestroyed()) return;
+    // forward:true keeps mousemove flowing to the renderer while we are still
+    // click-through, which is what lets the orb decide when to become solid.
+    mouseThrough = !!through;
+    win.setIgnoreMouseEvents(mouseThrough, mouseThrough ? { forward: true } : undefined);
+  });
+  ipcMain.handle('orb-context-menu', async () => {
+    try {
+      // refresh the job list first so "Jobs" is not stale on the first open
+      statusWS && statusWS.requestJobList();
+      await new Promise((r) => setTimeout(r, 150));
+      popupOrbMenu();
+      return true;
+    } catch (e) { return false; }
+  });
+  ipcMain.handle('orb-menu-spec', () => orbMenuTemplate());
+  ipcMain.handle('orb-focus', () => {
+    if (win && !win.isDestroyed()) { win.show(); win.focus(); }
+    return true;
+  });
+  ipcMain.handle('orb-command', (_e, text) =>
+    (statusWS ? statusWS.sendCommand(String(text || '').slice(0, 300)) : false));
+  ipcMain.handle('orb-job-list', () => { statusWS && statusWS.requestJobList(); return lastJobs; });
+  ipcMain.handle('orb-cancel', (_e, ref) => (statusWS ? statusWS.cancelJob(ref) : false));
+  ipcMain.handle('orb-control', (_e, action) => {
+    if (statusWS) statusWS.sendControl({ action });
+    return true;
+  });
+  ipcMain.handle('orb-instance-info', () => ({
+    instance: config ? config.instance : 'main',
+    sizePx: config ? config.sizePx : 0,
+    wsUrl: config ? config.wsUrl : '',
+    theme: config ? config.theme : null,
+    mouseThrough,   // current setIgnoreMouseEvents state (W2.3 hit-testing)
+  }));
 }
 
 function startStatusWS() {
@@ -467,7 +580,8 @@ function startStatusWS() {
     if (win && !win.isDestroyed()) win.webContents.send('confirm', c);
   });
   statusWS.on('job_list', (jobs) => {
-    if (win && !win.isDestroyed()) win.webContents.send('job-list', jobs);
+    lastJobs = Array.isArray(jobs) ? jobs : [];
+    if (win && !win.isDestroyed()) win.webContents.send('job-list', lastJobs);
   });
   statusWS.start();
 }

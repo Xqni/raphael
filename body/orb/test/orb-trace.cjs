@@ -206,6 +206,110 @@ async function runTransparency(cdp, brain, rec) {
   return out;
 }
 
+/**
+ * W2.3 interaction checks (Wave-2 checklist item #1's `provider/model`
+ * remainder + TODO §3e typed input). Runs against a live orb over CDP:
+ *   1. right-click menu structure (exposed as data via `orb-menu-spec`)
+ *   2. pointer hit-testing — solid only while the cursor is over the orb
+ *   3. double-click -> text box -> PROTOCOL §3 `command` {source: 'orb'}
+ *   4. `control` frames actually leave the process
+ */
+async function runInteraction(cdp, brain, rec) {
+  const checks = [];
+  const add = (name, ok, detail) => checks.push({ name, ok, detail, pass: !!ok });
+  const commandsBefore = () => brain.received.filter((r) => r.frame && r.frame.type === 'command').length;
+
+  // give the menu something to display
+  brain.step('speaking');
+  await sleep(700);
+
+  const spec = await cdp.evaluateJson('window.raphael.menuSpec()');
+  const ids = (spec || []).map((i) => i.id).filter(Boolean);
+  const has = (id) => ids.includes(id);
+  add('menu_provider_and_model', has('info-provider') && has('info-model'),
+      `ids: ${ids.filter((i) => i.startsWith('info-')).join(', ') || 'none'}`);
+  const need = ['pause', 'private', 'jobs', 'logs', 'restart', 'quit'];
+  const missing = need.filter((x) => !has(x));
+  add('menu_required_items', missing.length === 0,
+      missing.length ? `missing: ${missing.join(', ')}` : `all present (${need.join(', ')})`);
+  const prov = (spec || []).find((i) => i.id === 'info-provider');
+  const mdl = (spec || []).find((i) => i.id === 'info-model');
+  add('menu_shows_provider_model_values',
+      !!prov && /groq/i.test(prov.label || '') && !!mdl && /llama/i.test(mdl.label || ''),
+      `${prov && prov.label} | ${mdl && mdl.label}`);
+  const pauseItem = (spec || []).find((i) => i.id === 'pause');
+  add('menu_pause_is_checkbox', !!pauseItem && pauseItem.type === 'checkbox',
+      pauseItem && `label="${pauseItem.label}" type=${pauseItem.type} action=${pauseItem.action}`);
+
+  // --- pointer hit-testing (renderer decision + what main actually applied) --
+  await cdp.evaluate("window.dispatchEvent(new MouseEvent('mousemove', { clientX: 140, clientY: 140 }))");
+  await sleep(250);
+  const inState = await cdp.evaluateJson('window.__orbInteraction()');
+  const inMain = await cdp.evaluateJson('window.raphael.instanceInfo()');
+  add('pointer_over_orb_takes_input', inState.pointerInside === true && inMain.mouseThrough === false,
+      `inside=${inState.pointerInside} main.mouseThrough=${inMain.mouseThrough}`);
+
+  await cdp.evaluate("window.dispatchEvent(new MouseEvent('mousemove', { clientX: 4, clientY: 4 }))");
+  await sleep(250);
+  const outState = await cdp.evaluateJson('window.__orbInteraction()');
+  const outMain = await cdp.evaluateJson('window.raphael.instanceInfo()');
+  add('pointer_away_releases_input', outState.pointerInside === false && outMain.mouseThrough === true,
+      `inside=${outState.pointerInside} main.mouseThrough=${outMain.mouseThrough}`);
+
+  // --- double-click -> text box -> command(source: orb) ---------------------
+  const before = commandsBefore();
+  await cdp.evaluate('window.__orbTyped.open()');
+  const opened = await cdp.evaluateJson('JSON.stringify(window.__orbTyped.isOpen())');
+  add('dblclick_opens_text_box', opened === true, `isOpen=${opened}`);
+  await cdp.evaluate('window.__orbTyped.set("open youtube and search lo-fi")');
+  await cdp.evaluate('window.__orbTyped.submit()');
+  await sleep(600);
+  const cmds = brain.received.filter((r) => r.frame && r.frame.type === 'command');
+  const last = cmds.length ? cmds[cmds.length - 1].frame : null;
+  add('text_box_sends_command', cmds.length > before,
+      last ? JSON.stringify({ type: last.type, source: last.source, text: last.text }) : 'no command frame reached the Brain');
+  add('command_source_is_orb', !!last && last.source === 'orb', last && `source=${last.source}`);
+  add('command_text_roundtrips', !!last && /lo-fi/.test(last.text || ''), last && `text=${last.text}`);
+  const closed = await cdp.evaluateJson('JSON.stringify(window.__orbTyped.isOpen())');
+  add('text_box_closes_after_send', closed === false, `isOpen=${closed}`);
+
+  // --- control frames leave the process (menu actions) ----------------------
+  await cdp.evaluate("window.raphael.sendControl('pause')");
+  await sleep(500);
+  const ctl = brain.received.filter((r) => r.frame && r.frame.type === 'control');
+  add('control_pause_reaches_brain', ctl.some((c) => c.frame.action === 'pause'),
+      ctl.length ? JSON.stringify(ctl[ctl.length - 1].frame) : 'no control frame');
+
+  // leave the window click-through again so later phases are unaffected
+  await cdp.evaluate("window.dispatchEvent(new MouseEvent('mousemove', { clientX: 4, clientY: 4 }))");
+
+  // --- job list + cancel (the menu's Jobs submenu actions) ------------------
+  await cdp.evaluate('window.raphael.requestJobList()');
+  await sleep(600);
+  const spec2 = await cdp.evaluateJson('window.raphael.menuSpec()');
+  const jobsItem = (spec2 || []).find((i) => i.id === 'jobs');
+  add('menu_lists_jobs', !!jobsItem && (jobsItem.submenu || []).length === 2,
+      jobsItem ? `label="${jobsItem.label}" items=${(jobsItem.submenu || []).length}` : 'no jobs item');
+  const cancelBefore = brain.received.filter((r) => r.frame && r.frame.type === 'cancel').length;
+  await cdp.evaluate("window.raphael.cancelJob('j_mock_1')");
+  await sleep(500);
+  const cancels = brain.received.filter((r) => r.frame && r.frame.type === 'cancel');
+  add('menu_cancel_reaches_brain',
+      cancels.length > cancelBefore && cancels[cancels.length - 1].frame.job === 'j_mock_1' &&
+      cancels[cancels.length - 1].frame.scope === 'full',
+      cancels.length ? JSON.stringify(cancels[cancels.length - 1].frame) : 'no cancel frame');
+
+  // leave the window click-through again so later phases are unaffected
+  await cdp.evaluate("window.dispatchEvent(new MouseEvent('mousemove', { clientX: 4, clientY: 4 }))");
+
+  const out = { pass: checks.every((c) => c.ok), checks, menuSpec: spec };
+  rec('interaction', out);
+  fs.writeFileSync(path.join(OUT, 'interaction.json'), JSON.stringify(out, null, 2) + '\n');
+  log(`interaction: ${out.pass ? 'PASS' : 'FAIL'} (${checks.filter((c) => c.ok).length}/${checks.length})`);
+  for (const c of checks) log(`  ${c.ok ? 'ok  ' : 'FAIL'} ${c.name}: ${c.detail}`);
+  return out;
+}
+
 async function runStartupPhase(cdp, brain, rec) {
   // §1 evidence: drive a FULL starting -> idle sequence and sample omega,
   // angle, core brightness and layer weights every 50 ms through it, plus a
@@ -292,6 +396,7 @@ async function runStartupPhase(cdp, brain, rec) {
 
 async function main() {
   fs.mkdirSync(OUT, { recursive: true });
+  fs.mkdirSync(path.join(DOCS_ORB, 'matrix'), { recursive: true });
   // Clear stale deliverables first: a state we no longer capture on a given
   // background would otherwise linger from an older build and be diffed
   // against fresh images (it did — 4 old offline/reconnecting shots survived).
@@ -300,6 +405,12 @@ async function main() {
   if (!ONLY_PHASE) {
     for (const f of fs.readdirSync(DOCS_ORB)) {
       if (/^[a-z_]+-(dark|light|busy)\.png$/.test(f)) fs.unlinkSync(path.join(DOCS_ORB, f));
+    }
+    const matrixDir = path.join(DOCS_ORB, 'matrix');
+    if (fs.existsSync(matrixDir)) {
+      for (const f of fs.readdirSync(matrixDir)) {
+        if (/^[a-z_]+--(dark|light|busy)\.png$/.test(f)) fs.unlinkSync(path.join(matrixDir, f));
+      }
     }
     for (const f of fs.readdirSync(OUT)) {
       if (/^[a-z_]+--(dark|light|busy)(--r\d+)?\.png$/.test(f)) fs.unlinkSync(path.join(OUT, f));
@@ -343,6 +454,7 @@ async function main() {
       if (ONLY_PHASE === 'filmstrip') await runFilmstrips(cdp, brain, rec);
       else if (ONLY_PHASE === 'transparency') await runTransparency(cdp, brain, rec);
       else if (ONLY_PHASE === 'perf') await runBlurPerf(cdp, brain, rec);
+      else if (ONLY_PHASE === 'interaction') await runInteraction(cdp, brain, rec);
       else throw new Error('unknown --only phase: ' + ONLY_PHASE);
       fs.writeFileSync(path.join(OUT, 'trace-partial.jsonl'), lines.join('\n') + '\n');
       return;
@@ -395,6 +507,13 @@ async function main() {
       fs.writeFileSync(path.join(DOCS_ORB, `${scene}-${bg}.png`), encode(A));
       fs.writeFileSync(path.join(OUT, `${scene}--${bg}--r2.png`), encode(B));
       const trace = await cdp.evaluateJson('JSON.stringify(window.__orbTrace ? window.__orbTrace() : null)');
+      // docs/orb/matrix/ is the path ORB_REBUILD §8, TODO §4 and PROGRESS.md
+      // all cite as the Wave-2 screenshot evidence — keep it in step with the
+      // human-facing copy instead of letting it go stale (it was deleted once).
+      const matrixDir = path.join(DOCS_ORB, 'matrix');
+      fs.mkdirSync(matrixDir, { recursive: true });
+      fs.copyFileSync(path.join(DOCS_ORB, `${scene}-${bg}.png`),
+                      path.join(matrixDir, `${scene}--${bg}.png`));
       rec('applied', { scene, bg, shot: path.relative(ROOT, path.join(DOCS_ORB, `${scene}-${bg}.png`)),
                        applied: trace && trace.applied, weights: trace && trace.weights,
                        uniforms: trace && trace.uniforms, amp: trace && trace.amp,
@@ -416,6 +535,15 @@ async function main() {
     } catch (e) {
       log('§4 evidence FAILED:', e && e.message);
       rec('sec4_error', { message: String(e && e.message) });
+    }
+
+    // --- W2.3 interaction (menu / hit-testing / typed command) -------------
+    let interaction = null;
+    try {
+      interaction = await runInteraction(cdp, brain, rec);
+    } catch (e) {
+      log('interaction FAILED:', e && e.message);
+      rec('interaction_error', { message: String(e && e.message) });
     }
 
     // --- §2 performance: blur cost with it OFF vs ON, plus the idle proof ---
@@ -491,6 +619,10 @@ async function main() {
     }
     if (transparency && !transparency.pass) {
       console.error('[orb-trace] FAIL: transparency check — a box/fringe is visible at the window edge');
+      failed = true;
+    }
+    if (interaction && !interaction.pass) {
+      console.error('[orb-trace] FAIL: W2.3 interaction checks did not hold');
       failed = true;
     }
     if (failed) process.exitCode = 1;

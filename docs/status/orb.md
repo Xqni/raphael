@@ -135,7 +135,25 @@ Pass ⇒ no box, no fringe, no clipping (limits: alpha ≤16, RGB ≤24, lit ≥
   page load. Docs: `docs/orb/THEMES.md`. `evolve_stage` reserved + forwarded
   (`evolveStage`) and documented, deliberately not rendered.
 
-### F. §4 quality gates — all green
+### F. W2.3 typed input + right-click menu (TODO §3e)
+- **Double-click → text box → `command` `{text, source:'orb'}`** (PROTOCOL §3,
+  role `ui`). Enter sends, Esc closes, closes itself after a send.
+- **Right-click menu**: `Provider:` / `Model:` (from the `orb_state` frame —
+  this closes the last open half of Wave-2 checklist item #1), pause/resume,
+  private on/off, `Jobs (n)` submenu with per-job cancel, Open Logs, Restart
+  Orb, Quit. Exposed as *data* via `orb-menu-spec` so tests can assert the
+  structure without popping a native window.
+- **Hit-testing**: the window stays click-through by default
+  (`setIgnoreMouseEvents(true, {forward:true})`, so the renderer still sees
+  the pointer) and only becomes solid inside a 0.40× hit disc and while the box
+  is open — the orb never eats clicks meant for the desktop.
+- **Fixed while testing:** menu cancel sent `scope:'gui'`, which per PROTOCOL
+  §3 only releases the input lock and would leave the job running → `scope:'full'`.
+- **Verified:** `npm run orb:trace -- --only=interaction` → **PASS 14/14**
+  (`docs/orb/trace/interaction.json`), and the phase now also runs inside the
+  full `orb:trace` pipeline.
+
+### G. §4 quality gates — all green
 ```
 orb:trace   startup PASS 7/7 · transparency PASS · distinctness PASS (104 pairs, noise 0.0000043)
 orb:size    PASS — 12 (size × scale × state) combos:
@@ -148,7 +166,10 @@ orb:size    PASS — 12 (size × scale × state) combos:
 npm test    state-machine 8/8 + orb-diff PASS
 ```
 Per-state screenshots on dark/light/busy are in `docs/orb/` (old ones
-replaced, stale `docs/orb/matrix/` removed). Filmstrips:
+replaced) **and** mirrored to `docs/orb/matrix/<state>--<bg>.png` — the path
+ORB_REBUILD §8 / TODO §4 / PROGRESS.md all cite as the Wave-2 evidence (41
+shots regenerated from this build; `orb:trace` keeps them in step and
+`orb:diff` scans that directory too). Filmstrips:
 `speaking-filmstrip.png` (amp 0.12 vs 0.95 — visibly different),
 `thinking-filmstrip.png`, `startup-filmstrip.png`.
 
@@ -246,10 +267,31 @@ state-machine 8/8 + orb-diff PASS   (exit 0)
 - Wave 2 exit criterion 4 ("per-state orb screenshots prove distinct visuals")
   is **satisfied for the mock contract**; on the live instance it needs the
   brain-core request above to land first.
-- Deferred: **W2.3 typed input + menu** (double-click text box → `command`
-  `source: orb`; pause/resume, private on/off, restart, open logs, job
-  list/cancel). The IPC plumbing already exists (`sendCommand`,
-  `requestJobList`, `cancelJob`, `sendControl` in preload; the same three on
-  `ws-status`) — only the renderer UI, the native menu and mouse hit-testing
-  through `setIgnoreMouseEvents` remain. Tracked in `docs/lanes/orb.md`.
+- **Wave 2 is complete** — the orchestrator acked the reconciliation and the
+  last open item (W2.3 typed input + menu) is now done and verified 14/14.
+- **Queued, blocked on brain-core:** re-run `npm run orb:trace` against the
+  *real* Brain instead of the mock (the coordinator confirmed `agent/brain-core`
+  already emits every INTERFACES §e state; it queues behind router), then
+  `wave_done` is the Wave-2 exit.
 - Wave 3+ items are not started (AGENT_RULES §11).
+
+---
+
+## 7. User art feedback (2026-10-06) — 2D feel, black haze, dim cages
+
+> *"nothing should feel 2d … the particles those glowing blue ones you added are
+> flat 2d which looks weird when revolving … there is a black haze around the
+> sun in the center which shouldn't be … make the cages brighter please they are
+> barely visible on different screens … when she is listening those white cages
+> can be even brighter."*
+
+| complaint | root cause | fix |
+|---|---|---|
+| **flat 2D particles** (the orbiting beads) | `jobdots.js` drew `CircleGeometry` — flat discs in the screen plane | now `SphereGeometry` with a **limb-darkening shader** (bright facing centre, dark silhouette — still flat-*unlit* anime shading, no light direction), and the orbit plane is **tilted** (`rotation.set(0.10, 0.06, 0)`) so the ring is never coplanar with the screen |
+| **"nothing should feel 2d"** (more than the beads) | two layers really were flat cards: the **morph lattice** was `z = 0` for every vertex, and the **prismatic Data Rings** were all coplanar | lattice bent into a **shallow two-wave lens** (`z = sin(i/n · 2π · 2) · 0.20`) — same silhouette, real depth when it revolves; each Data Ring (and the micro-bar ring) given its own **tilt**, z-spin untouched |
+| **black haze around the sun** | spec §4's *legibility backing disc*: a black radial-gradient `CircleGeometry(1.35)` at `z = -0.01`, alpha 0.25. It sits behind the sun but outside its silhouette, so it shows exactly as a dark halo in the middle of the orb (invisible on dark wallpaper, a grey smudge on light) | **off**, via `config.d/orb.yaml` → `backing_disc_alpha: 0.0` (lane-owned config per AGENT_RULES §3 — `config.yaml` is integrator-owned). The renderer skips the mesh entirely at 0, so idle cost is unchanged |
+| **cages barely visible** | `polyFrag`'s depth term `clamp(1.35 − (vDepth − 2.4)·0.45, 0.35, 1.0)` evaluates to its **0.35 floor** at this camera's real depth (vDepth ≈ 5.07), so the wireframe drew at `0.35 × 0.55 × uAlpha ≈ 19%` alpha | curve re-centred on the actual camera depth → `clamp(1.18 − (vDepth − 4.2)·0.22, 0.55, 1.15)` ⇒ **≈0.99** at vDepth 5.07, and the baseline lifted `0.55 → 0.66`. Net: cage alpha ≈ **19% → 68%** at idle. Same curve applied to the **node dots** so they stay matched |
+| **cages even brighter while listening** | `S.listening.poly` was only 1.10 vs idle's | `poly 1.10 → 1.55`, `node 1.60 → 2.10`, `ring 1.20 → 1.45` ⇒ listening cage alpha ≈ **88%** — the brightest white state |
+
+Verification: `npm run orb:trace` (gates) + `npm run orb:size` + `npm test`, plus a
+post-change vision QC on the regenerated screenshots.

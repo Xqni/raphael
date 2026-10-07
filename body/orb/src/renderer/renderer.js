@@ -273,13 +273,23 @@ function octagramPoints(n) {
   return new Float32Array(pts);
 }
 
+const LATTICE_DEPTH = 0.20; // world units of z the lattice gains (see below)
 function makeMorphTarget(name) {
-  if (name === 'octagram') return octagramPoints(OCTAGRAM_VERTEX_COUNT);
-  if (name === 'triangle') return polygonPoints(3, BASE_VERTEX_COUNT);
-  if (name === 'square') return polygonPoints(4, BASE_VERTEX_COUNT);
-  if (name === 'pentagon') return polygonPoints(5, BASE_VERTEX_COUNT);
-  if (name === 'hexagon') return polygonPoints(6, BASE_VERTEX_COUNT);
-  return circlePoints(BASE_VERTEX_COUNT);
+  let pts;
+  if (name === 'octagram') pts = octagramPoints(OCTAGRAM_VERTEX_COUNT);
+  else if (name === 'triangle') pts = polygonPoints(3, BASE_VERTEX_COUNT);
+  else if (name === 'square') pts = polygonPoints(4, BASE_VERTEX_COUNT);
+  else if (name === 'pentagon') pts = polygonPoints(5, BASE_VERTEX_COUNT);
+  else if (name === 'hexagon') pts = polygonPoints(6, BASE_VERTEX_COUNT);
+  else pts = circlePoints(BASE_VERTEX_COUNT);
+  // USER FEEDBACK (2026-10-06) "nothing should feel 2d": the morph lattice was
+  // a perfectly flat card in the XY plane, so revolving it read as paper.
+  // Bend it into a shallow two-wave lens — same silhouette, real depth.
+  const n = pts.length / 3;
+  for (let i = 0; i < n; i++) {
+    pts[i * 3 + 2] = Math.sin((i / n) * Math.PI * 2 * 2) * LATTICE_DEPTH;
+  }
+  return pts;
 }
 
 function easeInOutCubic(x) {
@@ -605,6 +615,11 @@ function getStateTint(s) {
   if (orbState.mode === 'paused') return 0x9fb6d8; // steel grey (spec §3)
   if (s === 'error') return 0xff3b3d;
   if (s === 'confirm') return 0xffb000;           // amber (spec §3)
+  // per-state cage colour (user: "cages change shapes for different states
+  // with color changes as well") — every state now owns a tint, not just the
+  // error/confirm/offline family.
+  if (s === 'listening') return 0xcfeeff;         // ice blue: receiving
+  if (s === 'thinking') return 0xbfd4ff;          // cool lilac-blue: reasoning
   if (s === 'reconnecting') return 0x58c4f2;
   if (s === 'offline') return 0x9aa5b1;           // desaturated grey (spec §3)
   if (s === 'acting') return 0xffd700;
@@ -743,7 +758,7 @@ function animate(now) {
   halo.material.opacity = 0.25 * layerWeights.haloOpacity;
   lattice.material.opacity = 0.35 * layerWeights.latticeOpacity;
   const mode = orbState.mode;
-  updateSageCore(sage, { t, dt, state: orbState.orbState, mode, lock: poseLock, amp: reactiveAmp, coreU: core.material.uniforms, ballScale, core, tint: getStateTint(orbState.orbState), glide: { x: GLX, y: GLY, blur: GLB } });
+  updateSageCore(sage, { t, dt, state: orbState.orbState, mode, lock: poseLock, shape: orbState.shapeHint, amp: reactiveAmp, coreU: core.material.uniforms, ballScale, core, tint: getStateTint(orbState.orbState), glide: { x: GLX, y: GLY, blur: GLB } });
   if (AM) updateAnswerMode(AM, { t, dt, state: orbState.orbState, mode, lock: poseLock, amp: reactiveAmp, glide: { x: GLX, y: GLY } });
   if (DR) updateDataRings(DR, { t, dt, state: orbState.orbState, mode, lock: poseLock, amp: reactiveAmp, glide: { x: GLX, y: GLY } });
   if (JD) updateJobDots(JD, { t, dt, jobs: orbState.jobsActive, lock: poseLock });
@@ -922,7 +937,7 @@ window.__orbLockPose = () => {
   const la = st === 'listening'
     ? (typeof orbState.amplitude === 'number' ? orbState.amplitude : 0)
     : (st === 'speaking' ? speakAmp : 0);
-  if (sage) lockSageCore(sage, st, mode, { tint: getStateTint(st), amp: la });
+  if (sage) lockSageCore(sage, st, mode, { tint: getStateTint(st), amp: la, shape: orbState.shapeHint });
   if (AM) lockAnswerMode(AM, st, { amp: la });
   if (DR) lockDataRings(DR, st, { amp: la });
   if (JD) lockJobDots(JD, orbState.jobsActive);
@@ -1140,3 +1155,104 @@ if (window.raphael) {
     speakPitch = ev.pitch_hz || null;
   });
 }
+
+// ---------------------------------------------------------------------------
+// W2.3 interaction (TODO §3e) — typed input + right-click menu.
+//
+// The window is click-through by default so the orb never steals input from
+// whatever is underneath, but main forwards mouse events, so the renderer can
+// SEE the pointer. It stops being click-through only while the cursor is over
+// the orb itself (and while the text box is open). That is what makes a
+// double-click and a right-click possible without turning a 280px transparent
+// square into a click trap.
+// ---------------------------------------------------------------------------
+const HIT_R = 0.40;               // hit radius, as a fraction of the window size
+const typedEl = document.getElementById('typed');
+const typedInput = document.getElementById('typedInput');
+let pointerInside = false;
+let typedOpen = false;
+
+function pointerOverOrb(ev) {
+  const w = window.innerWidth, h = window.innerHeight;
+  const dx = ev.clientX - w / 2, dy = ev.clientY - h / 2;
+  return Math.hypot(dx, dy) <= HIT_R * Math.min(w, h);
+}
+
+function setMouseThrough(through) {
+  try {
+    if (window.raphael && window.raphael.setMouseThrough) window.raphael.setMouseThrough(!!through);
+  } catch (e) { /* no preload */ }
+}
+
+function setPointerInside(v) {
+  if (v === pointerInside || typedOpen) return;
+  pointerInside = v;
+  setMouseThrough(!v);
+}
+
+window.addEventListener('mousemove', (ev) => {
+  setPointerInside(pointerOverOrb(ev));
+});
+
+window.addEventListener('contextmenu', (ev) => {
+  if (!pointerOverOrb(ev)) return;   // outside the orb: let the host app decide
+  ev.preventDefault();
+  try {
+    if (window.raphael && window.raphael.sendOrbInput) window.raphael.sendOrbInput({ kind: 'menu' });
+    if (window.raphael && window.raphael.openContextMenu) window.raphael.openContextMenu();
+  } catch (e) { /* no preload */ }
+});
+
+function openTyped() {
+  if (typedOpen || !typedEl) return;
+  typedOpen = true;
+  pointerInside = true;
+  typedEl.classList.add('show');
+  setMouseThrough(false);           // the box must take clicks and keys
+  try { if (window.raphael && window.raphael.focusWindow) window.raphael.focusWindow(); } catch (e) {}
+  typedInput.value = '';
+  setTimeout(() => { try { typedInput.focus(); } catch (e) {} }, 30);
+}
+
+function closeTyped() {
+  if (!typedOpen) return;
+  typedOpen = false;
+  typedEl.classList.remove('show');
+  setMouseThrough(!pointerInside);  // hand the policy back to the cursor
+}
+
+async function submitTyped() {
+  const text = (typedInput && typedInput.value || '').trim();
+  if (!text) { closeTyped(); return; }
+  let sent = false;
+  try {
+    // PROTOCOL §3: `command` { text, source: 'orb' } — role ui may send it
+    if (window.raphael && window.raphael.sendCommand) sent = !!(await window.raphael.sendCommand(text));
+    if (window.raphael && window.raphael.sendOrbInput) window.raphael.sendOrbInput({ kind: 'submit_text', value: text });
+  } catch (e) { sent = false; }
+  closeTyped();
+  return sent;
+}
+
+window.addEventListener('dblclick', (ev) => {
+  if (!pointerOverOrb(ev)) return;
+  ev.preventDefault();
+  openTyped();
+});
+
+if (typedInput) {
+  typedInput.addEventListener('keydown', (ev) => {
+    if (ev.key === 'Enter') { ev.preventDefault(); submitTyped(); }
+    else if (ev.key === 'Escape') { ev.preventDefault(); closeTyped(); }
+    ev.stopPropagation();
+  });
+}
+window.addEventListener('blur', () => { if (typedOpen) closeTyped(); });
+
+// Test hooks (CDP) — production never calls these directly.
+window.__orbTyped = {
+  open: openTyped, close: closeTyped, submit: submitTyped,
+  isOpen: () => typedOpen, value: () => (typedInput ? typedInput.value : null),
+  set: (v) => { if (typedInput) typedInput.value = v; },
+};
+window.__orbInteraction = () => ({ pointerInside, typedOpen, hitR: HIT_R });

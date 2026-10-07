@@ -16,7 +16,9 @@ contextBridge.exposeInMainWorld('raphael', {
   sendControl: (action) => ipcRenderer.invoke('orb-control', action),
   // Right-click menu / hover hit-testing (main owns the native menu)
   openContextMenu: () => ipcRenderer.invoke('orb-context-menu'),
+  menuSpec: () => ipcRenderer.invoke('orb-menu-spec'),   // testable, does not popup
   setMouseThrough: (through) => ipcRenderer.send('orb-mouse-through', through),
+  focusWindow: () => ipcRenderer.invoke('orb-focus'),
   // W2.1 trace: frames the MAIN process received off the WS
   traceWs: () => ipcRenderer.invoke('orb-trace-ws'),
   // Instance info for the right-click menu header (no secrets)

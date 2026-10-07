@@ -7,18 +7,20 @@ Merge-order position: see docs/WAVES.md
 Base spec: `docs/ORB_REBUILD_TASK.md`, refined by the fidelity pass below.
 Run everything with `RAPHAEL_INSTANCE=orb`. Evidence & numbers: `docs/status/orb.md`.
 
-## Wave 2 (finished)
+## Wave 2 — reconciliation against the original checklist (2026-10-06)
 
-- [x] **W2.0 instance isolation** — WS/CDP/token/userData derive from `RAPHAEL_INSTANCE` (`src/main/instance.js`).
-- [x] **W2.1 "orb graphics don't change between states"** — `npm run orb:trace`
-      harness built, 6 root causes fixed, frame-trace evidence in
-      `docs/orb/trace/trace.jsonl`, gate `npm run orb:diff` **PASS (104 pairs,
-      noise 0.0000043)**; request filed to brain-core for emission.
-- [x] **W2.2 full state mapping (PROTOCOL §8)** — mode overlays (private teal /
-      paused steel), jobs dots, server `shape_hint`, TTS amplitude cleared,
-      listening amplitude channel, subtitle, provider/model to the menu.
-- [x] **Demo/CDP runs use instance-derived userData + CDP port.**
-- [x] **State-machine unit tests green.**
+Re-ticked against the item text as originally written, with real evidence
+(never ticked on claim alone):
+
+| # | original item | status | evidence |
+|---|---|---|---|
+| 1 | Renderer coverage: every INTERFACES §e state renders distinctly (incl. mode overlays private/paused, jobs_active dots, **provider/model**) | **DONE** | distinctness **PASS 104 pairs, noise 4.3e-6** covers every state; mode overlays + jobs dots shipped; **`provider`/`model` now surfaced** in the right-click menu (`Provider: groq | Model: llama-3.3-70b-versatile`, asserted by `orb:trace --only=interaction`) |
+| 2 | Fake-brain harness drives full transition sequences (starting→idle→listening→thinking→acting→speaking→confirm→error + reconnecting/offline) | **DONE** | `npm run orb:trace` + `body/orb/test/mock-brain.cjs`; every frame logged in `docs/orb/trace/trace.jsonl`; reconnecting/offline driven by a real WS drop + rejected auth |
+| 3 | Refresh per-state screenshot matrix (`docs/orb/matrix`) = Wave 2 exit evidence | **DONE** (was genuinely open — I had deleted `matrix/`, which ORB_REBUILD §8 / TODO §4 / PROGRESS.md still cite) | **41 shots regenerated** from the current build (13 states × dark/light/busy + reconnecting/offline on dark); `orb:trace` now keeps it in step automatically; `orb:diff` scans it |
+| 4 | Demo/CDP runs use instance-derived userData + CDP port (INTERFACES §d) | **DONE** | `src/main/instance.js` + `test/run-demo.cjs`; every harness logs `instance=orb ws=8906 cdp=9406` |
+| 5 | State-machine unit tests green | **DONE** | `node body/orb/tests/state-machine.test.js` → `All state machine tests passed` (re-run 2026-10-06) |
+
+**First truly-open item = #1's `provider/model` remainder**, i.e. W2.3 below.
 
 ## Fidelity pass (current — see docs/status/orb.md for every number)
 
@@ -49,14 +51,29 @@ Run everything with `RAPHAEL_INSTANCE=orb`. Evidence & numbers: `docs/status/orb
       `docs/orb/THEMES.md`.
 - [x] **§6 hand-off** — `docs/status/orb.md`.
 
-## Deferred (was W2.3 — not part of the fidelity pass)
+## W2.3 typed input + menu (was deferred — DONE)
 
-- [ ] Typed input: double-click → text box → `command` frame (`source: orb`);
-      menu = pause/resume, private on/off, restart, open logs, job list/cancel.
-      IPC plumbing already exists (`sendCommand` / `requestJobList` /
-      `cancelJob` / `sendControl` in preload and the same three on
-      `ws-status.js`) — remaining work is the renderer UI, the native menu and
-      mouse hit-testing through `setIgnoreMouseEvents`.
+- [x] **Typed input (TODO §3e):** double-click over the orb opens a text box →
+      `command` frame `{text, source:'orb'}` (PROTOCOL §3, role `ui`).
+      Enter sends, Esc closes, box closes itself after a send.
+- [x] **Menu:** pause/resume, private on/off, restart, open logs, job
+      list/cancel — plus `Provider:` / `Model:` from the `orb_state` frame.
+- [x] **Mouse hit-testing:** the window stays click-through by default
+      (`setIgnoreMouseEvents(true, {forward:true})` so the renderer still sees
+      the pointer) and only becomes solid while the cursor is inside a 0.40×
+      hit disc (and while the text box is open) — no click trap over the host
+      desktop.
+- [x] **Verified** `npm run orb:trace -- --only=interaction` → **PASS 14/14**,
+      asserted against a live orb over CDP + the mock Brain:
+      menu structure/values, pointer over→solid and away→click-through
+      (renderer decision **and** what main actually applied), text box
+      open→send→close, `command.source=='orb'` with the text round-tripping,
+      `control{action:'pause'}` leaving the process, `Jobs (2)` populated from
+      a `job_list` frame, and `cancel{job, scope:'full'}` reaching the Brain.
+      The phase now also runs inside the full `orb:trace` pipeline.
+- Fixed while testing: menu cancel was sending `scope:'gui'`, which per
+  PROTOCOL §3 only releases the input lock and would have left the job running
+  — now `scope:'full'`.
 
 ## Later waves
 - Per docs/WAVES.md — do not start early (AGENT_RULES §11).

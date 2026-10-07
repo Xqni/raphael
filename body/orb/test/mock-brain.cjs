@@ -21,6 +21,10 @@ const { WebSocketServer } = require('ws');
 
 const LOG_MAX = 2000;
 
+// INTERFACES §e: every orb_state carries provider/model (router's current or
+// last target) — the orb's right-click menu displays them (Wave-2 item #1).
+const INFO = { provider: 'groq', model: 'llama-3.3-70b-versatile' };
+
 class MockBrain {
   /**
    * @param {object} opts { port, token, verbose }
@@ -94,6 +98,16 @@ class MockBrain {
       }
       case 'ping': this._send(ws, { type: 'pong', v: 1 }); break;
       case 'pong': break;
+      // PROTOCOL §3: job snapshot(s) — powers the orb menu's Jobs submenu
+      case 'job_list':
+        this._send(ws, { type: 'job_list', v: 1, jobs: [
+          { job: 'j_mock_1', status: 'running', text: 'Open YouTube and search lo-fi' },
+          { job: 'j_mock_2', status: 'done', text: 'What time is it today' },
+        ] });
+        break;
+      case 'cancel':
+        this._send(ws, { type: 'ack', v: 1, job: msg.job, cancelled: true });
+        break;
       default: break;
     }
   }
@@ -115,37 +129,37 @@ class MockBrain {
     const base = { v: 1 };
     switch (name) {
       case 'starting':
-        return this.broadcast({ type: 'orb_state', ...base, state: 'starting', jobs_active: 0, mode: 'normal', shape_hint: 'circle', task_kind: 'none', subtitle: 'starting up' });
+        return this.broadcast({ type: 'orb_state', ...base, ...INFO, state: 'starting', jobs_active: 0, mode: 'normal', shape_hint: 'circle', task_kind: 'none', subtitle: 'starting up' });
       case 'idle':
-        return this.broadcast({ type: 'orb_state', ...base, state: 'idle', jobs_active: 0, mode: 'normal', shape_hint: 'circle', task_kind: 'none' });
+        return this.broadcast({ type: 'orb_state', ...base, ...INFO, state: 'idle', jobs_active: 0, mode: 'normal', shape_hint: 'circle', task_kind: 'none' });
       case 'listening':
-        return this.broadcast({ type: 'orb_state', ...base, state: 'listening', jobs_active: 0, mode: 'normal', shape_hint: 'circle', task_kind: 'none', subtitle: 'listening', amplitude: 0.78 });
+        return this.broadcast({ type: 'orb_state', ...base, ...INFO, state: 'listening', jobs_active: 0, mode: 'normal', shape_hint: 'circle', task_kind: 'none', subtitle: 'listening', amplitude: 0.78 });
       case 'thinking':
-        return this.broadcast({ type: 'orb_state', ...base, state: 'thinking', jobs_active: 2, mode: 'normal', shape_hint: 'octagram', task_kind: 'llm' });
+        return this.broadcast({ type: 'orb_state', ...base, ...INFO, state: 'thinking', jobs_active: 2, mode: 'normal', shape_hint: 'octagram', task_kind: 'llm' });
       case 'acting':
-        return this.broadcast({ type: 'orb_state', ...base, state: 'acting', jobs_active: 1, mode: 'normal', shape_hint: 'square', task_kind: 'files', subtitle: 'opening files' });
+        return this.broadcast({ type: 'orb_state', ...base, ...INFO, state: 'acting', jobs_active: 1, mode: 'normal', shape_hint: 'square', task_kind: 'files', subtitle: 'opening files' });
       case 'speaking':
-        this.broadcast({ type: 'orb_state', ...base, state: 'speaking', jobs_active: 1, mode: 'normal', shape_hint: 'circle', task_kind: 'none', provider: 'groq', model: 'llama-3.3-70b-versatile', subtitle: 'speaking' });
+        this.broadcast({ type: 'orb_state', ...base, ...INFO, state: 'speaking', jobs_active: 1, mode: 'normal', shape_hint: 'circle', task_kind: 'none', provider: 'groq', model: 'llama-3.3-70b-versatile', subtitle: 'speaking' });
         return this.speakBurst(0.85);
       case 'confirm':
-        return this.broadcast({ type: 'orb_state', ...base, state: 'confirm', jobs_active: 1, mode: 'normal', shape_hint: 'circle', task_kind: 'none', subtitle: 'confirm?' });
+        return this.broadcast({ type: 'orb_state', ...base, ...INFO, state: 'confirm', jobs_active: 1, mode: 'normal', shape_hint: 'circle', task_kind: 'none', subtitle: 'confirm?' });
       case 'error':
-        return this.broadcast({ type: 'orb_state', ...base, state: 'error', jobs_active: 0, mode: 'normal', shape_hint: 'circle', task_kind: 'none', subtitle: 'E_PROVIDER_429' });
+        return this.broadcast({ type: 'orb_state', ...base, ...INFO, state: 'error', jobs_active: 0, mode: 'normal', shape_hint: 'circle', task_kind: 'none', subtitle: 'E_PROVIDER_429' });
       case 'reconnecting':
-        return this.broadcast({ type: 'orb_state', ...base, state: 'reconnecting', jobs_active: 0, mode: 'normal', shape_hint: 'circle', task_kind: 'none' });
+        return this.broadcast({ type: 'orb_state', ...base, ...INFO, state: 'reconnecting', jobs_active: 0, mode: 'normal', shape_hint: 'circle', task_kind: 'none' });
       case 'private':
-        return this.broadcast({ type: 'orb_state', ...base, state: 'idle', jobs_active: 0, mode: 'private', shape_hint: 'circle', task_kind: 'none', private: true });
+        return this.broadcast({ type: 'orb_state', ...base, ...INFO, state: 'idle', jobs_active: 0, mode: 'private', shape_hint: 'circle', task_kind: 'none', private: true });
       case 'private_overlay':
         // PROTOCOL §8 legacy spelling: private expressed as a STATE (this is
         // what brain-core actually sends today — ws.py:264). It means the same
         // thing as mode:'private', so it must render identically.
-        return this.broadcast({ type: 'orb_state', ...base, state: 'private_overlay', jobs_active: 0, mode: 'private', shape_hint: 'circle', task_kind: 'none', private: true });
+        return this.broadcast({ type: 'orb_state', ...base, ...INFO, state: 'private_overlay', jobs_active: 0, mode: 'private', shape_hint: 'circle', task_kind: 'none', private: true });
       case 'paused':
-        return this.broadcast({ type: 'orb_state', ...base, state: 'idle', jobs_active: 0, mode: 'paused', shape_hint: 'circle', task_kind: 'none' });
+        return this.broadcast({ type: 'orb_state', ...base, ...INFO, state: 'idle', jobs_active: 0, mode: 'paused', shape_hint: 'circle', task_kind: 'none' });
       case 'private_speaking':
-        return this.broadcast({ type: 'orb_state', ...base, state: 'speaking', jobs_active: 1, mode: 'private', shape_hint: 'circle', task_kind: 'none', private: true });
+        return this.broadcast({ type: 'orb_state', ...base, ...INFO, state: 'speaking', jobs_active: 1, mode: 'private', shape_hint: 'circle', task_kind: 'none', private: true });
       case 'jobs':
-        return this.broadcast({ type: 'orb_state', ...base, state: 'thinking', jobs_active: 6, mode: 'normal', shape_hint: 'hexagon', task_kind: 'media' });
+        return this.broadcast({ type: 'orb_state', ...base, ...INFO, state: 'thinking', jobs_active: 6, mode: 'normal', shape_hint: 'hexagon', task_kind: 'media' });
       case 'subtitle':
         return this.broadcast({ type: 'subtitle', ...base, text: 'subtitle frame', fade_ms: 4000 });
       case 'needs_confirm':

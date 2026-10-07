@@ -83,6 +83,15 @@ export function initDataRings(THREE, group) {
                 cx - s, cy + s, 0, cx - s, cy - s, 0);
     }
     const line = mkLine(THREE, DR.root, segs, color.getHex(), 1.3);
+    // USER FEEDBACK: "nothing should feel 2d" — the rings were all coplanar
+    // with the screen, so revolving read as a flat disc. Tilt each plane; the
+    // z-spin (its own speed + direction) is untouched.
+    // USER FEEDBACK: the ring stack read as "a disk around the sun and inner
+    // cage". Speaking's Answer Mode works because its bands are tilted hard
+    // enough to pass IN FRONT OF and BEHIND the core — same idea here, so the
+    // rings become orbits in depth instead of a flat plate.
+    line.ls.rotation.x = 0.85 - i * 0.16;
+    line.ls.rotation.y = (i % 2 ? 0.30 : -0.24) + i * 0.06;
     DR.rings.push({
       ls: line.ls, mat: line.mat,
       dir: (i % 2 ? -1 : 1) * (0.00016 + i * 0.00007), // own speed + direction
@@ -109,6 +118,8 @@ export function initDataRings(THREE, group) {
               p0x + rx * w2, p0y + ry * w2, 0, p0x - rx * w2, p0y - ry * w2, 0);
   }
   DR.bars = mkLine(THREE, DR.root, bars, 0xbfd4ff, 0.8);
+  DR.bars.ls.rotation.x = -0.62;  // same 3D treatment as the rings above
+  DR.bars.ls.rotation.y = 0.18;
   return DR;
 }
 

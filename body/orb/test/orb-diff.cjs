@@ -198,7 +198,7 @@ function table(report) {
 
 if (require.main === module) {
   const docs = process.argv[2] || path.join(__dirname, '..', '..', '..', 'docs', 'orb');
-  const dirs = [docs, path.join(docs, 'trace')];
+  const dirs = [docs, path.join(docs, 'matrix'), path.join(docs, 'trace')];
   if (!dirs.some((d) => fs.existsSync(d))) {
     console.error(`[orb-diff] no screenshots in ${docs} — run \`npm run orb:trace\` first`);
     process.exit(1);

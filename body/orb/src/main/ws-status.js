@@ -237,10 +237,11 @@ class StatusWS extends EventEmitter {
     return true;
   }
 
-  /** PROTOCOL §3 `cancel` — menu job cancel. */
+  /** PROTOCOL §3 `cancel` — menu job cancel. scope `full`, because `gui`
+   *  only releases the input lock and would leave the job running. */
   cancelJob(ref) {
     if (!this.ws || !this.connected) return false;
-    this.ws.send(JSON.stringify({ type: 'cancel', v: 1, job: ref, scope: 'gui' }));
+    this.ws.send(JSON.stringify({ type: 'cancel', v: 1, job: ref, scope: 'full' }));
     return true;
   }
 

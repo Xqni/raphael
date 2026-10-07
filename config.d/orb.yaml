@@ -5,6 +5,13 @@
 # config.yaml values (that would silently override them for everyone).
 
 orb:
+  # USER FEEDBACK (2026-10-06): the spec §4 legibility backing read as "a black
+  # haze around the sun in the center which shouldn't be". It is a black radial
+  # disc behind everything — invisible on dark wallpaper, a grey smudge on
+  # light — so it is OFF. The orb's own glow is what keeps it readable now.
+  # (0 disables it per ORB_REBUILD §4; raise it again only if a review says
+  # the white lines are unreadable over a bright window.)
+  backing_disc_alpha: 0.0
   # Design system hook for Raphael -> Ciel (docs/orb/THEMES.md).
   #   raphael | ciel | custom   — `ciel` is currently an alias of `raphael`, so a
   #   later Ciel reskin is a config/theme-file change, not a renderer rewrite.

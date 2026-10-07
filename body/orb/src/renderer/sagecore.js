@@ -21,7 +21,7 @@ const TAU = 400; // blend time constant (ms) — inside the spec's 300-600ms win
 // still lit, 10% spin) while offline is a state with everything switched off.
 const S = {
   idle:            { nebula: 0.55, speed: 0.70, poly: 1.15, node: 1.30, ring: 0.80, spark: 0.70, spin: 0.00013, bright: 1.00, cage: 1.00 },
-  listening:       { nebula: 0.80, speed: 1.35, poly: 1.10, node: 1.60, ring: 1.20, spark: 1.00, spin: 0.00017, bright: 1.45, cage: 1.00 },
+  listening:       { nebula: 0.80, speed: 1.35, poly: 1.55, node: 2.10, ring: 1.45, spark: 1.00, spin: 0.00017, bright: 1.45, cage: 1.00 },
   thinking:        { nebula: 0.65, speed: 1.00, poly: 1.60, node: 1.80, ring: 0.95, spark: 1.20, spin: 0.00040, bright: 1.15, cage: 0.15 },
   acting:          { nebula: 0.50, speed: 1.05, poly: 1.25, node: 1.35, ring: 0.90, spark: 0.80, spin: 0.00014, bright: 1.10, cage: 1.00 },
   speaking:        { nebula: 0.60, speed: 1.20, poly: 1.00, node: 1.20, ring: 1.00, spark: 0.30, spin: 0.00016, bright: 1.05, cage: 1.00 },
@@ -42,6 +42,54 @@ function damp(cur, tgt, tau, dt) {
 }
 function h(n) { return (Math.sin(n * 127.1) * 43758.5453) % 1; } // stable hash -1..1
 function h01(n) { return Math.abs(h(n)); }
+
+// ---------------------------------------------------------------------------
+// Per-state CAGE SHAPE (user, 2026-10-06): "make the cages change shapes for
+// different states with color changes as well ... keep things 3d".
+//
+// The icosphere TOPOLOGY is preserved — every vertex is projected onto the
+// target solid along its own direction, so edges, spokes and node dots all stay
+// attached while the silhouette becomes a cube / prism / octahedron / ball.
+// Positions lerp over 600 ms with an ease-in-out (never snapped), and because
+// the deformation is radial, the cage still reads as a solid 3D object from
+// every angle — no flat card anywhere.
+// ---------------------------------------------------------------------------
+const CAGE_MORPH_MS = 600;
+
+/** Radius of a regular n-gon (circumradius 1) at polar angle `theta`. */
+function nGonScale(theta, n) {
+  const seg = (Math.PI * 2) / n;
+  const a = ((theta % seg) + seg) % seg - seg / 2;
+  return Math.cos(Math.PI / n) / Math.cos(a);
+}
+
+/**
+ * src/out are Float32Array vertex sets of the SAME topology. `shape` is one of
+ * the PROTOCOL §8 / config orb.shape_map values; anything unknown is the ball.
+ */
+function projectShape(src, shape, out) {
+  for (let i = 0; i < src.length; i += 3) {
+    const x = src[i], y = src[i + 1], z = src[i + 2];
+    const len = Math.hypot(x, y, z) || 1;
+    const dx = x / len, dy = y / len, dz = z / len;
+    let px = dx, py = dy, pz = dz;
+    const th = Math.atan2(dy, dx);
+    if (shape === 'square') {                 // -> cube (square cross-section)
+      const s = nGonScale(th, 4); px = dx * s; py = dy * s;
+    } else if (shape === 'triangle') {        // -> triangular prism
+      const s = nGonScale(th, 3); px = dx * s; py = dy * s; pz = dz * 0.78;
+    } else if (shape === 'pentagon') {        // -> pentagonal prism
+      const s = nGonScale(th, 5); px = dx * s; py = dy * s; pz = dz * 0.88;
+    } else if (shape === 'hexagon') {         // -> hexagonal prism
+      const s = nGonScale(th, 6); px = dx * s; py = dy * s; pz = dz * 0.78;
+    } else if (shape === 'octagram') {        // -> octahedron: sharp, spiky
+      const m = Math.abs(dx) + Math.abs(dy) + Math.abs(dz) || 1e-6;
+      px = dx / m; py = dy / m; pz = dz / m;
+    }
+    // 'circle' (and anything unknown) falls through as the plain sphere
+    out[i] = px * len; out[i + 1] = py * len; out[i + 2] = pz * len;
+  }
+}
 
 // --- Pane textures: drawn ONCE at startup (spec §5) -------------------------
 function makePaneTexture(THREE, kind) {
@@ -249,6 +297,21 @@ export function initSageCore(THREE, group, scene, pal) {
   L.nodes = new THREE.Points(nodeGeo, L.nodeMat);
   L.nodes.rotation.x = 0.30;
   group.add(L.nodes);
+
+  // per-state cage-shape morph state (see projectShape above). The outer cage,
+  // the inner cage and the node dots all ride these buffers, so they deform as
+  // one object instead of drifting apart.
+  L.polyGeo = polyGeo;
+  L.nodeGeo = nodeGeo;
+  L.polyBase = new Float32Array(lp);              // pristine icosphere
+  L.nodeBase = new Float32Array(np);
+  L.cageFrom = new Float32Array(lp.length);       // preallocated: no per-frame alloc
+  L.cageTo = new Float32Array(lp.length);
+  L.nodeFrom = new Float32Array(np.length);
+  L.nodeTo = new Float32Array(np.length);
+  L.cageShape = 'circle';
+  L.cageMs = CAGE_MORPH_MS;
+  L.cageActive = false;
 
   // 5) Orbit rings — tilted ellipse split into a dim back half + bright front
   //    arc so it reads as passing BEHIND and IN FRONT of the core (spec §2.1.5)
@@ -463,6 +526,32 @@ export function updateSageCore(L, ctx) {
   L.cageMat.uniforms.uDrop.value = L.polyMat.uniforms.uDrop.value;
   L.cageMat.uniforms.uAlpha.value = w.poly * w.cage * (0.9 + errOn * 0.7);
   L.cageMat.uniforms.uTint.value = L.polyMat.uniforms.uTint.value;
+
+  // --- per-state cage SHAPE: project onto the target solid, then lerp ------
+  if (ctx.shape && ctx.shape !== L.cageShape) {
+    L.cageShape = ctx.shape;
+    L.cageFrom.set(L.polyGeo.attributes.position.array);
+    L.nodeFrom.set(L.nodeGeo.attributes.position.array);
+    projectShape(L.polyBase, ctx.shape, L.cageTo);
+    projectShape(L.nodeBase, ctx.shape, L.nodeTo);
+    L.cageMs = ctx.lock ? CAGE_MORPH_MS : 0;   // pose-lock snaps to the target
+    L.cageActive = true;
+  }
+  if (L.cageActive) {
+    L.cageMs += ctx.lock ? CAGE_MORPH_MS : dt;
+    const k = easeInOut3(Math.min(1, L.cageMs / CAGE_MORPH_MS));
+    const pa = L.polyGeo.attributes.position;
+    for (let i = 0; i < pa.array.length; i++) {
+      pa.array[i] = L.cageFrom[i] + (L.cageTo[i] - L.cageFrom[i]) * k;
+    }
+    pa.needsUpdate = true;
+    const na = L.nodeGeo.attributes.position;
+    for (let i = 0; i < na.array.length; i++) {
+      na.array[i] = L.nodeFrom[i] + (L.nodeTo[i] - L.nodeFrom[i]) * k;
+    }
+    na.needsUpdate = true;
+    if (k >= 1) L.cageActive = false;
+  }
   // state tint damped onto the cages + node dots (error = red cages/nodes)
   if (ctx.tint !== undefined) {
     L.tintTgt.setHex(state === 'error' ? 0xffffff : ctx.tint); // error: WHITE cages (red sun behind for contrast)
