@@ -33,14 +33,19 @@ Merge-order position: see docs/WAVES.md
 Wave 2 is MERGED; live gate was 3/5 — evidence + bug dossiers: `docs/BUGS-WAVE2.md`. SPEED MANDATE: cloud is paid now — near-instant responses, fast model defaults (AGENT_RULES Rule 15, WAVES.md constraints).
 
 - [P0-BugE] No `speaking → listening → speaking` flicker between sentence chunks: `orbstate.derive_state()` must hold `speaking` until the whole utterance ends (evidence: docs/BUGS-WAVE2.md Bug E). Unit test the exact frame sequence. **[x] DONE 2026-10-07** — precedence speaking > listening in `derive_state()` + `emit('listening')` guarded while a speak pipeline is active; barge-in (speak_end) still reaches listening; confirm still beats speaking; exact-sequence unit tests in `brain/tests/test_orb_states.py`.
-- [ ] **Wave-3 goal: job-concurrency polish** (WAVES.md wave 3 — queue/priority/cancel edge cases you own).
-- [ ] **Wave-3 goal: proactive `Notice` events** (WAVES.md wave 3 — brain-core emits).
-- [ ] **Wave-3 goal: memory hooks** (WAVES.md wave 3 — seams for tools-memory's wave-3 work; contract via docs/requests/ if you need anything cross-lane).
+- [x] **Wave-3 goal: job-concurrency polish** (WAVES.md wave 3 — queue/priority/cancel edge cases you own). DONE 2026-10-07: lock fairness guard (ownerless-with-waiters promotes OLDEST waiter), `engine.on_job_cancelled` full-scope hook interrupting only the cancelled job's speech, `stats().input_lock.job` real-id fix; 8 tests incl. HTTP e2e (37b8571).
+- [x] **Wave-3 goal: proactive `Notice` events** (WAVES.md wave 3 — brain-core emits). DONE 2026-10-07 (APPROVED scope: frame as proposed, roles ui+cli only, emitters 1+2, emitter 3 deferred): `brain/notice.py` (ratelimited, fail-silent, presence-only) + `llm.py` outage/recovery wiring + boot-recovery pending-flush to the first ui/cli auth + `engine.interrupted_at_boot`; 9 tests in `brain/tests/test_notice.py`.
+- [x] **Wave-3 goal: memory hooks** (WAVES.md wave 3 — seams for tools-memory's wave-3 work; contract via docs/requests/ if you need anything cross-lane). DONE 2026-10-07: producer seam `brain/loop.py::_conversation_hook` → `brain.memory.conversation.on_turn(...)` (fail-silent; absent = no-op, raising hook cannot fail a job; e2e tested), API proposed for tools-memory in `docs/requests/brain-core__to__tools-memory__conversation-hook.md` (afdc682).
 - [SPEED] Near-instant command→ack→first-subtitle on the fast path (Rule 15) — trim any gratuitous waits you own. **[x] AUDITED 2026-10-07** — no gratuitous waits in brain-core: ack is a sync frame, queue put→get wakes immediately (the 0.5 s in `_worker_loop` is an empty-queue poll cap, not a delay), fastpath classify is sync regex, subtitle broadcast is sync; every timeout in loop/confirm/llm/ws is a failure deadline, never an initial delay. Documented in status.
 
 ## Wave 3 — approved requests (both router)
 - [x] `fastpath open+search mapping` (Bug B router half, APPROVED): "open youtube and search lo-fi" → `search_youtube{query}`, new `search `/`search for `/`youtube ` intents, all existing open branches unchanged → `brain/fastpath.py` + `brain/tests/test_fastpath_open_search.py`.
 - [x] `surface-usage-in-status` (APPROVED): additive `router` key on `GET /status` via lazy `brain.router.usage_status()` — `{}` until router's branch merges, `{'error': 'unavailable'}` on failure, endpoint never goes down → `brain/app.py` + test.
+
+## Wave 3 — goals (after P0)
+- [x] Job concurrency polish (input-lock fairness, per-job cancel) — `brain/jobs/lock.py` fairness guard + `engine.on_job_cancelled` per-job speech interrupt + `stats().input_lock.job` fix; 8 tests (fbb9d07).
+- [x] Conversation-memory hooks to tools-memory — producer side wired in `brain/loop.py::_conversation_hook` (fail-silent, absent-module no-op), API proposed in `docs/requests/brain-core__to__tools-memory__conversation-hook.md`; e2e test w/ fake module incl. raising-hook survival.
+- [ ] Proactive Notice events — **contract first**: `docs/requests/brain-core__to__integrator__notice-events.md` filed (PROTOCOL §3 row + emitters). BLOCKED pending decision; no frame emitted before approval.
 
 ## Later waves
 - Per docs/WAVES.md — do not start early (AGENT_RULES §11).

@@ -37,10 +37,32 @@ class InputLock:
 
     async def acquire(self, job_id: int) -> bool:
         """Queue FIFO; returns True when this job owns the lock.
-        Cancellation while queued removes the waiter (no orphan futures)."""
-        if self._owner is None and not self._waiters:
-            self._owner = job_id
-            return True
+        Cancellation while queued removes the waiter (no orphan futures).
+
+        Fairness guard (Wave 3 polish): a job can only take the lock
+        instantly when NOBODY is queued — in the transient ownerless state
+        with waiters present, the oldest WAITING job is promoted instead of
+        letting the newcomer jump the queue (starvation)."""
+        if self._owner is None:
+            if not self._waiters:
+                self._owner = job_id
+                return True
+            # ownerless WITH waiters: promote the oldest live waiter; drain
+            # dead (cancelled) entries first. If every waiter is dead the
+            # newcomer takes the free lock outright.
+            promoted = None
+            while self._waiters:
+                jid0, fut0 = self._waiters.popleft()
+                if fut0.done():
+                    continue
+                promoted = (jid0, fut0)
+                break
+            if promoted is None:
+                self._owner = job_id
+                return True
+            self._owner = promoted[0]
+            promoted[1].set_result(True)
+            # fall through — the newcomer queues behind the promoted holder
         fut: "asyncio.Future" = asyncio.get_running_loop().create_future()
         self._waiters.append((job_id, fut))
         try:

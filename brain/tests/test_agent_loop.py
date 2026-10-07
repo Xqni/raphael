@@ -755,3 +755,50 @@ def test_act_res_journal_never_persists_screenshot_b64(token_path, fake_chat):
     assert fake_b64[:50] not in blob, 'b64 fragment leaked into the journal'
     assert '<omitted 200 b64 chars>' in blob, blob[-300:]
     assert '"delivered": true' in blob, 'delivery must be unaffected'
+
+
+# ---- Wave-3: conversation-memory hook (seam to tools-memory) ----------------
+def test_conversation_hook_offers_turns_to_memory(token_path, fake_chat,
+                                                  monkeypatch):
+    """Every finished turn is offered to brain.memory.conversation.on_turn —
+    present: recorded with job + task_kind; broken: job still completes."""
+    import types
+    from brain import memory as memory_pkg
+
+    turns = []
+    fake_conv = types.ModuleType('brain.memory.conversation')
+    fake_conv.on_turn = lambda **kw: turns.append(kw)
+    # ONE patch point for the whole test: monkeypatch restores it at teardown
+    monkeypatch.setattr(memory_pkg, 'conversation', fake_conv, raising=False)
+    if True:
+        fake_chat([{'text': 'Hook answer one.'}])
+        with TestClient(app) as client:
+            with client.websocket_connect('/ws') as ws_cli:
+                assert _auth(ws_cli, 'cli')['type'] == 'auth_ok'
+                job = _command(ws_cli, 'say the hook thing')
+                done, _ = _recv_until(
+                    ws_cli, lambda m: m.get('type') == 'job_event'
+                    and m.get('status') == 'done' and m.get('job') == job)
+                assert done['text'] == 'Hook answer one.'
+        assert len(turns) == 1
+        t = turns[0]
+        assert t['user'] == 'say the hook thing'
+        assert t['assistant'] == 'Hook answer one.'
+        assert t['job'] == job
+        assert t['task_kind'] in ('system', 'files', 'web', 'media', 'llm',
+                                  'gui', 'none')
+
+    # a RAISING memory hook must never fail the job
+    turns.clear()
+    fake_conv.on_turn = lambda **kw: (_ for _ in ()).throw(RuntimeError('db locked'))
+    if True:
+        fake_chat([{'text': 'Still fine.'}])
+        with TestClient(app) as client:
+            with client.websocket_connect('/ws') as ws_cli:
+                assert _auth(ws_cli, 'cli')['type'] == 'auth_ok'
+                job = _command(ws_cli, 'another turn')
+                done, _ = _recv_until(
+                    ws_cli, lambda m: m.get('type') == 'job_event'
+                    and m.get('status') == 'done' and m.get('job') == job)
+                assert done['text'] == 'Still fine.'
+

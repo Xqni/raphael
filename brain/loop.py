@@ -178,11 +178,31 @@ def _build_messages(user_text: str,
             + [{'role': 'user', 'content': user_text}])
 
 
-def _remember(user_text: str, assistant_text: str) -> None:
+def _remember(user_text: str, assistant_text: str,
+              job: Optional[str] = None) -> None:
     _history.append({'role': 'user', 'content': user_text})
     _history.append({'role': 'assistant', 'content': assistant_text or '(no reply)'})
     _trim_history(int(_agent_setting('history_max_messages', 24)),
                   int(_agent_setting('history_max_chars', 8000)))
+    _conversation_hook(user_text, assistant_text, job=job)
+
+
+def _conversation_hook(user: str, assistant: str, job: Optional[str] = None
+                       ) -> None:
+    """Conversation-memory seam (Wave-3 hook): every finished turn is offered
+    to `brain.memory.conversation.on_turn(...)` — tools-memory's module.
+    Absent (not merged yet) or broken -> silent no-op; this call must never
+    fail a job. Proposal: docs/requests/brain-core__to__tools-memory__
+    conversation-hook.md."""
+    try:
+        from brain.memory import conversation as _conv
+        fn = getattr(_conv, 'on_turn', None)
+        if not callable(fn):
+            return
+        fn(user=user, assistant=assistant, job=job,
+           task_kind=orbstate.current_task_kind(), ts=int(time.time() * 1000))
+    except Exception:  # noqa: BLE001 — memory must never break conversation
+        pass
 
 
 # ---- streaming speech (tokens -> sentences -> speak events) -----------------
@@ -573,7 +593,7 @@ def build_runner(hub=None):
                     # final answer: streamed to subtitle + speech above
                     if not assistant_text:
                         assistant_text = 'Done.'
-                    _remember(text, assistant_text)
+                    _remember(text, assistant_text, job=jid)
                     store.transition(rowid, 'done', stage='done',
                                      progress=1.0, result=assistant_text[:500])
                     emit('done', stage='done', progress=1.0,
@@ -652,14 +672,14 @@ def build_runner(hub=None):
                         return
                     summary = out[:160] or f'{tool_name} done'
                     narrate(summary)
-                    _remember(text, summary)
+                    _remember(text, summary, job=jid)
                     store.transition(rowid, 'done', stage='done',
                                      progress=1.0, result=summary)
                     emit('done', stage='done', progress=1.0, t=summary,
                          tool=tool_name)
                     return
                 narrate(res.text)
-                _remember(text, res.text)
+                _remember(text, res.text, job=jid)
                 store.transition(rowid, 'done', stage='done', progress=1.0,
                                  result=res.text)
                 emit('done', stage='done', progress=1.0, t=res.text)
@@ -688,6 +708,18 @@ def start_loop(hub=None, workers: Optional[int] = None) -> JobEngine:
     """Wire the runner to the engine and start workers (idempotent)."""
     engine = get_engine()
     engine.runner = build_runner(hub)
+
+    def _stop_job_speech(rowid: int, jid: str) -> None:
+        # per-job cancel polish (Wave 3): cancelling a job must stop ITS
+        # in-flight speech only (narrate/speaker register under the jid);
+        # other jobs' streams are untouched. InterruptController.interrupt is
+        # a no-op when nothing is registered under that key.
+        try:
+            get_voice().interrupts.interrupt(jid)
+        except Exception:  # noqa: BLE001 — cancel must never fail on this
+            pass
+
+    engine.on_job_cancelled = _stop_job_speech
     if not engine.started:
         engine.start(workers=workers)
     return engine

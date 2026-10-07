@@ -44,6 +44,13 @@ class JobEngine:
         # narration hooks (ws hub wires these; None = unit-test mode)
         self.sink: Optional[Callable[[Dict[str, Any]], Any]] = None
         self.on_state: Optional[Callable[[Dict[str, Any]], Any]] = None
+        # per-job cancel polish (Wave 3): called with (rowid, external jid)
+        # after a full-scope cancel so listeners can stop job-scoped side
+        # effects (in-flight speech). Never raises.
+        self.on_job_cancelled: Optional[Callable[[int, str], Any]] = None
+        # external ids marked `interrupted` by the LAST _mark_interrupted run
+        # (boot notice emitter 1 — PROTOCOL §3 notice, approved 2026-10-07)
+        self.interrupted_at_boot: List[str] = []
 
     def _ensure_queue(self) -> "asyncio.PriorityQueue":
         loop = asyncio.get_running_loop()
@@ -135,8 +142,10 @@ class JobEngine:
                                 progress=1.0, text='Cancelled (engine shutdown)',
                                 error_code='E_CANCELLED')
 
-    def _mark_interrupted(self):
-        """Startup crash recovery: report non-terminal jobs as interrupted."""
+    def _mark_interrupted(self) -> List[str]:
+        """Startup crash recovery: report non-terminal jobs as interrupted.
+        Returns + records their external ids (boot notice emitter)."""
+        marked: List[str] = []
         for job in store.list_jobs():
             if job['status'] in store.TERMINAL:
                 continue
@@ -146,6 +155,9 @@ class JobEngine:
             job = store.get_job(job['id']) or job
             self.emit_event(job, 'interrupted', stage='done', progress=1.0,
                             text='Interrupted by brain restart', error_code='E_INTERNAL')
+            marked.append(job.get('job') or store.job_ext_id(job['id']))
+        self.interrupted_at_boot = marked
+        return marked
 
     # ---- submission --------------------------------------------------------
     async def submit(self, text: str, priority='normal', source: str = 'text',
@@ -278,7 +290,20 @@ class JobEngine:
                                 error_code='E_CANCELLED', result='Cancelled'):
                 self.emit_event(store.get_job(rowid), 'cancelled', stage='done',
                                 progress=1.0, text='Cancelled', error_code='E_CANCELLED')
+        # Wave-3 per-job cancel polish: stop THIS job's side effects (its
+        # in-flight speech) without touching any other job's stream.
+        self._fire_cancelled(rowid)
         return store.get_job(rowid)
+
+    def _fire_cancelled(self, rowid: int) -> None:
+        if self.on_job_cancelled is None:
+            return
+        try:
+            job = store.get_job(rowid)
+            jid = (job or {}).get('job') or store.job_ext_id(rowid)
+            self.on_job_cancelled(rowid, jid)
+        except Exception:  # noqa: BLE001 — a dead listener must not break cancel
+            pass
 
     def cancel_all(self, scope: str = 'full') -> int:
         n = 0
@@ -363,7 +388,9 @@ class JobEngine:
             'jobs_interrupted': len([j for j in jobs if j['status'] == 'interrupted']),
             'input_lock': {
                 'held': self.lock.owner is not None,
-                'job': store.job_ext_id(self.lock.owner) if self.lock.owner else None,
+                # real external id (dateless job_ext_id produced j_19700101_*)
+                'job': ((store.get_job(self.lock.owner) or {}).get('job')
+                        if self.lock.owner else None),
                 'waiting': self.lock.waiters,
             },
             'paused': self.paused,
