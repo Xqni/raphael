@@ -367,23 +367,39 @@ def _capabilities_from(item: dict[str, Any]) -> set[str]:
     return caps
 
 
+def _tokens_int(value: Any, default: int = 0) -> int:
+    """usage token counts arrive as int/str/None/None-ish — never crash."""
+    try:
+        if value is None:
+            return default
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
 def _parse_chat_response(data: dict[str, Any],
                          headers: dict[str, str]) -> ChatResult:
-    choices = data.get("choices") or []
-    if not choices:
+    choices = data.get("choices")
+    if not isinstance(choices, list) or not choices:
+        # a non-list `choices` (str/None) must NOT index as a string and
+        # silently yield an empty "success"
         raise RouterError("response had no choices", code="E_PROVIDER_5XX",
                           reason="empty_choices")
     choice = choices[0] if isinstance(choices[0], dict) else {}
     message = choice.get("message") or {}
+    if not isinstance(message, dict):
+        message = {}
     text = _join_content(message.get("content")).strip()
     tool_calls = normalize_tool_calls(
         message.get("tool_calls") or message.get("function_call")
     )
     finish = choice.get("finish_reason") or ("tool_calls" if tool_calls else "stop")
-    usage = data.get("usage") or {}
+    usage = data.get("usage")
+    if not isinstance(usage, dict):
+        usage = {}
     usage_out = {
-        "input": int(usage.get("prompt_tokens") or 0),
-        "output": int(usage.get("completion_tokens") or 0),
+        "input": _tokens_int(usage.get("prompt_tokens")),
+        "output": _tokens_int(usage.get("completion_tokens")),
     }
     # provider-reported actual cost, when the endpoint provides one
     cost: float | None = None
