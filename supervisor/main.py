@@ -932,14 +932,21 @@ def launch_brain(cfg, log):
     # Pidfile = proper per-user location (~/.raphael[/instance]/brain.pid);
     # the legacy /tmp path is left alone for brain/app.py's own write.
     # RAPHAEL_INSTANCE/RAPHAEL_PORT are exported so brain-core derives the
-    # same instance values (INTERFACES §c/§d) it would get under systemd.
+    # same instance values (INTERFACES §c/§d) it would get under systemd;
+    # RAPHAEL_PIDFILE lets brain/app.py write the SAME proper path ($HOME
+    # expands here so Python receives an absolute path — see docs/requests/
+    # infra__to__brain-core__pidfile-location.md).
+    pidfile_env = pidfiles[0]
+    if pidfile_env.startswith("~"):
+        pidfile_env = "$HOME" + pidfile_env[1:]
     inner = wsl_argv(
         cfg, "sh", "-lc",
-        "export RAPHAEL_INSTANCE=%s RAPHAEL_PORT=%d; "
+        "export RAPHAEL_INSTANCE=%s RAPHAEL_PORT=%d "
+        "RAPHAEL_PIDFILE=\"%s\"; "
         "mkdir -p %s; echo $$ > %s; cd %s && exec "
         "brain/.venv/bin/python -m uvicorn brain.app:app "
         "--host 127.0.0.1 --port %d"
-        % (shlex.quote(inst), port, data_dir, pidfiles[0],
+        % (shlex.quote(inst), port, pidfile_env, data_dir, pidfiles[0],
            shlex.quote(repo_wsl), port))
     log.info("brain process: launching uvicorn (127.0.0.1:%d) instance=%s "
              "pidfile=%s" % (port, inst, pidfiles[0]))

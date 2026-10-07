@@ -1,0 +1,25 @@
+# OPTIONAL — tightly scoped NOPASSWD grant for the Raphael supervisor.
+#
+# WHY: config.yaml `paths.wsl_sudo: true` makes the supervisor run
+# `sudo -n systemctl <verb> raphael-brain` over wsl.exe. There is no TTY for
+# a password prompt, so without this grant every systemctl action fails with
+# "interactive authentication required" (the supervisor logs a hint exactly
+# about this). SKIP this file entirely if you run the default process mode
+# (brain_mode: auto with the unit never installed) — process mode is
+# root-less and needs no sudo at all.
+#
+# SCOPE: exactly three verbs on exactly ONE unit. Not a general systemctl
+# grant, not a shell grant, no `!`-commands, no aliases.
+#
+# INSTALL (USER-run, needs sudo — agents never run this, AGENT_RULES §12):
+#   scripts/install-brain-unit.sh --sudoers      (substitutes YOUR user and
+#     the real systemctl path, then `visudo -cf` validates before install), or
+#   manually: replace <USER> and /usr/bin/systemctl below, then
+#     sudo visudo -f /etc/sudoers.d/raphael-brain   (editor — validates syntax)
+#
+# REMOVE:  sudo rm /etc/sudoers.d/raphael-brain
+#
+# Note: `systemctl is-active` / `show` are used unprivileged by the
+# supervisor and need NO sudo entry. Ollama is intentionally absent here —
+# profile cloud_temp never touches it (WAVES.md).
+<USER> ALL=(root) NOPASSWD: /usr/bin/systemctl start raphael-brain, /usr/bin/systemctl stop raphael-brain, /usr/bin/systemctl restart raphael-brain

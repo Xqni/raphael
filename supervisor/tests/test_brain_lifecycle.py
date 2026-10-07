@@ -73,6 +73,8 @@ def test_launch_brain_instance_env_and_loopback(monkeypatch, tmp_path):
     # instance propagated into the brain's environment (INTERFACES §c/§d)
     assert "RAPHAEL_INSTANCE=infra" in script
     assert "RAPHAEL_PORT=8907" in script
+    # brain/app.py is pointed at the same proper pidfile (request filed)
+    assert 'RAPHAEL_PIDFILE="$HOME/.raphael/infra/brain.pid"' in script
     # proper pidfile location (mkdir first — instance dir may not exist)
     assert "mkdir -p ~/.raphael/infra" in script
     assert "echo $$ > ~/.raphael/infra/brain.pid" in script

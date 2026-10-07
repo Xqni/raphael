@@ -1,21 +1,36 @@
-# Raphael Brain — systemd unit TEMPLATE (WSL2, systemd-enabled distro).
-# NOT installed here — installing needs root. To install later:
-#   sudo cp brain/raphael-brain.service /etc/systemd/system/
-#   sudo systemctl daemon-reload
-#   sudo systemctl enable --now raphael-brain
-#   sudo systemctl status raphael-brain
+# Raphael Brain — systemd unit (WSL2, systemd-enabled distro) — OPTIONAL.
+#
+# Process mode (supervisor `brain_mode: auto`) stays the default: the
+# supervisor spawns uvicorn root-less and this unit is only used if/when it
+# is installed (supervisor auto-detects `systemctl show LoadState`).
+#
+# Install (USER-run, needs sudo — agents never run this, AGENT_RULES §12):
+#   Preferred:  scripts/install-brain-unit.sh [--now] [--sudoers]
+#               (rewrites the hardcoded paths below to your actual repo,
+#                validates, installs, daemon-reload; --now also starts)
+#   Manual:     sudo cp brain/raphael-brain.service /etc/systemd/system/
+#               sudo systemctl daemon-reload
+#               sudo systemctl enable --now raphael-brain
+#               sudo systemctl status raphael-brain
+# Profile note (WAVES.md): NO Ollama dependency under `cloud_temp` — this
+# unit must never pull or warm local models. Profile `local` may re-add the
+# ollama dependency later via a drop-in (`systemctl edit raphael-brain`),
+# never by editing this file.
 [Unit]
-Description=Raphael Brain (FastAPI :8765, agent loop, jobs, router, WS hub)
-After=network.target ollama.service
-Wants=ollama.service
+Description=Raphael Brain (FastAPI loopback, agent loop, jobs, router, WS hub)
+After=network.target
 
 [Service]
 Type=simple
 User=dami
 WorkingDirectory=/home/dami/raphael
 Environment=PATH=/home/dami/raphael/brain/.venv/bin:/usr/local/bin:/usr/bin:/bin
-# Bind host auto-detected at startup (wslinfo: NAT -> 0.0.0.0, mirrored -> 127.0.0.1)
-# Override with RAPHAEL_BIND / RAPHAEL_PORT if needed.
+# Bind host: 127.0.0.1 in BOTH networking modes (network-security fix —
+# Windows clients arrive via the supervisor relay / native localhost
+# forwarding). Override with RAPHAEL_BIND (e.g. 0.0.0.0 only if the relay
+# is disabled and native forwarding is verified) / RAPHAEL_PORT;
+# RAPHAEL_INSTANCE derives the port (INTERFACES §d).
+# See scripts/NETWORK-SECURITY.md.
 ExecStart=/home/dami/raphael/brain/.venv/bin/python -m brain.run
 Restart=always
 RestartSec=3
@@ -26,7 +41,7 @@ KillSignal=SIGTERM
 StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=raphael-brain
-# Hardening (localhost-only service; token-gated)
+# Hardening (loopback-only service; token-gated)
 NoNewPrivileges=true
 PrivateTmp=true
 
