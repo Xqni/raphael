@@ -271,7 +271,7 @@ Wave 3 is MERGED + **GATE PASSED** (tag `wave-3-gate`, all six criteria live, ac
 
 Wave 4 is MERGED + **GATE PASSED** (tag `wave-4-gate`, 10/10 lanes, mock 308 green). Wave-5 theme per WAVES.md: Raphael features — Answer/Notice/Report formats, Analysis, Simulation, parallel-minds visuals, persona tiers. Rule 15 speed mandate binds; shared-contract changes go through integrator requests. Carried items are noted in WAVES.md gate record (shadow row; C1+C2 residual).
 
-- [ ] Memory-context feeding for Analysis/Simulation (retrieval budgets per kind) + Report caching; injection probes extended to the new format outputs.
+- [x] Memory-context feeding for Analysis/Simulation (retrieval budgets per kind) + Report caching; injection probes extended to the new format outputs. **✅ DONE 2026-10-07** — `retrieval.kind_budget()` (analysis k10/8000, simulation k4/3000, default 5/4000, config `memory.kind_budgets` override) + `build_context(query, kind=...)` one-call feeding seam (framed, neutralized, personal-gateable, '' = inject nothing); `brain/memory/reports.py` cache (PROTOCOL §3 caps re-enforced, fail-silent save, owner-scoped `find_reports`/`recent_reports`/`get_report`, operator-proof token search); report-shaped marker-spoof probe + missing-table recovery test. Call sites filed: `tools-memory__to__brain-core__wave5-feeding-report-cache.md` (extends still-open injection request). 10 new tests → 155 memory / 184 brain green; root 203+1 pre-existing red (stale 11-instance count after approved `shadow` row → request to qa-security).
 
 ## Later waves
 - Per docs/WAVES.md — do not start early (AGENT_RULES §11).
