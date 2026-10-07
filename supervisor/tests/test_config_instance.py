@@ -28,11 +28,19 @@ def test_load_config_raphael_port_env_wins(monkeypatch):
     assert cfg["supervisor"]["health_url"] == "http://127.0.0.1:7777/health"
 
 
-def test_load_config_unknown_instance_warns(monkeypatch):
+def test_load_config_unknown_instance_fails_closed(monkeypatch):
+    # Wave-5 shadow readiness: an instance without a §d row AND without an
+    # explicit RAPHAEL_PORT must REFUSE (old behavior: silent 8765 fallback
+    # = collision with the live main instance).
+    import pytest
     monkeypatch.setenv("RAPHAEL_INSTANCE", "scratch")
+    with pytest.raises(ValueError, match="unknown RAPHAEL_INSTANCE"):
+        sup.load_config()
+    # ...but the same unknown instance with an explicit port is fine
+    monkeypatch.setenv("RAPHAEL_PORT", "8911")
     cfg, note = sup.load_config()
-    assert "WARN unknown instance" in note
-    assert cfg["paths"]["brain_port"] == 8765   # fallback, warned
+    assert cfg["paths"]["brain_port"] == 8911
+    assert "instance=scratch port=8911" in note
 
 
 def test_active_profile_precedence(monkeypatch):

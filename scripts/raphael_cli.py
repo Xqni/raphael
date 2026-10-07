@@ -20,12 +20,18 @@ logs/jobs/cancel/say/selftest — REST only, no new PROTOCOL frames):
   private on|off       POST /control {action: private_on|private_off}
   logs [name] [-n N] [-f]   tail a supervisor-side log (instance-aware):
                        supervisor|brain|body|orb|wsl-relay|wsl-keepalive
-  jobs [job_id]        GET /jobs  or  GET /jobs/{id}  (--raw for JSON)
+  jobs [job_id]        GET /jobs  or  GET /jobs/{id}  (--raw for JSON;
+                       --wait polls one job to a terminal state —
+                       simulation supervision, --timeout budget)
   cancel <id> [--gui]  POST /jobs/{id}/cancel {scope: full|gui}
   say <text...> [--gui]  POST /jobs {text, source:text} — typed input
                        (--gui also takes the input lock for screen-driving
                        typed commands)
   selftest             supervisor --selfcheck (env self-test)
+  tier [name] [--force]  show/set persona.tier in config.d (Wave 5 safe
+                       runtime switch: fail-closed validation, active-jobs
+                       guard, single-spawner brain recycle so the running
+                       supervisor never double-respawns)
 
 Exit codes: 0 = ok, 1 = command failed (HTTP error/bad usage),
             2 = brain unreachable.
@@ -38,6 +44,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import shlex
 import subprocess
 import sys
@@ -199,6 +206,8 @@ def _control(ctx, action):
 
 
 def cmd_jobs(ctx, args):
+    if getattr(args, "wait", False):
+        return _wait_job(ctx, args)
     if args.job_id:
         code, job = api(ctx, "GET", "/jobs/%s" % args.job_id)
         early = _auth_or_down(ctx, code, job)
@@ -236,6 +245,61 @@ def cmd_jobs(ctx, args):
                  "%.0f%%" % (100 * float(j.get("progress") or 0.0)),
                  task))
     return EXIT_OK
+
+
+def _wait_job(ctx, args):
+    """Wave 5 simulation supervision: poll one job to a terminal state.
+    Rule 15: tight 0.4 s polls; prints a line on every meaningful change."""
+    if not args.job_id:
+        print("jobs --wait needs a job id")
+        return EXIT_FAIL
+    deadline = time.monotonic() + max(1.0, float(args.timeout))
+    last_key = None
+    saw_confirm_hint = False
+    while True:
+        code, job = api(ctx, "GET", "/jobs/%s" % args.job_id, timeout=5.0)
+        if code is None:
+            print("brain unreachable while waiting (%s)" % job)
+            return EXIT_DOWN
+        if code in (401, 403):
+            print("TOKEN REJECTED while waiting — token: %s" % ctx.token_path)
+            return EXIT_FAIL
+        if code == 404:
+            print("job %s not found" % args.job_id)
+            return EXIT_FAIL
+        if code != 200 or not isinstance(job, dict):
+            print("GET /jobs/%s -> HTTP %s: %s"
+                  % (args.job_id, code, job))
+            return EXIT_FAIL
+        status = str(job.get("status") or "?")
+        stage = str(job.get("stage") or "-")
+        prog = float(job.get("progress") or 0.0)
+        key = (status, stage, int(prog * 10))
+        if key != last_key:
+            last_key = key
+            print("  %-12s %-9s %3.0f%%" % (status, stage, 100 * prog))
+            if status == "awaiting_confirm" and not saw_confirm_hint:
+                saw_confirm_hint = True
+                print("  (waiting for user confirmation — approve/decline "
+                      "in the app or CLI)")
+        if status in TERMINAL_STATUSES:
+            print("job %s: %s" % (args.job_id, status))
+            if status == "done":
+                result = job.get("result")
+                if isinstance(result, str) and result.strip():
+                    out = " ".join(result.split())
+                    print("result: %s" % (out[:400] + "…"
+                                          if len(out) > 400 else out))
+                return EXIT_OK
+            err = job.get("error_code")
+            if err:
+                print("error: %s" % err)
+            return EXIT_FAIL
+        if time.monotonic() >= deadline:
+            print("timeout after %.0fs waiting for %s (last: %s/%s)"
+                  % (float(args.timeout), args.job_id, status, stage))
+            return EXIT_FAIL
+        time.sleep(0.4)
 
 
 def cmd_cancel(ctx, args):
@@ -574,6 +638,161 @@ def cmd_restart(ctx, args):
 
 
 # --------------------------------------------------------------------------
+# Wave 5 — persona tier runtime switch (safe restart semantics) +
+#          simulation job supervision (jobs --wait)
+# --------------------------------------------------------------------------
+TIER_FILE = ROOT / "config.d" / "evolution-persona.yaml"
+VALID_TIERS = ("great_sage", "raphael", "ciel")
+ACTIVE_STATUSES = ("queued", "running", "awaiting_confirm")
+TERMINAL_STATUSES = ("done", "failed", "cancelled", "interrupted")
+_TIER_LINE = re.compile(r"^([ \t]*tier:[ \t]*)([^\s#]+)([ \t]*(?:#.*)?)$",
+                        re.MULTILINE)
+
+
+def _read_tier(path=None):
+    path = Path(path) if path else TIER_FILE
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError:
+        return None
+    matches = _TIER_LINE.findall(text)
+    return matches[0][1] if len(matches) == 1 else None
+
+
+def _write_tier(value, path=None):
+    """Surgical single-line replace of persona.tier — refuses unless the
+    file has EXACTLY one 'tier:' line (fail-closed, mirrors the tier
+    loader's C1/C2 semantics; value must be pre-validated)."""
+    path = Path(path) if path else TIER_FILE
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError as exc:
+        return False, "cannot read %s: %s" % (path, exc)
+    if len(_TIER_LINE.findall(text)) != 1:
+        return False, ("expected EXACTLY one 'tier:' line in %s — refusing "
+                       "to edit (fail-closed)" % path)
+    new_text, n = _TIER_LINE.subn(
+        lambda m: m.group(1) + value + m.group(3), text, count=1)
+    if n != 1:
+        return False, "tier line rewrite failed — nothing written"
+    tmp = path.with_name(path.name + ".tmp")
+    try:
+        tmp.write_text(new_text, encoding="utf-8")
+        os.replace(tmp, path)
+    except OSError as exc:
+        return False, "cannot write %s: %s" % (path, exc)
+    return True, str(path)
+
+
+def _active_jobs(ctx):
+    """-> (list of active jobs, error-or-None)."""
+    code, jobs = api(ctx, "GET", "/jobs")
+    if code is None:
+        return None, "brain unreachable (%s)" % jobs
+    if code != 200 or not isinstance(jobs, list):
+        return None, "GET /jobs -> HTTP %s" % code
+    return [j for j in jobs if j.get("status") in ACTIVE_STATUSES], None
+
+
+def _recycle_brain(ctx):
+    """Planned brain recycle with exactly ONE spawner: if the supervisor is
+    alive its health loop respawns (the watchdog/loop owns bring-up); if
+    not, the CLI spawns locally. Never both."""
+    pid, _side, _path, _stale = sup.read_supervisor_pidfile()
+    sup_alive = bool(pid) and _pid_exists(pid)
+    if sup.stop_brain(ctx.cfg, ctx.logger):
+        print("brain stopped (pidfile/ss/cmdline verified) — %s"
+              % ("supervisor will respawn it" if sup_alive
+                 else "respawning locally"))
+    if not sup_alive:
+        if not _spawn_brain_local(ctx):
+            return EXIT_FAIL
+    # a latched supervisor backoff may delay the respawn by one slow poll —
+    # allow headroom, but keep it Rule-15 tight (max ~24 s)
+    old_tries, old_delay = ctx.poll_tries, ctx.poll_delay
+    ctx.poll_tries, ctx.poll_delay = 16, 1.5
+    try:
+        final = _wait_health(ctx, "up")
+    finally:
+        ctx.poll_tries, ctx.poll_delay = old_tries, old_delay
+    if final == 200:
+        print("healthy @ %s — config.d re-read by the new brain process "
+              "(startup load)" % ctx.base)
+        return EXIT_OK
+    if final == 401:
+        print("respawned but TOKEN REJECTED (HTTP 401) — token file: %s"
+              % ctx.token_path)
+        return EXIT_FAIL
+    print("recycle did not become healthy within %.0fs — check logs (%s)"
+          % (16 * 1.5, inst_mod.log_path("supervisor")))
+    return EXIT_DOWN
+
+
+def cmd_tier(ctx, args):
+    if not args.name:                            # show
+        tier = _read_tier()
+        if tier is None:
+            print("no unique persona.tier line found in %s" % TIER_FILE)
+            return EXIT_FAIL
+        code, _p = api(ctx, "GET", "/health", timeout=3.0)
+        state = ("brain running — effective from its LAST start"
+                 if code in (200, 401) else "brain not running")
+        print("persona tier: %s   (%s)" % (tier, state))
+        print("valid tiers: %s   edit: raphael tier <name>" %
+              ", ".join(VALID_TIERS))
+        return EXIT_OK
+    # set
+    new = args.name
+    if new not in VALID_TIERS:                   # fail-closed (loader C1)
+        print("tier %r not allowed — valid: %s" % (new, ", ".join(VALID_TIERS)))
+        return EXIT_FAIL
+    current = _read_tier()
+    if current == new:
+        print("persona tier already %s" % new)
+        return EXIT_OK
+    active, err = _active_jobs(ctx)
+    if err:
+        if _p_health_up(ctx):
+            # reachable but /jobs broken — never switch without the guard
+            print("cannot list jobs (%s) — refusing without an active-jobs "
+                  "check" % err)
+            if not args.force:
+                print("re-run with --force to override")
+                return EXIT_FAIL
+            print("WARNING: --force without a job check")
+        else:
+            print("brain not reachable — tier will be written and applied "
+                  "at the next start (%s)" % err)
+    elif active:
+        if not args.force:
+            print("REFUSED: %d active job(s) would be interrupted by the "
+                  "brain recycle:" % len(active))
+            for j in active:
+                print("  %s  %-18s %s" % (j.get("job"), j.get("status"),
+                                          (j.get("task") or "")[:40]))
+            print("finish them, or re-run with --force (they journal as "
+                  "'interrupted')")
+            return EXIT_FAIL
+        print("WARNING: --force with %d active job(s) — they will journal "
+              "as interrupted" % len(active))
+    ok, detail = _write_tier(new, path=args.file)
+    if not ok:
+        print("tier write refused: %s" % detail)
+        return EXIT_FAIL
+    print("tier: %s -> %s  (%s)" % (current or "?", new, detail))
+    code, _p = api(ctx, "GET", "/health", timeout=3.0)
+    if code is None:
+        print("brain not running — applies at next start")
+        return EXIT_OK
+    return _recycle_brain(ctx)
+
+
+def _p_health_up(ctx):
+    code, _p = api(ctx, "GET", "/health", timeout=3.0)
+    return code in (200, 401)
+
+
+# --------------------------------------------------------------------------
 # Entry
 # --------------------------------------------------------------------------
 def build_parser():
@@ -600,9 +819,24 @@ def build_parser():
     lg.add_argument("-n", "--lines", type=int, default=50)
     lg.add_argument("-f", "--follow", action="store_true")
 
-    jb = sub.add_parser("jobs", help="list jobs / show one")
+    jb = sub.add_parser("jobs", help="list jobs / show one / wait on one")
     jb.add_argument("job_id", nargs="?")
     jb.add_argument("--raw", action="store_true", help="raw JSON")
+    jb.add_argument("--wait", action="store_true",
+                    help="poll until terminal (simulation supervision)")
+    jb.add_argument("--timeout", type=float, default=300.0,
+                    help="--wait budget in seconds (default 300)")
+
+    tr = sub.add_parser(
+        "tier",
+        help="show/set persona tier (safe runtime switch: config.d write "
+             "+ single-spawner brain recycle)")
+    tr.add_argument("name", nargs="?", choices=VALID_TIERS,
+                    help="great_sage | raphael | ciel (omit = show)")
+    tr.add_argument("--force", action="store_true",
+                    help="switch even with active jobs (they journal as "
+                         "interrupted) or when /jobs is unreadable")
+    tr.add_argument("--file", default=None, help=argparse.SUPPRESS)
 
     cn = sub.add_parser("cancel", help="cancel a job")
     cn.add_argument("job_id")
@@ -623,6 +857,7 @@ HANDLERS = {
     "restart": cmd_restart, "pause": cmd_pause, "resume": cmd_resume,
     "private": cmd_private, "logs": cmd_logs, "jobs": cmd_jobs,
     "cancel": cmd_cancel, "say": cmd_say, "selftest": cmd_selftest,
+    "tier": cmd_tier,
 }
 
 

@@ -379,8 +379,15 @@ def _apply_instance(cfg, note):
         parts.append("instance=%s port=%d mutex=%s"
                      % (inst, port, inst_mod.mutex_name(inst)))
         if not inst_mod.known_instance(inst) and not env_port:
-            parts.append("WARN unknown instance — config port kept; set "
-                         "RAPHAEL_PORT explicitly for real isolation")
+            # Fail closed (INTERFACES §d + qa "never guess a port" +
+            # brain-core's config.port()): a silent fallback to 8765 would
+            # collide with the LIVE main instance the moment a shadow/extra
+            # instance appears without its row yet (Wave-5 shadow readiness).
+            raise ValueError(
+                "unknown RAPHAEL_INSTANCE %r and no RAPHAEL_PORT — refusing "
+                "to guess a port (INTERFACES §d: set RAPHAEL_PORT explicitly "
+                "or extend the §d table via the integrator; the old 8765 "
+                "fallback would collide with the live main instance)" % inst)
     else:
         parts.append("instance=main port=%s" % cfg["paths"].get("brain_port"))
     return cfg, "; ".join(parts)
@@ -2493,7 +2500,13 @@ def main(argv=None):
     if sup_pidfile:
         log.info("supervisor pidfile: %s" % sup_pidfile)
 
-    cfg, note = load_config(args.config)
+    try:
+        cfg, note = load_config(args.config)
+    except ValueError as exc:
+        # fail-closed instance derivation (unknown RAPHAEL_INSTANCE without
+        # RAPHAEL_PORT) — never guess a port, never collide with main
+        log.error("config rejected: %s" % exc)
+        return 1
     log.info(note)
     paths = cfg["paths"]
     token_path, token = resolve_token(cfg)
