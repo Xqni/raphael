@@ -113,6 +113,14 @@ User observed while she spoke: (1) orb did not pulse with her voice,
 
 ## Bug F — foreground verification refuses vision on a normal window (computer-use)
 
+**ROOT CAUSE CORRECTED (computer-use, 2026-10-07, evidence-backed — original hypothesis
+below disproven):** `capture_screen` masked a body-WS disconnect (log: `1012 service
+restart` between jobs 42–44) as `E_NO_FOREGROUND`. Job 43 (the refusal) has NO
+`foreground_info` record in logs/actions.log while jobs 35/41 succeeded in 16ms with
+real window titles — the tool never ran; `hub.get_body_session()` was None mid-restart.
+Fix in flight: split reachability vs privacy verdicts, close the UIA-path blocklist hole,
+terminal-foreground tests.
+
 - **Symptom (post-restart, fresh code):** `what am I looking at` →
   "I can't verify which window is in front, so I won't send a screenshot."
   Foreground at that moment = Windows Terminal title "Ubuntu-26.04" (queried from
