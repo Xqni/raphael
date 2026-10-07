@@ -743,13 +743,47 @@ class Backoff:
 # --------------------------------------------------------------------------
 # Phase 1 — orb + body launch (orb FIRST, per architecture)
 # --------------------------------------------------------------------------
+def _child_env(env):
+    """Merge a constructed child env OVER os.environ — never a replace.
+
+    Approved pc-control request (2026-10-06): building an explicit env must
+    never UNSET anything, least of all RAPHAEL_INSTANCE — os.environ's value
+    survives unless the caller deliberately overrides it.
+    """
+    if not env:
+        return None
+    merged = dict(os.environ)
+    merged.update(env)
+    return merged
+
+
+def instance_env(cfg, extra=None):
+    """The instance triple every explicitly-constructed child env carries
+    (approved pc-control request, 2026-10-06): RAPHAEL_INSTANCE,
+    RAPHAEL_PORT, RAPHAEL_TOKEN_PATH — so a child derives the same instance
+    context without re-deriving it. Token path is the supervisor-resolved
+    primary (Windows-side for Windows children; WSL children get shell
+    exports instead — see launch_brain/launch_orb)."""
+    inst = cfg.get("instance") or inst_mod.instance_name()
+    port = int(cfg["paths"].get("brain_port") or 8765)
+    token_path, _token = resolve_token(cfg)
+    env = {
+        "RAPHAEL_INSTANCE": str(inst),
+        "RAPHAEL_PORT": str(port),
+        "RAPHAEL_TOKEN_PATH": str(token_path),
+    }
+    if extra:
+        env.update(extra)
+    return env
+
+
 def _spawn(inner, cwd, log, label, log_file, env=None):
     """Spawn a detached child. `inner` is an argv list or a raw command string.
 
     UNC cwd (repo lives on \\wsl.localhost\\...) is handled via `pushd`, since
-    cmd.exe refuses UNC working directories. `env` (optional) is merged over
-    the current environment — used to pass RAPHAEL_INSTANCE to Windows-side
-    children (Body lock derivation, INTERFACES §d).
+    cmd.exe refuses UNC working directories. `env` (optional) is MERGED over
+    os.environ via _child_env — a wholesale replace is never done, so
+    RAPHAEL_INSTANCE and friends survive into every child.
     """
     if isinstance(inner, str):
         inner_str = inner
@@ -758,10 +792,7 @@ def _spawn(inner, cwd, log, label, log_file, env=None):
         as_list = list(inner)
         inner_str = (subprocess.list2cmdline(as_list) if IS_WINDOWS
                      else " ".join(shlex.quote(x) for x in as_list))
-    child_env = None
-    if env:
-        child_env = dict(os.environ)
-        child_env.update(env)
+    child_env = _child_env(env)
     cwd_str = str(cwd)
     out = None
     try:
@@ -854,17 +885,19 @@ def launch_orb(cfg, log):
     # RAPHAEL_ORB_TOKEN: the orb refuses to connect without it (config.js
     # token=null -> silent offline ALL DAY in production). The $(cat ...) is
     # expanded INSIDE the inner shell — the token never appears in any argv.
-    # RAPHAEL_INSTANCE: orb derives its single-instance userData dir from it
-    # (INTERFACES §d). Instance token first, shared main token as fallback.
+    # Instance triple (approved pc-control request): RAPHAEL_INSTANCE +
+    # RAPHAEL_PORT + RAPHAEL_TOKEN_PATH, the last picked by EXISTENCE
+    # (instance token first, shared main token fallback — WSL-side paths).
     inst = cfg.get("instance") or inst_mod.instance_name()
-    token_src = "cat %s/token 2>/dev/null" % inst_mod.wsl_data_dir(inst)
-    if inst != "main":
-        token_src += " || cat ~/.raphael/token 2>/dev/null"
+    port = int(cfg["paths"].get("brain_port") or 8765)
+    data_dir_home = inst_mod.wsl_data_dir(inst).replace("~", "$HOME", 1)
     inner = wsl_argv(cfg, "sh", "-lc",
-                     "export RAPHAEL_INSTANCE=%s; "
-                     "export RAPHAEL_ORB_TOKEN=$(%s); "
+                     "export RAPHAEL_INSTANCE=%s RAPHAEL_PORT=%d; "
+                     "tp=%s/token; [ -f \"$tp\" ] || tp=$HOME/.raphael/token; "
+                     "export RAPHAEL_TOKEN_PATH=\"$tp\"; "
+                     "export RAPHAEL_ORB_TOKEN=$(cat \"$tp\" 2>/dev/null); "
                      "cd %s && exec %s"
-                     % (shlex.quote(inst), token_src,
+                     % (shlex.quote(inst), port, data_dir_home,
                         shlex.quote(wsl_dir), wsl_cmd))
     return _spawn(inner, orb_dir, log, "orb", inst_mod.log_path("orb"))
 
@@ -987,15 +1020,21 @@ def launch_brain(cfg, log):
     pidfile_env = pidfiles[0]
     if pidfile_env.startswith("~"):
         pidfile_env = "$HOME" + pidfile_env[1:]
+    # RAPHAEL_TOKEN_PATH: point the Brain at a token file that EXISTS —
+    # instance token first, shared main token as fallback (mirrors
+    # resolve_token ordering; WSL-side paths only, never a Windows path).
+    data_dir_home = data_dir.replace("~", "$HOME", 1)
     inner = wsl_argv(
         cfg, "sh", "-lc",
         "export RAPHAEL_INSTANCE=%s RAPHAEL_PORT=%d "
         "RAPHAEL_PIDFILE=\"%s\"; "
+        "tp=%s/token; [ -f \"$tp\" ] || tp=$HOME/.raphael/token; "
+        "export RAPHAEL_TOKEN_PATH=\"$tp\"; "
         "mkdir -p %s; echo $$ > %s; cd %s && exec "
         "brain/.venv/bin/python -m uvicorn brain.app:app "
         "--host 127.0.0.1 --port %d"
-        % (shlex.quote(inst), port, pidfile_env, data_dir, pidfiles[0],
-           shlex.quote(repo_wsl), port))
+        % (shlex.quote(inst), port, pidfile_env, data_dir_home, data_dir,
+           pidfiles[0], shlex.quote(repo_wsl), port))
     log.info("brain process: launching uvicorn (127.0.0.1:%d) instance=%s "
              "pidfile=%s" % (port, inst, pidfiles[0]))
     return _spawn(inner, REPO_ROOT, log, "brain",
@@ -1011,12 +1050,13 @@ def launch_body(cfg, log):
         log.warn("body not ready — %s missing (owned by body-dev); "
                  "will retry when it appears" % script_path)
         return None
-    # RAPHAEL_INSTANCE: the Body derives its single-instance lock from it
-    # (INTERFACES §d: %TMP%\\raphael_body[_<instance>].lock).
-    inst = cfg.get("instance") or inst_mod.instance_name()
+    # Instance triple for the child (approved pc-control request): the Body
+    # derives its single-instance lock from RAPHAEL_INSTANCE (INTERFACES §d:
+    # %TMP%\\raphael_body[_<instance>].lock) and gets the same port/token
+    # context the supervisor resolved. Merge never unsets anything.
     return _spawn(argv, REPO_ROOT, log, "body",
                   inst_mod.log_path("body"),
-                  env={"RAPHAEL_INSTANCE": inst})
+                  env=instance_env(cfg))
 
 
 def _external_body_pid():

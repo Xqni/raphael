@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import os
 import re
+import sys
 from pathlib import Path
 
 # Lane order from INTERFACES §d — the port table is positional:
@@ -97,8 +98,36 @@ def instance_port(inst=None, default=None) -> int:
 
 
 def mutex_name(inst=None) -> str:
+    """Named mutex (INTERFACES §d): `Raphael_Supervisor[_<instance>]`.
+
+    Single source with the Body (approved pc-control request, 2026-10-06):
+    when `inst` is not given explicitly, reuse
+    `body/win/instance.py::supervisor_mutex()` — the shared derivation the
+    Body calls too, so supervisor and Body can never disagree on the mutex
+    name. The import is best-effort: pre-merge trees, or an env their
+    stricter validator rejects (their `instance_name()` raises by design),
+    fall back to the mirror below, which is byte-identical for every valid
+    name. Explicit `inst` always uses the mirror (their function reads the
+    environment itself).
+    """
+    if inst is None:
+        shared = _shared_supervisor_mutex()
+        if shared is not None:
+            return shared
     inst = inst or instance_name()
     return MAIN_MUTEX if inst == "main" else "%s_%s" % (MAIN_MUTEX, inst)
+
+
+def _shared_supervisor_mutex():
+    """body/win/instance.py::supervisor_mutex, or None if unavailable."""
+    root = str(repo_root())
+    if root not in sys.path:
+        sys.path.insert(0, root)
+    try:
+        from body.win.instance import supervisor_mutex
+        return supervisor_mutex()
+    except Exception:      # noqa: BLE001 — never let the logon entry point die
+        return None
 
 
 def health_url(port=None) -> str:
