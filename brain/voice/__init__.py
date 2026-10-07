@@ -33,11 +33,11 @@ from .activation import (ActivationGate, GateDecision, PlaybackEchoRegistry,
 from .confirmation import (VoiceAnswer, parse_voice_answer,
                            to_confirm_answer, voice_confirmation_answer)
 from .config import REPO_ROOT, VoiceConfig, load_voice_config
-from .stt import (STT_SAMPLE_RATE, CloudTranscriber, Segment,
+from .stt import (STT_SAMPLE_RATE, SUBTITLE_CODES, CloudTranscriber, Segment,
                   SttEngine, TranscribeResult, Transcriber, VoiceSTTError,
                   get_stt, get_transcriber, is_effectively_silent,
-                  pcm_to_wav_bytes, reset_stt, transcribe,
-                  transcribe_result)
+                  pcm_to_wav_bytes, reset_stt, stt_outage_subtitle,
+                  transcribe, transcribe_result)
 from .tts import (TTS_SAMPLE_RATE_DEFAULT, FishSpeechServer, PhraseCache,
                   TTSEngine, TTSError, encode_binary_frame, error_frame,
                   get_tts, speak as _speak_singleton, speak_frame,
@@ -124,6 +124,7 @@ __all__ = [
     "VoiceSTTError", "Transcriber", "TranscribeResult", "Segment",
     "SttEngine", "CloudTranscriber", "get_stt", "reset_stt",
     "is_effectively_silent", "pcm_to_wav_bytes",
+    "stt_outage_subtitle", "SUBTITLE_CODES",
     "ActivationGate", "GateDecision", "PlaybackEchoRegistry",
     "get_activation", "get_playback_echoes", "reset_activation",
     "VoiceAnswer", "parse_voice_answer", "to_confirm_answer",

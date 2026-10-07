@@ -282,6 +282,29 @@ def _map_router_error(exc: BaseException) -> VoiceSTTError:
     return VoiceSTTError("E_INTERNAL", f"transcribe failed: {msg[:200]}")
 
 
+# PROTOCOL §10: clients surface error detail as subtitle text ONLY for this
+# code set — everything else is fatal/internal and must not leak to screen.
+SUBTITLE_CODES = frozenset({
+    "E_LOCK_BUSY", "E_TIMEOUT", "E_CONFIRM_TIMEOUT", "E_PROVIDER_429",
+    "E_LOCAL_OOM", "E_LOCAL_DOWN", "E_OFFLINE",
+})
+
+
+def stt_outage_subtitle(code: str, detail: str = "") -> Optional[str]:
+    """Human notice for an STT outage (Wave 4: cloud gate fails -> a subtitle
+    notice, never a silent drop of what the user just said).
+
+    Returns a brief, secret-free subtitle for surfaceable PROTOCOL §10 codes,
+    else None (fatal/internal codes show no raw detail). Suggested wire-up:
+    brain/ws.py `_on_audio_end` except-branch broadcasts this as a `subtitle`
+    frame next to error_frame() (request: voice__to__brain-core__
+    stt-outage-subtitle).
+    """
+    if code not in SUBTITLE_CODES:
+        return None
+    return f"Voice input unavailable ({code}) — type it instead, or retry."
+
+
 class CloudTranscriber:
     """Groq Whisper through the router facade (INTERFACES §a `transcribe`).
 
@@ -332,6 +355,10 @@ class CloudTranscriber:
                 except RuntimeError:
                     res = asyncio.run(res)
                 else:
+                    # don't leak the un-awaited coroutine (ResourceWarning)
+                    close = getattr(res, "close", None)
+                    if callable(close):
+                        close()
                     raise VoiceSTTError(
                         "E_INTERNAL",
                         "async transcribe reached a running-loop thread — "

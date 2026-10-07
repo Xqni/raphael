@@ -33,7 +33,7 @@ Wave 2 is MERGED; live gate was 3/5 — evidence + bug dossiers: `docs/BUGS-WAVE
 
 Wave 3 is MERGED + **GATE PASSED** (tag `wave-3-gate`, all six criteria live, acoustic voice included). Wave-4 theme per WAVES.md: hardening, resilience tests, audit fixes, crash recovery, evolution infrastructure. Rule 15 speed mandate still binds.
 
-- [ ] Voice pipeline failure modes: fish death mid-speak recovery (restart + spoken notice), STT outage path (cloud gate -> subtitle notice, no silent drop), audio soak (24h segment continuity), Bug H regression guards (async bridge, stt_language pin, extract-all).
+- [x] Voice pipeline failure modes: **fish death mid-speak recovery** (ONE restart+retry via `_synthesize_resilient`/`_restart_fish`; ownership-safe — only a process WE spawned is stopped, external/supervisor fish is reused; one-time notice "Voice engine restarted mid-reply." on success, loud degraded notice on failure, reference errors NEVER retried; bounded 90 s restart timeout), **STT outage path** (`stt_outage_subtitle()` returns a §10-code-set, secret-free notice so a cloud-STT failure is never a silent drop — wire-up in ws.py is brain-core's file: OPEN request `voice__to__brain-core__stt-outage-subtitle.md`), **audio soak** (`test_soak_*`: 1000 brain segments + 400 VAD open/close cycles, all state asserted bounded — accelerated stand-in for 24h continuity, honest: not a real 24h run), **Bug H regression guards** (async router transcribe awaited + typed error inside a running loop + no coroutine leak, `stt_language: en` loaded AND reaching the provider, wake extract strips ALL leading wake/filler repeats). Tests: `brain/voice/tests/test_wave4_hardening.py` (10).
 
 ## Later waves
 - Per docs/WAVES.md — do not start early (AGENT_RULES §11).
