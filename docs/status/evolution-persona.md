@@ -19,6 +19,17 @@ Updated: 2026-10-07 (Wave 5)
     edit (round-trip proven on the real lane fragment). Automatic changes only ever LOWER autonomy.
   - Docs: `docs/evolution/05-tier-probation-impl.md`. Reports posted per part (task_done ×2,
     test_result ×1).
+- **Wave 5 part 3 (2026-10-07, second wake):**
+  - **Four shared-contract requests filed** (request-FIRST) + one coord `request` event naming all
+    owners: integrator ×2 (additive `task_kind` `analysis`/`simulation` + shape_map + job-type
+    semantics; optional `minds[]` on `orb_state` for parallel-minds), voice (Ciel reference slot with
+    §10-style fallback + phrase-cache invalidation on tier switch), orb (gold-leaning Ciel palette,
+    existing tiers byte-identical).
+  - **Answer/Notice/Report formats** in own paths (no new frame): `brain/persona/formats.py` —
+    deterministic `pick_format` (question→answer, proactive→notice, report-class job_done→report,
+    unknown→answer degrade), `truncate_sentences`, `shape_reply` (per-format caps from
+    `voice_personality`, full detail on screen, `private=True` suppresses screen, never raises),
+    `format_event` one-call path. Commit 57372d1.
 - **Wave 4 closed for this lane (2026-10-07)** — `wave_done` posted (final merge position 10/10).
   Conductor VERIFIED the spikes (3f1afe8+9a01774; reran evolution+persona tests green; core guard +
   ownership OK). Shadow request APPROVED + assigned to brain-core; shadow verification runs are
@@ -50,8 +61,9 @@ Updated: 2026-10-07 (Wave 5)
 - Full controller (`controller/worktree/promote`) still waits on: infra rollback-hook seam,
   qa-security golden-harness seam + CORE_GUARD_FILES extension, router weights ownership
   (all listed in `docs/evolution/03-wave4-spikes.md` § Dependencies).
-- Wave-5 shared-contract leftovers (Analysis/Simulation `task_kind`, `minds[]`, Ciel voice slot,
-  gold palette) need integrator/orb/voice requests — next task when pinged.
+- Wave-5 shared-contract leftovers — **requests FILED 2026-10-07** (integrator ×2, voice, orb);
+  blocked on owner decisions per `docs/requests/README.md` workflow. Formats themselves are DONE
+  (`brain/persona/formats.py`, keying on the requested enum values as soon as they land).
 
 ## Next
 - On ping: re-check requests to this lane + shadow request status; if landed, build `worktree.py` +
@@ -60,7 +72,10 @@ Updated: 2026-10-07 (Wave 5)
   router weights) from 01 §7.
 
 ## Test output (real runs only — never claim unrun tests)
-- 2026-10-07 (wave 5): `tests/.venv/bin/python -m pytest brain/persona/tests -q` → **56 passed in 0.13s**
+- 2026-10-07 (wave 5, part 3): `tests/.venv/bin/python -m pytest brain/persona/tests -q` → **77 passed in 0.19s**
+- 2026-10-07 (wave 5, part 3): `tests/.venv/bin/python -m pytest brain/evolution/tests -q` → **63 passed in 0.78s**
+- 2026-10-07 (wave 5, part 3): `python3 tests/core_guard.py` → `Core Guard OK (4 files byte-stable)`; `ownership_check --worktree` → `ownership OK (18 checked)`
+- 2026-10-07 (wave 5, part 2): `pytest brain/persona/tests -q` → **56 passed in 0.13s**
 - 2026-10-07 (wave 5): `tests/.venv/bin/python -m pytest brain/evolution/tests -q` → **63 passed in 0.80s**
 - 2026-10-07 (wave 5): `python3 tests/core_guard.py` → `Core Guard OK (4 files byte-stable)` (exit 0)
 - 2026-10-07 (wave 5): `tests/ownership_check.py --lane evolution-persona --worktree` → `ownership OK (10 checked)`

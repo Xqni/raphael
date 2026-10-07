@@ -59,9 +59,17 @@ $ python3 tests/core_guard.py
 Core Guard OK (4 files byte-stable)
 ```
 
+## Done since (2026-10-07, part 3)
+
+- **Answer/Notice/Report formats** — `brain/persona/formats.py` + `tests/test_formats.py`
+  (deterministic classifier, per-format caps from `voice_personality`, screen/`private`
+  handling; no new frame — text rides `speak`/`subtitle`/`notice`).
+
 ## Not here (needs shared contracts — request first, per wave-5 rules)
 
-- Answer/Notice/Report **frame** wiring (`notice` frame emitters are brain-core's;
-  formats ride existing `speak`/`subtitle`/`notice` — no new frame needed).
-- Analysis/Simulation `task_kind` values (brain-core jobs + orb `shape_map`).
-- `minds[]` parallel-minds field on `orb_state` (integrator PROTOCOL + orb).
+Requests filed 2026-10-07: `task-kind-analysis-simulation` + `orb-state-minds-field` (integrator),
+`ciel-voice-reference-slot` (voice), `ciel-gold-palette` (orb).
+
+- Analysis/Simulation `task_kind` values + job-type implementation (brain-core jobs + orb `shape_map`).
+- `minds[]` parallel-minds field on `orb_state` (integrator PROTOCOL + orb renderer).
+- Ciel voice slot (voice) + gold palette delivery (orb).

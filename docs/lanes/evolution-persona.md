@@ -53,8 +53,17 @@ Wave 4 is MERGED + **GATE PASSED** (tag `wave-4-gate`, 10/10 lanes, mock 308 gre
     real derivation check (shadow/8911) + real subprocess pytest under RAPHAEL_INSTANCE=shadow, fail-closed
     promote compare (shadow/core-guard/transcript deltas; commit move alone passes); seed golden
     `brain/evolution/golden/open-youtube.json`. 63 tests green. Notes: docs/evolution/03-wave4-spikes.md § What landed (shadow/baseline).
-- [ ] Wave-5 leftovers needing shared contracts (request FIRST): Analysis/Simulation task_kind, minds[]
-  parallel-minds field, Ciel voice slot + gold palette (see docs/evolution/05 § Not here).
+- [x] Wave-5 leftovers needing shared contracts (request FIRST) — REQUESTS FILED 2026-10-07 + coord
+  `request` event posted: `evolution-persona__to__integrator__task-kind-analysis-simulation.md`,
+  `evolution-persona__to__integrator__orb-state-minds-field.md`,
+  `evolution-persona__to__voice__ciel-voice-reference-slot.md`,
+  `evolution-persona__to__orb__ciel-gold-palette.md`. Implementation of these four waits for owners'
+  decisions (per requests/README workflow).
+- [x] Answer/Notice/Report formats (own paths, no new frame needed) — DONE 2026-10-07:
+  `brain/persona/formats.py` deterministic classifier (question→Answer, proactive→Notice,
+  job_done+analysis/simulation/digest class→Report, else/degenerate→Answer), per-format sentence caps
+  from `voice_personality`, full detail on screen, private suppresses screen, never raises.
+  77 persona tests green. 
 - [ ] Wait for next coord ping (mode: exit) — at task start: `ls docs/requests/*__to__evolution-persona__*.md`.
 
 ## Later waves
