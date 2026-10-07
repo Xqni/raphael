@@ -8,7 +8,7 @@
       "scene": "idle",
       "blur": {
         "amount": 0.9,
-        "angle": 0.0030240000000031617,
+        "angle": 0.0030060000000021146,
         "taps": 4,
         "skipped": false,
         "reason": "on",
@@ -22,14 +22,14 @@
       "maxBorderAlpha": 0,
       "maxBorderRgb": 0,
       "maxAlpha": 25,
-      "litPixels": 4949,
+      "litPixels": 7776,
       "blurOn": true
     },
     {
       "scene": "speaking",
       "blur": {
         "amount": 0.9,
-        "angle": 0.009185000000006405,
+        "angle": 0.009239999999993599,
         "taps": 4,
         "skipped": false,
         "reason": "on",
@@ -43,32 +43,11 @@
       "maxBorderAlpha": 0,
       "maxBorderRgb": 0,
       "maxAlpha": 25,
-      "litPixels": 9188,
+      "litPixels": 11405,
       "blurOn": true
     },
     {
       "scene": "error",
-      "blur": {
-        "amount": 0.9,
-        "angle": 0.0030240000000031617,
-        "taps": 4,
-        "skipped": false,
-        "reason": "on",
-        "speed": 0.18000000000000113,
-        "reducedMotion": false,
-        "quality": "auto",
-        "config": "auto"
-      },
-      "w": 280,
-      "h": 280,
-      "maxBorderAlpha": 0,
-      "maxBorderRgb": 0,
-      "maxAlpha": 25,
-      "litPixels": 4089,
-      "blurOn": true
-    },
-    {
-      "scene": "paused",
       "blur": {
         "amount": 0.9,
         "angle": 0.0030060000000021146,
@@ -85,7 +64,28 @@
       "maxBorderAlpha": 0,
       "maxBorderRgb": 0,
       "maxAlpha": 25,
-      "litPixels": 1578,
+      "litPixels": 5032,
+      "blurOn": true
+    },
+    {
+      "scene": "paused",
+      "blur": {
+        "amount": 0.9,
+        "angle": 0.0030059999999968758,
+        "taps": 4,
+        "skipped": false,
+        "reason": "on",
+        "speed": 0.18000000000000113,
+        "reducedMotion": false,
+        "quality": "auto",
+        "config": "auto"
+      },
+      "w": 280,
+      "h": 280,
+      "maxBorderAlpha": 0,
+      "maxBorderRgb": 0,
+      "maxAlpha": 25,
+      "litPixels": 2963,
       "blurOn": true
     },
     {
@@ -106,7 +106,7 @@
       "maxBorderAlpha": 0,
       "maxBorderRgb": 0,
       "maxAlpha": 25,
-      "litPixels": 2415,
+      "litPixels": 4042,
       "blurOn": true
     }
   ],

@@ -295,3 +295,61 @@ state-machine 8/8 + orb-diff PASS   (exit 0)
 
 Verification: `npm run orb:trace` (gates) + `npm run orb:size` + `npm test`, plus a
 post-change vision QC on the regenerated screenshots.
+
+### §7 verification — vision QC + measured colour
+
+Vision QC (uncensored local VLM, on the regenerated screenshots):
+
+| check | verdict |
+|---|---|
+| black haze around the sun | **Gone** (all images) |
+| cage visibility (idle) | **10/10** — edges traceable, nodes crisp |
+| listening vs idle cages | **Brighter**, ice-blue shift visible |
+| cage shape per state | **different silhouettes**: idle/jobs = rounded ball · thinking = sharp octahedron · speaking = hexagonal prism · confirm = square/box prism |
+| thinking rings | **tilted/foreshortened** — orbits passing in front of and behind the core, not a flat plate |
+| flat 2D anywhere | **none**; the orbiting beads read as *shaded beads with depth*, not flat circles |
+| defects | none — no box, no clipping, no blown blob |
+
+Measured colour (per-channel hue histogram, pixels with v>150 and s>0.18):
+
+| state | saturated px | dominant hue | reading |
+|---|---|---|---|
+| idle | 27 | — (white) | plain white cage ✓ |
+| listening | 2665 | 180–210° **2343** | ice-blue ✓ |
+| thinking | 4197 | 210–240° **2817** | blue ✓ (tint then raised from `#bfd4ff` → `#7fa8ff`, see below) |
+| confirm | 3099 | 0–60° **2859 (92%)** | amber/gold ✓ — the vision pass initially read this as "no amber", the numbers disagreed and confirmed the original tint was right |
+| speaking | 5431 | 0–30° **3763** | saturated gold ✓ |
+
+One real fix came out of the QC: **thinking's cage tint was only 25% saturated**
+(`#bfd4ff`), so it sat visually inside the pale-blue Data Rings and read as
+"white with a glow". Raised to `#7fa8ff` (50% saturation) — the cage now reads
+as its own colour against the rings.
+
+### §7 — one test was wrong, not the product
+
+The full pipeline flagged `pointer_over_orb_takes_input` while the same check
+passed in isolation. Instrumenting instead of guessing (`window.__orbPointer()`
++ a record of the *last mousemove as the listener actually saw it*):
+
+```
+hit_test_decision:      dist=0 hitR=112.0 viewport=280x280 inside=true
+mousemove_listener_wired: listener saw clientX=195 clientY=59 dist=97.9 inside=true seen=6
+main_follows_renderer:  renderer.pointerInside=true -> main.mouseThrough=false
+```
+
+The window forwards real OS mouse events, so a genuine `mousemove` lands right
+after the synthetic one — it reported `clientX=17 clientY=157 dist=124.2`, i.e.
+correctly *outside*, and overwrote the harness's dispatch. **The hit-testing was
+never broken; the assertion was racing the physical cursor.** Rewritten to
+check the three things that are actually contracts and none of which depends on
+where the cursor happens to be:
+
+1. the decision function reads the geometry correctly,
+2. the `mousemove` listener is wired and computes the same answer
+   (`inside == dist <= hitR`),
+3. `main`'s `setIgnoreMouseEvents` is the exact opposite of the renderer's
+   `pointerInside` (consistency, not an absolute).
+
+Also fixed: `--only=<phase>` runs returned exit code 0 even when their own
+checks failed — they now set `process.exitCode = 1`.
+Result: **interaction PASS 16/16**.

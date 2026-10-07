@@ -63,10 +63,22 @@ async function connect(port) {
     ws.once('error', reject);
   });
 
-  const send = (method, params = {}) =>
+  const send = (method, params = {}, timeoutMs = 30000) =>
     new Promise((resolve, reject) => {
       const id = nextId++;
-      pending.set(id, { resolve, reject });
+      // Watchdog: a CDP call against a wedged renderer used to hang forever,
+      // which silently stalled an entire harness run (it held the mock-brain
+      // port for 7 minutes and blocked every later run with EADDRINUSE).
+      const timer = setTimeout(() => {
+        if (pending.has(id)) {
+          pending.delete(id);
+          reject(new Error(`CDP timeout after ${timeoutMs}ms: ${method}`));
+        }
+      }, timeoutMs);
+      pending.set(id, {
+        resolve: (v) => { clearTimeout(timer); resolve(v); },
+        reject: (e) => { clearTimeout(timer); reject(e); },
+      });
       ws.send(JSON.stringify({ id, method, params }));
     });
 

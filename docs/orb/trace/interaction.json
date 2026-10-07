@@ -26,15 +26,27 @@
       "pass": true
     },
     {
-      "name": "pointer_over_orb_takes_input",
+      "name": "hit_test_decision",
       "ok": true,
-      "detail": "inside=true main.mouseThrough=false",
+      "detail": "dist=0 hitR=112.0 viewport=280x280 inside=true typedOpen=false",
+      "pass": true
+    },
+    {
+      "name": "mousemove_listener_wired",
+      "ok": true,
+      "detail": "listener saw clientX=140 clientY=140 dist=0.0 inside=true seen=1 (expect inside == dist<=112)",
+      "pass": true
+    },
+    {
+      "name": "main_follows_renderer",
+      "ok": true,
+      "detail": "renderer.pointerInside=true -> main.mouseThrough=false (must be the exact opposite)",
       "pass": true
     },
     {
       "name": "pointer_away_releases_input",
       "ok": true,
-      "detail": "inside=false main.mouseThrough=true",
+      "detail": "dist=192.3 inside=false main.mouseThrough=true",
       "pass": true
     },
     {

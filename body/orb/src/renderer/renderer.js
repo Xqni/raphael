@@ -619,7 +619,11 @@ function getStateTint(s) {
   // with color changes as well") — every state now owns a tint, not just the
   // error/confirm/offline family.
   if (s === 'listening') return 0xcfeeff;         // ice blue: receiving
-  if (s === 'thinking') return 0xbfd4ff;          // cool lilac-blue: reasoning
+  if (s === 'thinking') return 0x7fa8ff;          // saturated blue: reasoning
+                                                 // (was 0xbfd4ff — only 25%
+                                                 // saturation, so the cage
+                                                 // read as plain white next to
+                                                 // the pale-blue data rings)
   if (s === 'reconnecting') return 0x58c4f2;
   if (s === 'offline') return 0x9aa5b1;           // desaturated grey (spec §3)
   if (s === 'acting') return 0xffd700;
@@ -1190,8 +1194,19 @@ function setPointerInside(v) {
   setMouseThrough(!v);
 }
 
+// Last mousemove as the listener actually SAW it — proves whether a synthetic
+// event carried its coordinates or arrived as 0/undefined (that ambiguity made
+// the hit-test check pass in isolation and fail in the full pipeline).
+const lastMove = { x: null, y: null, dist: null, inside: null, seen: 0 };
 window.addEventListener('mousemove', (ev) => {
-  setPointerInside(pointerOverOrb(ev));
+  const w = window.innerWidth, h = window.innerHeight;
+  const dx = ev.clientX - w / 2, dy = ev.clientY - h / 2;
+  lastMove.x = ev.clientX;
+  lastMove.y = ev.clientY;
+  lastMove.dist = Math.hypot(dx, dy);
+  lastMove.inside = pointerOverOrb(ev);
+  lastMove.seen++;
+  setPointerInside(lastMove.inside);
 });
 
 window.addEventListener('contextmenu', (ev) => {
@@ -1255,4 +1270,15 @@ window.__orbTyped = {
   isOpen: () => typedOpen, value: () => (typedInput ? typedInput.value : null),
   set: (v) => { if (typedInput) typedInput.value = v; },
 };
-window.__orbInteraction = () => ({ pointerInside, typedOpen, hitR: HIT_R });
+window.__orbInteraction = () => ({ pointerInside, typedOpen, hitR: HIT_R, lastMove: { ...lastMove } });
+// Direct probe of the SAME decision the mousemove listener makes, so a failure
+// can be told apart from a synthetic-event dispatch quirk.
+window.__orbPointer = (x, y) => {
+  const w = window.innerWidth, h = window.innerHeight;
+  const inside = pointerOverOrb({ clientX: x, clientY: y });
+  const before = pointerInside;
+  setPointerInside(inside);
+  return { x, y, w, h, hitR: HIT_R * Math.min(w, h),
+           dist: Math.hypot(x - w / 2, y - h / 2),
+           inside, before, pointerInside, typedOpen };
+};

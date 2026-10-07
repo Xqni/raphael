@@ -241,20 +241,44 @@ async function runInteraction(cdp, brain, rec) {
   add('menu_pause_is_checkbox', !!pauseItem && pauseItem.type === 'checkbox',
       pauseItem && `label="${pauseItem.label}" type=${pauseItem.type} action=${pauseItem.action}`);
 
-  // --- pointer hit-testing (renderer decision + what main actually applied) --
-  await cdp.evaluate("window.dispatchEvent(new MouseEvent('mousemove', { clientX: 140, clientY: 140 }))");
-  await sleep(250);
-  const inState = await cdp.evaluateJson('window.__orbInteraction()');
-  const inMain = await cdp.evaluateJson('window.raphael.instanceInfo()');
-  add('pointer_over_orb_takes_input', inState.pointerInside === true && inMain.mouseThrough === false,
-      `inside=${inState.pointerInside} main.mouseThrough=${inMain.mouseThrough}`);
+  // --- pointer hit-testing -------------------------------------------------
+  // A genuine OS mousemove can land at ANY moment (the window forwards them),
+  // and one did: the listener saw clientX=17 clientY=157 while the harness
+  // dispatched 140,140. So this checks the three things that are actually a
+  // contract, none of which depends on where the physical cursor happens to be:
+  //   1. the decision function reads the geometry right
+  //   2. the mousemove listener is wired and computes the same answer
+  //   3. main's setIgnoreMouseEvents tracks what the renderer decided
+  const direct = await cdp.evaluateJson('window.__orbPointer(140, 140)');
+  add('hit_test_decision', direct.inside === true && direct.pointerInside === true,
+      `dist=${direct.dist && direct.dist.toFixed(1)} hitR=${direct.hitR && direct.hitR.toFixed(1)} ` +
+      `viewport=${direct.w}x${direct.h} inside=${direct.inside} typedOpen=${direct.typedOpen}`);
 
-  await cdp.evaluate("window.dispatchEvent(new MouseEvent('mousemove', { clientX: 4, clientY: 4 }))");
-  await sleep(250);
-  const outState = await cdp.evaluateJson('window.__orbInteraction()');
-  const outMain = await cdp.evaluateJson('window.raphael.instanceInfo()');
-  add('pointer_away_releases_input', outState.pointerInside === false && outMain.mouseThrough === true,
-      `inside=${outState.pointerInside} main.mouseThrough=${outMain.mouseThrough}`);
+  await cdp.evaluate("window.dispatchEvent(new MouseEvent('mousemove', { clientX: 140, clientY: 140 }))");
+  await sleep(200);
+  const evState = await cdp.evaluateJson('window.__orbInteraction()');
+  const lm = evState.lastMove || {};
+  const hitPx = direct.hitR;
+  add('mousemove_listener_wired',
+      (lm.seen || 0) >= 1 && typeof lm.dist === 'number' &&
+      lm.inside === (lm.dist <= hitPx),
+      `listener saw clientX=${lm.x} clientY=${lm.y} dist=${lm.dist === null ? 'n/a' : lm.dist.toFixed(1)} ` +
+      `inside=${lm.inside} seen=${lm.seen} (expect inside == dist<=${hitPx && hitPx.toFixed(0)})`);
+
+  // main must mirror the renderer (consistency, not an absolute value — the
+  // physical cursor is free to move)
+  await cdp.evaluateJson('window.__orbPointer(140, 140)');
+  await sleep(300);
+  const followState = await cdp.evaluateJson('window.__orbInteraction()');
+  const followMain = await cdp.evaluateJson('window.raphael.instanceInfo()');
+  add('main_follows_renderer', followMain.mouseThrough === !followState.pointerInside,
+      `renderer.pointerInside=${followState.pointerInside} -> main.mouseThrough=${followMain.mouseThrough} ` +
+      `(must be the exact opposite)`);
+  const away = await cdp.evaluateJson('window.__orbPointer(4, 4)');
+  await sleep(300);
+  const awayMain = await cdp.evaluateJson('window.raphael.instanceInfo()');
+  add('pointer_away_releases_input', away.inside === false && awayMain.mouseThrough === true,
+      `dist=${away.dist && away.dist.toFixed(1)} inside=${away.inside} main.mouseThrough=${awayMain.mouseThrough}`);
 
   // --- double-click -> text box -> command(source: orb) ---------------------
   const before = commandsBefore();
@@ -457,6 +481,12 @@ async function main() {
       else if (ONLY_PHASE === 'interaction') await runInteraction(cdp, brain, rec);
       else throw new Error('unknown --only phase: ' + ONLY_PHASE);
       fs.writeFileSync(path.join(OUT, 'trace-partial.jsonl'), lines.join('\n') + '\n');
+      const only = lines.map((l) => { try { return JSON.parse(l); } catch (e) { return null; } })
+        .find((e) => e && e.ev === ONLY_PHASE);
+      if (only && only.pass === false) {
+        console.error(`[orb-trace] FAIL: ${ONLY_PHASE} checks did not hold`);
+        process.exitCode = 1;
+      }
       return;
     }
     // ^ NB: the stale-PNG cleanup at the top of main() must NOT run for a

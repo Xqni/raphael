@@ -75,6 +75,42 @@ Re-ticked against the item text as originally written, with real evidence
   PROTOCOL §3 only releases the input lock and would have left the job running
   — now `scope:'full'`.
 
+## User art feedback (2026-10-06) — 3D + anime vibe  ✅ all verified
+
+- [x] **Nothing should feel 2D / "3d + anime vibe":**
+      - orbiting beads were flat `CircleGeometry` → now shaded **spheres** with
+        the orbit plane tilted;
+      - morph lattice was `z = 0` everywhere → bent into a **two-wave lens**;
+      - Data Rings were coplanar ("a disk around the sun and inner cage") →
+        tilted hard enough to pass **in front of and behind** the core, the way
+        Speaking's Answer Mode glyph bands do;
+      - **cages change shape per state** — icosphere topology preserved,
+        vertices projected onto cube / triangular-pentagonal-hexagonal prism /
+        octahedron per `shape_hint`, lerped over 600 ms;
+      - **cages change colour per state** — every state now has a tint
+        (listening ice-blue, thinking lilac-blue added on top of the existing
+        gold/red/amber/grey family).
+- [x] **No black haze around the sun** — spec §4's legibility backing disc was
+      the cause; off via `config.d/orb.yaml` (`backing_disc_alpha: 0.0`), with
+      `docs/requests/orb__to__integrator__backing-disc-default-zero.md` open to
+      reconcile the base default + spec text.
+- [x] **Cages barely visible → brighter; listening even brighter** — the depth
+      term was pinned at its 0.35 floor (≈19% alpha) at this camera; re-centred
+      to ≈0.99 with a higher baseline (≈68% at idle), `S.listening.poly`
+      1.10 → 1.55 (≈88%).
+- [x] **Verified (2026-10-06, all green):** `orb:trace` PASS (interaction
+      16/16, distinctness 104 pairs noise 8.5e-6, startup 7/7, transparency
+      border alpha 0), `orb:size` PASS (12 combos, min coverage 63.7%, drift
+      5.2%), `npm test` PASS. Vision QC: haze **gone**, cage visibility
+      **10/10**, listening brighter + ice-blue, cage silhouettes differ per
+      state (ball / octahedron / hex-prism / box), rings **tilted** so they
+      pass in front of and behind the core, beads read as **shaded beads**,
+      no flat stickers, no defects.
+- Measured: thinking saturated px 4197→**5278** with blue (210-240°) = **3326
+      (63%)** and whiteish 2153→**1070** after raising the tint
+      `#bfd4ff → #7fa8ff`; confirm keeps **2858 px in the 0-60° gold band**.
+- Evidence: `docs/status/orb.md` §7.
+
 ## Later waves
 - Per docs/WAVES.md — do not start early (AGENT_RULES §11).
 
