@@ -414,3 +414,8 @@ land, the integrator re-runs the full six-criterion live gate for `wave-2-gate`.
 - **computer-use wave-3 MERGED** — Bug F lands (honest reachability-vs-privacy verdicts,
   blocklist on every observation, terminal-foreground tests, 1-probe speed). Queue plug
   cleared: orb(6) can now merge when its turn comes, then infra(7), qa(8).
+- **orb Bug C FIXED + verified** (npm PASS): pulse restored (seq guard removed), stuck
+  cages = morph target 144≠180 floats + pre-set shapeHint killing animate's morph — one
+  masked by pose-lock screenshots in the old matrix; flip latency 1ms. Notice banner
+  accepted (level-tinted, never a state). tools-memory: memory core (FTS5/BM25) +
+  skills/plugins gates done (41/58 tests green).
