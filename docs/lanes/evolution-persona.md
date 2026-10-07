@@ -46,7 +46,30 @@ Wave 3 is MERGED + **GATE PASSED** (tag `wave-3-gate`, all six criteria live, ac
 
 Wave 4 is MERGED + **GATE PASSED** (tag `wave-4-gate`, 10/10 lanes, mock 308 green). Wave-5 theme per WAVES.md: Raphael features — Answer/Notice/Report formats, Analysis, Simulation, parallel-minds visuals, persona tiers. Rule 15 speed mandate binds; shared-contract changes go through integrator requests. Carried items are noted in WAVES.md gate record (shadow row; C1+C2 residual).
 
-- [ ] PERSONA TIER IMPLEMENTATION (primary): great_sage -> raphael -> ciel tier behavior behind the wave-4 deep-merge switch (docs/evolution/04 = test plan), tier probation/probation-rollback semantics; shadow verification runs the moment brain-core's row lands.
+- [x] PERSONA TIER IMPLEMENTATION (primary) — DONE 2026-10-07: deny-by-default proactive zones +
+  unlock-criteria evaluator + probation lifecycle with automatic demotion (line-scoped `tier:` edit);
+  `brain/persona/{tiers,probation}.py`, 56 tests green, core guard OK. Notes: docs/evolution/05-tier-probation-impl.md.
+  - [x] Shadow verification (Wave-4 carry-over) — DONE 2026-10-07: `brain/evolution/{shadow,baseline}.py`,
+    real derivation check (shadow/8911) + real subprocess pytest under RAPHAEL_INSTANCE=shadow, fail-closed
+    promote compare (shadow/core-guard/transcript deltas; commit move alone passes); seed golden
+    `brain/evolution/golden/open-youtube.json`. 63 tests green. Notes: docs/evolution/03-wave4-spikes.md § What landed (shadow/baseline).
+- [x] Wave-5 leftovers needing shared contracts (request FIRST) — REQUESTS FILED 2026-10-07 + coord
+  `request` event posted: `evolution-persona__to__integrator__task-kind-analysis-simulation.md`,
+  `evolution-persona__to__integrator__orb-state-minds-field.md`,
+  `evolution-persona__to__voice__ciel-voice-reference-slot.md`,
+  `evolution-persona__to__orb__ciel-gold-palette.md`. Implementation of these four waits for owners'
+  decisions (per requests/README workflow).
+- [x] Answer/Notice/Report formats (own paths, no new frame needed) — DONE 2026-10-07:
+  `brain/persona/formats.py` deterministic classifier (question→Answer, proactive→Notice,
+  job_done+analysis/simulation/digest class→Report, else/degenerate→Answer), per-format sentence caps
+  from `voice_personality`, full detail on screen, private suppresses screen, never raises.
+  77 persona tests green. 
+- [x] **Wave 5 WAVE_DONE posted 2026-10-07** (final merge position 10). Integrator decisions on both
+  integrator contracts: **minds[] APPROVED as proposed**; **task_kind analysis|simulation + shape_map
+  APPROVED** (analysis:octagram, simulation:triangle added to config.yaml by integrator; job-type
+  engine implementation assigned to brain-core). Voice Ciel-slot + orb palette requests forwarded to
+  owners. Formats already key on the approved enum values.
+- [ ] Wait for next coord ping (mode: exit) — at task start: `ls docs/requests/*__to__evolution-persona__*.md`.
 
 ## Later waves
 - Per docs/WAVES.md — do not start early (AGENT_RULES §11).
