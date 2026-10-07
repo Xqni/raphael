@@ -365,6 +365,15 @@ async def dispatch(action: str, args: Any, *, lock: bool = False,
             res = {"ok": False,
                    "error": "E_TIMEOUT: action exceeded %.0fs"
                             % _timeout_s(timeout_ms)}
+        except asyncio.CancelledError:
+            # kill / disconnect mid-action (PROTOCOL §5): audit-log the
+            # interruption, then propagate — the outer finally still releases
+            # the input lock, so no hold dangles after a kill.
+            _log(job, action, norm,
+                 {"ok": False,
+                  "error": "E_CANCELLED: action interrupted (disconnect/kill)"},
+                 t0, held)
+            raise
         except winlayer.BackendError as e:
             res = {"ok": False, "error": "E_INTERNAL: %s" % str(e)[:200]}
         except (ValueError, TypeError) as e:

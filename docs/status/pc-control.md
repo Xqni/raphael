@@ -164,3 +164,35 @@ $ pytest brain                                    431 passed, 4 skipped
 **Blocked/next:** waiting for merge (pc-control is next after brain-core),
 then the coord ping for the next task. The `--live` Windows re-verification of
 Bug B (real "open YouTube and search lo-fi") stays the integrator's gate step.
+
+## 2026-10-07 — Wave 4: act-layer hardening — DONE
+
+**What shipped:**
+1. `body/win/failure_cases.py` — per-tool failure tables (INVALID_ARGS,
+   CRASH_CASES) shared by unit tests and the E2E harness (one source of
+   truth for the partial-failure matrix).
+2. Dispatcher: `E_CANCELLED` audit line when a kill/disconnect interrupts an
+   in-flight action (PROTOCOL §5) — lock release already in `finally`,
+   now proven by test; act_res truthfulness holds under cancel too.
+3. `test_pc_failure_matrix.py` — for all 17 tools: invalid args → E_BAD_MSG
+   with **zero OS calls**; locked → exact E_LOCK_BUSY + queued, side-effect
+   free; backend crash → E_INTERNAL + failing call observable + lock
+   released + **recovery dispatch succeeds**; plus timeout-release and
+   cancel-release+audit. **54 passed.**
+4. `e2e_control.py` injection phase — same three matrices through the real
+   `handle_message` path + timeout drill. **123 checks PASS, 0 failures.**
+5. FakeWin: `delays` knob (timeout injection).
+
+**Tests (real, one suite at a time per Rule 14):**
+```
+$ pytest body/win/tests/test_pc_failure_matrix.py    54 passed
+$ pytest body/win/tests                             139 passed
+$ pytest tests                                     197 passed, 9 xfailed
+$ python3 body/win/e2e_control.py          123 PASS / 0 FAIL
+$ pytest brain                       615 passed, 2 failed (see below)
+```
+Brain-suite failures are `brain/memory/tests/{test_tools_files,
+test_tools_shell}` (tools-memory lane): they PASS in isolation, and a
+throwaway worktree of clean `origin/main` (1485836) fails the same 2 PLUS
+`brain/vision` (3 failed there) → pre-existing on main, NOT pc-control.
+Worktree removed after the check.

@@ -191,6 +191,69 @@ async def mock_suite() -> int:
                    'result'} <= set(l) for l in parsed))
         check('action-log:instance-field',
               all(l['instance'] == instance.instance_name() for l in parsed))
+
+        # ---- Wave-4 failure injection: EVERY tool x {missing-denied,
+        # locked, backend crash} + timeout, each followed by a recovery
+        # dispatch (act_res always truthful, body always reusable).
+        from body.win.failure_cases import CRASH_CASES, INVALID_ARGS, crash_args
+        import tempfile
+
+        crash_dir = pathlib.Path(tempfile.mkdtemp(prefix='raphael-e2e-crash-'))
+        try:
+            for i, (action, bad) in enumerate(sorted(INVALID_ARGS.items())):
+                before = len(fake.events)
+                res = await _act(ws, action, bad, True, 'e2e_inv_%d' % i)
+                check('inject:invalid:%-15s' % action,
+                      res.get('ok') is False
+                      and str(res.get('error', '')).startswith('E_BAD_MSG')
+                      and len(fake.events) == before, str(res)[:160])
+
+            assert await automation.acquire_input_lock(0.05)
+            try:
+                for i, action in enumerate(sorted(INVALID_ARGS)):
+                    _, args = crash_args(action, crash_dir)
+                    before = len(fake.events)
+                    res = await _act(ws, action, args, True, 'e2e_lock_%d' % i)
+                    check('inject:locked:%-16s' % action,
+                          res.get('ok') is False
+                          and res.get('error') == 'E_LOCK_BUSY'
+                          and res.get('queued') is True
+                          and len(fake.events) == before, str(res)[:160])
+            finally:
+                automation.release_input_lock()
+
+            for i, action in enumerate(sorted(CRASH_CASES)):
+                method, args = crash_args(action, crash_dir)
+                fake.fail_methods.add(method)
+                lock = actions.get_action(action).needs_lock
+                try:
+                    res = await _act(ws, action, args, lock,
+                                     'e2e_crash_%d' % i)
+                    check('inject:crash:%-17s' % action,
+                          res.get('ok') is False
+                          and str(res.get('error', '')).startswith('E_INTERNAL')
+                          and not automation.lock_held(), str(res)[:160])
+                finally:
+                    fake.fail_methods.discard(method)
+                rec = await _act(ws, 'foreground_info', {}, False,
+                                 'e2e_recover_%d' % i)
+                check('recover:%-18s' % action, rec.get('ok') is True,
+                      str(rec)[:120])
+
+            fake.delays['clipboard_set'] = 0.6
+            try:
+                res = await _act(ws, 'clipboard',
+                                 {'op': 'write', 'text': 'slow'}, True,
+                                 'e2e_slow', timeout_ms=100)
+                check('inject:timeout',
+                      res.get('ok') is False
+                      and str(res.get('error', '')).startswith('E_TIMEOUT')
+                      and not automation.lock_held(), str(res)[:160])
+            finally:
+                fake.delays.clear()
+        finally:
+            import shutil
+            shutil.rmtree(crash_dir, ignore_errors=True)
     finally:
         winlayer.reset_backend()
         try:
