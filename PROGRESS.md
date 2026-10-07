@@ -403,3 +403,8 @@ land, the integrator re-runs the full six-criterion live gate for `wave-2-gate`.
 - **pc-control merged (wave 3)** — Bug B body half lands: no-console spawns, act_res
   always answered, stage-count errors, 17 tools schema-offered. Merge order: router ✓,
   brain-core ✓ (follow-up goal 3 in progress), pc-control ✓ → voice next.
+- **brain-core wave-3 follow-up merged** — goal 3 Notice events live (approved scope;
+  integrator co-signed the 6-line ws.py flush hook; brain/notice.py ownership granted).
+  brain-core wave COMPLETE (all 3 goals + P0s + 2 requests). Conversation-hook ts fix
+  landed (tools-memory had accepted). Queue: voice (pos 4) next, then computer-use, orb,
+  infra, qa, tools-memory (started prep), evolution-persona.
