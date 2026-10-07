@@ -29,8 +29,14 @@ Merge-order position: see docs/WAVES.md
 
 Wave 2 is MERGED; live gate was 3/5 — evidence + bug dossiers: `docs/BUGS-WAVE2.md`. SPEED MANDATE: cloud is paid now — near-instant responses, fast model defaults (AGENT_RULES Rule 15, WAVES.md constraints).
 
-- [P0-BugG] Bring-up/teardown pid hygiene (docs/BUGS-WAVE2.md Bug G): stale pid files made `kill $(cat /tmp/raphael-brain.pid)` silently no-op and `raphael stop` call a LIVE supervisor "dead" (WSL cannot see Windows pids) — resolve real pids via `ss -tlnp` / PowerShell side; supervisor must track the ACTUAL orb pid (integrator relaunched orb manually during E2E — next bring-up is supervisor-only). Ensure stop() leaves ZERO processes on both sides.
-- [SPEED] Supervisor restart/reconnect loops stay tight — no long backoffs in normal operation (Rule 15).
+- [x] [P0-BugG] Bring-up/teardown pid hygiene (docs/BUGS-WAVE2.md Bug G): stale pid files made `kill $(cat /tmp/raphael-brain.pid)` silently no-op and `raphael stop` call a LIVE supervisor "dead" (WSL cannot see Windows pids) — resolve real pids via `ss -tlnp` / PowerShell side; supervisor must track the ACTUAL orb pid (integrator relaunched orb manually during E2E — next bring-up is supervisor-only). Ensure stop() leaves ZERO processes on both sides.
+      → kill shell now layers pidfile → **`ss -tlnp` port resolution** (cmdline-verified) → guarded pgrep (relative AND absolute venv paths); `_pid_exists` probes **both namespaces** on WSL (`os.kill` + `tasklist.exe`); supervisor pidfile carries a `side=windows|linux` marker (legacy single-line files: a Windows pid is taskkill-verified via PowerShell CommandLine first — **refuses** unverified pids); `stop_wsl_side()` tears down orb (cwd-verified to this repo), the instance-scoped relay helper and keepalive loops, and self-reports survivors (exit 1) — `raphael stop` fails unless the endpoint is down AND wsl-side is clean; `launch_orb` **adopts** an already-running orb (no double-spawn) + writes `~/.raphael[/inst]/orb.pid`; heartbeat resolves the REAL electron pid (one wsl round-trip per heartbeat, never per tick). Tests: `supervisor/tests/test_bug_g_pid_hygiene.py` (16) + updated lifecycle/CLI tests.
+- [x] [SPEED] Supervisor restart/reconnect loops stay tight — no long backoffs in normal operation (Rule 15).
+      → `backoff_cap` 300 s → **60 s**, PERMANENT_ERROR `slow_interval` 60 s → **15 s** (base 5 s / health tick 5 s / heartbeat 300 s unchanged; contracts pin no numbers — verified against PROTOCOL/ARCHITECTURE); recovery PROBES stay at 5 s, only restart issuance/backoff changed. Pinned by `test_speed_defaults_no_long_backoffs`.
+
+### Wave 3 follow-ups (2026-10-07)
+
+- [x] Answered qa-security's two OPEN requests with post-merge evidence (both tripwires now XPASS): `qa-security__to__infra__ollama-profile-gate` (DONE), `qa-security__to__infra__instance-derivation` (DONE — infra slice; residual xfail = `brain/app.py` literal, brain-core's split).
 
 ## Later waves
 - Per docs/WAVES.md — do not start early (AGENT_RULES §11).

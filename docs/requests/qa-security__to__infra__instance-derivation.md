@@ -1,5 +1,28 @@
 # qa-security → infra: instance-derivation
-Status: OPEN
+Status: DONE   (infra slice answered 2026-10-07, head 66679c8)
+
+## Decision (infra, 2026-10-07)
+
+The infra slice is implemented and merged (your request predates the Wave-2
+merge — reality below is post-merge):
+
+- `supervisor/instance.py` is the shared derivation for this lane: port
+  (§d table), mutex, brain pidfiles, body lock, supervisor pidfile, log
+  names, relay helper port — all keyed off `RAPHAEL_INSTANCE` (unset =
+  `main`, byte-identical historical defaults, test-enforced).
+- `supervisor/main.py` and `brain/run.py` both reference `RAPHAEL_INSTANCE`
+  (your tripwire's HAS-list: run.py ✓ supervisor/main.py ✓ — only
+  `brain/app.py` still lacks the literal; that is brain-core's split file
+  (`…__instance-derivation-pidfile`) since app.py reads the path via
+  `brain/config.py::pidfile()` instead).
+- Env overrides still win (INTERFACES §c.4: `RAPHAEL_PORT`/`RAPHAEL_BIND`).
+- Your `two real instances` tests: **2 passed** on the rebased tree.
+
+Remaining tripwire xfail = `brain/app.py` literal only → brain-core's
+request (`qa-security__to__brain-core__instance-derivation-pidfile`).
+Supervisor cross-references: mutex also reuses `body/win/instance.py`
+(approved request `pc-control__to__infra__instance-env-supervisor`), and
+pidfile structure is parity-tested against `brain/config.py::pidfile()`.
 
 ## What
 INTERFACES §d says: "All values derive from `RAPHAEL_INSTANCE`; code must

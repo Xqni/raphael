@@ -298,6 +298,7 @@ def test_stop_idempotent_when_everything_down(brain, capsys, monkeypatch,
     stopped = []
     monkeypatch.setattr(sup, "stop_brain",
                         lambda cfg, log: stopped.append(True) or False)
+    monkeypatch.setattr(sup, "stop_wsl_side", lambda cfg, log: True)
     ctx = make_ctx(brain, dead=True)             # endpoint refused
     rc = cli.cmd_stop(ctx, parse(["stop"]))
     out = capsys.readouterr().out
@@ -311,17 +312,34 @@ def test_stop_reports_brain_kill(capsys, monkeypatch, tmp_path, brain):
                         lambda inst=None, root=None: tmp_path / "nope.pid")
     monkeypatch.setattr(sup, "stop_brain",
                         lambda cfg, log: True)    # pretend kill issued
+    monkeypatch.setattr(sup, "stop_wsl_side", lambda cfg, log: True)
     ctx = make_ctx(brain, dead=True)
     rc = cli.cmd_stop(ctx, parse(["stop"]))
     out = capsys.readouterr().out
     assert rc == cli.EXIT_OK
-    assert "brain stopped (pidfile + cmdline verified)" in out
+    assert "brain stopped (pidfile/ss/cmdline verified)" in out
+    assert "wsl-side teardown: clean" in out
+
+
+def test_stop_fails_if_wsl_side_leftovers(brain, tmp_path, capsys,
+                                          monkeypatch):
+    monkeypatch.setattr(im, "supervisor_pidfile",
+                        lambda inst=None, root=None: tmp_path / "nope.pid")
+    monkeypatch.setattr(sup, "stop_brain", lambda cfg, log: True)
+    monkeypatch.setattr(sup, "stop_wsl_side",   # survivor report
+                        lambda cfg, log: False)
+    ctx = make_ctx(brain, dead=True)
+    rc = cli.cmd_stop(ctx, parse(["stop"]))
+    out = capsys.readouterr().out
+    assert rc == cli.EXIT_FAIL                    # endpoint down BUT leftovers
+    assert "LEFTOVERS" in out
 
 
 def test_stop_fails_if_brain_survives(brain, tmp_path, capsys, monkeypatch):
     monkeypatch.setattr(im, "supervisor_pidfile",
                         lambda inst=None, root=None: tmp_path / "nope.pid")
     monkeypatch.setattr(sup, "stop_brain", lambda cfg, log: True)
+    monkeypatch.setattr(sup, "stop_wsl_side", lambda cfg, log: True)
     ctx = make_ctx(brain, tmp_path / "token")    # endpoint STILL answers
     rc = cli.cmd_stop(ctx, parse(["stop"]))
     out = capsys.readouterr().out

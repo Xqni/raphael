@@ -326,28 +326,54 @@ def _pid_exists(pid):
     return sup._pid_exists(int(pid))
 
 
-def _read_pidfile(path):
-    try:
-        return int(Path(path).read_text().strip())
-    except (OSError, ValueError):
-        return None
-
-
 def _kill_windows_tree(pid, label, actions):
-    """Graceful tree kill first, forced after a grace period (Windows)."""
-    subprocess.run(["taskkill", "/PID", str(pid), "/T"],
-                   capture_output=True, timeout=15)
+    """Graceful tree kill first, forced after a grace period.
+
+    Uses taskkill.exe explicitly so it works BOTH on Windows and from
+    inside WSL via interop (Bug G: stopping a Windows supervisor from the
+    WSL-side CLI)."""
+    tk = "taskkill.exe"
+    try:
+        subprocess.run([tk, "/PID", str(pid), "/T"],
+                       capture_output=True, timeout=15)
+    except (OSError, subprocess.SubprocessError) as exc:
+        actions.append("%s kill failed: %s" % (label, exc))
+        return False
     for _ in range(8):
         if not _pid_exists(pid):
             actions.append("%s pid=%s stopped" % (label, pid))
             return True
         time.sleep(0.5)
-    subprocess.run(["taskkill", "/PID", str(pid), "/T", "/F"],
-                   capture_output=True, timeout=15)
+    try:
+        subprocess.run([tk, "/PID", str(pid), "/T", "/F"],
+                       capture_output=True, timeout=15)
+    except (OSError, subprocess.SubprocessError):
+        pass
     alive = _pid_exists(pid)
     if not alive:
         actions.append("%s pid=%s stopped (forced)" % (label, pid))
     return not alive
+
+
+def _verify_windows_supervisor(pid):
+    """Legacy single-line pidfile seen from WSL: is this Windows pid REALLY
+    our supervisor? (Never taskkill an unverified pid — Bug G safety.)
+    True / False / None = unknown (powershell unavailable)."""
+    try:
+        proc = subprocess.run(
+            ["powershell.exe", "-NoProfile", "-Command",
+             "(Get-CimInstance Win32_Process -Filter "
+             "'ProcessId=%d').CommandLine" % int(pid)],
+            capture_output=True, timeout=15)
+    except (OSError, subprocess.SubprocessError, ValueError):
+        return None
+    if proc.returncode != 0:
+        return None
+    text = sup._decode(proc.stdout).strip()
+    if not text or text.lower() == "none":
+        return False                          # no such process anymore
+    low = text.lower()
+    return "supervisor" in low and "main.py" in low
 
 
 def _spawn_supervisor(ctx):
@@ -437,54 +463,102 @@ def cmd_start(ctx, args):
     return EXIT_DOWN
 
 
-def cmd_stop(ctx, args):
-    actions = []
-    # 1. supervisor first (the watchdog must not respawn anything)
-    sup_pidfile = inst_mod.supervisor_pidfile()
-    pid = _read_pidfile(sup_pidfile)
-    if pid and _pid_exists(pid):
-        if IS_WINDOWS:
-            _kill_windows_tree(pid, "supervisor", actions)
-        else:
-            try:
-                os.kill(pid, 15)               # SIGTERM -> clean finally
-                actions.append("supervisor pid=%s signaled (SIGTERM)" % pid)
-            except OSError as exc:
-                actions.append("supervisor kill failed: %s" % exc)
+def _stop_supervisor_pid(pid, side, actions):
+    """Side-aware supervisor stop (Bug G). Returns 'stopped'|'stale'|'alive'
+    |'refused'. `side` comes from the pidfile marker (new format); legacy
+    single-line files (side=None) are probed conservatively — a Windows pid
+    is only taskkilled after its CommandLine is verified as our supervisor."""
+    # marker says linux: trust it (degraded supervisor runs inside WSL)
+    if side == "linux" or (side is None and not IS_WINDOWS
+                           and sup._linux_pid_exists(pid)):
+        try:
+            os.kill(pid, 15)                  # SIGTERM -> clean finally
+            actions.append("supervisor pid=%s signaled (SIGTERM)" % pid)
+        except OSError as exc:
+            actions.append("supervisor kill failed: %s" % exc)
         for _ in range(10):
             if not _pid_exists(pid):
-                break
+                return "stopped"
             time.sleep(0.3)
-        if _pid_exists(pid):
-            print("supervisor pid=%s still alive — investigate manually"
-                  % pid)
-    elif pid:
-        actions.append("supervisor pidfile stale (pid %s dead) — removed" % pid)
+        return "alive" if _pid_exists(pid) else "stopped"
+    # windows pid (marker, Windows host, or WSL-visible leftover)
+    if IS_WINDOWS or side == "windows":
+        return "stopped" if _kill_windows_tree(pid, "supervisor",
+                                               actions) else "alive"
+    if side is None:
+        if not _pid_exists(pid):
+            return "stale"
+        verdict = _verify_windows_supervisor(pid)
+        if verdict is not True:
+            actions.append(
+                "WARNING: legacy pidfile pid=%s — Windows identity not "
+                "verified (%s); REFUSING taskkill (Bug G safety). Remove "
+                "%s manually if it is stale."
+                % (pid, {None: "unknown", False: "not our supervisor"}[
+                    verdict], inst_mod.supervisor_pidfile()))
+            return "refused"
+    return "stopped" if _kill_windows_tree(pid, "supervisor",
+                                           actions) else "alive"
+
+
+def cmd_stop(ctx, args):
+    actions = []
+    # 1. supervisor first (the watchdog must not respawn anything) —
+    #    side-aware pidfile handling (Bug G: WSL cannot see Windows pids
+    #    and vice versa; stale pids must not fake a 'dead' supervisor).
+    pid, side, sup_pidfile, stale = sup.read_supervisor_pidfile()
+    if stale:
+        actions.append("supervisor pidfile corrupt/empty — removed")
         try:
             sup_pidfile.unlink()
         except OSError:
             pass
+    elif pid:
+        outcome = _stop_supervisor_pid(pid, side, actions)
+        if outcome == "stale":
+            actions.append("supervisor pidfile stale (pid %s dead) — removed"
+                           % pid)
+            try:
+                sup_pidfile.unlink()
+            except OSError:
+                pass
+        elif outcome == "alive":
+            print("supervisor pid=%s still alive — investigate manually" % pid)
 
-    # 2. brain (pidfile + cmdline verified — same shell the supervisor uses)
+    # 2. brain (pidfile + ss-port resolved + cmdline verified)
     if sup.stop_brain(ctx.cfg, ctx.logger):
-        actions.append("brain stopped (pidfile + cmdline verified)")
+        actions.append("brain stopped (pidfile/ss/cmdline verified)")
 
-    # 3. orphan body (Windows): supervisor tree-kill normally covers it
-    if IS_WINDOWS:
-        bpid = sup._external_body_pid()
-        if bpid and _pid_exists(bpid):
-            _kill_windows_tree(bpid, "body", actions)
+    # 3. WSL side: orb (cwd-verified), this instance's relay helper,
+    #    keepalive loops — zero-survivor report (Bug G). The line joins the
+    #    action list only when something was found/stopped (keeps the
+    #    idempotent "nothing running" path honest).
+    wsl_clean = sup.stop_wsl_side(ctx.cfg, ctx.logger)
+    if not wsl_clean:
+        actions.append("wsl-side teardown: LEFTOVERS (see supervisor log)")
+    elif actions:
+        actions.append("wsl-side teardown: clean")
 
-    # 4. verify the endpoint actually went down
+    # 4. orphan body (Windows pid — probe works from both hosts now)
+    bpid = sup._external_body_pid()
+    if bpid and _pid_exists(bpid):
+        _kill_windows_tree(bpid, "body", actions)
+
+    # 5. verify the endpoint actually went down AND wsl side is clean
     down = _wait_health(ctx, "down")
     for line in actions:
         print(line)
     if down is None:
+        if not wsl_clean:
+            print("WARNING: %s is down but wsl-side leftovers remain — "
+                  "see logs/supervisor.log (Bug G report)" % ctx.base)
+            return EXIT_FAIL
         if not actions:
             print("nothing running (idempotent stop) — %s already down"
                   % ctx.base)
         else:
-            print("stack stopped — %s is refusing connections" % ctx.base)
+            print("stack stopped — %s refusing connections, wsl side clean"
+                  % ctx.base)
         return EXIT_OK
     print("WARNING: %s still answering (HTTP %s) after stop — check "
           "logs/supervisor.log and running processes" % (ctx.base, down))
