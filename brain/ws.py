@@ -716,7 +716,8 @@ class WsHub:
         except Exception:  # noqa: BLE001
             print(f"[ws] audio_end: {len(buf)}B reason={reason}", flush=True)
         
-        from brain.voice import get_voice, stt_final_frame, error_frame, VoiceSTTError
+        from brain.voice import (get_voice, stt_final_frame, error_frame,
+                                 stt_outage_subtitle, VoiceSTTError)
         voice = get_voice()
         
         try:
@@ -766,9 +767,30 @@ class WsHub:
         except VoiceSTTError as e:
             orbstate.mark_error()
             self.broadcast(error_frame(e.code, e.detail), roles={'body', 'ui'})
+            # STT-outage subtitle (voice request APPROVED 2026-10-07): the
+            # utterance must never vanish silently. Helper encodes the §10
+            # surfaceable-code rule; None for fatal/internal codes so raw
+            # detail never reaches the screen. Guard keeps old behavior if
+            # the helper ever regresses.
+            try:
+                _notice = stt_outage_subtitle(e.code, e.detail)
+            except Exception:  # noqa: BLE001
+                _notice = None
+            if _notice:
+                self.broadcast({'type': 'subtitle', 'v': 1, 'job': None,
+                                'text': _notice, 'fade_ms': 6000},
+                               roles={'ui', 'cli'})
         except Exception as e:
             orbstate.mark_error()
             self.broadcast(error_frame('E_INTERNAL', str(e)), roles={'body', 'ui'})
+            try:
+                _notice = stt_outage_subtitle('E_INTERNAL', str(e))
+            except Exception:  # noqa: BLE001
+                _notice = None
+            if _notice:
+                self.broadcast({'type': 'subtitle', 'v': 1, 'job': None,
+                                'text': _notice, 'fade_ms': 6000},
+                               roles={'ui', 'cli'})
 
         self.refresh_orb_state()
         await self._send(s, {'type': 'ack', 'v': 1, 'audio': 'end'})

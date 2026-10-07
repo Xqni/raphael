@@ -802,3 +802,76 @@ def test_conversation_hook_offers_turns_to_memory(token_path, fake_chat,
                     and m.get('status') == 'done' and m.get('job') == job)
                 assert done['text'] == 'Still fine.'
 
+
+
+# ---- voice STT-outage subtitle (APPROVED 2026-10-07) ------------------------
+def _mic_bytes(ws):
+    import struct
+    ws.send_bytes(b'RAPH' + struct.pack('>BI', 1, 1) + b'\x00\x00' * 1600)
+    ws.send_text(json.dumps({'type': 'audio_end', 'v': 1}))
+
+
+def test_stt_outage_broadcasts_surfaceable_subtitle(token_path, monkeypatch):
+    """An STT outage must not swallow the utterance silently: the §10
+    surfaceable-code notice reaches ui+cli; error_frame still reaches body+ui."""
+    from brain.voice import VoiceSTTError, get_voice
+
+    def boom(buf, sample_rate=None, reason=None):
+        raise VoiceSTTError('E_OFFLINE', 'groq whisper unreachable')
+
+    monkeypatch.setattr(get_voice(), 'transcribe_result', boom)
+    with TestClient(app) as client:
+        with client.websocket_connect('/ws') as ws_ui:
+            assert _auth(ws_ui, 'ui')['type'] == 'auth_ok'
+            with client.websocket_connect('/ws') as ws_cli:
+                assert _auth(ws_cli, 'cli')['type'] == 'auth_ok'
+                with client.websocket_connect('/ws') as ws_body:
+                    assert _auth(ws_body, 'body')['type'] == 'auth_ok'
+                    _mic_bytes(ws_body)
+                    # body: the typed error frame
+                    err, _ = _recv_until(ws_body, lambda m: m.get('type') == 'error')
+                    assert err['code'] == 'E_OFFLINE'
+                    # ui: error frame AND the human subtitle
+                    sub, _ = _recv_until(ws_ui, lambda m: m.get('type') == 'subtitle'
+                                         and 'Voice input unavailable' in m.get('text', ''))
+                    assert 'E_OFFLINE' in sub['text'] and sub['job'] is None
+                    # cli: subtitle only (error_frame is body+ui)
+                    sub2, _ = _recv_until(ws_cli, lambda m: m.get('type') == 'subtitle'
+                                          and 'Voice input unavailable' in m.get('text', ''))
+                    assert sub2['fade_ms'] == 6000
+                    # body must NOT receive the ui/cli outage subtitle
+                    try:
+                        extra = _recv_json(ws_body, timeout=1.0)
+                        assert extra.get('type') != 'subtitle', extra
+                    except Exception:  # noqa: BLE001 — no further frames = pass
+                        pass
+
+
+def test_stt_fatal_code_sends_no_subtitle(token_path, monkeypatch):
+    """Non-surfaceable codes (fatal/internal) keep today's behavior: error
+    frame only — raw detail never becomes a subtitle."""
+    from brain.voice import VoiceSTTError, get_voice
+
+    def boom(buf, sample_rate=None, reason=None):
+        raise VoiceSTTError('E_AUTH', 'raw provider detail must not surface')
+
+    monkeypatch.setattr(get_voice(), 'transcribe_result', boom)
+    with TestClient(app) as client:
+        with client.websocket_connect('/ws') as ws_ui:
+            assert _auth(ws_ui, 'ui')['type'] == 'auth_ok'
+            with client.websocket_connect('/ws') as ws_body:
+                assert _auth(ws_body, 'body')['type'] == 'auth_ok'
+                _mic_bytes(ws_body)
+                err, _ = _recv_until(ws_body, lambda m: m.get('type') == 'error')
+                assert err['code'] == 'E_AUTH'
+                seen = []
+                try:
+                    # wide harvest: auth/refresh orb_states queue up before
+                    # the error frame — read until the stream goes quiet
+                    for _ in range(8):
+                        seen.append(_recv_json(ws_ui, timeout=1.0))
+                except Exception:  # noqa: BLE001 — timeout ends the harvest
+                    pass
+                subtitles = [m for m in seen if m.get('type') == 'subtitle']
+                assert subtitles == [], subtitles
+                assert any(m.get('type') == 'error' for m in seen), seen

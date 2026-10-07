@@ -47,6 +47,9 @@ _INSTANCES = [
     ('qa-security', 8908, 8),
     ('tools-memory', 8909, 9),
     ('evolution-persona', 8910, 10),
+    # shadow = evolution's verification instance (NOT a lane; APPROVED
+    # 2026-10-07, evolution-persona request — purely additive row)
+    ('shadow', 8911, 11),
 ]
 _PORT_BY_INSTANCE = {name: port for name, port, _ in _INSTANCES}
 _INDEX_BY_INSTANCE = {name: idx for name, _, idx in _INSTANCES}

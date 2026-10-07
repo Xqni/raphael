@@ -76,6 +76,7 @@ Set `RAPHAEL_INSTANCE=<lane>` for every lane process/test run. **Unset = `main` 
 | `qa-security` | 8908 | `~/.raphael/qa-security/brain.pid` | `…_qa-security.lock` | `…_qa-security` | `~/.raphael/qa-security/orb/` | 9408 | `~/.raphael/qa-security/` |
 | `tools-memory` | 8909 | `~/.raphael/tools-memory/brain.pid` | `…_tools-memory.lock` | `…_tools-memory` | `~/.raphael/tools-memory/orb/` | 9409 | `~/.raphael/tools-memory/` |
 | `evolution-persona` | 8910 | `~/.raphael/evolution-persona/brain.pid` | `…_evolution-persona.lock` | `…_evolution-persona` | `~/.raphael/evolution-persona/orb/` | 9410 | `~/.raphael/evolution-persona/` |
+| `shadow` | 8911 | `~/.raphael/shadow/brain.pid` | `…_shadow.lock` | `…_shadow` | `~/.raphael/shadow/orb/` | 9411 | `~/.raphael/shadow/` |
 
 Format for derived names: **brain pidfile = `<data-dir>/brain.pid`** (moved out of world-writable `/tmp` — `brain/config.py::pidfile()` is the single source, **implemented on `agent/brain-core`, lands at its merge**; `main` keeps dual-writing the legacy `/tmp/raphael-brain.pid` as supervisor's read/remove fallback; integrator decision 2026-10-06 on `infra__to__integrator__pidfile-location.md` + `brain-core__to__integrator__pidfile-out-of-tmp.md`, both branches: agent/infra and agent/brain-core, not yet in main), `<main-name>_<instance>` (body lock / supervisor mutex), `9400 + lane index` (CDP), `~/.raphael/<instance>/` (data-dir: memory DB, orb userData, logs, `brain.pid`, token).
 
