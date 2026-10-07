@@ -504,6 +504,59 @@ class TTSEngine:
         self.fish = FishSpeechServer(self.cfg)
         self.stats = SpeakStreamStats()
         self._notice_shown = False      # degraded-mode notice: ONCE per process
+        # fish-death recovery state (Wave 4 failure modes) — per-speak flags
+        self._recovery_attempted = False
+        self._recovered_this_speak = False
+        self._recovery_notice_shown = False
+
+    # -- fish death mid-speak recovery (Wave 4) ------------------------------
+    async def _restart_fish(self, timeout_s: float = 90.0) -> bool:
+        """ONE restart attempt when fish dies mid-speak.
+
+        Ownership rule (Rule 14 / INTERFACES §d): we stop a process only if
+        `fish.proc` says WE spawned it — an externally-managed server (live
+        stack, supervisor) is never killed, only re-checked and reused.
+        Bounded timeout: mid-speak recovery must not hang the job.
+        """
+        if self._recovery_attempted:
+            return False
+        self._recovery_attempted = True
+        try:
+            if self.fish.proc is not None:
+                _log("[tts] fish died mid-speak -> restarting OUR process")
+                self.fish.stop()
+        except Exception:  # noqa: BLE001 — restart must never raise into speak()
+            pass
+        try:
+            await self.fish.ensure_started(timeout_s=timeout_s)
+            _log("[tts] fish recovery OK (mid-speak restart)")
+            return True
+        except TTSError as e:
+            self.fish.last_error = str(e)
+            _log(f"[tts] fish recovery FAILED: {e.code} {e.detail[:200]}")
+            return False
+
+    async def _synthesize_resilient(self, sentence: str) -> bytes:
+        """Synthesize one sentence with ONE restart+retry on engine death.
+        Reference errors are never retried (a restart cannot fix a missing
+        reference — that must fail loud, Bug D)."""
+        try:
+            return await self.fish.synthesize(sentence)
+        except TTSError as e:
+            if "reference" in e.detail:
+                raise
+            if not await self._restart_fish():
+                raise
+            self._recovered_this_speak = True
+            return await self.fish.synthesize(sentence)   # single retry
+
+    def _recovery_notice(self) -> Optional[str]:
+        """One-time notice after a SUCCESSFUL mid-speak restart (the user
+        heard a hiccup — tell them once, never on every reply)."""
+        if self._recovery_notice_shown:
+            return None
+        self._recovery_notice_shown = True
+        return "Voice engine restarted mid-reply."
 
     def refresh_reference(self) -> str:
         """Re-read the reference fingerprint (cheap) and re-namespace the
@@ -605,6 +658,9 @@ class TTSEngine:
         # cache BEFORE any cache lookup, so a swapped reference is picked up
         # immediately and old-voice wavs are unreachable from the first chunk.
         self.refresh_reference()
+        # fresh recovery state for this utterance (Wave 4 failure modes)
+        self._recovery_attempted = False
+        self._recovered_this_speak = False
         self.stats = SpeakStreamStats(sentences=len(sentences))
 
         # --- 1. cache check (whole phrase) ---------------------------------
@@ -684,7 +740,8 @@ class TTSEngine:
                     yield _end(interrupted=True)
                     return
                 try:
-                    wav = await self.fish.synthesize(sent)   # blocks on THIS sentence
+                    # resilient: ONE restart+retry if fish dies mid-speak
+                    wav = await self._synthesize_resilient(sent)
                     pcm, _ = wav_bytes_to_s16le_pcm(wav, rate)
                     synthesized.append(pcm)
                 except TTSError as e:
@@ -739,6 +796,9 @@ class TTSEngine:
             yield _end(interrupted=False, notice=notice)
             return
 
+        if notice is None and self._recovered_this_speak:
+            # successful mid-speak restart: tell the user once (subtitled)
+            notice = self._recovery_notice()
         yield _end(interrupted=False, notice=notice)
 
 

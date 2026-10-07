@@ -305,3 +305,61 @@ orphans after runs: zero (ps: no tools.api_server)
 
 Voice lane Wave 3 list = **DONE** (Bug D + spawn-kill-safe fixture + SPEED
 verified). Posting `wave_done`; queued at merge position 4 (after pc-control).
+
+## Wave 4 — voice pipeline failure modes (2026-10-07)
+
+Rebased on main first; the live stack was UP by user directive — fish was
+**reused, never spawned** (Rule 14 / INTERFACES §d).
+
+1. **fish death mid-speak recovery** (`brain/voice/tts.py`):
+   `_synthesize_resilient()` = ONE restart + single retry per utterance
+   (`_restart_fish`, bounded 90 s). Ownership rule enforced: we only
+   `stop()` a process **we** spawned (`fish.proc` set) — an externally
+   managed/supervisor fish is merely re-checked and reused (tested:
+   `stop_calls == 0`). Success → one-time subtitle notice
+   "Voice engine restarted mid-reply."; failure → the loud degraded notice,
+   zero fake audio; **reference errors are never retried** (Bug D outranks
+   recovery).
+2. **STT outage path**: `stt_outage_subtitle(code, detail)` in
+   `brain/voice/stt.py` — brief, secret-free notice restricted to the
+   PROTOCOL §10 surfaceable code set (fatal/internal → None, raw detail never
+   shown). The ws.py call-site is brain-core's file → OPEN request
+   `docs/requests/voice__to__brain-core__stt-outage-subtitle.md` (4-line
+   snippet included). Seam-level proof: a router outage raises typed
+   `E_OFFLINE` → helper returns the subtitle (test).
+3. **audio soak (accelerated, honest)**: `test_soak_brain_segment_flow_stays_bounded`
+   = 1000 full segments (buffer → pre-gate → stub cloud STT → wake gate →
+   interrupt register/done → echo registry) and
+   `test_soak_vad_segmenter_state_stays_bounded` = 400 VAD open/close cycles;
+   every state container asserted bounded (pre-roll ≤3, evidence ≤5, cancel
+   dict empty, echo deque ≤8, ends idle). This is a deterministic stand-in
+   for the 24 h continuity run — **not** a real 24 h soak.
+4. **Bug H regression guards**: (a) async `router.transcribe` is awaited in
+   the to_thread bridge AND fails typed (`E_INTERNAL`, "to_thread") inside a
+   running loop, closing the coroutine (no ResourceWarning); (b)
+   `stt_language: en` is actually loaded from config and reaches the provider
+   call; (c) wake `extract()` strips ALL leading wake/filler repeats
+   ("Raphael raphael …" → clean command).
+
+### Live proof captured (Bug D gate line — fish reused, not spawned)
+
+```
+$ brain/.venv/bin/python brain/voice/scripts/prove_reference.py
+configured reference : .../assets/raphael_reference_jp.wav   (751686 bytes)
+fingerprint          : f64bd512ea1e   reference_required: True
+phrase-cache dir     : .../assets/acks/f64bd512ea1e/
+[tts] ref sent: path=.../assets/raphael_reference_jp.wav bytes=751686 sha1=f64bd512ea1e sentence='Analysis complete.'
+engine: fish | chunks: 272 (1629484 bytes) | PROOF OK | exit=0
+```
+
+### Test output (real runs, one suite at a time — Rule 14)
+
+```
+$ brain/.venv/bin/python -m pytest brain/voice/tests/test_wave4_hardening.py -q
+10 passed in 0.62s
+$ brain/.venv/bin/python -m pytest brain/voice/tests -q -rs
+104 passed, 1 skipped in 8.52s
+  (integration tests ran against the REAL live fish + JP reference;
+   the 1 skip = an intelligibility check that needs local whisper — environmental)
+orphans after runs: zero (no tools.api_server spawned by me)
+```
