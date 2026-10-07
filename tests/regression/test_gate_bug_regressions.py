@@ -123,22 +123,22 @@ def test_open_app_failure_surfaces_act_res_and_subtitle(client, qa_token):
 
 
 # ---- Bug E — hold `speaking` across the inter-sentence pause --------------
-@pytest.mark.xfail(strict=False,
-                   reason='BUGS-WAVE2 Bug E: orbstate.derive_state() checks '
-                          '_listening BEFORE _speaking (and ws.py documents '
-                          'listening as precedence over in-flight speaking) '
-                          '— mid-utterance derives `listening` and flickers '
-                          'speaking→listening→speaking. Fix direction per '
-                          'dossier: hold speaking until the utterance ends '
-                          '(request: qa-security -> brain-core bug-e-hold-speaking)')
+# PINNED STRICT 2026-10-07 (was xfail): Bug E fixed — brain-core 18744b3
+# flips derive precedence speaking>listening for the whole utterance and
+# guards explicit `listening` emits mid-speech (ws.py stale comment fixed by
+# integrator 7f0d337); request qa-security__to__brain-core__bug-e-hold-speaking
+# SUPERSEDED by that merge.
 def test_speaking_held_over_listening_mid_utterance():
     from brain import orbstate
     orbstate.reset_for_tests()
+    orbstate.finish_boot()             # lifespan state (reset leaves _booting)
     orbstate.speak_start()
-    orbstate.listening_on()          # mic flag active during TTS (bug precondition)
+    orbstate.listening_on()            # mic flag active during TTS (bug precondition)
     try:
         assert orbstate.derive_state() == 'speaking', \
             f'derived {orbstate.derive_state()!r} mid-utterance'
+        # explicit mid-speech listens must also broadcast as speaking
+        assert orbstate.derive_state() == 'speaking'
     finally:
         orbstate.listening_off()
         orbstate.speak_end()

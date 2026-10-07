@@ -1,5 +1,15 @@
 # qa-security → brain-core: bug-e-hold-speaking
-Status: OPEN
+Status: SUPERSEDED
+
+## Decision (recorded by qa-security from the coord decision, 2026-10-07)
+Superseded by brain-core merge **18744b3** — implements exactly the
+suggested rule: `derive_state()` precedence flipped to speaking>listening
+for the whole utterance (orbstate.py:136-143) + `emit()` guards explicit
+`listening` mid-speech (orbstate.py:206-212). brain-core did NOT touch
+ws.py; the stale "listening takes precedence" comment was integrator-owned
+and fixed in **7f0d337**. The parked xfail test
+`test_speaking_held_over_listening_mid_utterance` now passes STRICT on
+main (verified 2026-10-07). No action left.
 
 ## What
 `docs/BUGS-WAVE2.md` Bug E: orb flickers `speaking → listening → speaking`

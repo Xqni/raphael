@@ -33,8 +33,18 @@ Updated: 2026-10-07 (Wave 3 open; CI ownership fix done)
 - Also on latest main: infra's ollama-profile-gate tripwires promoted to
   strict (both landed); Wave-2 work confirmed merged (this branch now sits
   on 048b0c1).
-- **Suite (2026-10-07, real runs): `260 passed, 10 xfailed, 0 failed` —
-  py3.14 twice + py3.12 CI recipe, core_guard OK, ownership OK (8 files).**
+- **DONE 2026-10-07: contract follow-ups after sync** (branch rebased on
+  main 9e44c5c):
+  - Bug E xfail **flipped green** — brain-core 18744b3 (speaking>listening
+    hold + emit guard) + integrator 7f0d337 (ws.py comment); test promoted
+    to STRICT; request marked SUPERSEDED by the decision on the bus.
+  - PROTOCOL §3 `notice` frame (additive, integrator-approved): added the
+    Brain→Client **whitelist test** (`tests/conformance/test_protocol.py`)
+    parsing §3 against `BRAIN_TO_CLIENT_FRAMES` (both directions: new frames
+    must be whitelisted deliberately, stale entries flagged) + `notice` row
+    shape test (ui,cli / text,level,ts,job — escaped-pipe-safe).
+- **Suite (2026-10-07, real runs): `263 passed, 9 xfailed, 0 failed` —
+  py3.14 + py3.12 CI recipe, core_guard OK, ownership OK (8 files).**
 - Next per inbox/Wave-3 list: Wave-3 goals (docs/lanes/qa-security.md +
   docs/WAVES.md; SPEED MANDATE Rule 15) — wave close = re-run ALL six
   WAVES criteria live (status table in docs/BUGS-WAVE2.md).
