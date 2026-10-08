@@ -13,8 +13,8 @@ Add the tier-2/3 voice slot requested by the Wave-5 persona tiers (`docs/evoluti
 3. phrase-cache invalidation on tier switch (Bug-D class: stale cached phrases must not leak
    the wrong voice across a tier change).
 
-The user will provide `ciel_reference.wav` later (same as `raphael_reference_jp.wav`); until
-then the slot exists and always falls back — no breakage.
+The user will provide `ciel_reference.wav` later (same provisioning path as the current
+approved JP reference asset); until then the slot exists and always falls back — no breakage.
 
 ## Why
 WAVES wave 5 ("a Ciel voice reference slot") + addendum §10 fallback semantics. We own the
