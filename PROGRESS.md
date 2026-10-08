@@ -109,3 +109,8 @@ T1 fast free · T2 strong free · T3/T4 paid (log to docs/PAID_USAGE.md).
 - brain-core [68] heartbeat (idle WAIT).
 - qa [52,53]: wave-5 evolution gate tests ACCEPTED (9 drills incl. tamper/boot-refusal/rollback/probation; SAFE_MODE test-infra poison fixed; CI 37784899899 5/5, run_all 393) -> NEXT = control-plane re-audit (note: coord.py REPO_ROOT + keepalive cron fix on main need fresh verify), then wave_done.
 - voice [53] heartbeat; branch carry-over 7a224fc rides next cycle (noted, no action).
+- INCIDENT + REPAIR: first infra merge grabbed stale ref bd2253a + markers committed (5bf0902 red) -> repaired (7fef959) + correct head9449ca6 merged (55ba77a), full battery 418/182/8/213+guard verified BEFORE push. LESSON RECORDED: never merge a stale ref (fetch origin/... after explicit push), never push without the battery green.
+- infra position7 MERGED; tools-memory baseline-regen entry GRANTED on main (temp, remove-at-merge) -> their rebase+dispatch; 5 events handled.
+- infra [38]: merged-ack + incident acknowledged; branch contained in main; WAIT.
+- GITLEAKS MAIN RED FIXED: 4 uncovered = 49deea5 (pre-rewrite fixture literals via my mis-merge) -> baseline regen per SCANNERS.md conscious-acceptance (156, local 0 leaks, reason committed; permanent fix = human history rewrite ATTENTION).
+- orb [42]: root-causes confirmed (gitleaks mine-fixed; ownership base-artifact -> qa improvement routed); pc [40]: focused-password accepted, rides next cycle.

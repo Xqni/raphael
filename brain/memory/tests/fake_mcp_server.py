@@ -6,6 +6,7 @@ tools/call (echo/lax succeed; anything else -> isError), notifications are
 acknowledged by ignoring, unknown methods -> -32601.
 """
 import json
+import os
 import sys
 import time
 
@@ -14,7 +15,13 @@ MODE = sys.argv[1] if len(sys.argv) > 1 else 'normal'
 if MODE == 'diefast':
     sys.exit(3)                      # dies before the handshake can complete
 
-TOOLS = [
+if MODE == 'envdump':
+    TOOLS = [{'name': 'env',
+              'description': 'dump the child env keys (AUD-07 probe)',
+              'inputSchema': {'type': 'object', 'properties': {}, 'required': [],
+                              'additionalProperties': False}}]
+else:
+    TOOLS = [
     {'name': 'echo',
      'description': 'echo text back',
      'inputSchema': {'type': 'object',
@@ -75,6 +82,10 @@ for _line in sys.stdin:
         elif name == 'lax':
             result = {'content': [{'type': 'text',
                                    'text': f"lax {args.get('x', '')}"}]}
+        elif name == 'env':                      # AUD-07 probe (envdump mode)
+            result = {'content': [{'type': 'text',
+                                   'text': json.dumps(
+                                       {'keys': sorted(os.environ)})}]}
         else:
             result = {'content': [{'type': 'text',
                                    'text': f'unknown tool {name}'}],

@@ -6,6 +6,8 @@
 memory:
   top_k: 5                       # BM25 rows injected per turn on top of pinned
   max_context_chars: 4000        # hard cap for the untrusted memory/skill block
+  max_rows: 5000                 # AUD-15 retention: oldest unpinned dropped on
+                                 # insert (pinned never trimmed; 0 = unlimited)
   kind_budgets:                  # wave-5 per-kind budgets (override built-ins)
     analysis: {k: 10, max_chars: 8000}
     simulation: {k: 4, max_chars: 3000}
@@ -22,13 +24,18 @@ skills:
   dedup_jaccard: 0.82            # >= this similarity at creation -> bump usage, no new skill
   inject_drafts: false
   audit_grace_days: 30           # wave-4 aging: published+never-used+older -> demoted to draft
+  acquisition_enabled: false     # F-2 predator loop: DESIGN ONLY (docs/skills/ACQUISITION.md) — user flips
+  acquisition_min_repeats: 3     # failures of one signature before a sandbox draft is proposed
 
 plugins:
   dir: plugins                   # user-authored manifests; enabled only by the user
   auto_enable: false             # a plugin tool set never activates without the user
 
 files:
-  allowed_roots: ["~"]           # file_read/file_write confined to these (expanded)
+  allowed_roots: ["~/raphael-wt", "~/raphael"]   # AUD-01: explicit app workspace
+                                 # ONLY (was "~" — that reached ~/.raphael/token).
+                                 # Widening to "~" is a USER edit; the resolved-path
+                                 # sensitive deny below still applies inside any root.
   trash_subdir: trash            # file_trash moves here; NO delete tool exists
   read_max_bytes: 262144
 
@@ -52,3 +59,5 @@ mcp:
                                  # servers start ONLY from this user-authored config
   timeout_s: 10                  # keep small: unresponsive servers delay boot by this
   max_result_chars: 65536        # per tools/call result cap
+  env_allow: []                  # AUD-07: extra keys beyond the built-in minimal
+                                 # set (PATH/HOME/LANG/TMP/USER) handed to MCP children

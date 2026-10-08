@@ -1,17 +1,53 @@
 """Memory module: SQLite-backed storage for jobs and task journal.
 Durable + crash-safe: WAL journaling, synchronous NORMAL, busy timeout, and
 additive schema migration so phase-1 DBs keep working.
-DB path override: RAPHAEL_DB_PATH (tests point at a temp file; the real
-runtime DB stays brain/memory/memory.db).
+DB path: RAPHAEL_DB_PATH (tests point at a temp file) -> else the INSTANCE
+DATA-DIR (`~/.raphael/<instance>/memory.db`, INTERFACES §d) — AUD-15: the DB
+is checkout-local no more; a legacy checkout DB is moved there once, and the
+file (+ WAL/SHM) is chmod 0600 (personal data, owner-only).
 """
 import os
+import shutil
 import sqlite3
 
-_DEFAULT = os.path.join(os.path.dirname(__file__), 'memory.db')
+_DEFAULT = os.path.join(os.path.dirname(__file__), 'memory.db')   # legacy
+_migrated = False
 
 
 def db_path() -> str:
-    return os.environ.get('RAPHAEL_DB_PATH') or _DEFAULT
+    env = os.environ.get('RAPHAEL_DB_PATH')
+    if env:
+        return env
+    global _migrated
+    try:
+        from .. import config as appcfg
+        target = str(appcfg.data_dir() / 'memory.db')
+        os.makedirs(os.path.dirname(target), exist_ok=True)
+        if not _migrated:
+            _migrated = True
+            # one-time legacy migration: checkout DB -> data-dir (AUD-15)
+            if not os.path.exists(target) and os.path.exists(_DEFAULT):
+                try:
+                    shutil.move(_DEFAULT, target)
+                    for suf in ('-wal', '-shm'):
+                        if os.path.exists(_DEFAULT + suf):
+                            shutil.move(_DEFAULT + suf, target + suf)
+                except OSError:
+                    # move failed: keep the legacy file (data safety first)
+                    return _DEFAULT
+        return target
+    except Exception:  # noqa: BLE001 — config trouble: legacy path still works
+        return _DEFAULT
+
+
+def _harden_perms(path: str) -> None:
+    """AUD-15: personal data files are owner-only (0600), best-effort."""
+    for p in (path, path + '-wal', path + '-shm'):
+        try:
+            if os.path.exists(p):
+                os.chmod(p, 0o600)
+        except OSError:
+            pass
 
 
 def get_conn():
@@ -20,6 +56,7 @@ def get_conn():
     conn.execute('PRAGMA journal_mode=WAL')
     conn.execute('PRAGMA synchronous=NORMAL')
     conn.execute('PRAGMA busy_timeout=30000')
+    _harden_perms(db_path())
     return conn
 
 

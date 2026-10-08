@@ -27,6 +27,33 @@ PROTOCOL_VERSION = '2024-11-05'
 _MAX_LINE = 4_000_000          # single JSON-RPC line cap (bytes-ish)
 _STDERR_TAIL = 4000
 
+# AUD-07: MCP children get a MINIMAL allowlisted environment. Secrets
+# (GITHUB_TOKEN, HF_TOKEN, *_KEY, *_SECRET, ...) are never inherited; extra
+# keys arrive only from the user-authored per-server `env` or config
+# `mcp.env_allow`.
+_BASE_ENV_KEYS = ('PATH', 'HOME', 'LANG', 'LC_ALL', 'LC_CTYPE',
+                  'TMPDIR', 'TEMP', 'TMP', 'USER', 'LOGNAME')
+
+
+def _child_env(extra: Optional[Dict[str, str]] = None,
+               environ: Optional[Dict[str, str]] = None) -> Dict[str, str]:
+    src = dict(environ if environ is not None else os.environ)
+    allow = set(_BASE_ENV_KEYS)
+    try:
+        from brain import config as appcfg
+        for k in appcfg.cfg_get(appcfg.get_config(),
+                                'mcp.env_allow', []) or []:
+            allow.add(str(k))
+    except Exception:  # noqa: BLE001 — config trouble: base allowlist only
+        pass
+    out = {k: src[k] for k in _BASE_ENV_KEYS if k in src}
+    for k in sorted(allow - set(_BASE_ENV_KEYS)):
+        if k in src:
+            out[k] = src[k]
+    for k, v in (extra or {}).items():
+        out[str(k)] = str(v)
+    return out
+
 
 class McpError(RuntimeError):
     """Transport/protocol/timeout failure — carries a short message."""
@@ -42,13 +69,14 @@ class StdioClient:
         self.timeout = float(timeout)
         self._id = 0
         self._q: 'queue.Queue[Optional[str]]' = queue.Queue()
+        self._req_lock = threading.Lock()   # AUD-25: serialize request cycles
         self._stderr_tail: List[str] = []
         try:
             self._proc = subprocess.Popen(
                 self.argv, shell=False, stdin=subprocess.PIPE,
                 stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                 text=True, encoding='utf-8', errors='replace', bufsize=1,
-                env={**os.environ, **(env or {})}, cwd=cwd)
+                env=_child_env(env), cwd=cwd)          # AUD-07: allowlisted
         except (OSError, ValueError) as e:
             raise McpError(f'cannot spawn {self.argv[0]!r}: {e}')
         threading.Thread(target=self._read_stdout, name='mcp-out',
@@ -93,12 +121,24 @@ class StdioClient:
             raise McpError(f'write failed: {e} (rc={self._proc.returncode})')
 
     def notify(self, method: str, params: Optional[Dict[str, Any]] = None) -> None:
-        self._send({'jsonrpc': '2.0', 'method': method, 'params': params or {}})
+        with self._req_lock:                 # never interleave a frame mid-request
+            self._send({'jsonrpc': '2.0', 'method': method, 'params': params or {}})
 
     def request(self, method: str, params: Optional[Dict[str, Any]] = None,
                 timeout: Optional[float] = None) -> Dict[str, Any]:
         """Send a request, wait for ITS response. Returns the `result`
-        object; raises McpError on server error / timeout / death."""
+        object; raises McpError on server error / timeout / death.
+
+        AUD-25: request cycles are SERIALIZED on `_req_lock` — the single
+        shared stdout queue can only be matched by ONE waiter at a time
+        (concurrent waiters would discard each other's replies at line
+        `# notifications and other ids: ignore`). MCP stdio is a serial
+        protocol anyway; id allocation is serialized with the send."""
+        with self._req_lock:
+            return self._request_locked(method, params, timeout)
+
+    def _request_locked(self, method: str, params: Optional[Dict[str, Any]] = None,
+                        timeout: Optional[float] = None) -> Dict[str, Any]:
         self._id += 1
         rid = self._id
         self._send({'jsonrpc': '2.0', 'id': rid, 'method': method,

@@ -1,5 +1,5 @@
-"""github tool tests: private-by-default, confirm metadata, BLOCKED paths,
-token value-blindness, scrubbing. gh/git never actually invoked."""
+"""SEC-4 github tool tests: only status+push remain, creation/visibility/
+deletion absent, push confirm-gated, token value-blind + scrubbed."""
 import pytest
 
 from brain.tools import github as gh
@@ -13,71 +13,92 @@ def _no_real_token(monkeypatch):
                         type('S', (), {'which': staticmethod(lambda n: '/usr/bin/' + n)})())
 
 
-def test_status_is_presence_only():
-    out = gh.github_status()
-    assert 'GITHUB_TOKEN/GH_TOKEN: MISSING' in out
-    assert 'default_visibility: private' in out
-    assert 'auto_public: False' in out
-
-
-def test_create_private_is_blocked_without_token():
-    out = gh.github_create_repo('myrepo')
-    assert out.startswith('BLOCKED:') and 'GITHUB_TOKEN' in out
-
-
-def test_create_private_blocked_without_gh(monkeypatch):
-    monkeypatch.delenv('GITHUB_TOKEN', raising=False)
-    monkeypatch.setenv('GITHUB_TOKEN', 'dummy-not-a-real-key-for-test')
-    monkeypatch.setattr(gh, 'shutil',
-                        type('S', (), {'which': staticmethod(lambda n: None)})())
-    out = gh.github_create_repo('myrepo')
-    assert out.startswith('BLOCKED:') and 'gh CLI' in out
-
-
-def test_create_public_is_risky_and_never_default():
+def test_sec4_removed_tools_are_gone_from_registry():
     from brain import tools as reg
-    assert reg.describe('github_create_repo')['risky'] is False   # private path
-    assert reg.describe('github_create_repo_public')['risky'] is True
-    assert reg.describe('github_push')['risky'] is True
-    assert reg.describe('github_set_visibility')['risky'] is True
-    # the safe tool's schema has NO visibility/private switch to abuse
-    props = reg.describe('github_create_repo')['schema']['properties']
-    assert set(props) == {'name', 'description'}
+    for gone in ('github_create_repo', 'github_create_repo_public',
+                 'github_set_visibility'):
+        assert reg.get(gone) is None, f'{gone} must be removed (SEC-4)'
+        assert gone not in reg.names()
+    assert not hasattr(gh, 'github_set_visibility')
+    assert not hasattr(gh, 'github_create_repo')
 
 
-def test_name_and_visibility_validation():
-    with pytest.raises(ValueError):
-        gh.github_create_repo('../evil')
-    with pytest.raises(ValueError):
-        gh.github_create_repo('bad name!')
-    with pytest.raises(ValueError):
-        gh.github_set_visibility('owner/repo', 'secret')
-    with pytest.raises(ValueError):
-        gh.github_set_visibility('not a ref', 'public')
+def test_specs_stay_in_sync_with_registrations():
+    """A stale SPECS entry without a registered tool = discovery load error."""
+    from brain import tools as reg
+    for name in gh.SPECS:
+        assert reg.get(name) is not None, f'SPECS entry {name} has no tool'
+        assert reg.describe(name)['schema'] == gh.SPECS[name]
+
+
+def test_only_push_is_risky_and_it_is():
+    from brain import tools as reg
+    assert reg.describe('github_push')['risky'] is True      # confirm before push
+    assert reg.describe('github_status')['risky'] is False
+    assert gh.github_push.__doc__.startswith('Push the local build repo')
+
+
+def test_status_is_presence_only_even_with_token_in_env(monkeypatch):
+    # built by concat so gitleaks' static rules (ghp_ + 36) see no literal
+    token = 'ghp_' + 'abcdefghijklmnopqrstuvwxyz0123456789'
+    monkeypatch.setenv('GITHUB_TOKEN', token)
+    out = gh.github_status()
+    assert 'GITHUB_TOKEN/GH_TOKEN: set' in out
+    assert token not in out                      # value NEVER surfaces
+    assert 'default_visibility: private' in out
+    assert 'HUMAN action (SEC-4)' in out
+
+
+def test_status_missing_token_advisory():
+    out = gh.github_status()
+    assert 'MISSING' in out                       # fake which() -> gh path present
+    assert '/usr/bin/gh' in out
+
+
+def test_push_uses_argv_no_shell_and_validates(monkeypatch):
+    calls = {}
+
+    def _fake_run(argv, cwd=None, timeout=60.0):
+        calls['argv'] = argv
+        calls['cwd'] = cwd
+        return 0, ''
+    monkeypatch.setattr(gh, '_run', _fake_run)
+    out = gh.github_push()
+    assert calls['argv'] == ['git', 'push', 'origin']
+    assert calls['cwd'].endswith('raphael-wt/tools-memory') or 'raphael' in calls['cwd']
+    assert out.startswith('pushed to origin')
+    gh.github_push(remote='upstream', branch='main')
+    assert calls['argv'] == ['git', 'push', 'upstream', 'main']
     with pytest.raises(ValueError):
         gh.github_push(remote='origin; rm -rf /')
+    with pytest.raises(ValueError):
+        gh.github_push(branch='bad branch!')
+
+
+def test_push_blocked_without_git(monkeypatch):
+    monkeypatch.setattr(gh, 'shutil',
+                        type('S', (), {'which': staticmethod(lambda n: None)})())
+    assert gh.github_push().startswith('BLOCKED: git not found')
 
 
 def test_scrub_masks_token_shapes():
-    sample = 'created https://api.github.com ghp_abcdefghijklmnop12345678901234 done'
-    out = gh._scrub(sample)
-    assert 'ghp_' not in out and '***REDACTED***' in out
-    assert gh._scrub('github_pat_abcdefghijklmno123456') == '***REDACTED***'
+    # token shapes are concatenated (not literal) so the CI secret scanner
+    # sees no match while RUNTIME values keep their exact shape (gitleaks:
+    # ghp_ + 36 chars, AKIA + 16, github_pat_ + …)
+    assert 'ghp_' not in gh._scrub('x ' + 'ghp_' + 'abcdefghijklmnop12345678901234' + ' y')
+    assert gh._scrub('github_pat_' + 'abcdefghijklmno123456') == '***REDACTED***'
+    assert gh._scrub('AKIA' + '1234567890ABCDEF') == '***REDACTED***'
     assert gh._scrub('nothing secret here') == 'nothing secret here'
 
 
 def test_run_uses_argv_and_scrubs(monkeypatch):
-    class _P:
-        returncode = 0
-        stdout = b'ok ghp_abcdefghijklmnop12345678901234'
-        stderr = b''
+    import subprocess as sp
 
     def _fake_run(argv, shell=False, cwd=None, timeout=None,
                   capture_output=None, **kw):
         assert shell is False and capture_output is True
-        import subprocess as sp
-        return sp.CompletedProcess(argv, 0, _P.stdout, b'')
-
+        return sp.CompletedProcess(
+            argv, 0, b'ok ' + b'ghp_' + b'abcdefghijklmnop12345678901234', b'')
     monkeypatch.setattr(gh.subprocess, 'run', _fake_run)
     rc, out = gh._run(['gh', 'version'])
     assert rc == 0 and 'ghp_' not in out and '***REDACTED***' in out

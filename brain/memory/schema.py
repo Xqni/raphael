@@ -145,3 +145,8 @@ def migrate(conn) -> None:
     CREATE INDEX IF NOT EXISTS idx_schedules_due
     ON schedules(status, due_at)
     ''')
+    # AUD-28: claim timestamp for atomic pending->firing claims (guarded
+    # ALTER so wave-1/2 DBs keep working)
+    _cols = {r[1] for r in cur.execute('PRAGMA table_info(schedules)')}
+    if 'claimed_at' not in _cols:
+        cur.execute('ALTER TABLE schedules ADD COLUMN claimed_at INTEGER')

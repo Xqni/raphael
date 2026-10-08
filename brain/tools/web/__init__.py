@@ -14,19 +14,22 @@
   injection-hardened prompt: the excerpt is DATA, never instructions.
 
 All returns are strings = untrusted data (the loop wraps them, §9).
-DNS-rebinding note: host is checked before connect (TOCTOU window exists but
-the threat model here is accidental local access, not a hostile resolver).
+DNS rebinding: RESOLVED (AUD-23) — the validated IP is pinned at connect time
+(no second resolution to race) and EVERY redirect hop is re-resolved +
+re-validated before its own pinned connect; Host/SNI keep the original
+hostname so TLS certificates still validate.
 """
 from __future__ import annotations
 
+import http.client
 import ipaddress
 import json
 import re
 import socket
+import ssl
 import urllib.parse
-import urllib.request
 from html.parser import HTMLParser
-from typing import Any, List, Tuple
+from typing import Any, Dict, List, Tuple
 
 import brain.tools as _tool_reg
 
@@ -82,55 +85,123 @@ def _cfg(dotted: str, default):
 
 
 # ---- SSRF guard -------------------------------------------------------------
-def _assert_public_host(url: str) -> str:
-    """Validate scheme + resolve host; refuse non-public targets. Returns
-    the hostname on success, raises ValueError otherwise."""
+def _resolve_public(url: str) -> Tuple[str, str, int, str]:
+    """Scheme check + ONE resolution + validation. Returns
+    (scheme, host, port, pinned_ip).
+
+    AUD-23 (DNS-rebinding TOCTOU): the validated address is PINNED here and
+    the socket connects to exactly that IP — no second lookup exists to race,
+    so a rebind between check and connect cannot land on a private target.
+    Host header + TLS SNI keep the ORIGINAL hostname (cert still validated)."""
     parts = urllib.parse.urlsplit(str(url or ''))
-    if parts.scheme.lower() not in _ALLOWED_SCHEMES:
+    scheme = parts.scheme.lower()
+    if scheme not in _ALLOWED_SCHEMES:
         raise ValueError(f'scheme not allowed: {parts.scheme!r} '
                          f'(http/https only)')
     host = parts.hostname
     if not host:
         raise ValueError(f'no host in {url!r}')
-    port = parts.port or (443 if parts.scheme == 'https' else 80)
+    port = parts.port or (443 if scheme == 'https' else 80)
     try:
         infos = socket.getaddrinfo(host, port, proto=socket.IPPROTO_TCP)
     except socket.gaierror as e:
         raise ValueError(f'cannot resolve {host!r}: {e}')
+    pinned: str | None = None
     for info in infos:
         ip = ipaddress.ip_address(info[4][0])
         if (ip.is_private or ip.is_loopback or ip.is_link_local
                 or ip.is_reserved or ip.is_multicast or ip.is_unspecified):
             raise ValueError(
                 f'blocked: {host!r} resolves to non-public address {ip}')
-    return host
+        if pinned is None:
+            pinned = str(ip)
+    if pinned is None:
+        raise ValueError(f'cannot resolve {host!r}: no addresses')
+    return scheme, host, port, pinned
 
 
-class _SafeRedirect(urllib.request.HTTPRedirectHandler):
-    """Re-checks EVERY redirect hop against the SSRF guard (urllib would
-    otherwise follow redirects to localhost blindly)."""
-
-    def redirect_request(self, req, fp, code, msg, headers, newurl):
-        _assert_public_host(newurl)
-        return super().redirect_request(req, fp, code, msg, headers, newurl)
+def _assert_public_host(url: str) -> str:
+    """Validate-only entry (returns hostname, raises on any bad target)."""
+    return _resolve_public(url)[1]
 
 
-def _build_opener():
-    return urllib.request.build_opener(_SafeRedirect())
+class _PinnedHTTPConnection(http.client.HTTPConnection):
+    """Connects to the PRE-VALIDATED ip only (AUD-23)."""
+    pin_ip: str = ''
+
+    def connect(self):  # mirrors stdlib connect, address swapped
+        sock = socket.create_connection(
+            (self.pin_ip or self.host, self.port), self.timeout)
+        self.sock = sock
+        try:
+            sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+        except (OSError, AttributeError):
+            pass
+
+
+class _PinnedHTTPSConnection(http.client.HTTPSConnection):
+    """Pinned IP + TLS against the ORIGINAL hostname (SNI/cert valid while
+    the socket never re-resolves — AUD-23)."""
+    pin_ip: str = ''
+
+    def connect(self):
+        sock = socket.create_connection(
+            (self.pin_ip or self.host, self.port), self.timeout)
+        context = ssl.create_default_context()     # tests patch w.ssl
+        self.sock = context.wrap_socket(sock, server_hostname=self.host)
+
+
+def _pinned_request(scheme: str, host: str, port: int, ip: str, target: str,
+                    *, timeout: float, ua: str,
+                    max_bytes: int) -> Tuple[int, Dict[str, str], bytes]:
+    """Single pinned HTTP GET. Returns (status, lowercased headers, body)."""
+    cls = _PinnedHTTPSConnection if scheme == 'https' else _PinnedHTTPConnection
+    conn = cls(host, port, timeout=timeout)
+    conn.pin_ip = ip
+    try:
+        conn.request('GET', target,
+                     headers={'User-Agent': ua, 'Accept': '*/*'})
+        resp = conn.getresponse()
+        status = int(resp.status)
+        headers = {str(k).lower(): str(v) for k, v in resp.getheaders()}
+        body = resp.read(max_bytes + 1)
+        return status, headers, body
+    finally:
+        try:
+            conn.close()
+        except Exception:  # noqa: BLE001
+            pass
+
+
+_MAX_REDIRECTS = 5
 
 
 def _http_get(url: str, *, timeout: float, max_bytes: int,
               ua: str = _DEFAULT_UA) -> Tuple[str, str, bytes]:
-    """Guarded GET: host checked, opener has the redirect re-check, final URL
-    re-verified (belt+braces), capped read. Tests seam: monkeypatch this."""
-    _assert_public_host(url)
-    req = urllib.request.Request(url, headers={'User-Agent': ua})
-    with _build_opener().open(req, timeout=timeout) as resp:
-        final = resp.geturl()
-        ctype = resp.headers.get_content_type() if resp.headers else ''
-        data = resp.read(max_bytes + 1)
-    _assert_public_host(final)
-    return final, ctype or '', data
+    """Guarded GET (AUD-23): EVERY hop (initial + each redirect) resolves
+    ONCE, validates, then connects to that pinned IP — rebinding has no
+    window. Returns (final_url, content_type, body<=max_bytes+1)."""
+    cur = str(url)
+    for _hop in range(_MAX_REDIRECTS + 1):
+        scheme, host, port, ip = _resolve_public(cur)
+        parts = urllib.parse.urlsplit(cur)
+        target = parts.path or '/'
+        if parts.query:
+            target += '?' + parts.query
+        status, headers, body = _pinned_request(
+            scheme, host, port, ip, target,
+            timeout=timeout, ua=ua, max_bytes=max_bytes)
+        if status in (301, 302, 303, 307, 308):
+            loc = headers.get('location')
+            if not loc:
+                raise ValueError(f'redirect without Location from {cur}')
+            cur = urllib.parse.urljoin(cur, loc)   # next loop re-validates
+            continue
+        if status != 200:
+            raise RuntimeError(f'fetch failed: HTTP {status} from {cur}')
+        ctype = str(headers.get('content-type') or '').split(';')[0].strip()
+        return cur, ctype, body
+    raise ValueError(f'too many redirects (max {_MAX_REDIRECTS})')
 
 
 # ---- HTML → text ------------------------------------------------------------

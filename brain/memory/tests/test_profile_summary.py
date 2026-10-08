@@ -6,7 +6,7 @@ from brain.memory import conversation, profile, store, summary
 
 
 def test_profile_only_identity_and_preference_pinned_first():
-    ident = store.remember('user name is dami', source='user',
+    ident = store.remember('user name is <wsl-user>', source='user',
                            category='identity')
     pref = store.remember('prefers concise answers', source='user',
                           category='preference')
