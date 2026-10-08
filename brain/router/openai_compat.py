@@ -88,9 +88,11 @@ class OpenAICompatProvider(Provider):
         gated: bool = False,
         free_only: bool = False,
         assume_billed: bool = False,
+        free_tier: bool = True,
         extra_headers: dict[str, str] | None = None,
     ) -> None:
         super().__init__(config)
+        self.free_tier = free_tier and not assume_billed
         self.name = name
         self.base_url = base_url.rstrip("/")
         self.key_env = key_env

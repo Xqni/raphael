@@ -44,6 +44,9 @@ class Provider:
     gated: bool = False               # money gate applies (go/paid pool)
     paid_selection_ok: bool = False   # vision-only paid slot: paid ids allowed
                                       # (gated by chain membership + daily cap)
+    free_tier: bool = True            # FREE cloud tier (AUD-04: skipped for
+                                      # personal data when the flag is false);
+                                      # paid endpoints and local Ollama = False
 
     def __init__(self, config: RouterConfig) -> None:
         self.config = config

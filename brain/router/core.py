@@ -38,9 +38,13 @@ from .config import RouterConfig, load_config
 from .errors import RouterError, ProviderError, ProviderUnavailable, aggregate_code
 from .httputil import guess_audio_format, guess_image_mime
 from .privacy import (
+    PERSONAL_CATEGORIES,
     blocklist_hit,
     describe_image,
+    detect_personal_data,
+    foreground_status,
     is_private_mode,
+    redact_categories,
     redact_secrets,
     redact_messages,
 )
@@ -88,6 +92,7 @@ class CallResult:
     outcome: Outcome = Outcome.FAILED
     error: str | None = None
     error_code: str | None = None
+    reason: str | None = None           # gate discriminator (AUD-05/SEC-8)
 
 
 class ProviderState(str, Enum):
@@ -280,6 +285,11 @@ class Router:
         # serializes paid-slot admission so concurrent calls cannot race the
         # ceiling (check → send → record is atomic per paid call)
         self._vision_paid_lock = asyncio.Lock()
+        # AUD-04: which configured privacy.redact categories count as PERSONAL
+        # data for the free-model gate (PⅡ trio ∩ config)
+        self._personal_cats = tuple(
+            c for c in self.config.privacy.redact
+            if str(c).lower() in PERSONAL_CATEGORIES)
         self._local_transcriber: Callable[..., Awaitable[dict[str, Any]]] | None = None
 
     # ------------------------------------------------------------------ #
@@ -304,6 +314,35 @@ class Router:
                 continue
             out.append(self._register(name))
         return out
+
+    def _skip_free(self, personal: set[str]) -> bool:
+        """AUD-04: personal data → skip the FREE tier unless the flag allows it."""
+        if not personal:
+            return False
+        return not self.config.providers.allow_free_models_for_personal_data
+
+    def _chain_for(self, skip_free: bool = False) -> list[Provider]:
+        chain = self._chain()
+        if not skip_free:
+            return chain
+        return [p for p in chain if not p.free_tier]
+
+    @staticmethod
+    def _personal_free_only_error() -> RouterError:
+        return RouterError(
+            "personal data detected and free models are disabled for it "
+            "(providers.allow_free_models_for_personal_data=false) — no "
+            "local or paid provider in the chain",
+            code="E_OFFLINE", reason="personal_data_free_only",
+            detail="Personal data — free models are off and nothing local "
+                   "or paid is available.")
+
+    def _prepare_messages(self, messages: Any) -> tuple[Any, set[str]]:
+        """Detect PII BEFORE redaction, then scrub with the CONFIGURED
+        privacy.redact categories (AUD-04)."""
+        personal = detect_personal_data(messages, self._personal_cats)
+        msgs = redact_messages(messages, categories=self.config.privacy.redact)
+        return msgs, personal
 
     def _vision_chain(self) -> list[Provider]:
         """Vision chain = `_chain()` + the paid vision slot as LAST resort.
@@ -345,14 +384,30 @@ class Router:
             )
 
     def _gate_blocklist(self, operation: str) -> None:
-        """Foreground-window blocklist (PROTOCOL §7(2) / ARCHITECTURE §4).
+        """Foreground-window gate (PROTOCOL §7(2) / ARCHITECTURE §4 + AUD-05).
 
-        Vision: ALWAYS refused on a blocklisted window. Chat: refused too
-        when `router.block_chat_on_blocklist` is set (default true — under
-        profile `cloud_temp` there is no local model to fall back to, so
-        refusing is the only safe action).
+        1. UNKNOWN foreground (no hook registered / hook cannot determine the
+           focused window) → REFUSE cloud egress (`require_foreground`,
+           default true — fail CLOSED; the pre-audit code failed open by
+           treating None as "no block").
+        2. Known window on the blocklist → refused: vision ALWAYS, chat when
+           `router.block_chat_on_blocklist` (default true — under cloud_temp
+           there is no local model to fall back to).
         """
-        hit = blocklist_hit(self.config.privacy.blocklist_apps)
+        known, name = foreground_status()
+        if not known:
+            if not self.config.providers.require_foreground:
+                return                     # documented integrator escape hatch
+            raise RouterError(
+                "foreground window unknown — refusing cloud egress",
+                code="E_OFFLINE", reason="foreground_unknown",
+                detail="Can't verify the focused window — staying local only.",
+            )
+        # single foreground query → match the blocklist against THAT name
+        # (blocklist_hit would re-call the hook and miss the synthetic window)
+        low = str(name).lower()
+        hit = next((a for a in self.config.privacy.blocklist_apps
+                    if a and str(a).lower() in low), None)
         if not hit:
             return
         if operation == "chat" and not self.config.providers.block_chat_on_blocklist:
@@ -539,10 +594,14 @@ class Router:
         call: Callable[[Provider, Any], Awaitable[ChatResult]],
         require_capability: str | None = None,
         estimate: int = 100,
+        skip_free: bool = False,
     ) -> tuple[str, str, ChatResult]:
         started = time.monotonic()
         errors: list[RouterError] = []
-        for provider in self._chain():
+        chain = self._chain_for(skip_free)
+        if skip_free and not chain:
+            raise self._personal_free_only_error()   # fail CLOSED, no egress
+        for provider in chain:
             try:
                 model, result = await self._call_provider(
                     provider, role, purpose,
@@ -614,7 +673,7 @@ class Router:
         start = time.monotonic()
         self._gate_cloud("chat")
         self._gate_blocklist("chat")
-        msgs = redact_messages(messages)
+        msgs, personal = self._prepare_messages(messages)
         if not isinstance(msgs, list) or not msgs:
             raise RouterError("messages must be a non-empty list",
                               code="E_BAD_MSG", reason="bad_messages")
@@ -625,6 +684,7 @@ class Router:
                                      timeout=self.config.providers.request_timeout_s),
             require_capability=("tools" if tools else "chat"),
             estimate=estimate_input_tokens(msgs, tools),
+            skip_free=self._skip_free(personal),
         )
         latency = (time.monotonic() - start) * 1000.0
         await self._log_usage(provider, model, purpose, result.usage,
@@ -642,13 +702,17 @@ class Router:
     async def _chat_stream(self, messages, tools, purpose) -> AsyncIterator[dict[str, Any]]:
         self._gate_cloud("chat")
         self._gate_blocklist("chat")
-        msgs = redact_messages(messages)
+        msgs, personal = self._prepare_messages(messages)
         if not isinstance(msgs, list) or not msgs:
             raise RouterError("messages must be a non-empty list",
                               code="E_BAD_MSG", reason="bad_messages")
         role = self._role_for(purpose, tools)
+        skip_free = self._skip_free(personal)
         errors: list[RouterError] = []
-        for provider in self._chain():
+        stream_chain = self._chain_for(skip_free)
+        if skip_free and not stream_chain:
+            raise self._personal_free_only_error()   # fail CLOSED, no egress
+        for provider in stream_chain:
             model = None
             try:
                 model = await provider.pick(
@@ -773,7 +837,8 @@ class Router:
                 "downscale before sending (config vision.max_px/quality)",
                 code="E_BAD_MSG", reason="image_too_large",
             )
-        q = redact_secrets(question or "")
+        # configured categories on the outbound question too (AUD-04)
+        q = redact_categories(question or "", self.config.privacy.redact)
         b64 = base64.b64encode(data).decode("ascii")
 
         # free chain first; the paid slot is the LAST resort and is charged to
@@ -1120,10 +1185,12 @@ class Router:
         purpose = task_kind or "chat"
         try:
             self._gate_cloud("chat")
+            self._gate_blocklist("chat")     # AUD-05: unknown → refuse
         except RouterError as e:
             return CallResult(provider=provider, model=model, ok=False,
                               outcome=Outcome.UNAVAILABLE, error=str(e),
-                              error_code=e.code)
+                              error_code=e.code,
+                              reason=getattr(e, "reason", None))
         prov = self._providers.get(provider) or self._register(provider)
         now = datetime.now()
         system = SYSTEM_PROMPT + (
@@ -1131,10 +1198,22 @@ class Router:
             f"{now:%B %d, %Y %H:%M}. You HAVE clock/calendar access through "
             f"this line — answer time and date questions directly."
         )
-        msgs = redact_messages([
+        original = [
             {"role": "system", "content": system},
             {"role": "user", "content": prompt or ""},
-        ])
+        ]
+        personal = detect_personal_data(original, self._personal_cats)
+        if personal and self._skip_free(personal) and prov.free_tier:
+            # AUD-04 fail-closed on the pinned legacy seam too
+            return CallResult(
+                provider=provider, model=model, ok=False,
+                outcome=Outcome.UNAVAILABLE,
+                error="personal data detected; free models disabled by "
+                      "allow_free_models_for_personal_data=false",
+                error_code="E_OFFLINE",
+                latency_ms=(time.monotonic() - start) * 1000)
+        msgs = redact_messages(original,
+                               categories=self.config.privacy.redact)
 
         async def _call(m: Any) -> ChatResult:
             return await prov.chat(m, msgs, tools=None,

@@ -201,3 +201,61 @@ async def test_rate_headroom_without_paid_slot(tmp_path) -> None:
     headroom = rt.rate_headroom()
     assert "vision_paid" not in headroom            # slot disabled → no block
     assert "mock" in headroom["providers"]
+
+
+# --------------------------------------------------------------------------- #
+# AUD-27: usage.jsonl tail read must be BOUNDED (byte-capped), never whole-file
+# --------------------------------------------------------------------------- #
+def _recent(marker: str) -> str:
+    from datetime import datetime as dt, timezone as tz
+    return json.dumps({
+        "timestamp": dt.now(tz.utc).isoformat(), "provider": marker,
+        "model": "m", "tokens_input": 1, "tokens_output": 1,
+        "latency_ms": 1.0, "outcome": "success", "task_kind": "chat",
+        "error_code": None,
+    })
+
+
+def test_usage_read_is_byte_bounded_and_drops_torn_window_head(tmp_path) -> None:
+    from brain.router.status import read_usage_events
+    path = tmp_path / "usage.jsonl"
+    lines = [_recent("HEAD")] + [_recent(f"FILL{i}") for i in range(10)] + \
+            [_recent("TAIL")]
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    size = path.stat().st_size
+    # window ends exactly 10 bytes INTO the last filler line → that line is a
+    # torn fragment at the window start and must be dropped
+    max_bytes = len(lines[-1]) + 11
+    assert size > max_bytes
+    events = read_usage_events(path, max_bytes=max_bytes)
+    providers = [e["provider"] for e in events]
+    assert providers == ["TAIL"]                     # head excluded, torn line dropped
+    for e in events:                                 # everything returned parses
+        assert e["outcome"] in ("success", "failed", "retry", "unavailable")
+
+
+def test_usage_read_default_bound_never_loads_a_growing_file(tmp_path) -> None:
+    from brain.router.status import TAIL_BYTES, read_usage_events
+    path = tmp_path / "usage.jsonl"
+    head = _recent("HEAD-ANCHOR")
+    # pad each filler so the file crosses TAIL_BYTES (512 KiB) quickly
+    filler = [_recent("FILLER" + "x" * 700) for _ in range(700)]
+    tail = _recent("TAIL-ANCHOR")
+    path.write_text(head + "\n" + "\n".join(filler) + "\n" + tail + "\n",
+                    encoding="utf-8")
+    assert path.stat().st_size > TAIL_BYTES
+    events = read_usage_events(path)                       # DEFAULT bound
+    providers = {e["provider"] for e in events}
+    assert "HEAD-ANCHOR" not in providers      # whole-file read would include it
+    assert "TAIL-ANCHOR" in providers
+    # and we never return more than the line cap
+    assert len(events) <= 2000
+
+
+def test_small_files_keep_old_behaviour(tmp_path) -> None:
+    from brain.router.status import read_usage_events
+    path = tmp_path / "usage.jsonl"
+    path.write_text(_recent("A") + "\nnot json\n" + _recent("B") + "\n",
+                    encoding="utf-8")
+    events = read_usage_events(path)
+    assert [e["provider"] for e in events] == ["A", "B"]

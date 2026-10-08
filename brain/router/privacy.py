@@ -69,6 +69,38 @@ def foreground_window() -> str | None:
         return None
 
 
+def _pytest_session() -> bool:
+    """True only while pytest is executing a test item (PYTEST_CURRENT_TEST
+    is set by pytest, never by a running stack)."""
+    return os.environ.get("PYTEST_CURRENT_TEST") is not None
+
+
+def foreground_status() -> tuple[bool, str | None]:
+    """AUD-05: (known, name) — FAIL-CLOSED semantics.
+
+    known=False when NO hook is registered (unverified stack) or the hook
+    cannot determine the focused window → the router refuses cloud egress
+    (reason=foreground_unknown) instead of failing open like the old
+    `foreground_window()` None-means-allow did.
+
+    Harness exception (documented): under PYTEST_CURRENT_TEST an unwired hook
+    counts as a KNOWN synthetic window (`pytest-window`) — test harnesses
+    model a wired stack and cannot query the real foreground. Production has
+    no PYTEST_CURRENT_TEST, so the live stack refuses until brain-core /
+    pc-control register the hook (docs/requests/router__to__brain-core__
+    wire-foreground-hook.md). Tests that need the PRODUCTION path patch
+    `_pytest_session` off (see test_foreground_gate.py).
+    """
+    if _foreground_check is None:
+        if _pytest_session():
+            return True, "pytest-window"
+        return False, None
+    name = foreground_window()
+    if not name or not str(name).strip():
+        return False, None
+    return True, str(name)
+
+
 def blocklist_hit(blocklist_apps: Iterable[str]) -> str | None:
     """Matched blocklist entry for the focused window, or None."""
     name = foreground_window()
@@ -268,15 +300,64 @@ def redact_categories(text: str, categories: Iterable[str]) -> str:
     return out
 
 
-def redact_messages(messages: Any) -> Any:
-    """Deep-copy OpenAI-style messages with every string redacted."""
-    if isinstance(messages, str):
-        return redact_secrets(messages)
-    if isinstance(messages, list):
-        return [redact_messages(m) for m in messages]
-    if isinstance(messages, dict):
-        return {k: redact_messages(v) for k, v in messages.items()}
-    return messages
+# categories that count as PERSONAL data for the free-model gate
+# (allow_free_models_for_personal_data) — the PII trio from privacy.redact
+PERSONAL_CATEGORIES: tuple[str, ...] = ("email", "phone", "card")
+
+
+def detect_personal_data(messages: Any,
+                         categories: Iterable[str] = PERSONAL_CATEGORIES) -> set[str]:
+    """Which configured PII categories appear in the OUTBOUND content,
+    checked BEFORE redaction (AUD-04). Walks strings the same way
+    redact_messages does; never raises."""
+    found: set[str] = set()
+    cats = [str(c).lower() for c in categories or ()]
+    if not cats:
+        return found
+
+    def _walk(node: Any) -> None:
+        if isinstance(node, str):
+            for cat in cats:
+                if cat in found:
+                    continue
+                for pat, _repl in CATEGORY_PATTERNS.get(cat, ()):
+                    if pat.search(node):
+                        found.add(cat)
+                        break
+        elif isinstance(node, list):
+            for item in node:
+                _walk(item)
+        elif isinstance(node, dict):
+            for value in node.values():
+                _walk(value)
+
+    _walk(messages)
+    return found
+
+
+def redact_messages(messages: Any, categories: Iterable[str] | None = None) -> Any:
+    """Deep-copy OpenAI-style messages with every string redacted.
+
+    `categories` = config `privacy.redact` (AUD-04: the CONFIGURED categories
+    — email/phone/card/… — now apply to every outbound chat path; secrets are
+    always scrubbed regardless)."""
+    cats = tuple(str(c).lower() for c in categories or ())
+
+    def _one(text: str) -> str:
+        if cats:
+            return redact_categories(text, cats)
+        return redact_secrets(text)
+
+    def _walk(node: Any) -> Any:
+        if isinstance(node, str):
+            return _one(node)
+        if isinstance(node, list):
+            return [_walk(m) for m in node]
+        if isinstance(node, dict):
+            return {k: _walk(v) for k, v in node.items()}
+        return node
+
+    return _walk(messages)
 
 
 # --------------------------------------------------------------------------- #

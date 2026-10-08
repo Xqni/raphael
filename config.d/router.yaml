@@ -40,6 +40,10 @@ router:
   # refuses; chat refuses too unless this is false (cloud_temp has no local
   # model to fall back to — ARCHITECTURE §4 says blocklist → local only).
   block_chat_on_blocklist: true
+  # AUD-05 fail-closed: unknown/unwired foreground hook → chat+vision REFUSE
+  # (reason=foreground_unknown). Flip false ONLY as a documented interim
+  # escape (integrator, config.d or config.yaml router: block).
+  require_foreground: true
   # defensive byte cap on cloud vision payloads (caller pre-downscales to
   # vision.max_px / quality — PROTOCOL §7)
   vision_max_bytes: 4000000

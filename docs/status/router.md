@@ -1,6 +1,41 @@
 # router — status
 
-Updated: 2026-10-08 (Wave 5H audit packet complete — 172 router + 2 skipped / 194 brain / 214 root green; CI run 37711345817 green)
+Updated: 2026-10-08 (Wave 5H P0 packet complete — 204 router + 2 skipped / 216 brain / 214 root green; CI runs 37720486202 + 37720097390 green)
+
+## Wave 5H P0 packet (inbox register PART 2: AUD-02/04/05/27) — DONE
+
+Verify-first, one task at a time; each `task_done` carried `file:line` quotes + a green CI id.
+
+**AUD-02 (CRITICAL): CONFIRMED → FIXED — router loader joins the Core-Guard**
+- Pre-quote: `brain/router/config.py:117-123` `for frag in …: data = deep_merge(data, _load_yaml(frag))` (no strip) and `:280-283` applied a fragment-pivotable profile overlay → a malicious `config.d` fragment could set `providers.groq_base_url` (key exfil) or flip money/privacy gates.
+- Fix: `config.py:128 AUTHORITY_KEYS = ("safety","privacy","providers")` · `:155 _strip_fragment` (exact `brain/config.py:140-157` policy incl. wholesale `profiles` strip, loud violation record) · `:173 _merged_tree` → **single authoritative merger** `:181 mod.load_config(cfg_path, force=True)` (brain-core Core-Guard) with local mirror fallback · `:355 load_config` uses it · `:143 authority_violations()` delegation.
+- Tests: `test_config_authority.py` 9/9 **parametrized over both loader paths** — endpoints/money-gates/safety/privacy/profile-overlay all immutable to fragments (fail CLOSED), legit `router:` keys still merge, shipped fragment clean. Commit `478a553`.
+
+**AUD-04: CONFIRMED → FIXED — configured redaction + free-model policy enforced**
+- Pre-quotes: flag read at `config.py:387-388` with **zero enforcement sites** (repo grep); chat paths scrubbed secrets only (`core.py:617/645 redact_messages(...)` → `redact_secrets`), configured `privacy.redact` email/phone categories never applied on chat (`redact_categories` had no core callers); `config.yaml:50` claimed "local model only" while nothing enforced it.
+- Fix: `privacy.py:273 PERSONAL_CATEGORIES` (∩ configured redact list) · `:276 detect_personal_data` (PII BEFORE redaction) · `:306 redact_messages(..., categories)` now on chat/stream/legacy-complete/vision-question (`core.py:823`) · `provider.py:47 free_tier` (billed Go `openai_compat.py:95`, local Ollama `ollama.py:82`) · gates `core.py:316 _skip_free` / `:322 _chain_for` → free tiers skipped for personal content when `allow_free_models_for_personal_data=false`; **fail closed** `:329 E_OFFLINE/personal_data_free_only` (zero free egress) when no paid/local remains; legacy `complete()` refuses on a free provider for PII.
+- Honest policy (status §Handoff): scrub ALWAYS; personal → routed paid/local or refused TODAY; "local-only" remains the Wave-6 goal (`config.yaml:50` comment flagged for integrator reword).
+- Tests: `test_personal_data_policy.py` 10/10. Commit `bfd975b`.
+
+**AUD-05 (my half): CONFIRMED → FIXED — foreground gate fails CLOSED**
+- Pre-quotes: `privacy.py:53-64 set_foreground_check` (never registered: `grep -rn set_foreground_check brain/ body/ tests/` → ZERO outside brain/router) + `foreground_window(): None → blocklist_hit: if not name: return None` = **allow** → cloud egress with an unverifiable focused window.
+- Fix: `privacy.foreground_status()` (known vs unknown) + `config.py:265 require_foreground: bool = True` (escape hatch documented in `config.d/router.yaml`) → `core._gate_blocklist` raises `E_OFFLINE/foreground_unknown` for chat + stream + vision + legacy complete (zero egress verified); single-query blocklist match for known windows; `transcribe()` deliberately exempt (audio has no window semantics).
+- **Harness exception (documented in code):** under `PYTEST_CURRENT_TEST` an unwired hook = known synthetic `pytest-window` — suites model a wired stack; production (no env) refuses until brain-core registers the hook (`router__to__brain-core__wire-foreground-hook.md`, their half incl. pc-control data source).
+- Evidence trail: fail-closed gate alone broke 9 root tests while stashed-gate passed them (bisect: `require_foreground=false` → 2/2 pass); llm seam verified clean in-process (stream yields `{'finish':'error','code':'E_OFFLINE'}`, non-stream degrades) — no crash, close was the unwired-harness effect. After the pytest-window default: **router 201+2 / brain 216 / root 214+7 all green**. Tests: `test_foreground_gate.py` 10 (production-path fixture forces `_pytest_session=False`). Commit `4810ce4`.
+
+**AUD-27: CONFIRMED → FIXED — bounded usage tail**
+- Pre-quote: `status.py read_usage_events(): raw = path.read_text(...)` then `splitlines()[-tail:]` → whole ever-growing file loaded per `/status` poll.
+- Fix: `status.py:27 TAIL_BYTES = 512 * 1024` · `:30 read_usage_events(..., max_bytes=TAIL_BYTES)` seeks the last window (`:50 fh.seek(size - max_bytes)`), **drops the torn first line** of an oversized window, keeps the 2000-line cap; small files unchanged (corrupt-line skip + 24h window preserved).
+- Tests: `test_status.py` +3 — byte-window/torn-head proof with marker events, default-bound excludes HEAD-anchor in a >512 KiB file, small-file parity. Scope note (honest): `vision_paid_ledger.jsonl` is still read whole by design — its size is bounded by the spend caps themselves (line count ≈ ceiling/floor), and correctness of the all-time total requires the full history.
+- Commit `c69892b`.
+
+**Packet totals:** commits `478a553` · `bfd975b` · `4810ce4` · wiring request · `c69892b` (+request earlier). Suites (sequential, Rule 14, stack untouched):
+```
+brain/router/tests : 204 passed, 2 skipped
+brain/tests        : 216 passed, 1 warning (fastapi deprecation)
+tests/ (root)      : 214 passed, 7 xfailed
+CI (cloud)         : tests-heavy 37720486202 + 37720097390 SUCCESS · ci 37719207437 SUCCESS
+```
 
 ## Wave 5H — audit packet (docs/audit-tasks/router.md, VERIFY-FIRST)
 

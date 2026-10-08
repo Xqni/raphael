@@ -109,6 +109,16 @@ def make_config(
     )
 
 
+@pytest.fixture(autouse=True)
+def _known_foreground():
+    """AUD-05: tests model a WIRED stack — a known, non-blocklisted focused
+    window. Individual tests override/clear the hook to probe gate states."""
+    from brain.router import privacy
+    privacy.set_foreground_check(lambda: "pytest-terminal")
+    yield
+    privacy.set_foreground_check(None)
+
+
 @pytest.fixture
 def make_server():
     """Factory: `srv = make_server(models=[...])` → started ScriptedServer."""
