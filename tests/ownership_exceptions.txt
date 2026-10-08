@@ -23,3 +23,4 @@ brain/logjson.py =brain-core  # 2026-10-08 ARCH-6 packet assignment: structured 
 .gitleaks.toml =qa-security  # 2026-10-08 docs/audit-tasks/qa-security.md QA-1 (packet-mandated scanner location, integrator-assigned)
 .github/dependabot.yml =qa-security  # 2026-10-08 docs/audit-tasks/qa-security.md QA-1 (packet-mandated dependabot location, integrator-assigned)
 tests/core_guard_manifest.json =evolution-persona  # 2026-10-08 coord decision inbox[17] 'manifest rehash sanctioned (approval covers brain/evolution/**)': --update --approval rehashes after adding this lane's own guarded controller tests
+tests/ownership_exceptions.txt =evolution-persona  # 2026-10-08 same coord decision inbox[17]: recording my sanctioned manifest rehash REQUIRES editing this registry; self-line is the minimal mechanism, integrator/qa review at merge (branch CI ownership step would otherwise flag the record itself)
