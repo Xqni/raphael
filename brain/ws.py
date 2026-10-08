@@ -738,18 +738,27 @@ class WsHub:
 
     async def _on_audio_start(self, s: Session, msg: Dict[str, Any]):
         # mic lane (voice-dev): binary frames follow
-        reason = msg.get('reason') if msg.get('reason') in ('ptt', 'wake') else 'wake'
-        s.audio_reason = reason
-        
+        raw_reason = msg.get('reason')
+        if raw_reason == 'continuation':
+            # utterance-continuation merge (voice request ACCEPTED 2026-10-08):
+            # a resume inside the grace window APPENDS to the open utterance —
+            # never clear the buffer, never mint a new local decision (part 1's
+            # audio_start IS the SEC-3 decision; if it never happened, the
+            # audio_end guard still fails closed).
+            if not hasattr(s, 'audio_buf') or s.audio_buf is None:
+                s.audio_buf = bytearray()      # defensive: lost part 1
+        else:
+            reason = raw_reason if raw_reason in ('ptt', 'wake') else 'wake'
+            s.audio_reason = reason
+            # Fresh segment: clear buffer, mark the LOCAL decision (SEC-3)
+            s.audio_buf = bytearray()
+            s.audio_started = True
+
         # Barge-in check: if Raphael is speaking, interrupt immediately
         from brain.voice import get_voice
         voice = get_voice()
         if voice.interrupts.any_active():
             voice.interrupts.interrupt()
-            
-        # Clear buffer for new utterance; mark the LOCAL decision (SEC-3)
-        s.audio_buf = bytearray()
-        s.audio_started = True
 
         # INTERFACES §e: audio_start(reason wake|ptt) -> orb `listening`.
         # Bug E hold (merged 41bab93): orbstate.emit() guards this — while a
