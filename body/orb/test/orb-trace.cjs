@@ -951,12 +951,51 @@ async function main() {
         await cdp.evaluate(`document.body.style.background = ${JSON.stringify(BG_STYLES[bg])}`);
         brain.step(scene);
       }
-      await sleep(SETTLE_MS);          // let crossfade/morph/damp settle
+      // SETTLE, but PROVE it: a fixed sleep is what made `starting-dark.png`
+      // come out MAGENTA (196,107,197) while a settled render is pure white
+      // (214,213,211 spread=2). `thinking` -> `starting` leaves the prismatic
+      // Data Rings (setHSL 270 deg = violet) and the nebula still damping, and
+      // 1400+600 ms was not enough — measurement showed dataRings.w=0.029 and
+      // nebula=0.019 at 1400 ms but 0.0014 / 0.0009 at 2600 ms. So poll the
+      // actual weights instead of guessing.
+      //
+      // CONVERGENCE, not magnitude: `thinking` legitimately holds
+      // dataRings.w ~= 1.0 and nebula ~= 0.65, so "wait until it is small"
+      // would stall every capture. We are settled when the weights STOP
+      // CHANGING (two consecutive samples within EPS) — that is what "damp has
+      // finished" actually means, and it is what a fixed sleep failed to check.
+      const SETTLE_MAX_MS = 5000, EPS = 0.004;
+      const t0 = Date.now();
+      let prev = null, stable = 0;
+      for (;;) {
+        await sleep(250);
+        // `starting` auto-escapes to idle after STARTING_ESCAPE_MS with NO frame
+        // (AMENDMENT 2, by design). Our `starting` is synthetic, so a long poll
+        // could burn the whole 4 s budget and the escape would flip the scene to
+        // `idle` — measured as 6.79 temporal noise on starting@dark (every other
+        // scene 0.000), which lifted the distinctness threshold to 10.18. Re-assert
+        // like a live Brain streaming frames.
+        if (scene === 'starting') brain.step(scene);
+        const w = await cdp.evaluateJson('JSON.stringify((window.__orbTrace && window.__orbTrace().weights) || {})');
+        const dr = (w.dataRings && typeof w.dataRings.w === 'number') ? w.dataRings.w : 0;
+        const nb = (w.sage && typeof w.sage.nebula === 'number') ? w.sage.nebula : 0;
+        const lat = (typeof w.latticeOpacity === 'number') ? w.latticeOpacity : 0;
+        if (prev) {
+          stable = (Math.abs(dr - prev[0]) < EPS && Math.abs(nb - prev[1]) < EPS &&
+                    Math.abs(lat - prev[2]) < EPS) ? stable + 1 : 0;
+        }
+        prev = [dr, nb, lat];
+        if (stable >= 2) break;                    // converged over 2 samples
+        if (Date.now() - t0 > SETTLE_MAX_MS) break; // never stall the sweep
+      }
+      await sleep(600);              // uniforms (uBright/uTint) damp after weights
       // POSE LOCK: snap every weight to its target and pin the animation clock
       // so the two captures below are a pure function of (state, mode, jobs,
       // amplitude) — without it the orb's own rotation adds 5-8/255 of noise.
       await cdp.evaluate('window.__orbLockPose && window.__orbLockPose()');
       await sleep(LOCK_SETTLE_MS);     // uniforms (uBright/uTint) damp to target
+      // restart the escape clock so the burst sits well inside the 4 s window
+      if (scene === 'starting') brain.step(scene);
       const { A, B } = await grabBurst();
       // rep 1 = the §4 deliverable in docs/orb/ (replaces the old screenshot),
       // rep 2 stays in docs/orb/trace/ as the noise-floor reference.

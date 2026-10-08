@@ -22,7 +22,7 @@
       "maxBorderAlpha": 0,
       "maxBorderRgb": 0,
       "maxAlpha": 25,
-      "litPixels": 8002,
+      "litPixels": 7204,
       "blurOn": true
     },
     {
@@ -43,7 +43,7 @@
       "maxBorderAlpha": 0,
       "maxBorderRgb": 0,
       "maxAlpha": 25,
-      "litPixels": 14021,
+      "litPixels": 13303,
       "blurOn": true
     },
     {
@@ -64,14 +64,14 @@
       "maxBorderAlpha": 0,
       "maxBorderRgb": 0,
       "maxAlpha": 25,
-      "litPixels": 7184,
+      "litPixels": 6494,
       "blurOn": true
     },
     {
       "scene": "paused",
       "blur": {
         "amount": 0.9,
-        "angle": 0.0030240000000031617,
+        "angle": 0.0030059999999968758,
         "taps": 4,
         "skipped": false,
         "reason": "on",
@@ -85,14 +85,14 @@
       "maxBorderAlpha": 0,
       "maxBorderRgb": 0,
       "maxAlpha": 25,
-      "litPixels": 4955,
+      "litPixels": 5626,
       "blurOn": true
     },
     {
       "scene": "reconnecting",
       "blur": {
         "amount": 0.9,
-        "angle": 0.0030239999999979237,
+        "angle": 0.0030060000000021146,
         "taps": 4,
         "skipped": false,
         "reason": "on",
@@ -106,7 +106,7 @@
       "maxBorderAlpha": 0,
       "maxBorderRgb": 0,
       "maxAlpha": 25,
-      "litPixels": 4883,
+      "litPixels": 4346,
       "blurOn": true
     }
   ],

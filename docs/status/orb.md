@@ -1366,10 +1366,15 @@ Scrubbed (placeholders per the nudge: `<wsl-user>` / `<win-user>`):
 
 | file:line | was | now |
 |---|---|---|
-| `.opencode/research/windows-native-electron-orb.md:20` | `C:\Users\<u>\…` (path-windows) | `C:\<win-user>\…` |
-| `docs/orb/trace/audit.json:7` | `/home/dami/.raphael/orb/orb` | `/home/<wsl-user>/.raphael/orb/orb` |
-| `docs/requests/orb__to__integrator__harness-spawn-while-live.md:27` | `` /home/dami/raphael/body/orb `` | `` /home/<wsl-user>/raphael/body/orb `` |
-| `docs/status/orb.md:941` | `` (/home/dami/raphael/body/orb) `` | `` (/home/<wsl-user>/raphael/body/orb) `` |
+| `.opencode/research/windows-native-electron-orb.md:20` | path-windows — a Windows user-drive path literal in a doc example | `C:\<win-user>\…` |
+| `docs/orb/trace/audit.json:7` | user-linux + path-home | `/home/<wsl-user>/.raphael/orb/orb` |
+| `docs/requests/orb__to__integrator__harness-spawn-while-live.md:27` | user-linux + path-home | `/home/<wsl-user>/raphael/body/orb` |
+| `docs/status/orb.md:941` | user-linux + path-home | `(/home/<wsl-user>/raphael/body/orb)` |
+
+> **Self-inflicted, worth recording:** this table is what *reintroduced* 9 FAIL
+> findings on the very next pre-commit scan — quoting the raw pre-scrub values as
+> evidence put the personal data straight back. The rule now shown is the rule
+> that fired; the actual literals are no longer reproduced anywhere in this file.
 
 **Not scrubbed (NOT-APPLICABLE):** the 5 remaining `REVIEW` hits in
 `body/orb/package-lock.json` (`rule=ip-private`). That is a **generated npm
@@ -1381,3 +1386,193 @@ that generated/lockfile artifacts likely want an exclusion rather than a scrub.
 *regenerated* by every `orb:trace` run and will re-emit the real `userData`
 path. Scrubbing is correct today but the finding will return on the next
 regeneration unless the scanner excludes generated trace artifacts.
+
+---
+
+# "BLUE PARTICLES" + "STARTING IS PINK/PURPLE" — investigated by LOOKING, not by reading code
+
+User: *"you should take screenshots of those states bruh and see those blue
+particles yourself. you are not removing them, please just look at them instead
+of blindly moving forward."* Fair — this section exists because I did exactly
+that, and looking caught a defect my code-reading had missed.
+
+## 1. Blue particles — removed in code, NOT on your screen
+
+| evidence | result |
+|---|---|
+| starfield code | `renderer.js:565` → `starsMesh = null`; the `PointsMaterial(0x58c4f2)` line is gone |
+| committed? | **YES** — `48da3dd` |
+| on `origin/main`? | **NO** — `git merge-base --is-ancestor 48da3dd origin/main` → false |
+| live install | `/home/<wsl-user>/raphael/body/orb/src/renderer/renderer.js` still contains `58c4f2` **5×** |
+
+**So the removal is correct but has never been merged** — the live orb loads
+`main`, which still has it. This is the same reason every other fix in this batch
+is invisible on screen: nothing has shipped since `b0ed6ce`. Fix = post
+`wave_done` → merge → supervisor relaunch.
+
+Blind vision QC on my own fresh renders (post-removal) agreed the starfield was
+gone in 3 of 4 frames, and flagged `thinking` — see §3.
+
+## 2. "starting should be white not pink/purple" — my GATE was lying
+
+Measured, honestly:
+
+| capture | r24 (R,G,B) | verdict |
+|---|---|---|
+| settled render (3 s wait, my probe) | `138,138,138` spread **0** | **WHITE** |
+| same state, settled, all radii | `214,213,211 / 138,138,138 / 119,119,120` spread **0–2** | **WHITE** |
+| `docs/orb/starting-dark.png` (the gate's own screenshot) | `92,59,92` spread **32** | **MAGENTA** |
+
+The code fix was right all along — `S.starting.nebula = 0.00`
+(`sagecore.js:45`) and `getStateTint('starting') = 0xffffff` (`renderer.js:754`),
+confirmed by the trace: `"state":"starting" … "tint":"0xffffff"`.
+
+**The defect was in my capture harness.** `capture()` slept a fixed
+`SETTLE_MS=1400` + `LOCK_SETTLE_MS=600`, but the state it was shooting had come
+from `thinking`, whose **prismatic Data Rings** (`setHSL(i/4)` → red/green/cyan/
+**270° violet**) and nebula were still damping. Instrumented:
+
+```
+thinking              dataRings.w = 0.977   nebula = 0.648
+starting @1400ms      dataRings.w = 0.029   nebula = 0.019   <- GATE SHOT HERE
+starting @2600ms      dataRings.w = 0.0014  nebula = 0.0009   <- settled
+```
+
+Violet residue over a dim boot core reproduces the measured `196,107,197`.
+
+**Fix:** `capture()` now **polls for convergence** (two consecutive samples of
+`dataRings.w`, `sage.nebula`, `latticeOpacity` within EPS 0.004) instead of
+sleeping a guessed interval, capped at 5 s so a state that legitimately *holds*
+those values (`thinking` = 1.0) cannot stall the sweep. Convergence, not
+magnitude — the first attempt polled for "small" and would have stalled every
+capture; that was caught before the run.
+
+## 3. Coloured specks in `thinking` — flagging, not guessing
+
+Blind vision on `thinking-dark.png`: *"10–18 micro-square specks — several
+red/pink, 2–3 green, several cyan/bright-blue pinpoints, scattered over the
+ball; the user is right for this frame."*
+
+Those are the **prismatic Data Rings** (`datarings.js`, `setHSL(hue, 0.95, 0.6)`
+over 4 rings + the `bars` ring), which are **spec-mandated** for `thinking`
+(`ORB_REBUILD` §2.3 / re-pasted §3.3 "the Data Rings (prismatic dashed rings)
+fading in"). They are not the removed starfield.
+
+**Not changed** — spec says keep them, you asked me to remove "blue particles"
+(which is the starfield). Say the word and I'll desaturate or thin the Data
+Rings too.
+
+---
+
+# DISTINCTNESS REGRESSION — root-caused to ONE uniform still damping under pose lock
+
+`orb:diff` came back `pass=false … 13 near-identical pairs`. Most pairs had
+nothing to do with what I had changed, which is exactly why it was worth
+tracing instead of tuning thresholds.
+
+## The chain
+
+| step | finding |
+|---|---|
+| gate formula (`test/orb-diff.cjs:124`) | `threshold = max(ABS_FLOOR, NOISE_FACTOR × worstSameSceneNoise)` |
+| constants | `ABS_FLOOR = 0.30` (`:28`), `NOISE_FACTOR = 1.5` (`:33`) |
+| observed | `need 9.67` ⇒ **worstSameSceneNoise = 6.45** |
+| which scene? | `distinctness.json` → `noise.perScene`: **`starting@dark = 6.45`**, `starting@busy = 3.25`, `starting@light = 1.17` — **every other scene = 0.000** |
+| consequence | threshold 0.30 → 9.67, so 13 pairs "failed" while the real weakest pair (`idle vs private @light`, `jobs vs thinking @dark`) sits at **0.73 — 2.4× the genuine 0.30 floor** |
+
+**One scene's temporal noise was poisoning the global threshold.** At the real
+floor all 13 pass.
+
+## Why only `starting`
+
+Pose lock (`__orbLockPose`, `renderer.js:1102`) promises to *"snap every weight
+to its target … so the two captures are a pure function of state"*. It did — for
+**tint** (`lockSageCore`, `sagecore.js:544`-area) and for **amp** (`L.ampS =
+opts.amp || 0`, `sagecore.js:544`). The one uniform it missed was **`uBright`**,
+which still *damped* every frame (`TAU = 400 ms`, `sagecore.js:766`).
+
+`starting` is the only state with a long enough brightness travel to still be
+moving when rep1/rep2 were shot:
+
+```
+idle  uBright target        ~ 1.00
+starting uBright target = 0.45 × genSun(=0.148 at the locked gt=2000) ≈ 0.067
+                             └─ travel ≈ 0.93, still easing after 600 ms
+```
+
+Every other state lands close to where it started, so it had already converged
+→ noise 0.000.
+
+## Fix
+
+`sagecore.js` `updateSageCore`:
+
+```js
+const bTarget = w.bright * fx * Math.max(genSun, 0.001);
+cu.uBright.value = ctx.lock ? bTarget : damp(cu.uBright.value, bTarget, TAU, dt);
+```
+
+Snap under lock, damp otherwise — i.e. `uBright` now honours the pose-lock
+contract the other two uniforms already honoured. **No gate was weakened**: the
+threshold formula, `ABS_FLOOR` and `NOISE_FACTOR` are untouched.
+
+## Related fixes in the same pass
+
+1. **`capture()` now polls for convergence** instead of sleeping a fixed
+   1400 ms — that is what exposed `starting-dark.png` rendering magenta
+   (violet Data-Ring/nebula residue from the preceding `thinking`) when the
+   settled render is white. Poll is on *convergence* (weights stopped changing),
+   not on magnitude, so `thinking` (which legitimately holds `dataRings≈1.0`)
+   cannot stall the sweep.
+2. **`starting` dimmed** to the requested "dim white": `bright 0.72 → 0.45`,
+   `poly/node 0.70 → 0.55`, `ring 0.40 → 0.26`, `spark 0.35 → 0.22`,
+   `speed 0.50 → 0.34` — which also separates it from `private_overlay` (1.00)
+   and `reconnecting` (0.75) on merit rather than on colour it no longer has.
+
+## CORRECTION — the `uBright` snap above was a wrong hypothesis
+
+The `uBright` snap under pose lock is **correct and worth keeping** (the lock's
+own contract says "snap", and it was the one uniform still easing), but it did
+not fix the noise — `need` actually went **9.67 → 10.18**. Chasing it properly
+with an instrumented probe (300 ms sampling under pose lock) produced:
+
+```
+t(ms)   pixDiff   uBright   spin.phase omega  angle
+  900    0.000    0.0667    settle     0.774  0.000    ← starting, snapped
+ 1200    7.750    0.9420    settle     0.774  0.000    ← JUMP
+ 1500    0.627    0.9997    settle     0.774  0.000
+ 1800    0.004    1.0000    settle     0.774  0.000    ← exactly IDLE's target
+```
+
+`uBright` landed on **exactly 1.0000**, which is `idle`'s target
+(`bright 1.00 × genSun 1.0`), not `starting`'s (`0.45 × 0.148 = 0.067`). So the
+scene was **changing state mid-capture**, not merely easing.
+
+### Actual root cause: my own AMENDMENT 2 auto-escape
+
+`STARTING_ESCAPE_MS = 4000` fired ~1.2 s after pose lock (lock happens ~2.8 s
+into the synthetic state) and converted the harness's `starting` into `idle`
+**between rep1 and rep2**. That is why:
+
+- **only** `starting` was noisy (only it is on the escape clock) —
+  `idle`/`thinking` measured **0.000 / 0.000** under the identical probe;
+- the noise was ~6.79 while every other scene was exactly **0.000**;
+- and it saturated in steps (`0.067 → 0.94 → 1.00`) rather than jittering.
+
+**Two genuine bugs fell out of it:**
+
+1. **`ws-status.js` — the escape ignored arriving frames.** AMENDMENT 2 says
+   *"auto-escape timeout **if no frame arrives**"*, but the timer was only
+   armed/cleared on *state transitions*, so a Brain legitimately streaming
+   `starting` frames through a long boot was force-flipped to `idle` at 4 s
+   **while it was talking to us**. Fixed: `handle()` now calls
+   `_resetBootEscape()` on **any** inbound frame while in `starting`.
+2. **`orb-trace.cjs` — a synthetic `starting` with no frame stream.** The
+   convergence poll (up to 5 s) plus the burst could outlive the 4 s budget. The
+   harness now re-asserts `brain.step(scene)` inside the poll and again
+   immediately before the burst, the same way a live Brain streams frames.
+
+**Method note (the thing worth keeping):** the fix came from *sampling the
+pixel diff every 300 ms and printing it next to the suspect uniforms*, not from
+re-reading code — three code-reading hypotheses (nebula, Data Rings, `uBright`)
+were each wrong or incomplete.
