@@ -179,3 +179,20 @@ profiles:
     local_model: { enabled: true }
     voice: { stt_engine: local }
     vision: { provider: local }
+  # ARCH-5 dormant presets (integrator-approved 2026-10-08 — router request
+  # arch5-router-contribution; brain-core co-share). `cloud` = today's chain
+  # under a real name. `hybrid` is INACTIVE by selection only and stays
+  # gated by the human cloud-only/RAM decision (WAVES cloud_temp constraint)
+  # — do not select it until the user lifts that gate.
+  cloud:
+    profile: cloud
+    providers: { chain: [go, zen_free, groq], allow_go_runtime: true, allow_paid_runtime: true }
+    local_model: { enabled: false }
+    voice: { stt_engine: groq }
+    vision: { provider: cloud }
+  hybrid:
+    profile: hybrid
+    providers: { chain: [go, zen_free, groq, ollama], allow_go_runtime: true, allow_paid_runtime: true }
+    local_model: { enabled: true }
+    voice: { stt_engine: groq }
+    vision: { provider: local }

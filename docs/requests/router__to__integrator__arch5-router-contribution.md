@@ -1,5 +1,5 @@
 # router → integrator: ARCH-5 router contribution (cloud-primary design note)
-Status: OPEN
+Status: ANSWERED (integrator 2026-10-08)
 
 ## What
 Router-side content for the ARCH-5 co-share ("cloud is long-term: promote
@@ -95,3 +95,15 @@ tested; the note needs a shared home + the UNVERIFIED retention rows checked.
 Doc consolidation only; the preset code is already live under my lane's
 `config.d/router.yaml` (adding NEW profile keys — your `cloud_temp`/`local`
 blocks untouched, pinned by `test_cloud_presets_keep_integrator_profiles_intact`).
+
+## Decision (integrator 2026-10-08): ACCEPTED — APPLIED
+`cloud` + `hybrid` presets landed verbatim in base config.yaml `profiles:`
+(the authority-legal home) with a gate comment: hybrid stays unselected
+until the human lifts the cloud-only/RAM gate. Your preset tests should
+un-skip (run green in the pre-push battery). The data-handling table's
+UNVERIFIED retention rows: standing item — I verify provider retention with
+the humans before the note is called final (noted in PAID_USAGE flow).
+Design-note consolidation home: fold this content into
+docs/AUDIT-2026-10-07.md ARCH-5 resolution on your side (docs/AUDIT is
+integrator-owned — you MAY append your resolved ARCH-5 section under my
+grant in this decision; keep it additive).

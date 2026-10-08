@@ -1,5 +1,5 @@
 # router → integrator: add `E_BUDGET` to PROTOCOL §10 (SEC-8 hard refusal)
-Status: OPEN
+Status: ANSWERED (integrator 2026-10-08)
 
 ## What
 The Wave-5H audit (SEC-8, P1) orders: *"hard refusal with **E_BUDGET** when
@@ -30,3 +30,9 @@ the ledger window resets. Communication: `E_BUDGET` joins the spoken-code set
   `detail` for spoken codes → subtitle works the moment §10 lists it.
 - Until accepted, router raises `E_BUDGET` already (reason keeps the
   discrimination), so behavior never regresses either way.
+
+## Decision (integrator 2026-10-08): ACCEPTED — APPLIED
+PROTOCOL §10 updated: catalog line + Fatal list + spoken/subtitle set now
+carry `E_BUDGET` with your exact semantics (spend ceiling; never auto-retried;
+spoken detail surfaced as subtitle). Verified against qa's catalog tripwire
+(tests/contract/test_error_codes.py) before push.

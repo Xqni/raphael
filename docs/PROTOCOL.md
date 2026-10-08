@@ -127,9 +127,9 @@ Orb renders its own smooth transitions (state crossfade ~300 ms, shape morph ~60
 
 ## 10. Error codes
 
-`E_AUTH`, `E_AUTH_RATE`, `E_PROTO`, `E_BAD_MSG`, `E_UNSUPPORTED`, `E_RATE_LIMIT`, `E_LOCK_BUSY`, `E_TIMEOUT` (action/step timeout), `E_CONFIRM_TIMEOUT`, `E_CANCELLED`, `E_PROVIDER_429` (rate limit), `E_PROVIDER_5XX`, `E_PROVIDER_AUTH`, `E_LOCAL_OOM` (GPU/RAM), `E_LOCAL_DOWN` (ollama dead), `E_OFFLINE` (no network, local fallback unavailable), `E_INTERNAL`.
-**Retry semantics:** retryable (transient — client/Brain may retry after backoff): `E_RATE_LIMIT`, `E_LOCK_BUSY`, `E_TIMEOUT`, `E_PROVIDER_429`, `E_PROVIDER_5XX`, `E_LOCAL_DOWN`, `E_OFFLINE`. Fatal (never auto-retried): `E_AUTH`, `E_AUTH_RATE`, `E_PROTO`, `E_PROVIDER_AUTH`, `E_CANCELLED`, `E_CONFIRM_TIMEOUT`, `E_BAD_MSG`, `E_UNSUPPORTED`, `E_LOCAL_OOM` (recover by unloading models, not by retrying the call), `E_INTERNAL`.
-Recoverable vs fatal is defined per-callsite; clients surface `error.detail` as subtitle text only when `code` ∈ {E_LOCK_BUSY, E_TIMEOUT, E_CONFIRM_TIMEOUT, E_PROVIDER_429, E_LOCAL_OOM, E_LOCAL_DOWN, E_OFFLINE} (brief communication rules).
+`E_AUTH`, `E_AUTH_RATE`, `E_PROTO`, `E_BAD_MSG`, `E_UNSUPPORTED`, `E_RATE_LIMIT`, `E_LOCK_BUSY`, `E_TIMEOUT` (action/step timeout), `E_CONFIRM_TIMEOUT`, `E_CANCELLED`, `E_PROVIDER_429` (rate limit), `E_PROVIDER_5XX`, `E_PROVIDER_AUTH`, `E_LOCAL_OOM` (GPU/RAM), `E_LOCAL_DOWN` (ollama dead), `E_OFFLINE` (no network, local fallback unavailable), `E_BUDGET` (spend ceiling reached — refuse until the reset), `E_INTERNAL`.
+**Retry semantics:** retryable (transient — client/Brain may retry after backoff): `E_RATE_LIMIT`, `E_LOCK_BUSY`, `E_TIMEOUT`, `E_PROVIDER_429`, `E_PROVIDER_5XX`, `E_LOCAL_DOWN`, `E_OFFLINE`. Fatal (never auto-retried): `E_AUTH`, `E_AUTH_RATE`, `E_PROTO`, `E_PROVIDER_AUTH`, `E_CANCELLED`, `E_CONFIRM_TIMEOUT`, `E_BAD_MSG`, `E_UNSUPPORTED`, `E_BUDGET` (auto-retry cannot help until the ledger window resets), `E_LOCAL_OOM` (recover by unloading models, not by retrying the call), `E_INTERNAL`.
+Recoverable vs fatal is defined per-callsite; clients surface `error.detail` as subtitle text only when `code` ∈ {E_LOCK_BUSY, E_TIMEOUT, E_CONFIRM_TIMEOUT, E_PROVIDER_429, E_BUDGET, E_LOCAL_OOM, E_LOCAL_DOWN, E_OFFLINE} (brief communication rules).
 
 ## 11. Security invariants (protocol level)
 
