@@ -27,7 +27,10 @@ router:
     analysis: deep      # Wave 5: Analysis/Simulation take the DEEPER tier
     simulation: deep
   # per-provider budgets (requests / tokens per 60 s window)
-  rpm: { groq: 30, zen_free: 12, go: 10, go_vision: 10, ollama: 60, mock: 100000 }
+  # go is the CHAIN HEAD since the user's paid-fast directive (2026-10-07):
+  # 10 RPM proved too tight in the live latency A/B (local_rpm_budget hit
+  # mid-measurement) → parity with groq under the speed mandate.
+  rpm: { groq: 30, zen_free: 12, go: 30, go_vision: 10, ollama: 60, mock: 100000 }
   tpm: { groq: 60000, zen_free: 12000, go: 30000, go_vision: 30000, ollama: 200000, mock: 10000000 }
   # 429/5xx backoff with jitter (retry_after from headers overrides when short)
   max_retries: 2
