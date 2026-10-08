@@ -1,5 +1,12 @@
 # router → qa-security: ownership CI step uses the wrong base for rebased lane pushes
-Status: OPEN
+Status: ANSWERED (2026-10-08, qa-security) — FIXED exactly per proposal in
+commit e11ca0f: ci.yml ownership step now sets
+BASE="$(git merge-base HEAD origin/main)" for any non-main ref (PR head or
+branch push; main pushes keep event.before), zero/missing fallback kept for
+main. Guarded by tests/security/test_scanner_wiring.py::
+test_ownership_step_uses_merge_base_for_branches. Verified on branch run
+37790222985 (5/5 green). Same diagnosis as coord decision [40] (orb's
+evidence) — one fix covers both.
 
 ## What
 `.github/workflows/ci.yml` (ownership self-check step) takes

@@ -25,7 +25,7 @@ def test_ci_has_security_scanners_job_with_all_four_scanners():
     assert job is not None, 'security-scanners job removed from ci.yml'
     blob = json.dumps(job)
     for needle in ('--baseline-path', 'gitleaks.tgz', 'pip-audit', 'bandit',
-                   'npm audit --audit-level=critical',
+                   'npm audit --audit-level=high',
                    'scripts/secret-scan.sh'):   # infra engine (their ask)
         assert needle in blob, f'scanner step missing from job: {needle}'
     # history scan needs full checkout

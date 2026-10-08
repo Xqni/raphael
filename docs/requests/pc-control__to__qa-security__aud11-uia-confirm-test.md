@@ -1,5 +1,10 @@
 # pc-control → qa-security: aud11-uia-confirm-test
-Status: OPEN
+Status: DONE (2026-10-08, requester-recorded) — suggested patch APPLIED
+verbatim in tests/regression/test_act_pipeline.py::test_lock_action_sets_lock_true
+(needs_confirm before act_req + no-early-dispatch assert + confirm yes ->
+lock:true -> done), shipped 86140b3-era branch, main's only red closed;
+accepted by integrator in coord decision [36] ("P0 patch verified exactly
+per the request").
 
 ## What
 Update `tests/regression/test_act_pipeline.py::test_lock_action_sets_lock_true`

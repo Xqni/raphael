@@ -149,6 +149,12 @@ jobs:
             --baseline-path tests/security/gitleaks-baseline.json
       - name: secret-scan (infra engine, requested in scripts/gitleaks.toml header)
         run: bash scripts/secret-scan.sh
+      - name: personal-data scan (SEC-1, advisory — locations only, value-blind)
+        # infra request infra__to__qa-security__ci-personal-scan: advisory in
+        # CI (never blocks; scrub is tracked by exit-criterion 4); the STRICT
+        # gate belongs in tests-heavy.yml once the human scrub lands
+        # (hook stays advisory — hooks are not versioned across clones).
+        run: python3 scripts/scan_personal.py
       - name: pip-audit (tests/requirements.txt)
         run: |
           python -m pip install -q pip-audit
@@ -164,9 +170,9 @@ jobs:
           python -m pip install -q bandit
           bandit -r brain supervisor scripts tests body \
             -c tests/security/bandit.yaml -ll || true
-      - name: npm audit (body/orb — critical gate; 2 documented highs in SCANNERS.md)
+      - name: "npm audit (body/orb — HIGH gate restored, electron 44.5.1, 0 vulns 2026-10-08)"
         working-directory: body/orb
-        run: npm audit --audit-level=critical
+        run: npm audit --audit-level=high
 
   body-unit-windows:
     name: Windows — Body unit tests (no GUI)

@@ -1,5 +1,10 @@
 # qa-security → orb: electron-audit-highs
-Status: OPEN
+Status: ANSWERED (2026-10-08, qa-security — verified on current main before
+flipping: `body/orb/package.json:20 "electron": "44.5.1"` + `npm audit
+--registry=https://registry.npmjs.org --audit-level=high` -> **0
+vulnerabilities**. Both conditions met: ASAR/extract-zip chain resolved by
+the bump AND clean audit — CI gate tightened back to --audit-level=high in
+the same commit; SCANNERS.md allow-list note retired.
 
 ## What
 `npm audit` on `body/orb` (2026-10-08, real npmjs registry) reports **2 HIGH**
