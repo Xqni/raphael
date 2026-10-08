@@ -8,7 +8,7 @@ Status: **authoritative** (with PROTOCOL.md). Orchestrator-owned. Last updated: 
 Windows (logon)
  └─ supervisor/raphael-supervisor.exe|pyw  (entry: Task Scheduler "Raphael" @ logon; Startup-folder fallback)
      ├─ 1) launches body/orb (Electron) FIRST → orb shows "starting" immediately, even before WSL is up
-     ├─ 2) spawns WSL:  wsl.exe -d Ubuntu-26.04 -u dami -- (systemd bring-up check + ollama; brain runs PROCESS-MODE: uvicorn spawned + /tmp/raphael-brain.pid — raphael-brain.service NOT installed yet)
+     ├─ 2) spawns WSL:  wsl.exe -d Ubuntu-26.04 -u <wsl-user> -- (systemd bring-up check + ollama; brain runs PROCESS-MODE: uvicorn spawned + /tmp/raphael-brain.pid — raphael-brain.service NOT installed yet)
      │     └─ WSL (systemd)
      │          ├─ raphael-brain (process-mode today; systemd unit planned)  ← FastAPI :8765, agent loop, jobs, router, STT/TTS
      │          └─ ollama.service         (already exists — NOT used/started under profile cloud_temp)

@@ -73,7 +73,7 @@ User observed while she spoke: (1) orb did not pulse with her voice,
   - `ws-status.js` case `'orb_state'`: `console.log('[ws-status] rx orb_state ->', msg.state, ...)`
   - `ws-status.js` case `'speak'`: same for speak frames
   - `renderer.js` `onOrbState` entry + state-change block (line ~718): `[renderer] ...`
-  - `preload.js` onOrbState: appendFileSync('/home/dami/raphael/logs/orb-renderer.log', ...)
+  - `preload.js` onOrbState: appendFileSync('<repo-root>/logs/orb-renderer.log', ...)
   - relaunch electron with `--enable-logging` or renderer console never reaches stdout.
 
 ## Bug D — live TTS did not use the JP slime reference (voice lane)
