@@ -50,6 +50,8 @@ arrived mid-turn (it happened: set --set to your review-start capture, never to 
 - **blocked** → unblock with a decision or reassign. If it needs the human (money, keys,
   Core Guard, uncertainty) → `coord attention "..."` and stop on that item.
 - **wave_done (one lane)** → verify that lane's branch:
+**QA-4 (audit rule):** a wave_done without a linked green CI run id (`gh run list`) is bounced back — request the run id before any gate/merge work.
+
   1. ownership check: `git diff --name-only main...agent/<lane>` in its worktree vs
      `docs/OWNERSHIP.md` — any path the lane does not own = REJECT (post exactly what to fix);
   2. run the lane's tests — failing tests = DO NOT MERGE (attention if it is the human's call);
