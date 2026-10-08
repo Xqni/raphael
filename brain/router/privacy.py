@@ -69,6 +69,38 @@ def foreground_window() -> str | None:
         return None
 
 
+def _pytest_session() -> bool:
+    """True only while pytest is executing a test item (PYTEST_CURRENT_TEST
+    is set by pytest, never by a running stack)."""
+    return os.environ.get("PYTEST_CURRENT_TEST") is not None
+
+
+def foreground_status() -> tuple[bool, str | None]:
+    """AUD-05: (known, name) — FAIL-CLOSED semantics.
+
+    known=False when NO hook is registered (unverified stack) or the hook
+    cannot determine the focused window → the router refuses cloud egress
+    (reason=foreground_unknown) instead of failing open like the old
+    `foreground_window()` None-means-allow did.
+
+    Harness exception (documented): under PYTEST_CURRENT_TEST an unwired hook
+    counts as a KNOWN synthetic window (`pytest-window`) — test harnesses
+    model a wired stack and cannot query the real foreground. Production has
+    no PYTEST_CURRENT_TEST, so the live stack refuses until brain-core /
+    pc-control register the hook (docs/requests/router__to__brain-core__
+    wire-foreground-hook.md). Tests that need the PRODUCTION path patch
+    `_pytest_session` off (see test_foreground_gate.py).
+    """
+    if _foreground_check is None:
+        if _pytest_session():
+            return True, "pytest-window"
+        return False, None
+    name = foreground_window()
+    if not name or not str(name).strip():
+        return False, None
+    return True, str(name)
+
+
 def blocklist_hit(blocklist_apps: Iterable[str]) -> str | None:
     """Matched blocklist entry for the focused window, or None."""
     name = foreground_window()

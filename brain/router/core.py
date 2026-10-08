@@ -42,6 +42,7 @@ from .privacy import (
     blocklist_hit,
     describe_image,
     detect_personal_data,
+    foreground_status,
     is_private_mode,
     redact_categories,
     redact_secrets,
@@ -91,6 +92,7 @@ class CallResult:
     outcome: Outcome = Outcome.FAILED
     error: str | None = None
     error_code: str | None = None
+    reason: str | None = None           # gate discriminator (AUD-05/SEC-8)
 
 
 class ProviderState(str, Enum):
@@ -382,14 +384,30 @@ class Router:
             )
 
     def _gate_blocklist(self, operation: str) -> None:
-        """Foreground-window blocklist (PROTOCOL §7(2) / ARCHITECTURE §4).
+        """Foreground-window gate (PROTOCOL §7(2) / ARCHITECTURE §4 + AUD-05).
 
-        Vision: ALWAYS refused on a blocklisted window. Chat: refused too
-        when `router.block_chat_on_blocklist` is set (default true — under
-        profile `cloud_temp` there is no local model to fall back to, so
-        refusing is the only safe action).
+        1. UNKNOWN foreground (no hook registered / hook cannot determine the
+           focused window) → REFUSE cloud egress (`require_foreground`,
+           default true — fail CLOSED; the pre-audit code failed open by
+           treating None as "no block").
+        2. Known window on the blocklist → refused: vision ALWAYS, chat when
+           `router.block_chat_on_blocklist` (default true — under cloud_temp
+           there is no local model to fall back to).
         """
-        hit = blocklist_hit(self.config.privacy.blocklist_apps)
+        known, name = foreground_status()
+        if not known:
+            if not self.config.providers.require_foreground:
+                return                     # documented integrator escape hatch
+            raise RouterError(
+                "foreground window unknown — refusing cloud egress",
+                code="E_OFFLINE", reason="foreground_unknown",
+                detail="Can't verify the focused window — staying local only.",
+            )
+        # single foreground query → match the blocklist against THAT name
+        # (blocklist_hit would re-call the hook and miss the synthetic window)
+        low = str(name).lower()
+        hit = next((a for a in self.config.privacy.blocklist_apps
+                    if a and str(a).lower() in low), None)
         if not hit:
             return
         if operation == "chat" and not self.config.providers.block_chat_on_blocklist:
@@ -1167,10 +1185,12 @@ class Router:
         purpose = task_kind or "chat"
         try:
             self._gate_cloud("chat")
+            self._gate_blocklist("chat")     # AUD-05: unknown → refuse
         except RouterError as e:
             return CallResult(provider=provider, model=model, ok=False,
                               outcome=Outcome.UNAVAILABLE, error=str(e),
-                              error_code=e.code)
+                              error_code=e.code,
+                              reason=getattr(e, "reason", None))
         prov = self._providers.get(provider) or self._register(provider)
         now = datetime.now()
         system = SYSTEM_PROMPT + (

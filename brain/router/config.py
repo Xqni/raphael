@@ -262,6 +262,9 @@ class RouterSettings:
     discovery_timeout_s: float = 8.0
     usage_log_path: str = ""          # "" -> <repo_root>/brain/router/usage.jsonl
     block_chat_on_blocklist: bool = True
+    require_foreground: bool = True   # AUD-05: unknown foreground → REFUSE
+                                      # cloud chat/vision (integrator escape:
+                                      # config.d/router.yaml can flip false)
     vision_max_bytes: int = 4_000_000  # defensive cap; caller pre-downscales (§7)
     local_stt_enabled: bool = True     # profile local: voice lane registers the seam
     # --- vision-only paid slot (USER APPROVAL 2026-10-06, docs/PAID_USAGE.md) ---
@@ -413,6 +416,7 @@ def load_config(path: Path | None = None) -> RouterConfig:
         discovery_timeout_s=float(router_data.get("discovery_timeout_s", 8.0)),
         usage_log_path=str(router_data.get("usage_log_path", "")),
         block_chat_on_blocklist=bool(router_data.get("block_chat_on_blocklist", True)),
+        require_foreground=bool(router_data.get("require_foreground", True)),
         vision_max_bytes=int(router_data.get("vision_max_bytes", 4_000_000)),
         allow_vision_paid=bool(providers_data.get("allow_vision_paid", False)),
         vision_paid_daily_cap_usd=float(

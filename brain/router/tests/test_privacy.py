@@ -95,7 +95,7 @@ async def test_blocklist_always_refuses_vision(tmp_path, make_server) -> None:
         assert exc.value.reason == "blocked_window"
         assert exc.value.code == "E_OFFLINE"
         assert srv.requests == []
-        set_foreground_check(None)
+        set_foreground_check(lambda: "Normal Window")   # known + not blocklisted
         out = await router.vision(b"\x89PNG\r\n\x1a\n" + b"\x00" * 8, "what is this?")
         assert out["provider"] == "groq"            # unblocked → cloud call runs
     finally:
@@ -116,7 +116,7 @@ async def test_blocklist_blocks_chat_only_when_configured(tmp_path, make_server)
         set_foreground_check(lambda: "Banking - Overview")
         out = await router.chat(_msgs("hello"))    # explicitly allowed by config
         assert out["provider"] == "groq"
-        set_foreground_check(None)
+        set_foreground_check(lambda: "Normal Window")
         cfg2 = make_config(tmp_path, ["groq"], groq_url=srv.url,
                            block_chat_on_blocklist=True)
         router.reset_router()
