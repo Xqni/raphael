@@ -34,6 +34,33 @@ import numpy as np
 MAGIC = b'RAPH'
 KIND_MIC = 1
 
+# AUD-24 (Wave 5H): bound the sounddevice-callback -> asyncio handoff.
+# 600 chunks = 60 s of the wake stream's 100 ms frames; beyond that the
+# consumer (network/brain) is stalled and the OLDEST audio is dropped —
+# recency beats backlog for a mic lane, and the callback thread can never
+# outrun the loop or raise QueueFull inside call_soon_threadsafe.
+QUEUE_MAX_CHUNKS = 600
+
+
+def _enqueue_bounded(queue, chunk, stats: dict) -> None:
+    """Drop-oldest bounded put (runs on the LOOP thread — queue ops stay
+    single-threaded). Never raises; every drop is counted + rate-limited
+    to the log (1st, then every 500th)."""
+    if queue.full():
+        try:
+            queue.get_nowait()               # drop the OLDEST chunk
+        except Exception:  # noqa: BLE001 — QueueEmpty under a race
+            pass
+        stats["dropped"] = stats.get("dropped", 0) + 1
+        d = stats["dropped"]
+        if d == 1 or d % 500 == 0:
+            print(f"[audio_in] mic queue full (max {queue.maxsize}) — "
+                  f"dropped oldest chunk (total dropped: {d})", flush=True)
+    try:
+        queue.put_nowait(chunk)
+    except Exception:  # noqa: BLE001 — full again under a race
+        stats["dropped"] = stats.get("dropped", 0) + 1
+
 class MicStreamer:
     def __init__(self, 
                  on_frame: Callable[[bytes], Awaitable[None]], 
@@ -71,7 +98,10 @@ class MicStreamer:
         # Use a queue to bridge sounddevice callback to asyncio.
         # THREAD-SAFETY: the sounddevice callback runs on ITS OWN thread —
         # asyncio.Queue is not thread-safe, so hop onto the loop first.
-        self.queue = asyncio.Queue()
+        # AUD-24: bounded drop-oldest — the callback must never grow without
+        # limit nor raise QueueFull inside call_soon_threadsafe.
+        self.queue = asyncio.Queue(maxsize=QUEUE_MAX_CHUNKS)
+        self._drop_stats = {}
         self._loop = asyncio.get_running_loop()
 
         def callback(indata, frames, time, status):
@@ -79,8 +109,9 @@ class MicStreamer:
                 print(f"[audio_in] SD status: {status}", file=sys.stderr)
             # Convert float32 to pcm_s16le
             audio_int16 = (indata * 32767).astype(np.int16)
-            self._loop.call_soon_threadsafe(self.queue.put_nowait,
-                                            audio_int16.tobytes())
+            self._loop.call_soon_threadsafe(_enqueue_bounded, self.queue,
+                                            audio_int16.tobytes(),
+                                            self._drop_stats)
 
         try:
             with sd.InputStream(samplerate=self.sample_rate, 
@@ -231,7 +262,11 @@ class WakeStream:
 
     async def run(self):
         self._loop = asyncio.get_running_loop()
-        self._queue = asyncio.Queue()  # unbounded: consumer is network-bound; QueueFull inside call_soon_threadsafe would kill the loop task
+        # AUD-24: bounded drop-oldest (was: unbounded — a stalled consumer
+        # would let the callback thread grow memory without limit; a bare
+        # put_nowait would raise QueueFull inside call_soon_threadsafe)
+        self._queue = asyncio.Queue(maxsize=QUEUE_MAX_CHUNKS)
+        self._drop_stats = {}
         loop = self._loop
 
         def callback(indata, frames, time_info, status):
@@ -240,7 +275,8 @@ class WakeStream:
             chunk = (indata[:, 0] * 32767).astype(np.int16).tobytes() \
                 if indata.dtype != np.int16 else indata.tobytes()
             try:
-                loop.call_soon_threadsafe(self._queue.put_nowait, chunk)
+                loop.call_soon_threadsafe(_enqueue_bounded, self._queue,
+                                          chunk, self._drop_stats)
             except RuntimeError:
                 pass
 

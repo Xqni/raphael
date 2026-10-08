@@ -137,8 +137,8 @@ def test_timbre_similarity_separates_ref_from_wrong_voice():
         (np.clip(_harmonic_voice_pcm(), -1.0, 1.0) * 32767).astype("<i2")
         .tobytes(), 24000, JP_REF)
     assert wrong is not None and wrong < STORE_MIN_COS
-    zira = Path("/home/dami/raphael/assets/reference/samples/"
-                "02_zira_current_ref.wav")     # the retired voice (if present)
+    zira = (Path.home() / "raphael/assets/reference/samples/"
+            / "02_zira_current_ref.wav")     # the retired voice (if present)
     if zira.exists():
         d, sr = sf.read(str(zira), dtype="float32", always_2d=True)
         z = (np.clip(d.mean(axis=1), -1, 1) * 32767).astype("<i2").tobytes()
