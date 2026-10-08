@@ -231,7 +231,8 @@ class _SentenceSpeaker:
     """
 
     def __init__(self, hub, job_id, voice, max_sentences: Optional[int] = None,
-                 sanitize=None):
+                 sanitize=None, batch_size: Optional[int] = None,
+                 batch_wait_s: Optional[float] = None):
         self.hub = hub
         self.job_id = job_id
         self.voice = voice
@@ -239,6 +240,24 @@ class _SentenceSpeaker:
         # qa privacy contract point 2: Analysis/Simulation sentences are
         # redacted BEFORE subtitle + speech (never spoken unscrubbed)
         self.sanitize = sanitize
+        # streamed-sentence batching (voice request APPROVED 2026-10-07):
+        # hold speech until batch_size sentences OR batch_wait_s seconds,
+        # then ONE voice.speak() per batch — its pre-roll buffers the batch,
+        # so holes are bounded by one batch boundary, not every sentence.
+        try:
+            self.batch_size = int(
+                batch_size if batch_size is not None else
+                appcfg.cfg_get(appcfg.get_config(),
+                               'agent.speak_batch_sentences', 2))
+        except Exception:  # noqa: BLE001
+            self.batch_size = 2
+        try:
+            self.batch_wait_s = float(
+                batch_wait_s if batch_wait_s is not None else
+                appcfg.cfg_get(appcfg.get_config(),
+                               'agent.speak_batch_wait_s', 1.5))
+        except Exception:  # noqa: BLE001
+            self.batch_wait_s = 1.5
         self.queue: asyncio.Queue = asyncio.Queue()
         self.task: Optional[asyncio.Task] = None
         self.cancel: Optional[Any] = None
@@ -269,23 +288,57 @@ class _SentenceSpeaker:
         self.queue.put_nowait(s)
 
     async def _run(self):
+        """Batched cadence: fill a batch (batch_size sentences OR
+        batch_wait_s after the first, OR stream end), then ONE
+        voice.speak(joined) — gapless via tts pre-roll. Subtitles were
+        already emitted per sentence in push()."""
         while True:
-            item = await self.queue.get()
-            if item is _SENTINEL:
+            batch: list = []
+            stream_done = False
+            deadline: Optional[float] = None
+            while True:
+                item = None
+                if deadline is None:
+                    item = await self.queue.get()      # first sentence/sentinel
+                else:
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0:
+                        pass                           # hold expired -> speak
+                    else:
+                        try:
+                            item = await asyncio.wait_for(self.queue.get(),
+                                                          remaining)
+                        except asyncio.TimeoutError:
+                            item = None
+                if item is _SENTINEL:
+                    stream_done = True
+                    break
+                if item is None:
+                    break                              # partial batch on timer
+                if self.cancel is not None and self.cancel.is_set():
+                    return       # barge-in: drop the unsounded batch
+                batch.append(item)
+                if len(batch) >= max(1, self.batch_size):
+                    break
+                if deadline is None:
+                    deadline = time.monotonic() + max(0.0, self.batch_wait_s)
+            if batch:
+                if self.cancel is not None and self.cancel.is_set():
+                    return   # barge-in during the hold: drop the batch clean
+                if not self._spoke:
+                    self._spoke = True
+                    orbstate.speak_start()
+                    if self.hub is not None:
+                        orbstate.refresh(hub=self.hub)
+                try:
+                    await _speak_and_broadcast(
+                        self.hub, self.voice, self.job_id,
+                        ' '.join(batch), self.cancel)
+                except Exception as e:  # noqa: BLE001 — speech != job failure
+                    print(f'[speak] batch failed for {self.job_id}: {e}',
+                          flush=True)
+            if stream_done:
                 return
-            if self.cancel is not None and self.cancel.is_set():
-                return                        # barge-in: stop, no more speech
-            if not self._spoke:
-                self._spoke = True
-                orbstate.speak_start()
-                if self.hub is not None:
-                    orbstate.refresh(hub=self.hub)
-            try:
-                await _speak_and_broadcast(self.hub, self.voice, self.job_id,
-                                           item, self.cancel)
-            except Exception as e:  # noqa: BLE001 — speech != job failure
-                print(f'[speak] sentence failed for {self.job_id}: {e}',
-                      flush=True)
 
     async def __aexit__(self, exc_type, exc, tb):
         if exc_type is not None and issubclass(exc_type, asyncio.BaseException):
