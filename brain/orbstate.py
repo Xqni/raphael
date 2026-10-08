@@ -37,6 +37,7 @@ _hub = None                      # attached by app.py / ws.py
 
 # ---- module state (single asyncio loop; no locking needed) -----------------
 _booting = True
+_settle = False          # USER directive: first frame after boot = idle baseline
 _listening = False
 _speaking = 0                    # active speak pipelines (job-scoped)
 _task_kind = 'none'
@@ -53,8 +54,9 @@ def attach(hub):
 
 def reset_for_tests():
     """Return to boot state (tests only — name is the convention signal)."""
-    global _booting, _listening, _speaking, _task_kind, _provider, _model, _error_until
+    global _booting, _settle, _listening, _speaking, _task_kind, _provider, _model, _error_until
     _booting = True
+    _settle = False
     _listening = False
     _speaking = 0
     _task_kind = 'none'
@@ -124,8 +126,15 @@ def booting() -> bool:
 
 
 def finish_boot():
-    global _booting
+    """Boot complete. USER DIRECTIVE (2026-10-07): the FIRST frame emitted
+    after this is the settled `idle` baseline — never derived activity
+    (thinking/confirm) from leftover interrupted jobs: 'starting -> idle ->
+    then change based on what's happening'. The boot Notice (separate) still
+    reports interrupted tasks; state does not. One-shot: the first build
+    consumes the flag."""
+    global _booting, _settle
     _booting = False
+    _settle = True
 
 
 # ---- frame building --------------------------------------------------------
@@ -189,6 +198,14 @@ def build(state: Optional[str] = None, engine=None,
     stats = engine.stats() if engine is not None else {}
     mode = get_mode()
     st = state or derive_state(engine)
+    # USER directive: settle baseline — the first DERIVED frame after boot is
+    # ALWAYS idle (one-shot), even if leftover jobs would derive
+    # thinking/confirm; explicit emits (e.g. the boot 'starting' snapshot)
+    # are untouched, and every later frame derives normally from reality.
+    global _settle
+    if _settle and state is None:
+        st = 'idle'
+        _settle = False
     frame: Dict[str, Any] = {
         'type': 'orb_state',
         'v': 1,
