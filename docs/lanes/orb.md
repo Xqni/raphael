@@ -149,7 +149,7 @@ Wave 2 is MERGED; live gate was 3/5 — evidence + bug dossiers: `docs/BUGS-WAVE
 
 ### AMENDMENT 2 (user): BOOT STATE SEQUENCE REWIRE
 
-- [ ] **User directive: "the starting state might need to be rewired — starting state →
+- [x] **User directive: "the starting state might need to be rewired — starting state →
   idle state → then change based on what's happening."** Desired flow: on ANY launch or
   reconnect the orb shows `starting` BRIEFLY, always settles into `idle` next (even if
   jobs/journals exist — the boot Notice already carries that info), and only THEN moves
@@ -160,6 +160,40 @@ Wave 2 is MERGED; live gate was 3/5 — evidence + bug dossiers: `docs/BUGS-WAVE
   starting/reconnecting on a healthy stack); brain-core is assigned the emission half
   (settle-to-idle-first after finish_boot). Test: kill/restart brain twice — sequence must
   be starting→idle→(event states), never starting→thinking directly, never stuck.
+  - **ORB HALF — DONE + gated (both halves of the evidence).**
+    1. **Auto-escape** (`ws-status.js`): `starting` now carries a one-shot
+       `STARTING_ESCAPE_MS = 4000` timer. If no frame arrives — socket open but
+       the Brain never answers — it falls back to `idle` instead of lingering.
+       Previously only the renderer's one-shot 5400 ms timer covered this, and
+       the main-process status never escaped at all. Re-armed only when the orb
+       re-enters `starting`; retired the moment it leaves (`_settleBoot`).
+    2. **Settle beat** (`ws-status.js`): if the Brain's very first non-boot
+       frame is already an event state (jobs exist the moment boot finishes),
+       show `idle` for `BOOT_IDLE_BEAT_MS = 400` first, then apply the frame —
+       so the sequence is `starting -> idle -> thinking`, never
+       `starting -> thinking`. Normally brain-core sends `idle` first and no
+       delay happens at all; this is the belt-and-braces half.
+    3. **Clean shutdown**: `StatusWS.dispose()` retires every timer including
+       the escape and blocks reconnect re-arming (`_disposed`); wired into
+       `main.js` `before-quit`.
+    4. **Evidence A — logic, plain Node, no Electron**
+       (`tests/boot-sequence.test.cjs`, wired into `npm run test:unit`):
+       **13/13** across three scenarios — (A) Brain accepts the socket and
+       *never* answers → escapes in **259 ms** against a 250 ms budget, ends
+       `idle`, never drops to `reconnecting`; (B) first frame is already
+       `thinking` → **idle beat inserted**, `starting->idle->thinking`; (C)
+       normal `auth_ok` → `starting->idle->thinking`.
+    5. **Evidence B — end-to-end rendered** (`orb:trace --only=boot`, phase
+       `boot_sequence`, written to `docs/orb/trace/boot-sequence.json`):
+       **PASS 5/5** — `rendered=starting->idle->thinking`, i.e. the sequence
+       survives the IPC path from `StatusWS` to the pixels:
+       `starts_starting` · `settles_to_idle_next_before_anything_else` ·
+       `never_starting_straight_to_an_event_state` ·
+       `event_state_lands_after_idle` · `never_stuck_in_starting_or_reconnecting`.
+    6. New probe **`window.__orbStateHistory()`** records every *rendered*
+       transition, seeded at module scope with `starting` (not on the first
+       animation frame — a fast `auth_ok` can land before rAF ticks).
+
 
 ### AMENDMENT (user, 2026-10-07 evening): PRESERVE THE CAGE + kill the box
 

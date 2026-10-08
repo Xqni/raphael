@@ -685,6 +685,9 @@ app.on('before-quit', () => {
     try { topmostWatcher.kill(); } catch (e) { /* already gone */ }
     topmostWatcher = null;
   }
+  if (statusWS && typeof statusWS.dispose === 'function') {
+    try { statusWS.dispose(); } catch (e) { /* already gone */ }
+  }
 });
 
 app.on('second-instance', () => {

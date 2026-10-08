@@ -34,13 +34,13 @@
     {
       "name": "mousemove_listener_wired",
       "ok": true,
-      "detail": "listener saw clientX=140 clientY=140 dist=0.0 inside=true seen=2 (expect inside == dist<=112)",
+      "detail": "listener saw clientX=138 clientY=0 dist=140.0 inside=false seen=2 (expect inside == dist<=112)",
       "pass": true
     },
     {
       "name": "main_follows_renderer",
       "ok": true,
-      "detail": "renderer.pointerInside=true -> main.mouseThrough=false (must be the exact opposite)",
+      "detail": "renderer.pointerInside=false -> main.mouseThrough=true (must be the exact opposite)",
       "pass": true
     },
     {

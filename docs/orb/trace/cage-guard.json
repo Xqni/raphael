@@ -10,7 +10,7 @@
     {
       "name": "mid_task_hint_reaches_renderer",
       "ok": true,
-      "detail": "orb_state frames carrying a shape_hint: octagram (the brain-side value we must IGNORE)",
+      "detail": "orb_state frames carrying a shape_hint: octagram,circle,octagram (the brain-side value we must IGNORE)",
       "pass": true
     },
     {

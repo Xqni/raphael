@@ -539,6 +539,53 @@ async function runWave5(cdp, brain, rec) {
  *     (SHAPE_MORPHS_ENABLED=false), so the check deliberately REQUIRES that a
  *     non-circle hint actually arrives and is still not applied.
  */
+// AMENDMENT 2 (user): "starting state -> idle state -> then change based on
+// what's happening." The LOGIC (auto-escape + idle beat) is gated in plain Node
+// by tests/boot-sequence.test.cjs; this phase proves the same sequence reaches
+// the RENDERED state through the IPC wiring — the end-to-end half.
+async function runBootSequence(cdp, brain, rec) {
+  const checks = [];
+  const add = (name, ok, detail) => checks.push({ name, ok, detail, pass: !!ok });
+  const seqOf = async () => {
+    const h = await cdp.evaluateJson('window.__orbStateHistory()');
+    return (h || []).map((x) => x.state);
+  };
+  const isEvent = (s) => !!s && s !== 'starting' && s !== 'idle';
+
+  let seq = await seqOf();
+  add('rendered_sequence_starts_starting', seq[0] === 'starting', `rendered=${seq.join('->')}`);
+
+  const idleIdx = seq.indexOf('idle');
+  const beforeIdle = idleIdx > 0 ? seq.slice(0, idleIdx) : [];
+  add('settles_to_idle_next_before_anything_else',
+    idleIdx > 0 && beforeIdle.every((s) => s === 'starting'),
+    idleIdx > 0 ? `first ${beforeIdle.join('->')} -> idle` : `no idle yet: ${seq.join('->')}`);
+
+  add('never_starting_straight_to_an_event_state',
+    !seq.some((s, i) => i > 0 && seq[i - 1] === 'starting' && isEvent(s)),
+    `rendered=${seq.join('->')}`);
+
+  // drive a real event through the IPC path and re-check the ordering
+  brain.step('thinking');
+  await sleep(900);
+  seq = await seqOf();
+  const firstEvent = seq.findIndex(isEvent);
+  add('event_state_lands_after_idle', firstEvent > 0 && seq[firstEvent - 1] === 'idle',
+    `rendered=${seq.join('->')}`);
+  add('never_stuck_in_starting_or_reconnecting',
+    !['starting', 'reconnecting', 'offline'].includes(seq[seq.length - 1]),
+    `final=${seq[seq.length - 1]}`);
+
+  brain.step('idle');
+  await sleep(500);
+  const out = { pass: checks.every((c) => c.ok), checks, sequence: seq };
+  rec('boot_sequence', out);
+  fs.writeFileSync(path.join(OUT, 'boot-sequence.json'), JSON.stringify(out, null, 2) + '\n');
+  log(`boot sequence: ${out.pass ? 'PASS' : 'FAIL'} (${checks.filter((c) => c.ok).length}/${checks.length})`);
+  for (const c of checks) log(`  ${c.ok ? 'ok  ' : 'FAIL'} ${c.name}: ${c.detail}`);
+  return out;
+}
+
 async function runCageGuard(cdp, brain, rec) {
   const checks = [];
   const add = (name, ok, detail) => checks.push({ name, ok, detail, pass: !!ok });
@@ -739,6 +786,7 @@ async function main() {
       else if (ONLY_PHASE === 'bugc') await runBugC(cdp, brain, rec);
       else if (ONLY_PHASE === 'wave5') await runWave5(cdp, brain, rec);
       else if (ONLY_PHASE === 'cage') await runCageGuard(cdp, brain, rec);
+      else if (ONLY_PHASE === 'boot') await runBootSequence(cdp, brain, rec);
       else throw new Error('unknown --only phase: ' + ONLY_PHASE);
       fs.writeFileSync(path.join(OUT, 'trace-partial.jsonl'), lines.join('\n') + '\n');
       const only = lines.map((l) => { try { return JSON.parse(l); } catch (e) { return null; } })
@@ -752,6 +800,15 @@ async function main() {
     // ^ NB: the stale-PNG cleanup at the top of main() must NOT run for a
     // partial phase — it would delete the per-state screenshots this phase
     // does not regenerate. That already happened once.
+
+    // --- AMENDMENT 2: starting -> idle -> <event> (rendered, end-to-end) ----
+    let bootSequence = null;
+    try {
+      bootSequence = await runBootSequence(cdp, brain, rec);
+    } catch (e) {
+      log('boot sequence FAILED:', e && e.message);
+      rec('boot_sequence_error', { message: String(e && e.message) });
+    }
 
     // --- AMENDMENT: preserve the cage (rest AND mid-task) --------------------
     let cageGuard = null;
@@ -955,6 +1012,10 @@ async function main() {
     }
     if (transparency && !transparency.pass) {
       console.error('[orb-trace] FAIL: transparency check — a box/fringe is visible at the window edge');
+      failed = true;
+    }
+    if (bootSequence && !bootSequence.pass) {
+      console.error('[orb-trace] FAIL: boot sequence is not starting -> idle -> <event> (AMENDMENT 2)');
       failed = true;
     }
     if (cageGuard && !cageGuard.pass) {

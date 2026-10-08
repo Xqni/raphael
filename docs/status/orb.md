@@ -1094,3 +1094,76 @@ node test/orb-diff.cjs  PASS
 3. **"A weird box underneath"** — still waiting on the coordinator's vision
    identification (amendment item 2). My own pass finds no rectangular
    boundary; the squares are the spec's floating data panes. **Nothing removed.**
+
+---
+
+# AMENDMENT 2 — BOOT SEQUENCE REWIRE: starting → idle → <event> (user, 2026-10-07)
+
+> "the starting state might need to be rewired — starting state → idle state →
+> then change based on what's happening."
+
+The brain-core lane owns the *emission* half (settle-to-idle-first after
+`finish_boot()`); the orb owned the *guarantee* half. Both halves are now in.
+
+## The two mechanisms (src/main/ws-status.js)
+
+| | what | why |
+|---|---|---|
+| **auto-escape** | `STARTING_ESCAPE_MS = 4000`, one-shot, armed while `starting`, retired by `_settleBoot()` | a socket that opens but is never answered used to leave the main-process status in `starting` **forever** — only the renderer's one-shot 5400 ms timer ever rescued it, and the status/menu never escaped at all |
+| **settle beat** | if the first non-boot frame is already an *event* state → show `idle` for `BOOT_IDLE_BEAT_MS = 400`, then apply it | guarantees `starting → idle → thinking` even if brain-core's half regresses; with brain-core working, the arriving frame *is* `idle` and no delay occurs |
+| **clean shutdown** | `StatusWS.dispose()` retires every timer + `_disposed` blocks reconnect re-arming; wired into `main.js` `before-quit` | before this, quit left a reconnect timer armed |
+
+`bootEscapeMs` is config-overridable so the unit test exercises the timer in
+250 ms instead of 4 s.
+
+## Evidence A — logic (plain Node, `tests/boot-sequence.test.cjs`)
+
+Wired into `npm run test:unit` — **13/13**:
+
+```
+A: starts in `starting`                                   starting->idle
+A: auto-escapes starting->idle when NO frame arrives      starting->idle
+A: escape fires inside the 250 ms budget                  escape after 259 ms
+A: never lingers — ends idle, not starting/reconnecting   final=idle
+A: a healthy open socket must not drop to reconnecting    starting->idle
+B: starts in `starting`                                   starting->idle->thinking
+B: never starting->thinking DIRECTLY (idle beat inserted) starting->idle->thinking
+B: idle shown before the event state                      starting->idle->thinking
+B: the deferred event state is still applied (not swallowed) thinking
+C: starts in `starting`                                   starting->idle->thinking
+C: settles to idle on auth                                starting->idle->thinking
+C: never starting->thinking DIRECTLY                      starting->idle->thinking
+C: sequence is starting -> idle -> <event>                starting->idle->thinking
+```
+
+(A) Brain accepts the socket and **never answers** · (B) Brain boots straight
+into an event state · (C) the normal `auth_ok` path. Runs on an ephemeral test
+port (18942) — never 8765, the live brain port (AGENT_RULES §14).
+
+## Evidence B — end-to-end rendered (`orb:trace --only=boot`)
+
+New probe **`window.__orbStateHistory()`** records every *rendered* transition,
+seeded at module scope with `starting` (a fast `auth_ok` can land before the
+first animation frame, so seeding on rAF would miss it).
+
+```
+$ npm run orb:trace -- --only=boot
+boot sequence: PASS (5/5)
+  ok rendered_sequence_starts_starting:            rendered=starting->idle
+  ok settles_to_idle_next_before_anything_else:    first starting -> idle
+  ok never_starting_straight_to_an_event_state:    rendered=starting->idle
+  ok event_state_lands_after_idle:                 rendered=starting->idle->thinking
+  ok never_stuck_in_starting_or_reconnecting:      final=thinking
+```
+
+`docs/orb/trace/boot-sequence.json` · the phase is a permanent part of the full
+`npm run orb:trace` run (a failure sets exit code 1), not a one-off.
+
+## Scope note
+
+The amendment says "kill/restart brain twice". The live stack is **down by
+default** (policy change, 2026-10-07), so the restart is simulated against the
+mock brain — same frames, same ports, no live process touched. The two
+scenarios that matter (`no frame arrives` / `first frame is an event`) are both
+covered; a live re-run is queued behind the brain-core merge alongside the
+existing Real-Brain `orb:trace` re-run.

@@ -40,6 +40,8 @@ class MockBrain {
     this.closed = false;
     this.rejectAuth = false;   // set by the trace harness to reach 'offline'
     this.refuseConnections = false; // set by the trace harness to hold 'reconnecting'
+    this.holdAuth = false;     // AMENDMENT 2: accept the socket, never answer
+    this.authHeld = false;     // true once a client's auth was withheld
     this._seq = 0;             // monotonic `speak` sequence counter
     this._t0 = Date.now();
     this.server = http.createServer((req, res) => {
@@ -91,6 +93,10 @@ class MockBrain {
           ws.close();
           return;
         }
+        // AMENDMENT 2 test hook: holdAuth simulates a Brain that accepts the
+        // socket but never answers — the orb must auto-escape starting->idle
+        // instead of lingering. releaseAuth() completes it later.
+        if (this.holdAuth) { this.authHeld = true; break; }
         this._send(ws, { type: 'auth_ok', v: 1, session: 'mock-' + Math.random().toString(36).slice(2, 8), server_v: 'mock' });
         // PROTOCOL §3: server kicks off keepalive immediately after auth_ok.
         this._send(ws, { type: 'ping', v: 1 });
@@ -110,6 +116,20 @@ class MockBrain {
         break;
       default: break;
     }
+  }
+
+  /** AMENDMENT 2: complete a held auth so the orb settles exactly once. */
+  releaseAuth() {
+    this.holdAuth = false;
+    if (!this.authHeld) return false;
+    this.authHeld = false;
+    for (const ws of this.clients) {
+      try {
+        this._send(ws, { type: 'auth_ok', v: 1, session: 'mock-' + Math.random().toString(36).slice(2, 8), server_v: 'mock' });
+        this._send(ws, { type: 'ping', v: 1 });
+      } catch (e) { /* gone */ }
+    }
+    return true;
   }
 
   _send(ws, frame) {
