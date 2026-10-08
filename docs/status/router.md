@@ -97,7 +97,7 @@ stack untouched (policy 2026-10-07: DOWN by default), one suite at a time (Rule 
     `spend.py:189` `self.path.parent.mkdir(parents=True, exist_ok=True)` + one JSONL
     line per event (`call|alert|import`) at `<repo>/run/vision_paid_ledger.jsonl`;
     file is the source of truth, survives restarts, malformed line charged at floor;
-  - legacy live state carried forward: `/home/dami/raphael/run/vision_paid_daily.json`
+  - legacy live state carried forward: `<repo-root>/run/vision_paid_daily.json` (main worktree)
     (113 B, 2026-10-07 07:14) is imported once then renamed `*.imported`
     (`spend.py::_import_legacy`);
   - daily + **all-time** ceilings: `config.py:200` `vision_paid_total_cap_usd: float = 10.00`
