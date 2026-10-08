@@ -91,6 +91,14 @@ async def lifespan(app: FastAPI):
     get_mode()                     # load persisted mode flags
     orbstate.finish_boot()
     orbstate.refresh(hub=hub, engine=engine)
+    # SEC-7: Core Guard manifest check at boot -> SAFE MODE + visible warn
+    # Notice on drift (never crash-loops the brain; /status carries detail).
+    try:
+        from . import coreguard
+        coreguard.check_at_boot()
+    except Exception as _ge:  # noqa: BLE001 — boot must proceed
+        print(f'[core_guard] boot check failed: {type(_ge).__name__}: {_ge}',
+              flush=True)
     # Notice emitter 1 (PROTOCOL §3, approved 2026-10-07): restart recovery —
     # queued PENDING because ui/cli clients authenticate AFTER boot; the
     # first one drains it (ws._handle_auth -> notice.flush_pending).
@@ -262,8 +270,10 @@ async def status(auth: bool = Depends(token_auth)) -> Dict[str, Any]:
         router_block = {}
     except Exception:  # noqa: BLE001 — /status must stay up
         router_block = {'error': 'unavailable'}
+    from . import coreguard, latency
     return {'ok': True, 'server_v': SERVER_V, 'mode': get_mode().label(),
             'sessions': get_hub().session_counts(), 'router': router_block,
+            'latency': latency.snapshot(), 'core_guard': coreguard.status(),
             **engine.stats()}
 
 

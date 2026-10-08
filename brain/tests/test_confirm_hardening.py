@@ -234,3 +234,72 @@ async def test_voice_safe_matches_confirmer_risk_map_not_text():
     assert voice_safe(13) is False
     c.cancel(13)
     await asyncio.gather(task, return_exceptions=True)
+
+
+# ---- audit item 5: property test — voice can NEVER approve high-risk --------
+def test_property_voice_never_approves_high_risk():
+    """Random utterances (seeded, incl. TTS self-echo of her own confirm
+    question and sentences containing 'yes' mid-way): a voice-channel answer
+    NEVER resolves a high-risk confirmation as 'yes'. Deny/unclear stays
+    allowed (voice can always abort)."""
+    import itertools
+    import random
+
+    rng = random.Random(20261007)
+    affirmatives = ['yes', 'YES', 'Yeah.', 'okay', 'confirm', 'go ahead',
+                    'sure thing', 'yep yep', 'approved', 'do it', 'yes please',
+                    'absolutely right']
+    denials = ['no', 'stop', "don't", 'never', 'nope nah']
+    echoes = [
+        # her own spoken question (TTS self-echo / playback)
+        'About to delete files or data: “delete my downloads”. Confirm?',
+        'About to run tool `powershell`. Confirm?',
+        # 'yes' embedded mid-sentence (first word is NOT yes -> fails closed)
+        'she said yes yesterday', 'no way that was a yes',
+        'if you say yes it saves', 'hm? maybe later modify it',
+        'huh', '', '   ',
+    ]
+    corpus = affirmatives + denials + echoes
+    checks = {'rejected': 0, 'denied': 0}
+
+    async def main():
+        for i in range(200):
+            utter = rng.choice(corpus)
+            c = confirm_mod.Confirmer(timeout_s=5)
+            row = 10_000 + i
+            task = asyncio.create_task(
+                c.request(row, 'q?', ['yes', 'no'], risk='high'))
+            await asyncio.sleep(0.001)
+            result = c.resolve_ex(row, utter, via='voice')
+            await asyncio.sleep(0.005)   # let request() resume on the result
+            if task.done():
+                # resolved: voice may only ever DENY a high-risk confirmation
+                answer = await task
+                assert answer == 'no', (utter, answer)
+                assert result == 'ok', (utter, result)
+                checks['denied'] += 1
+            else:
+                # still pending: the ONLY legal outcome is an affirmative
+                # rejection (rejected_channel); pending survives
+                assert result == 'rejected_channel', (utter, result)
+                assert not task.done()
+                c.cancel(row)
+                await asyncio.gather(task, return_exceptions=True)
+                checks['rejected'] += 1
+    asyncio.run(main())
+    # both branches actually exercised (corpus has yes + no + echo forms)
+    assert checks['rejected'] > 0 and checks['denied'] > 0, checks
+
+
+def test_property_low_risk_voice_still_works():
+    """The property is risk-specific: voice yes on LOW risk remains allowed."""
+    async def main():
+        for i in range(10):
+            c = confirm_mod.Confirmer(timeout_s=5)
+            row = 20_000 + i
+            task = asyncio.create_task(
+                c.request(row, 'q?', ['yes', 'no'], risk='low'))
+            await asyncio.sleep(0.001)
+            assert c.resolve_ex(row, 'yes', via='voice') == 'ok'
+            assert await task == 'yes'
+    asyncio.run(main())

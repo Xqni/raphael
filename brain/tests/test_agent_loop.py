@@ -533,7 +533,12 @@ def test_audio_path_listening_and_voice_confirm(token_path, fake_chat,
     from brain.jobs import store as job_store
 
     def _mic_yes(ws):
-        payload = b'\x00\x00' * 1600            # 0.1 s silence (s16le mono)
+        # SEC-3: each segment needs its own local decision (audio_start) and
+        # must clear the local gate (non-silent, >=0.15s)
+        ws.send_text(json.dumps({'type': 'audio_start', 'v': 1,
+                                 'reason': 'wake'}))
+        _recv_json(ws, timeout=5)                  # ack
+        payload = struct.pack('<h', 2500) * 8000    # 0.5 s non-silent tone
         ws.send_bytes(b'RAPH' + struct.pack('>BI', 1, 1) + payload)
         ws.send_text(json.dumps({'type': 'audio_end', 'v': 1}))
 
@@ -805,9 +810,18 @@ def test_conversation_hook_offers_turns_to_memory(token_path, fake_chat,
 
 
 # ---- voice STT-outage subtitle (APPROVED 2026-10-07) ------------------------
-def _mic_bytes(ws):
+def _mic_bytes(ws, silent=False, start=True):
     import struct
-    ws.send_bytes(b'RAPH' + struct.pack('>BI', 1, 1) + b'\x00\x00' * 1600)
+    # SEC-3: audio_start IS the local wake/PTT decision — audio_end without it
+    # never reaches STT (fail-closed). Non-silent >=0.15s payloads pass the
+    # local gate (silence/short segments are dropped before any upload).
+    if start:
+        ws.send_text(json.dumps({'type': 'audio_start', 'v': 1,
+                                 'reason': 'wake'}))
+        _recv_json(ws, timeout=5)                   # ack
+    payload = (b'\x00\x00' * 8000 if silent
+               else struct.pack('<h', 2500) * 8000)   # 0.5 s
+    ws.send_bytes(b'RAPH' + struct.pack('>BI', 1, 1) + payload)
     ws.send_text(json.dumps({'type': 'audio_end', 'v': 1}))
 
 

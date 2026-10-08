@@ -160,6 +160,15 @@ def _shape_for(kind: str) -> str:
     return 'circle'
 
 
+def reset_transient_for_tests() -> None:
+    """Clear per-test transient state (error linger, listening, speaking)
+    so one test's failure window can't bleed into the next assertion."""
+    global _error_until, _listening, _speaking
+    _error_until = 0.0
+    _listening = False
+    _speaking = 0
+
+
 def derive_state(engine=None) -> str:
     """§e precedence: booting > confirm > speaking > listening > acting
     (input-lock) > thinking (jobs active) > error window > idle.
