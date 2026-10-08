@@ -26,6 +26,24 @@ CORE_GUARD = {
     'brain/auth.py': 'integrator (Core Guard: auth)',
     'brain/control.py': 'integrator (Core Guard: kill/pause/private/watch)',
     'brain/mode.py': 'integrator (Core Guard: mode persistence)',
+
+    # SEC-7 expansion (approved: docs/requests/evolution-persona__to__integrator__sec7-core-guard-expansion.md)
+    'tools/conductor/**': 'integrator (control plane: conductor + coord bus)',
+    '.github/workflows/ci.yml': 'qa-security (CI)',
+    '.github/workflows/tests-heavy.yml': 'qa-security (CI heavy battery)',
+    'docs/OWNERSHIP.md': 'integrator (the ownership map itself)',
+    'scripts/setup.sh': 'infra (boot/setup)',
+    'scripts/setup.ps1': 'infra (boot/setup)',
+    'scripts/uninstall.ps1': 'infra (boot/setup)',
+    'scripts/install-brain-unit.sh': 'infra (systemd unit install)',
+    'scripts/token-gen.sh': 'infra (token bootstrap)',
+    'brain/raphael-brain.service': 'infra (systemd unit)',
+    'supervisor/**': 'infra (bring-up/watchdog)',
+    'scripts/win/allow-brain-localhost.ps1': 'integrator (firewall helper)',
+    'scripts/win/make-ref-voice.ps1': 'voice (ref builder)',
+    'scripts/win/mute.ps1': 'integrator (win helper)',
+    'body/win/act_powershell.py': 'pc-control (PS script registry)',
+    'brain/evolution/**': 'evolution-persona (controller must not rewrite its judge)',
 }
 
 
