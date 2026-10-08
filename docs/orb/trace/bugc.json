@@ -28,13 +28,13 @@
     {
       "name": "cage_shape_settles_after_interruption",
       "ok": true,
-      "detail": "cage={\"maxErr\":0,\"active\":false,\"shape\":\"circle\"}",
+      "detail": "cage={\"maxErr\":0,\"active\":false,\"shape\":\"circle\",\"radiusMin\":1.14999995906139,\"radiusMax\":1.1500000306110496,\"radiusSpread\":7.154965953048986e-8}",
       "pass": true
     },
     {
       "name": "state_flip_latency",
       "ok": true,
-      "detail": "mean=1ms worst=2ms (delivery only; 300-600ms crossfade is by design) — listening:2 thinking:1 confirm:1 error:1 idle:2",
+      "detail": "mean=2ms worst=3ms (delivery only; 300-600ms crossfade is by design) — listening:3 thinking:2 confirm:2 error:1 idle:1",
       "pass": true
     }
   ],
@@ -58,7 +58,10 @@
     "cage": {
       "maxErr": 0,
       "active": false,
-      "shape": "circle"
+      "shape": "circle",
+      "radiusMin": 1.14999995906139,
+      "radiusMax": 1.1500000306110496,
+      "radiusSpread": 7.154965953048986e-8
     }
   }
 }

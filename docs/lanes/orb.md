@@ -149,7 +149,17 @@ Wave 2 is MERGED; live gate was 3/5 — evidence + bug dossiers: `docs/BUGS-WAVE
 
 ### AMENDMENT (user, 2026-10-07 evening): PRESERVE THE CAGE + kill the box
 
-- [ ] **"the orb is now in a weird shape, its not a cage we had earlier — preserve that."
+- [x] **"the orb is now in a weird shape, its not a cage we had earlier — preserve that."**
+      DONE + gated — **the code was already correct; the live orb was stale**
+      (process start 18:30:26 vs revert commit 18:44:09 — Electron does not
+      hot-reload, so the fix had never reached the screen; the deployed checkout
+      *does* contain the flag). **Restart = integrator's call, not mine.**
+      New `cage guard` **PASS 4/4**: cage geometry established **at boot**
+      (`maxErr=0.0000` both lattice and cage), and mid-task a real `octagram`
+      hint **arrives and is ignored** (`applied=circle effective=circle
+      morphActive=false`). Vision on the regenerated matrix: outer cage is a
+      **rounded ball in all four** images (rest 8/10,7/10 · mid-task 5/10,4/10).
+      ORIGINAL TEXT: *"the orb is now in a weird shape, its not a cage we had earlier — preserve that."
   RESTORE THE CAGE as the always-on look.** Research findings: (1) the revert was
   renderer-side only — brain/orbstate.py:187 still emits per-task `shape_hint` from
   orb.shape_map (llm->octagram etc.), so during any task the lattice morphs away from the
@@ -162,6 +172,33 @@ Wave 2 is MERGED; live gate was 3/5 — evidence + bug dossiers: `docs/BUGS-WAVE
 - [ ] (VISION PENDING) "a weird box underneath" the orb — user screenshot taken, vision
   analysis incoming; will be appended here with the element's identity. Do not guess-remove
   banners/subtitles until identified.
+
+### CAGES -> 3D WIREFRAME SPHERES (user, 2026-10-07 — supersedes the octagram call)
+
+- [x] **"nah i dont like the octagram, please change the cages (inner and outer)
+      to 3d spheres please"** — DONE + gated.
+  - `initSageCore` now builds the cage from **latitude rings + meridians** (a
+        wireframe globe): 5 parallels × 20 segments + 6 meridians × 16
+        segments = 196 edges (the icosphere it replaced had ~120, so the
+        "tangled yarn" risk did not grow). The **inner cage is the same
+        geometry at 0.56 scale** — outer and inner are spheres *by
+        construction*, which is literally what was asked.
+  - An octagram prism was built first and rejected by the user; it is gone.
+  - Free "whisker" spokes removed — every segment now rejoins the mesh (they
+        were the "lines that terminate mid-air" in the vision review).
+  - Constant shape + colour-only state change preserved: `BASE_SHAPE` is back
+        to `circle` (the sphere's silhouette), no per-state/task-kind morph.
+  - **Numeric proof, not an opinion:** the probe now reports the radius of
+        every cage vertex — `cageRadius=1.150..1.150`, **spread 0.0000**.
+        All vertices on one sphere = it *is* a sphere; a star, prism or
+        icosphere would fail that instantly.
+  - **Gate:** `cage guard` requires `radiusSpread < 0.02` at boot AND mid-task,
+        plus `morphActive=false` and `maxErr=0` for both lattice and cage.
+        **PASS 4/4.**
+  - Vision on the regenerated matrix (independent): *"the outer cage in image 1
+        is a recognisable wireframe sphere/globe … a second, smaller sphere
+        (~50% radius) around the core … I see no star, octagon, hexagon, box,
+        or differing ring count in the cage"* — ratings 6–7/10 as a 3D sphere.
 
 ## USER DIRECTIVE 2026-10-07 — shape-morph revert (do this FIRST)
 
