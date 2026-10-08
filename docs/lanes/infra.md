@@ -64,6 +64,20 @@ Wave 4 is MERGED + **GATE PASSED** (tag `wave-4-gate`, 10/10 lanes, mock 308 gre
 
 - [ ] Read `docs/audit-tasks/infra.md` → your IDs: **SEC-2, SEC-1, SEC-5, SEC-6, SEC-7, ARCH-2, ARCH-4, ARCH-6, ARCH-7, F-7** — VERIFY-FIRST (verbatim file:line, then CONFIRMED / NOT-APPLICABLE / ALREADY-DONE), QA-4: link a green CI run with your wave_done. Source register + dedupe: `docs/AUDIT-2026-10-07.md`. Rules: stack down (spawn only for your test), one suite at a time, heavy suites in cloud (`gh workflow run tests-heavy.yml`), Rule 15 speed, cost not a factor.
 
+### Wave 5 follow-ups (2026-10-07)
+
+- [x] Audit packet Wave 5H (docs/audit-tasks/infra.md) — all IDs verified-first
+  and delivered: SEC-2 (priv-esc CONFIRMED → root-owned sha chain, disabled
+  default, rollback; live unit disabled by human), SEC-1 (value-blind
+  scanner + advisory hook + prepared-never-run scrub plan + CI request),
+  SEC-5 (.env.dev valueless template/installer + integrator request),
+  SEC-6 (keepalive+90s idle cap both relay legs, 480s real proof, ss
+  loopback proof with teardown, docs request), SEC-7 (root/boot script
+  inventory), ARCH-2 (process-mode report), ARCH-4 (identity via env/config,
+  tests), ARCH-6 (`raphael doctor`), ARCH-7 (backup/restore + round-trip
+  test), F-7 (ALWAYS-ON-READINESS draft for co-sign). Full quotes + test
+  output in docs/status/infra.md.
+
 ## Later waves
 - Per docs/WAVES.md — do not start early (AGENT_RULES §11).
   - Wave 3 (after integrator bumps `current_wave`): log rotation audit + crash reports with last-known state. NOTE: `supervisor/main.py` already ships size-cap rotation (5 MB × 3, selfcheck-verified); Wave 3 extends it to the other stack logs + adds last-known-state crash reports.
