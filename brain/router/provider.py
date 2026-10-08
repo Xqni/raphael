@@ -54,6 +54,11 @@ class Provider:
         self._expires_at = 0.0
         self._discover_lock = asyncio.Lock()
         self.last_error: str | None = None
+        # model-capability learning (dispatch 2026-10-08): models that a live
+        # 400 proved unusable are skipped from then on — session-scoped, no
+        # breaker damage (permanent incapability is not provider ill-health)
+        self._dead_models: set[str] = set()        # unusable for anything
+        self._tools_dead_models: set[str] = set()  # usable, but not with tools
 
     # ------------------------------------------------------------------ #
     # discovery / role mapping
@@ -90,14 +95,27 @@ class Provider:
         """Force re-discovery on the next call (model vanished → re-select)."""
         self._expires_at = 0.0
 
+    def mark_model_unsupported(self, model_id: str, tools_only: bool = False) -> None:
+        """Record a proven-incapable model (HTTP 400 markers)."""
+        if tools_only:
+            self._tools_dead_models.add(model_id)
+        else:
+            self._dead_models.add(model_id)
+
     async def pick(
         self,
         role: str,
         *,
         require_capability: str | None = None,
         force: bool = False,
+        tools: bool = False,
     ) -> ModelInfo | None:
         models = await self.discover(force=force)
+        if self._dead_models:
+            models = [m for m in models if m.id not in self._dead_models]
+        if tools and self._tools_dead_models:
+            models = [m for m in models
+                      if m.id not in self._tools_dead_models]
         # money gate (§7): paid-pool models never enter selection unless
         # `providers.allow_paid_runtime` is on — or this provider IS the
         # user-approved vision-only paid slot (gated by chain + daily cap)

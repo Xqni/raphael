@@ -227,6 +227,10 @@ SKIP_REASONS = frozenset({
     "blocked_window",
     "cloud_vision_disabled",
     "stt_not_available",
+    # permanent MODEL incapability (400 markers): skip/re-pick, never trip
+    # the breaker (dispatch 2026-10-08 model-capability learning)
+    "model_unsupported",
+    "no_tool_support",
 })
 
 # provider failures worth retrying on the SAME provider before failing over
@@ -488,6 +492,7 @@ class Router:
         require_capability: str | None = None,
         fixed_model: str | None = None,
         estimate: int = 100,
+        tools: bool = False,
     ) -> tuple[Any, ChatResult]:
         """Single-provider attempt loop: retries → failover decision.
 
@@ -511,7 +516,8 @@ class Router:
                     model = ModelRef(fixed_model, provider.name)
                 else:
                     model = await provider.pick(role,
-                                                require_capability=require_capability)
+                                                require_capability=require_capability,
+                                                tools=tools)
             except RouterError as e:
                 last = e
                 if e.reason in SKIP_REASONS or e.code not in _RETRYABLE:
@@ -544,6 +550,12 @@ class Router:
                 if e.reason == "model_not_found":
                     # vanished model → re-select (ARCHITECTURE §4)
                     provider.invalidate()
+                    continue
+                if e.reason in ("model_unsupported", "no_tool_support"):
+                    # 400 proved THIS model incapable → learn, re-pick, retry
+                    # (session-scoped; breaker untouched, bounded by attempts)
+                    provider.mark_model_unsupported(
+                        model.id, tools_only=(e.reason == "no_tool_support"))
                     continue
                 if e.reason in SKIP_REASONS:
                     raise
@@ -595,6 +607,7 @@ class Router:
         require_capability: str | None = None,
         estimate: int = 100,
         skip_free: bool = False,
+        tools: bool = False,
     ) -> tuple[str, str, ChatResult]:
         started = time.monotonic()
         errors: list[RouterError] = []
@@ -608,6 +621,7 @@ class Router:
                     lambda m, _p=provider: call(_p, m),
                     require_capability=require_capability,
                     estimate=estimate,
+                    tools=tools,
                 )
             except RouterError as e:
                 errors.append(e)
@@ -685,6 +699,7 @@ class Router:
             require_capability=("tools" if tools else "chat"),
             estimate=estimate_input_tokens(msgs, tools),
             skip_free=self._skip_free(personal),
+            tools=bool(tools),
         )
         latency = (time.monotonic() - start) * 1000.0
         await self._log_usage(provider, model, purpose, result.usage,
@@ -716,7 +731,8 @@ class Router:
             model = None
             try:
                 model = await provider.pick(
-                    role, require_capability="tools" if tools else None)
+                    role, require_capability="tools" if tools else None,
+                    tools=bool(tools))
                 if model is None:
                     raise RouterError("no model for role", code="E_OFFLINE",
                                       provider=provider.name, reason="no_model")
@@ -768,6 +784,10 @@ class Router:
                 stats = self._stats_for(provider.name)
                 stats.last_error = str(e)
                 if not emitted:
+                    if e.reason in ("model_unsupported", "no_tool_support"):
+                        # learn it now so the NEXT turn re-picks a good model
+                        provider.mark_model_unsupported(
+                            model.id, tools_only=(e.reason == "no_tool_support"))
                     errors.append(e)
                     if e.reason not in SKIP_REASONS:
                         stats.circuit.record_failure(time.monotonic())
