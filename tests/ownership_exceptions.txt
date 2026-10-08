@@ -16,3 +16,6 @@ brain/simulation.py =brain-core  # 2026-10-07 same P0 batch: Simulation sandbox 
 tests/core_guard.py =integrator  # 2026-10-08 SEC-7 approved request (evolution-persona__to__integrator__sec7-core-guard-expansion.md): dir-aware hashes + 13 control-plane entries
 tests/core_guard_manifest.json =integrator  # same approved request: --update run with --approval reference (auto-generated manifest)
 docs/voice/TTS-DECISION.md =voice  # 2026-10-08 Wave-5H packet F-5 assignment (docs/audit-tasks/voice.md): one-page TTS decision record (keep fish, measured)
+brain/coreguard.py =brain-core  # 2026-10-08 SEC-7 packet extra + my nudge: boot-time Core Guard verification (safe-mode detection)
+brain/latency.py =brain-core  # 2026-10-08 ARCH-6 packet assignment: uniform stage latency instrumentation
+brain/logjson.py =brain-core  # 2026-10-08 ARCH-6 packet assignment: structured log lines
