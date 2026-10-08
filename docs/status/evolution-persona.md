@@ -1,8 +1,64 @@
 # evolution-persona — status
 
-Updated: 2026-10-07 (Wave 5)
+Updated: 2026-10-08 (Wave 5H + AUD-26)
 
 ## Done
+- **Branch CI (QA-4) GREEN 2026-10-08: run `37779671356` — conclusion success, ALL 5 jobs green**
+  (Ubuntu brain+mock suites, Protocol conformance ×2, Windows Body unit, Security scanners),
+  head `781482e`. Saga (3 prior reds, all mine + fixed): run 1 `37777566560` → my controller
+  `git commit` lacked identity on runners (`Author identity unknown`) → fixed with explicit
+  `-c user.name/user.email` in `controller._git` (verified locally with
+  `GIT_CONFIG_GLOBAL=/dev/null`: 19 controller tests pass); run 2 `37778157639` → built the STALE
+  remote branch (local unpushed) → pushed my lane branch (never main); run 3 `37778804596` →
+  ownership step flagged my exception-record edits → added the documented `=evolution-persona`
+  exception lines (manifest rehash + the registry self-line, coord decision inbox[17],
+  integrator/qa review at merge; local proof: ownership 17 files OK, qa's 40 ownership tests
+  green); run 4 **`37779671356` GREEN**.
+- **SEC-1/ARCH-4 personal-data scrub (2026-10-08): own paths CLEAN.** Before: 0 FAIL + 1 REVIEW
+  (`docs/requests/evolution-persona__to__voice__ciel-voice-reference-slot.md:16`, rule=voice-clip);
+  after rewording that line: **0 findings in my paths** (repo-wide 198 -> 197). Manual cross-check
+  for the placeholder classes `<wsl-user>`/`<win-user>`/`<gh-owner>`/`<win-user-path>`/
+  `<home-path>` across all my tracked files: 0 hits (value-blind — patterns never reproduced here).
+  Green CI id at report time: **37723653896** (ci.yml success, main, 2026-10-08T03:38:05Z);
+  tests-heavy **37720486202** (success). Note: the 3 most recent main ci.yml runs are RED
+  (integrator merges) — flagged for integrator.
+- **AUD-26 (2026-10-08): CONFIRMED → FIXED → TESTED.** Verify-first: path-escape quote
+  `controller.py:91-93 (repo / rel).read_text(...)` + `:117-119 target = wt / rel … write_text`;
+  false-promoted quote `:137 decision = "promoted" if can_promote else "proposal"` + `:199-201`
+  `git worktree remove --force` / `git branch -D`. Fixes: `safe_rel()` (`:55`) + `path_guard`
+  before ANY access (`:114-118`) + worktree re-validation (`:158`); truthful promotion via
+  `git merge --ff-only` (`:189`) with LKG tagged only on real merge, fail-closed to proposal
+  otherwise (`:201`), dirty caller tree preserved. 19 controller tests; suites evolution 93 /
+  persona 77 / guard OK (20); post-fix REAL recheck cycle green (path_guard → shadow rc=0 →
+  compare ok → proposal_written merged=false). Bonus bug caught by the new tests: safe_changes
+  values overwritten with path strings — corrected. Green CI ids (QA-4): **37716631721**
+  (ci.yml success, main, 2026-10-08T02:11:16Z), tests-heavy **37717108187**.
+- **Wave 5H audit packet (2026-10-07) — all four items reported via coord:**
+  - **SEC-7 (P0): CONFIRMED → APPROVED → APPLIED.** Verify-first quote: `tests/core_guard.py:19-24`
+    `CORE_GUARD_FILES = [brain/confirm.py, brain/auth.py, brain/control.py, brain/mode.py]` (4 files).
+    Request `evolution-persona__to__integrator__sec7-core-guard-expansion.md` (manifest expansion +
+    untrusted control-plane message spec) filed FIRST; integrator merged my zones mirror (58ed877),
+    applied the manifest **4 → 20 entries** (66e67fa, dir-aware hashing, `--update` with my approval
+    ref), coverage test updated (5bd13c7). My `zones.py` mirrors it (conductor/workflows/OWNERSHIP/
+    PS-registry/boot unit = CORE).
+  - **TASK-3 (supervisor rollback hardening): DONE.** ownership CONFIRMED (`docs/OWNERSHIP.md:26`
+    infra owns `supervisor/**`); zones refuse it (`zones.py:47`); manifest covers it post SEC-7
+    (`tests/core_guard.py:36 'supervisor/**'`); supervisor rollback code itself = 0 matches
+    (NOT-APPLICABLE until infra builds it); **forced bad-promotion drill PASSED**
+    (`brain/evolution/tests/test_bad_promotion_rollback.py` — baseline+LKG → bad promote → journal
+    rollback cmd → probation fatal → revert restores tree → LKG re-pointed → decision rolled_back).
+  - **F-1: DONE — first end-to-end PROPOSE-mode loop run** (`docs/evolution/FIRST-RUN.md`): new
+    `brain/evolution/controller.py` (guard → classify → worktree branch → shadow (160 passed, rc=0)
+    → baseline compare (only `commit moved` delta, 1 golden identical) → proposal file + journal →
+    probation SIMULATION in tmp). Target = comment wording fix on `config.d/evolution-persona.yaml`
+    (mutable). **Never auto-applied:** main tree byte-unchanged, worktree+branch cleaned up,
+    proposal-only. First attempt was REFUSED by the fail-closed guard (uncommitted edit over a
+    guarded file) — recorded in FIRST-RUN §1 as guard evidence.
+  - **F-6: DONE** — `docs/evolution/CIEL-PROMOTION.md` (criteria/evidence/user-approval/voice slot/
+    palette/probation checklist; NOT promoted; both Ciel requests verified DONE with commits).
+  - Structural follow-through: SEC-7 manifest rehash runs (`--update --approval <sec7 ref>`) needed
+    after each guarded-file commit; ownership exception for the lane-published manifest hunk
+    requested from integrator/qa (corrected request posted; I did not touch their exceptions file).
 - **Wave 5 closed for this lane (2026-10-07)** — `wave_done` posted (final merge position 10).
   Integrator decisions: `minds[]` **APPROVED as proposed**; `task_kind analysis|simulation` +
   shape_map **APPROVED** (config.yaml entries `analysis: octagram`, `simulation: triangle` added by
@@ -63,14 +119,17 @@ Updated: 2026-10-07 (Wave 5)
 - —
 
 ## Blocked
+- ~~origin/main Core Guard drift~~ — **RESOLVED 2026-10-08**: integrator's `aa8503e`
+  ("SEC-1 scrub of coord.py … + guard rehashed") made the committed tree self-consistent; after
+  rebase my worktree verifies `Core Guard OK (20 files byte-stable)` (exit 0) and suites are
+  green again (evolution 93, persona 77). Reported earlier as coord `error`; fix was theirs and
+  they made it — no action left on this lane.
 - ~~shadow instance row~~ — **LANDED 577f09c**; shadow verification built + green (see Done).
 - Full controller (`controller/worktree/promote`) still waits on: infra rollback-hook seam,
   qa-security golden-harness seam + CORE_GUARD_FILES extension, router weights ownership
   (all listed in `docs/evolution/03-wave4-spikes.md` § Dependencies).
-- Wave-5 shared-contract follow-through: integrator contracts **APPROVED** (minds[]; task_kind
-  analysis/simulation + shape_map in config.yaml); engine/render/voice implementation is now on
-  brain-core (job types), orb (minds render + gold palette), voice (Ciel slot) — my requests are
-  approved/forwarded, nothing unblocked left on this lane.
+- — (nothing pending on this lane: all four contracts approved/forwarded; brain-core/orb/voice own
+  the remaining implementation)
 
 ## Next
 - On ping: re-check requests to this lane + shadow request status; if landed, build `worktree.py` +
@@ -79,10 +138,12 @@ Updated: 2026-10-07 (Wave 5)
   router weights) from 01 §7.
 
 ## Test output (real runs only — never claim unrun tests)
-- 2026-10-07 (wave 5, part 3): `tests/.venv/bin/python -m pytest brain/persona/tests -q` → **77 passed in 0.19s**
-- 2026-10-07 (wave 5, part 3): `tests/.venv/bin/python -m pytest brain/evolution/tests -q` → **63 passed in 0.78s**
-- 2026-10-07 (wave 5, part 3): `python3 tests/core_guard.py` → `Core Guard OK (4 files byte-stable)`; `ownership_check --worktree` → `ownership OK (18 checked)`
-- 2026-10-07 (wave 5, part 2): `pytest brain/persona/tests -q` → **56 passed in 0.13s**
+- 2026-10-08 (AUD-26): `pytest brain/evolution/tests -q` → **93 passed in 1.38s** (19 controller tests)
+- 2026-10-08 (AUD-26): `pytest brain/persona/tests -q` → **77 passed in 0.17s**
+- 2026-10-08 (AUD-26): real post-fix propose cycle → `status: proposal_written, merged: false`,
+  `path_guard ok` → `shadow rc=0` → `compare ok` (trace `/tmp/opencode/evo-first-run/aud26-recheck.json`)
+- 2026-10-08 (AUD-26): `python3 tests/core_guard.py` → `Core Guard OK (20 files byte-stable)` (exit 0)
+- 2026-10-07 (5H): `pytest brain/evolution/tests -q` → **83 passed**; F-1 live cycle shadow `160 passed` rc=0
 - 2026-10-07 (wave 5): `tests/.venv/bin/python -m pytest brain/evolution/tests -q` → **63 passed in 0.80s**
 - 2026-10-07 (wave 5): `python3 tests/core_guard.py` → `Core Guard OK (4 files byte-stable)` (exit 0)
 - 2026-10-07 (wave 5): `tests/ownership_check.py --lane evolution-persona --worktree` → `ownership OK (10 checked)`
