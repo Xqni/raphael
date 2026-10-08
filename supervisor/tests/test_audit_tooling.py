@@ -267,3 +267,51 @@ def test_functional_value_keys_suppressed_exactly(tmp_path, monkeypatch):
         "wsl_user: %s\n" % bare_user, encoding="utf-8")
     other = mod.scan_file("other-config.yaml")
     assert other and {rid for rid, _ in other} == {"user-linux"}
+
+
+# --------------------------------------------------------------------------
+# Strict-severity scope (coord [46] OPTION 1, qa proposal): strict gates on
+# FAIL-severity only; REVIEW is advisory (listed + counted, never blocking).
+# --------------------------------------------------------------------------
+def _git_repo_with(tmp_path, files):
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+    for name, content in files.items():
+        p = tmp_path / name
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(content, encoding="utf-8")
+    subprocess.run(["git", "add", "-A"], cwd=tmp_path, check=True)
+
+
+def test_strict_fails_on_fail_severity(tmp_path, monkeypatch, capsys):
+    mod = _load_scanner()
+    monkeypatch.setattr(mod, "ROOT", tmp_path)
+    _git_repo_with(tmp_path, {"leaky.md": "host: jx" "esu at /ho" "me/" "da" "mi\n"})
+    rc = mod.main(["--strict"])
+    out = capsys.readouterr().out
+    assert rc == 1, out
+    assert "STRICT" in out and "FAIL-severity" in out
+
+
+def test_strict_passes_review_only_with_advisory_count(tmp_path, monkeypatch,
+                                                       capsys):
+    mod = _load_scanner()
+    monkeypatch.setattr(mod, "ROOT", tmp_path)
+    # private-range IP = REVIEW severity; no FAIL-class data anywhere
+    _git_repo_with(tmp_path, {"notes.md": "router sits at 192.168.10.5 here\n"})
+    rc = mod.main(["--strict"])
+    out = capsys.readouterr().out
+    assert rc == 0, out                       # REVIEW does NOT gate
+    assert "STRICT PASS (0 FAIL-severity)" in out
+    assert "advisory REVIEW finding(s)" in out
+    assert "1 finding(s)" in out              # honest advisory count
+    # ...and the REVIEW finding is still LISTED for the human
+    assert "notes.md" in out and "ip-private" in out
+
+
+def test_strict_passes_fully_clean_tree(tmp_path, monkeypatch, capsys):
+    mod = _load_scanner()
+    monkeypatch.setattr(mod, "ROOT", tmp_path)
+    _git_repo_with(tmp_path, {"ok.md": "nothing interesting here\n"})
+    rc = mod.main(["--strict"])
+    out = capsys.readouterr().out
+    assert rc == 0 and "STRICT PASS — clean" in out
