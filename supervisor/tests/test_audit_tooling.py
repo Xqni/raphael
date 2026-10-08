@@ -257,9 +257,13 @@ def test_functional_value_keys_suppressed_exactly(tmp_path, monkeypatch):
         % (bare_user, leak_user), encoding="utf-8")
     hits = mod.scan_file("config.yaml")
     rules_hit = {rid for rid, _ in hits}
-    # the KEY line is suppressed for user-linux; the prose mention is NOT
-    assert "user-linux" in rules_hit
+    # prose mention still flags (user-windows from the operator note) ...
+    assert "user-windows" in rules_hit
+    # ... while the wsl_user KEY line is suppressed (its user-linux hit is
+    # absent) — exact-triple suppression, not file-wide:
+    assert "user-linux" not in rules_hit
     # a different file with the same key still flags (exact-file, no wildcard)
     (tmp_path / "other-config.yaml").write_text(
         "wsl_user: %s\n" % bare_user, encoding="utf-8")
-    assert mod.scan_file("other-config.yaml")
+    other = mod.scan_file("other-config.yaml")
+    assert other and {rid for rid, _ in other} == {"user-linux"}
