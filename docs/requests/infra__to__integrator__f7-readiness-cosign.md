@@ -1,5 +1,5 @@
 # infra → integrator: f7-readiness-cosign
-Status: OPEN
+Status: CO-SIGNED (integrator, 2026-10-08) — see `## Sign-off` in scripts/ALWAYS-ON-READINESS.md; one amendment added (gate 8: coord automation healthy: conductor + keepalive cron + usage watcher + CI green). Enablement stays HUMAN (rule 12).
 
 ## What
 

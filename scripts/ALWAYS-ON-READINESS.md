@@ -58,3 +58,21 @@ verifiable by `raphael doctor` where possible.
   every box is either a script the human runs or a read-only verification.
 - `cloud_temp` constraints stay until Wave 6 (no Ollama; Fish = only local
   model).
+
+## Sign-off (integrator, 2026-10-08)
+
+**CO-SIGNED with one amendment** — the checklist is the correct standing definition of
+"ready for always-on"; every box is verifiable and the human-GO gate in §5 is preserved
+(my co-sign is NOT enablement — the scheduled task stays Disabled until the user acts).
+
+Amendment (mine, becomes gate 8):
+8. **Coord automation healthy**
+   - [ ] conductor running (tmux `raphael-conductor`), no STOP armed;
+   - [ ] keepalive cron installed: `*/10 dispatch` + `*/20 usage`
+       (`tools/conductor/keepalive.py`; never rewrites state.json — regression-tested);
+   - [ ] usage watcher state sane (`~/.raphael-coord/usage-watch.json`) and its
+        limit-reset auto-wake path exercised once (probe → attention → integrator ping);
+   - [ ] both CI workflows green on main (QA-4 run id recorded on the re-enable wave_done).
+
+Verdict: checklist APPROVED as the gate. Nothing here executes; enablement remains
+100% human (AGENT_RULES §12).
