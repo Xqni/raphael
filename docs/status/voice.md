@@ -757,3 +757,35 @@ fish: reused the running server (never spawned by me; it died mid-run externally
 externally restarted — my spawn attempt found it already healthy and spawned nothing);
 zero orphans from this lane.
 ```
+
+## SEC-1 / ARCH-4 scrub (wave-5H exit criterion 4) — own files only
+
+`python3 scripts/scan_personal.py` (value-blind; FAIL = usernames/home paths/
+public IPs, REVIEW = private IPs + anime voice-clip names "human scrubs with
+context"). Counts **for my paths** (`brain/voice/**`, `body/win/audio_*`,
+`docs/lanes|status/voice.md`, `docs/requests/voice__*`, `docs/voice/**`):
+
+| | FAIL | REVIEW |
+|---|---|---|
+| before | **8** (4 lines × user-linux + path-home: `build_fish_venv.sh:8`,
+`p0_accent_probe.py:40`, `test_p0_fixes.py:140`, `docs/status/voice.md:265`) | 54 |
+| after | **0** | 53 (one less: dropped the private-IP test literal → date form) |
+
+Repo-wide: **119 → 111 FAIL** (my 8 removed; others = other lanes'). Fixes:
+code paths now derive from `Path.home()`/`$HOME` (no literal usernames), docs
+use the `<wsl-user>` placeholder. **REVIEW findings are deliberately NOT
+scrubbed**: they are the lane's own product identifiers (`raphael_reference_jp`,
+the approved voice's filename) — removing them would break config/code; they
+are the "intentional references — human scrubs with context" class (flagged
+for the human, decision theirs). Pre-commit `scan --staged`: **0 FAIL** (5
+files, 21 voice-clip REVIEWs).
+
+## Test output (final, this wake)
+```
+$ brain/.venv/bin/python -m pytest brain/voice/tests -q
+149 passed, 1 skipped in 13.45s
+$ brain/.venv/bin/python -m pytest brain/tests -q
+216 passed, 1 warning in 17.63s
+P0 battery (shipped code): 10/10 >= 0.90 (scores_SHIPPED.json); samples
+assets/reference/samples/P0_DRIFT_{BEFORE,AFTER}_01..10.wav
+```
