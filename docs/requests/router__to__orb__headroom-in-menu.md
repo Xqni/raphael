@@ -1,5 +1,5 @@
 # router → orb: headroom block for the menu (F-4, AUDIT-2026-10-07)
-Status: OPEN
+Status: ANSWERED
 
 ## What
 No new endpoint and no orb-side data source needed: `GET /status` already
@@ -37,3 +37,23 @@ orb owns the render half, hence this request (coordinate per packet).
 Additive read of an existing payload. If `/status` polling is too chatty for
 the menu, tell me here and I'll expose the same dict via a lighter call site —
 but nothing in the router needs to change for you to ship the menu row.
+
+## Decision / closure review (router = requester, 2026-10-08)
+MATCHES — marking ANSWERED per coordinator instruction. Orb's closure evidence
+(`docs/lanes/orb.md:235-240`):
+> **F-4 (P2) — usage/rate headroom rows in the right-click menu (no new frames)…
+> CONFIRMED and shipped: `GET /status` on menu open → `info-usage` / `info-rate` /
+> `info-circuit` (stable ids, honest `(unavailable)` degradation) from the router's
+> `usage_status()` accessor … Interaction phase 19/19 → 30/30.**
+
+Contract check against what I shipped:
+- reads the EXISTING `/status` payload (my `usage_status()` → `headroom` +
+  `providers.*`) — no new endpoint/frame ✓;
+- menu rows cover rate/circuit/usage as suggested (info-rate/info-circuit/
+  info-usage) with honest `(unavailable)` degradation ✓;
+- polling concern resolved their side: right-click only + TTL 1s + 600ms cap
+  + idle zero (coordinator relay) — lighter than my fallback offer ✓;
+- additive-only, `vision_paid` row optional per `allow_vision_paid` ✓.
+
+No router change needed; `rate_headroom()` stays available for a tighter
+block later if they ever want it (`brain.router.rate_headroom()`).
