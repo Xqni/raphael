@@ -45,7 +45,7 @@ from .privacy import (
     redact_messages,
 )
 from .provider import ChatResult, Provider, estimate_input_tokens
-from .spend import DailySpend, estimate_cost_usd
+from .spend import DailySpend, SpendLedgerError, estimate_cost_usd
 
 log = logging.getLogger("raphael.router")
 
@@ -267,11 +267,19 @@ class Router:
         for name in self.config.providers.chain:
             self._register(name)
         # vision-only paid slot (user-approved, docs/PAID_USAGE.md 2026-10-06):
-        # daily USD counter — state under <repo_root>/run/ (gitignored runtime)
+        # append-only LEDGER with daily + all-time ceilings (SEC-8), state under
+        # <repo_root>/run/ (gitignored runtime data)
+        run_dir = self.config.repo_root / "run"
         self._vision_spend = DailySpend(
-            self.config.repo_root / "run" / "vision_paid_daily.json",
+            run_dir / "vision_paid_ledger.jsonl",
             self.config.providers.vision_paid_daily_cap_usd,
+            total_cap_usd=self.config.providers.vision_paid_total_cap_usd,
+            floor_usd=self.config.providers.vision_paid_unknown_call_floor_usd,
+            price_per_mtok=self.config.providers.vision_paid_price_per_mtok,
         )
+        # serializes paid-slot admission so concurrent calls cannot race the
+        # ceiling (check → send → record is atomic per paid call)
+        self._vision_paid_lock = asyncio.Lock()
         self._local_transcriber: Callable[..., Awaitable[dict[str, Any]]] | None = None
 
     # ------------------------------------------------------------------ #
@@ -774,19 +782,63 @@ class Router:
         spend = self._vision_spend
         price = self.config.providers.vision_paid_price_per_mtok
         errors: list[RouterError] = []
-        cap_blocked = False
+        budget_blocked = False          # a ceiling / ledger refusal hit the paid slot
         for provider in self._vision_chain():
-            if provider.name == "go_vision" and spend.exhausted:
-                # HARD STOP (vision_paid_daily_cap_usd): skip the paid slot
-                cap_blocked = True
-                errors.append(RouterError(
-                    "vision daily cap reached", code="E_OFFLINE",
-                    provider=provider.name, reason="vision_paid_cap",
-                    detail="Vision daily cap reached — image analysis "
-                           "resumes tomorrow.",
-                ))
-                self._alert_vision_cap()
-                continue
+            if provider.name == "go_vision":
+                # SEC-8: admission → send → charge is ATOMIC per paid call, so
+                # concurrent vision requests cannot race past a ceiling.
+                async with self._vision_paid_lock:
+                    refusal = self._budget_refusal()
+                    if refusal is not None:
+                        budget_blocked = True
+                        errors.append(refusal)
+                        self._alert_vision_cap(refusal.reason or "vision_paid_cap")
+                        continue
+                    started = time.monotonic()
+                    try:
+                        model, result = await self._call_provider(
+                            provider, "vision", purpose,
+                            lambda m, _p=provider: _p.vision(
+                                m, b64, mime, q,
+                                timeout=self.config.providers.request_timeout_s),
+                            require_capability="vision",
+                            estimate=1500,  # rough vision token guess for TPM budget
+                        )
+                    except RouterError as e:
+                        errors.append(e)
+                        stats = self._stats_for(provider.name)
+                        stats.last_error = str(e)
+                        if e.reason not in SKIP_REASONS:
+                            stats.circuit.record_failure(time.monotonic())
+                        continue
+                    # charge conservatively: floor applies when the provider's
+                    # usage response is malformed (SEC-8: never count as 0)
+                    cost = estimate_cost_usd(result.usage, price, result.cost_usd,
+                                             floor_usd=spend.floor_usd)
+                    try:
+                        total, crossed = spend.record(cost, model.id)
+                    except SpendLedgerError:
+                        # FAIL CLOSED: the charge could not be persisted, so the
+                        # ceiling can no longer be enforced honestly → refuse
+                        budget_blocked = True
+                        errors.append(self._budget_error(
+                            "ledger_unwritable",
+                            "Vision spend ledger is not writable — paid vision "
+                            "is paused until the disk issue is fixed."))
+                        self._alert_vision_cap("ledger_unwritable")
+                        continue
+                    log.debug("vision paid slot: +$%.6f -> $%.6f/$%.2f (%s)",
+                              cost, total, spend.cap_usd, model.id)
+                    if crossed:
+                        self._alert_vision_cap(
+                            "vision_paid_total_cap"
+                            if spend.total_exhausted else "vision_paid_cap")
+                    latency = (time.monotonic() - started) * 1000.0
+                    await self._log_usage(provider.name, model.id, purpose,
+                                          result.usage, Outcome.SUCCESS, None,
+                                          latency_ms=latency)
+                    return {"text": result.text, "provider": provider.name,
+                            "model": model.id}
             started = time.monotonic()
             try:
                 model, result = await self._call_provider(
@@ -804,13 +856,6 @@ class Router:
                 if e.reason not in SKIP_REASONS:
                     stats.circuit.record_failure(time.monotonic())
                 continue
-            if provider.name == "go_vision":
-                cost = estimate_cost_usd(result.usage, price, result.cost_usd)
-                total, crossed = spend.record(cost, model.id)
-                log.debug("vision paid slot: +$%.6f -> $%.6f/$%.2f (%s)",
-                          cost, total, spend.cap_usd, model.id)
-                if crossed:
-                    self._alert_vision_cap()
             latency = (time.monotonic() - started) * 1000.0
             await self._log_usage(provider.name, model.id, purpose,
                                   result.usage, Outcome.SUCCESS, None,
@@ -820,30 +865,68 @@ class Router:
 
         await self._log_failures(errors, purpose,
                                  (time.monotonic() - round_started) * 1000.0)
-        if cap_blocked and all(
-            e.reason in ("no_model", "chain_exhausted", "vision_paid_cap",
-                         "circuit_open", "missing_key", "cooldown",
-                         "local_rpm_budget", "local_tpm_budget")
+        budget_reasons = ("vision_paid_cap", "vision_paid_total_cap",
+                          "ledger_unwritable")
+        if budget_blocked and all(
+            e.reason in budget_reasons + ("no_model", "chain_exhausted",
+                                          "circuit_open", "missing_key",
+                                          "cooldown", "local_rpm_budget",
+                                          "local_tpm_budget")
             for e in errors
         ):
-            # nothing free could serve AND the paid slot is capped out →
-            # the user-facing answer is the cap, not a generic outage
-            raise RouterError(
-                "vision daily cap reached — no free vision model available",
-                code="E_OFFLINE", reason="vision_paid_cap",
-                detail="Vision daily cap reached — image analysis "
-                       "resumes tomorrow.",
-            )
+            # nothing free could serve AND a ceiling/ledger refused the paid
+            # slot → surface the BUDGET refusal, not a generic outage (SEC-8)
+            first_budget = next(e for e in errors if e.reason in budget_reasons)
+            raise first_budget
         raise self._exhausted(errors)
 
-    def _alert_vision_cap(self) -> None:
-        """coord attention 'vision daily cap hit' — once per day, never raises."""
-        if self._vision_spend.alerted_today:
+    # ---- SEC-8 spend ceilings (E_BUDGET) ---------------------------------- #
+    def _budget_refusal(self) -> RouterError | None:
+        """Non-None → the paid slot must not be called (fail-closed)."""
+        spend = self._vision_spend
+        if spend.broken:
+            return self._budget_error(
+                "ledger_unwritable",
+                "Vision spend ledger is not writable — paid vision is paused.")
+        if spend.exhausted:
+            return self._budget_error(
+                "vision_paid_cap",
+                f"Vision daily cap reached (${spend.cap_usd:.2f}/day) — "
+                "image analysis resumes after the reset.")
+        if spend.total_exhausted:
+            return self._budget_error(
+                "vision_paid_total_cap",
+                f"Vision budget ceiling reached "
+                f"(${spend.total_cap_usd:.2f} total) — paid vision is paused.")
+        return None
+
+    @staticmethod
+    def _budget_error(reason: str, detail: str) -> RouterError:
+        return RouterError(detail, code="E_BUDGET", reason=reason, detail=detail)
+
+    def _alert_vision_cap(self, kind: str = "vision_paid_cap") -> None:
+        """coord attention on a ceiling/ledger event — once per day, never raises."""
+        spend = self._vision_spend
+        if spend.alerted_today:
             return
-        self._vision_spend.mark_alerted()
+        try:
+            spend.mark_alerted()
+        except SpendLedgerError:
+            # ledger unwritable: the alert file may be the same FS — try the
+            # notify anyway, enforcement already failed closed in _budget_refusal
+            pass
+        message = {
+            "vision_paid_cap": (
+                f"vision daily cap hit (${spend.cap_usd:.2f}/day)"),
+            "vision_paid_total_cap": (
+                f"vision budget ceiling hit "
+                f"(${spend.total_cap_usd:.2f} total)"),
+            "ledger_unwritable": (
+                "vision spend ledger write FAILED — paid vision paused "
+                "(fail-closed)"),
+        }.get(kind, kind)
         spend_mod.notify_attention(
-            f"vision daily cap hit (${self.config.providers.vision_paid_daily_cap_usd:.2f}/day) "
-            "— vision() refusing paid calls until tomorrow"
+            f"{message} — vision() refusing paid calls (E_BUDGET)"
         )
 
     # ------------------------------------------------------------------ #
@@ -969,8 +1052,40 @@ class Router:
                 "last_error": stats.last_error,
             }
         out["providers"] = providers
+        out["headroom"] = self.rate_headroom()   # F-4: compact orb-menu block
         if self.config.providers.allow_vision_paid:
             out["vision_paid"] = self._vision_spend.snapshot()
+        return out
+
+    def rate_headroom(self) -> dict[str, Any]:
+        """F-4 (AUDIT-2026-10-07): compact per-provider headroom for the orb
+        menu — pure in-memory, no file reads, no network, never raises."""
+        now = time.monotonic()
+        providers: dict[str, Any] = {}
+        for prov in self._vision_chain():
+            stats = self._stats_for(prov.name)
+            rpm = (stats.limiter.snapshot(now) if stats.limiter
+                   else {"used": 0, "cap": 0, "window_s": 60.0})
+            tpm = (stats.budget.snapshot(now) if stats.budget
+                   else {"used": 0, "cap": 0, "window_s": 60.0})
+            providers[prov.name] = {
+                "rpm_headroom": max(0, int(rpm["cap"]) - int(rpm["used"])),
+                "tpm_headroom": max(0, int(tpm["cap"]) - int(tpm["used"])),
+                "cooldown_s": round(max(0.0, stats.cooldown_until - now), 1),
+                "circuit": stats.circuit.state.value,
+            }
+        out: dict[str, Any] = {"providers": providers}
+        if self.config.providers.allow_vision_paid:
+            snap = self._vision_spend.snapshot()
+            out["vision_paid"] = {
+                "today_usd": snap["spent_usd"],
+                "day_cap_usd": snap["cap_usd"],
+                "total_usd": snap["total_usd"],
+                "total_cap_usd": snap["total_cap_usd"],
+                "exhausted": snap["exhausted"],
+                "total_exhausted": snap["total_exhausted"],
+                "ledger_broken": snap["ledger_broken"],
+            }
         return out
 
     # ------------------------------------------------------------------ #
@@ -1230,3 +1345,8 @@ async def report_usage(event: UsageEvent) -> None:
 async def usage_status() -> dict[str, Any]:
     """24 h usage + live rate/circuit state (Wave 3 — for GET /status)."""
     return await get_router().usage_status()
+
+
+def rate_headroom() -> dict[str, Any]:
+    """F-4: compact RPM/TPM headroom + vision spend for the orb menu."""
+    return get_router().rate_headroom()

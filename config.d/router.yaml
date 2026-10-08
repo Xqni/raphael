@@ -50,3 +50,16 @@ router:
   # docs/MODEL_POLICY.md (deepseek-v4-pro 0.66/1.98) — over-estimating makes the
   # $1.00/day hard stop trip EARLY. Update when the real price is verified.
   vision_paid_price_per_mtok: { input: 0.66, output: 1.98 }
+
+  # --- SEC-8 (AUDIT-2026-10-07): ceilings enforced in code, append-only ledger
+  # <repo>/run/vision_paid_ledger.jsonl (survives restarts; write failure →
+  # fail-closed refusal with E_BUDGET). Daily cap lives in config.yaml
+  # (providers.vision_paid_daily_cap_usd, $1.00); this is the ALL-TIME ceiling.
+  vision_paid_total_cap_usd: 10.00
+  # charged when a provider's usage response is malformed (never count $0)
+  vision_paid_unknown_call_floor_usd: 0.005
+
+# --- ARCH-5 presets (profiles.cloud / profiles.hybrid) live in config.yaml:
+# `profiles:` is an integrator-authority key and lane fragments are stripped
+# by brain/config.py's Core-Guard (AUTHORITY_KEYS, qa APPROVED 2026-10-07).
+# Exact YAML for integrator: docs/requests/router__to__integrator__arch5-router-contribution.md
