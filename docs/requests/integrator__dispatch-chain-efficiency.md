@@ -1,5 +1,5 @@
 # integrator — dispatch-chain efficiency and stale-session recovery
-Status: APPROVED (user request 2026-10-08)
+Status: FIXED + VERIFIED (user request 2026-10-08; conductor suite 40 passed, Core Guard 20 files green)
 
 ## User ask
 "optimize the dispatch chain so it works correctly and efficiently without wasting tokens"
@@ -34,3 +34,7 @@ Status: APPROVED (user request 2026-10-08)
 Unit tests cover ping-at-capacity, pings excluded from headless budget, duplicate-ping
 coalescing, 404 headless fallback, zero-body success not retried, and OpenCode-v2
 top-level session-directory discovery.
+
+## Live dispatch verification (2026-10-08)
+
+After restarting only the conductor (Raphael stack unchanged/down), `coord ping --lane router` found the registered session via its persisted id and returned `coord: pinged router (...)` in one prompt. Conductor log shows the new process booted after this patch. Full battery is dispatched to GitHub Actions; no local heavy suites were run.
