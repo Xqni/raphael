@@ -256,9 +256,9 @@ class on the next `raphael stop`). No orphans from this session (Rule 14).
 
 - **SEC-2: CONFIRMED (live) → FIXED repo-side / NEUTRALIZED by human** —
   `scripts/wslg-shadow/raphael-wslg-shadow.service:7`
-  `ExecStart=/home/dami/scripts/raphael-wslg-shadow.sh` (live:
+  `ExecStart=/home/<wsl-user>/scripts/raphael-wslg-shadow.sh` (redacted) (live:
   `systemctl cat` → `/etc/systemd/system/...`, is-enabled=enabled,
-  is-active=active, payload `755 dami:dami` == repo boot-hook.sh);
+  is-active=active, payload `755 <wsl-user>:<wsl-user>` == repo boot-hook.sh (redacted));
   `boot-hook.sh:11` `BACKUP=/mnt/wslg/raphael-shadow-fix` (root exec via
   `wsl --system`); `install.sh:11` `WRAPPER_SRC=/mnt/wslg/...` → `:22-23`
   `mv "$REAL" "$WRAPPED"` / `cp "$WRAPPER_SRC" "$REAL"`. Human ran
@@ -274,8 +274,8 @@ class on the next `raphael stop`). No orphans from this session (Rule 14).
   `scripts/GIT-SCRUB-PLAN.md` (prepared, never run), qa CI request OPEN.
   Baseline: 741 files / 200 findings (120 FAIL) = scrub inventory.
 - **SEC-5: CONFIRMED → PROPOSED (integrator lines pending)** —
-  `ls -la ~/raphael-wt/*/.env` → all 10 lanes `-> /home/dami/raphael/.env`
-  (real file `-rw------- 1 dami dami` = 600). Shipped:
+  `ls -la ~/raphael-wt/*/.env` → all 10 lanes `-> /home/<wsl-user>/raphael/.env` (redacted)
+  (real file `-rw------- 1 <wsl-user> <wsl-user>` = 600 (redacted)). Shipped:
   `scripts/env.dev.template` (valueless, zero GROQ/GITHUB) +
   `scripts/install-env-dev.sh` (600, idempotent, redacted value guard,
   gitignore loud-warn). Request:

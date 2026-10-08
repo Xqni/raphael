@@ -22,16 +22,16 @@ After=network.target
 
 [Service]
 Type=simple
-User=dami
-WorkingDirectory=/home/dami/raphael
-Environment=PATH=/home/dami/raphael/brain/.venv/bin:/usr/local/bin:/usr/bin:/bin
+User=<wsl-user>
+WorkingDirectory=<repo-root>
+Environment=PATH=<repo-root>/brain/.venv/bin:/usr/local/bin:/usr/bin:/bin
 # Bind host: 127.0.0.1 in BOTH networking modes (network-security fix —
 # Windows clients arrive via the supervisor relay / native localhost
 # forwarding). Override with RAPHAEL_BIND (e.g. 0.0.0.0 only if the relay
 # is disabled and native forwarding is verified) / RAPHAEL_PORT;
 # RAPHAEL_INSTANCE derives the port (INTERFACES §d).
 # See scripts/NETWORK-SECURITY.md.
-ExecStart=/home/dami/raphael/brain/.venv/bin/python -m brain.run
+ExecStart=<repo-root>/brain/.venv/bin/python -m brain.run
 Restart=always
 RestartSec=3
 TimeoutStopSec=15

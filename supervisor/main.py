@@ -98,7 +98,7 @@ DEFAULT_CONFIG = {
         # config.yaml supervisor.wsl_user stays authoritative, and
         # RAPHAEL_WSL_USER overrides both (see _normalize).
         "wsl_user": (os.environ.get("USER") or os.environ.get("USERNAME")
-                     or "dami"),
+                     or os.environ.get("LOGNAME") or "wsl-user"),
         "orb_dir": "body/orb",
         "distro": "Ubuntu-26.04",
         "brain_unit": "raphael-brain",
@@ -340,7 +340,7 @@ def _normalize(cfg, parsed):
     # ARCH-4 precedence bugfix (integrator glue, 2026-10-08): the DEFAULT dict
     # seeds wsl_user from the WINDOWS USERNAME (non-empty on every Windows run),
     # so the old `only-if-empty` merge could never let config.yaml's explicit
-    # wsl_user apply -> supervisor restarted brain with `-u jxesu` (WSL user
+    # wsl_user apply -> supervisor restarted brain with `-u <win-user>` (WSL user
     # not found). Per the documented contract: config.yaml is authoritative for
     # the identity keys; RAPHAEL_WSL_USER still overrides both below.
     if alt.get("wsl_user") not in (None, ""):

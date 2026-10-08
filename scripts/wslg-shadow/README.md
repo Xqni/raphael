@@ -6,7 +6,7 @@ installed across `wsl --shutdown` (the WSLg system-distro overlay resets).
 ## SECURITY (SEC-2, confirmed live 2026-10-07 — LIVE UNIT DISABLED BY HUMAN)
 
 The pre-hardening chain was a local **privilege escalation**: the root boot
-unit executed `/home/dami/scripts/raphael-wslg-shadow.sh` (user-writable),
+unit executed `/home/<wsl-user>/scripts/raphael-wslg-shadow.sh` (redacted) (user-writable),
 which had root run `/mnt/wslg/raphael-shadow-fix/install.sh` (user-writable
 shared mount) inside the system distro, which then copied a user-writable
 `weston-wrapper` over `/usr/bin/weston`.

@@ -123,7 +123,7 @@ def _load_wsrelay():
 
 def test_wsl_helper_bind_never_wildcard():
     mod = _load_wsrelay()
-    assert mod.resolve_bind_addr("172.21.0.5") == "172.21.0.5"
+    assert mod.resolve_bind_addr("stub-nat-addr") == "stub-nat-addr"
     assert mod.resolve_bind_addr(None) is None      # no NAT addr -> NO bind
     src = (_ROOT / "scripts" / "wsl-relay.py").read_text(encoding="utf-8")
     assert 'or "0.0.0.0"' not in src                # old fallback is gone

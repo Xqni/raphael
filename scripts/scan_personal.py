@@ -68,11 +68,12 @@ RULES = [
         r"\b(?:\d{1,3}\.){3}\d{1,3}\b(?![\d.])"),
      "public IPv4", _is_public_ipv4),
     ("ip-private", "REVIEW", re.compile(
-        r"\b(?:192\.168|10|172\.(?:1[6-9]|2\d|3[01]))\.\d{1,3}\.\d{1,3}\b"),
+        r"\b(?:192\.168\.\d{1,3}\.\d{1,3}|10\.\d{1,3}\.\d{1,3}\.\d{1,3}"
+        r"|172\.(?:1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3})\b"),
      "private-range IP", None),
     ("voice-clip", "REVIEW", re.compile(
-        r"raphael_reference_jp|\bZira\b|\bslime\b", re.IGNORECASE),
-     "anime voice-clip related name", None),
+        r"raphael_reference_jp|\bslime\b", re.IGNORECASE),
+     "anime voice-clip related name (Zira = MS product voice, excluded)", None),
     ("serial", "REVIEW", re.compile(
         r"\b(S/N|Serial(?:Number)?|SSN)[:= ]+[A-Za-z0-9-]{6,}\b"),
      "device serial", None),

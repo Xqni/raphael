@@ -4,7 +4,7 @@
 # is the SOURCE; never install it to a user-writable path.
 #
 # Why the rewrite (SEC-2, confirmed 2026-10-07): the previous chain was
-#   unit(/etc, root) -> /home/dami/scripts/... (USER-writable) ->
+#   unit(/etc, root) -> /home/<wsl-user>/scripts/... (USER-writable) ->
 #   wsl --system -u root sh -c 'sh /mnt/wslg/.../install.sh' (user-writable)
 #   -> cp user bytes over /usr/bin/weston      = local privilege escalation.
 #
