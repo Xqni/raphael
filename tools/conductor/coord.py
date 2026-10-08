@@ -55,6 +55,22 @@ def coord_dir() -> Path:
     return Path(os.environ.get("RAPHAEL_COORD_DIR") or (Path.home() / ".raphael-coord"))
 
 
+def _opencode_bin() -> str:
+    """Resolve the opencode CLI even under cron's minimal PATH.
+
+    keepalive dispatch runs from crontab (PATH=/usr/bin:/bin) where bare
+    'opencode' raised FileNotFoundError — every lane ping FAILED from the
+    first keepalive run (2026-10-08, 593/593 FAIL, lanes dark ~9h). Resolve
+    once at import: $PATH lookup first, then the known install location.
+    """
+    import shutil as _sh
+    return (_sh.which("opencode")
+            or str(Path.home() / ".opencode/bin/opencode"))
+
+
+OPENCODE_BIN = _opencode_bin()
+
+
 # ---------------------------------------------------------------- cursors
 # Cursors live in their OWN file (cursors.json), single writer = the integrator
 # handler via `coord cursor`. state.json is written by the conductor on every
@@ -621,14 +637,14 @@ def find_session(cd: Path, lane: str, st: dict | None = None) -> str | None:
     # it under location. Multiple sessions may share a directory — prefer active.
     try:
         r = subprocess.run(
-            ["opencode", "session", "list", "--format", "json", "--max-count", "500"],
+            [OPENCODE_BIN,"session", "list", "--format", "json", "--max-count", "500"],
             capture_output=True, text=True, timeout=30,
         )
         data = json.loads(r.stdout)
         active_ids = set()
         with contextlib.suppress(Exception):
             ra = subprocess.run(
-                ["opencode", "api", "get", "/api/session/active"],
+                [OPENCODE_BIN,"api", "get", "/api/session/active"],
                 capture_output=True, text=True, timeout=30,
             )
             active_ids = set(json.loads(ra.stdout).get("data", {}))
@@ -660,7 +676,7 @@ def cmd_ping(args) -> int:
         sys.exit(f"coord: no session for lane {args.lane!r} (register it or let the lane heartbeat)")
     payload = json.dumps({"text": args.msg, "delivery": args.delivery})
     r = subprocess.run(
-        ["opencode", "api", "post", f"/api/session/{sid}/prompt", "--data", payload],
+        [OPENCODE_BIN,"api", "post", f"/api/session/{sid}/prompt", "--data", payload],
         capture_output=True, text=True, timeout=60,
     )
     if r.returncode == 0 and '"data"' in r.stdout:
@@ -669,7 +685,7 @@ def cmd_ping(args) -> int:
     if args.delivery == "steer":  # busy/conflict -> queue explicitly, then give up
         payload = json.dumps({"text": args.msg, "delivery": "queue"})
         r2 = subprocess.run(
-            ["opencode", "api", "post", f"/api/session/{sid}/prompt", "--data", payload],
+            [OPENCODE_BIN,"api", "post", f"/api/session/{sid}/prompt", "--data", payload],
             capture_output=True, text=True, timeout=60,
         )
         if r2.returncode == 0 and '"data"' in r2.stdout:
@@ -692,11 +708,11 @@ def cmd_session_register(args) -> int:
 def cmd_sessions(args) -> int:
     cd = coord_dir()
     try:
-        r = subprocess.run(["opencode", "api", "get", "/api/session?limit=200"],
+        r = subprocess.run([OPENCODE_BIN,"api", "get", "/api/session?limit=200"],
                            capture_output=True, text=True, timeout=30)
         data = json.loads(r.stdout).get("data", [])
         active = json.loads(subprocess.run(
-            ["opencode", "api", "get", "/api/session/active"],
+            [OPENCODE_BIN,"api", "get", "/api/session/active"],
             capture_output=True, text=True, timeout=30).stdout).get("data", {})
     except Exception as e:
         print(f"coord: cannot query sessions: {e}", file=sys.stderr)

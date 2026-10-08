@@ -57,3 +57,21 @@ T1 fast free · T2 strong free · T3/T4 paid (log to docs/PAID_USAGE.md).
   fixed: ownership checker integrator-pass-before-config.d rule (CI reds 37713263876/
   37713400889 root-caused by pc-control's report — lane->lane rule intact, proven both
   directions). pre-commit hook noise = infra's SEC-1 scanner WIP (notified).
+
+## 2026-10-08 (coord wake: 2 events)
+- evolution-persona task_done: SEC-1 scrub 0 FAIL (own paths) — accepted; next = answer brain-core SEC-7 manifest-format request (pre-decision: format/ownership stay as-is).
+- orb task_done: re-verify PASS (production CDP: #fps null, zero on-orb text, boot 13/13) — accepted; VISION ID delivered for 'weird box' = opencode TUI sidebar behind overlay (remove nothing; wallpaper re-capture = decisive test); next = white-only starting fix.
+- CI context: main reds reduced to 1 known failure (qa's AUD-11 lock-test update, dispatched).
+- evolution-persona task_done: SEC-7 manifest-format request ANSWERED (decision in-file: format/ownership unchanged; live coreguard verify ok + 7 tests) — accepted; sent WAIT (wave complete).
+- evolution-persona task_done [31]: formal ratification of SEC-7 pre-decision sent to brain-core (request ANSWERED w/ confirmation, commit 907f70b); lane declares WAIT, wave_done queued at position 10. No reply needed — WAIT already in their inbox.
+- computer-use [28] SEC-1 0->0 3-way verified -> WAIT (5H merged pos5).
+- orb [33] vision close + white-starting (0.45 deviation APPROVED) + box ticks -> NEXT: 2D billboards (scoped).
+- pc-control [33] qa visibility -> acked (qa P0 already dispatched; keepalive PATH fixed).
+- voice [46,47] STT-latency packet accepted; 2 requests ACCEPTED -> brain-core (utt-continuation, coupling recorded) + router (turbo STT) -> WAIT.
+- pc-control [34]: 2 qa requests closed ALREADY-DONE (evidence accepted, commit 7c35664); tripwire xfail isolated to brain/app.py pidfile half (brain-core); NEXT re-stated = AUD-05 foreground push.
+- tools-memory [33-36]: addenda AUD-15/23/25/28 + SEC-1 accepted; wave_done ACK (QA-4: branch CI dispatch requested — cited run predates commits); queue pos9 behind qa(pos8, P0 lock patch).
+- voice [48] heartbeat: requests tracked, idle until pinged.
+- orb [34]: 2D conversion accepted (halo->sphere+fresnel); checklist full -> NEXT: wave_done + branch-CI data.ci_run.
+- router [43,44]: fast-role A/B accepted (~0.4s med, model switch verified; RPM 10->30 accepted); loop-label request -> brain-core; zen_free tool-400 finding queued; CI red = qa P0 acked.
+- tools-memory [37]: ownership request DECIDED (grant both trees), branch force-pushed d65d056 (stale pre-rebase remote realigned); re-dispatch CI assigned.
+- orb [35]: verification-only accepted (rebase byte-identical to green gate, 7/7); ARCH-1 human gate re-surfaced in ATTENTION; NEXT restated = branch CI + wave_done with data.ci_run.
