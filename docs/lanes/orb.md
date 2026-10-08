@@ -147,6 +147,20 @@ Wave 2 is MERGED; live gate was 3/5 — evidence + bug dossiers: `docs/BUGS-WAVE
       **interaction PASS 19/19** incl. `notice_reaches_renderer`,
       `notice_shown_as_banner`, `notice_never_changes_state`.
 
+### AMENDMENT 2 (user): BOOT STATE SEQUENCE REWIRE
+
+- [ ] **User directive: "the starting state might need to be rewired — starting state →
+  idle state → then change based on what's happening."** Desired flow: on ANY launch or
+  reconnect the orb shows `starting` BRIEFLY, always settles into `idle` next (even if
+  jobs/journals exist — the boot Notice already carries that info), and only THEN moves
+  to thinking/speaking/etc as events actually happen. Research findings: brain holds
+  `starting` until `finish_boot()` (brain/app.py:92); orb initializes `orbState='starting'`
+  until the first brain frame (ws-status.js:41) with `reconnecting` on drops. Your half:
+  starting must AUTO-ESCAPE (timeout fallback to idle if no frame arrives; no lingering
+  starting/reconnecting on a healthy stack); brain-core is assigned the emission half
+  (settle-to-idle-first after finish_boot). Test: kill/restart brain twice — sequence must
+  be starting→idle→(event states), never starting→thinking directly, never stuck.
+
 ### AMENDMENT (user, 2026-10-07 evening): PRESERVE THE CAGE + kill the box
 
 - [x] **"the orb is now in a weird shape, its not a cage we had earlier — preserve that."**
