@@ -1,0 +1,29 @@
+# Bandit config — qa-security (Wave 5H QA-1)
+# Run: bandit -r brain supervisor scripts tests body -c tests/security/bandit.yaml
+#
+# CI fails on HIGH only (--severity-level high); medium/low are reported in
+# the log for visibility. The two HIGH test IDs below are globally skipped
+# with written reasons (the packet's "documented suppressions" rule) —
+# anything else HIGH fails the job.
+#
+# Skips:
+#   B602 (subprocess shell=True) — Raphael execution MODEL is a shell tool
+#     behind the Core Guard confirm gate (brain/confirm.py) + the fixed
+#     script registry (INTERFACES §7 powershell{script_id}); supervisor/
+#     scripts run operator-authored commands by design. Stripping shell
+#     execution is a design change (requests), not a lint fix.
+#   B324 (sha1/sha256 usedforsecurity) — all three hits are NON-security
+#     fingerprints: phrase-cache keys in brain/voice/tts.py (cache lookup,
+#     not integrity) and voice probe scripts. Voice lane owns those files;
+#     the advisory fix (`usedforsecurity=False`) is cosmetic there.
+#     Revisit when voice touches those lines.
+exclude_dir:
+  - .venv
+  - node_modules
+  - brain/voice/vendor
+  - brain/voice/.venv-fish
+  - tests/.venv
+  - __pycache__
+skips:
+  - B602
+  - B324

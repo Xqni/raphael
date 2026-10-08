@@ -1,0 +1,26 @@
+# Dependabot — qa-security (Wave 5H QA-1)
+# Scope = the three dependency surfaces actually committed in this repo:
+#   pip  -> tests/requirements.txt (the mock-suite runtime; brain/.venv is
+#           an ad-hoc local venv with no committed manifest)
+#   npm  -> body/orb/package-lock.json (Electron orb)
+#   github-actions -> workflow pins in .github/workflows/
+# Auto-merge OFF: lanes review bumps through the coord bus (AGENT_RULES §2).
+version: 2
+updates:
+  - package-ecosystem: "pip"
+    directory: "/tests"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: "npm"
+    directory: "/body/orb"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
