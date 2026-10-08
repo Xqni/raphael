@@ -114,6 +114,6 @@ def test_manifest_lists_core_guard_files():
     import json
     manifest = json.loads((REPO / 'tests' / 'core_guard_manifest.json')
                           .read_text(encoding='utf-8'))
-    assert set(manifest) == {'brain/confirm.py', 'brain/auth.py',
-                             'brain/control.py', 'brain/mode.py'}
+    from core_guard import CORE_GUARD_FILES  # single source of truth (SEC-7 expansion)
+    assert set(manifest) == set(CORE_GUARD_FILES)
     assert all(len(v) == 64 for v in manifest.values())
