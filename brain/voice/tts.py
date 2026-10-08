@@ -40,6 +40,7 @@ import io
 import math
 import os
 import re
+import shutil
 import signal
 import struct
 import subprocess
@@ -51,7 +52,7 @@ from typing import Any, AsyncIterator, Dict, List, Optional, Tuple
 import httpx
 import numpy as np
 
-from .config import VoiceConfig, load_voice_config
+from .config import VoiceConfig, load_voice_config, voice_data_dir
 from .activation import get_playback_echoes
 from .wake import normalize_text
 
@@ -88,6 +89,111 @@ def reference_fingerprint(path: Path) -> str:
     if not data:
         return "noref"
     return hashlib.sha1(data).hexdigest()[:12]
+
+
+# ---- timbre sanity (P0 2026-10-07: never cache a wrong-voice render) -------
+STORE_MIN_COS = 0.65   # measured: our-voice renders 0.74-0.98, Zira 0.13-0.48,
+                       # the one poisoned live entry 0.643 -> 0.65 splits them
+_SPEC_BANDS = None     # np.logspace 200..7000 Hz, 17 edges, built lazily
+
+
+def _log_spec(x: np.ndarray, sr: int) -> Optional["np.ndarray"]:
+    """16-band log-spectral fingerprint of a float32 mono signal."""
+    global _SPEC_BANDS
+    if len(x) < sr // 5:
+        return None
+    if _SPEC_BANDS is None:
+        _SPEC_BANDS = np.logspace(np.log10(200), np.log10(7000), 17)
+    frame, hop = int(0.04 * sr), int(0.02 * sr)
+    vec = []
+    freqs = np.fft.rfftfreq(frame, 1 / sr)
+    for i in range(0, len(x) - frame, hop):
+        f = x[i:i + frame]
+        if float(np.sqrt(np.mean(f * f))) < 0.03:
+            continue
+        mag = np.abs(np.fft.rfft(f * np.hanning(frame)))
+        e = [float(np.sum(mag[(freqs >= _SPEC_BANDS[j]) &
+                              (freqs < _SPEC_BANDS[j + 1])] ** 2) + 1e-9)
+             for j in range(16)]
+        vec.append(np.log(e))
+    if not vec:
+        return None
+    return np.mean(np.stack(vec), axis=0)
+
+
+def _read_mono16k(path: Path) -> Optional[np.ndarray]:
+    try:
+        import soundfile as sf
+        data, sr = sf.read(str(path), dtype="float32", always_2d=True)
+    except Exception:  # noqa: BLE001 — sanity gate must never break speak()
+        return None
+    x = data.mean(axis=1)
+    if sr != 16000:
+        n = int(len(x) * 16000 / sr)
+        if n <= 0:
+            return None
+        x = np.interp(np.linspace(0, len(x) - 1, n),
+                      np.arange(len(x)), x).astype(np.float32)
+    return x
+
+
+def timbre_similarity(pcm: bytes, sample_rate: int,
+                      ref_path: Path) -> Optional[float]:
+    """Cosine similarity of 16-band log-spectra vs the configured reference.
+
+    Coarse timbre proxy (NOT speaker verification): a wrong-voice synthesis
+    (fish drift / pre-reference audio) scores far from the reference, our
+    renders score high (measured 0.74-0.98 vs 0.13-0.64 for wrong voices).
+    Blind spot: spectrally FLAT noise scores high — irrelevant in practice
+    (fish synthesizes speech, and both real wrong voices we measured are far
+    below the threshold). None = cannot judge (too short / unreadable ref)
+    -> caller keeps (fail-open: never block caching for lack of evidence)."""
+    x = pcm_s16le_to_float32(pcm)
+    if sample_rate != 16000:
+        n = int(len(x) * 16000 / sample_rate)
+        if n <= 0:
+            return None
+        x = np.interp(np.linspace(0, len(x) - 1, n),
+                      np.arange(len(x)), x).astype(np.float32)
+    a = _log_spec(x, 16000)
+    ref = _read_mono16k(ref_path)
+    b = _log_spec(ref, 16000) if ref is not None else None
+    if a is None or b is None:
+        return None
+    denom = float(np.linalg.norm(a) * np.linalg.norm(b))
+    if not denom:
+        return None
+    return float(np.dot(a, b) / denom)
+
+
+def sweep_legacy_cache(directory: Path,
+                       dest: Optional[Path] = None) -> List[Path]:
+    """P0 2026-10-07: move NON-namespaced (pre-reference) hash wavs OUT of the
+    ack cache root. The wave-3 namespace means every current entry lives in
+    `<dir>/<ref_sha1>/`; a bare `16-hex.wav` at the root is a pre-JP leftover
+    that must never be served (it can't be looked up either — belt and braces
+    + the acceptance criterion "no non-namespaced wav survives").
+
+    Only AUTO-STORED (hex-named) files are touched; user-dropped, text-named
+    acks (documented feature) are left alone. Returns the moved paths.
+    """
+    import re
+    moved: List[Path] = []
+    try:
+        directory = Path(directory)
+        dest = Path(dest) if dest else (
+            voice_data_dir() / "cache_swept")
+        dest.mkdir(parents=True, exist_ok=True)
+        for p in sorted(directory.glob("*.wav")):
+            if re.fullmatch(r"[0-9a-f]{16}\.wav", p.name):
+                target = dest / p.name
+                if target.exists():            # never overwrite a prior sweep
+                    target = dest / f"{p.stem}_{int(p.stat().st_mtime)}.wav"
+                shutil.move(str(p), str(target))  # cross-device safe (tmpfs!)
+                moved.append(p)
+    except Exception as e:  # noqa: BLE001 — housekeeping must never break start
+        _log(f"[tts] cache sweep failed: {type(e).__name__}: {e}")
+    return moved
 
 
 # ---- audio helpers ---------------------------------------------------------
@@ -509,6 +615,13 @@ class TTSEngine:
         self._recovery_attempted = False
         self._recovered_this_speak = False
         self._recovery_notice_shown = False
+        # P0 (2026-10-07): non-namespaced pre-reference wavs must never sit in
+        # the cache root — swept once at startup (regenerable, moved outside
+        # the repo; user-dropped text-named acks are untouched).
+        moved = sweep_legacy_cache(self.cfg.ack_cache_path)
+        if moved:
+            _log(f"[tts] swept {len(moved)} non-namespaced cache wavs -> "
+                 f"{voice_data_dir() / 'cache_swept'} (stale-voice cleanup)")
 
     # -- fish death mid-speak recovery (Wave 4) ------------------------------
     async def _restart_fish(self, timeout_s: float = 90.0) -> bool:
@@ -795,15 +908,28 @@ class TTSEngine:
                 if not fish_ok:
                     break
             if fish_ok and synthesized:
-                # store full phrase for future cache hits
+                # store full phrase for future cache hits — but ONLY when the
+                # render actually matches the reference voice (P0 2026-10-07:
+                # one live entry scored 0.64 = off-voice, and a cached
+                # wrong-voice phrase replays forever).
                 try:
                     full = b"".join(synthesized)
-                    import soundfile as sf
+                    score = timbre_similarity(full, rate, self.reference_path)
+                    if score is not None and score < STORE_MIN_COS:
+                        _log(f"[tts] cache store REFUSED: timbre cos "
+                             f"{score:.2f} < {STORE_MIN_COS} vs "
+                             f"{self.reference_path.name} (off-voice render "
+                             f"not cached; phrase re-synthesizes)")
+                    else:
+                        import soundfile as sf
 
-                    buf = io.BytesIO()
-                    sf.write(buf, pcm_s16le_to_float32(full), rate, format="WAV",
-                             subtype="PCM_16")
-                    self.cache.store(spoken, buf.getvalue())
+                        buf = io.BytesIO()
+                        sf.write(buf, pcm_s16le_to_float32(full), rate,
+                                 format="WAV", subtype="PCM_16")
+                        self.cache.store(spoken, buf.getvalue())
+                        if score is not None:
+                            _log(f"[tts] cached phrase (timbre cos "
+                                 f"{score:.2f} vs {self.reference_path.name})")
                 except Exception:  # noqa: BLE001 — cache write is best-effort
                     pass
 

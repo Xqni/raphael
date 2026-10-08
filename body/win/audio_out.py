@@ -11,6 +11,7 @@ absorbs network jitter; underruns render as silence instead of clicks.
 import asyncio
 import sys
 import threading
+import time
 
 import numpy as np
 import sounddevice as sd
@@ -19,6 +20,7 @@ RATE_DEFAULT = 24000          # PROTOCOL §3 speak sample_rate
 PREBUF_S = 0.25               # start rendering once this much is buffered
 DRAIN_POLL_S = 0.05           # finish() poll while the tail drains
 DRAIN_TIMEOUT_S = 5.0         # never hang a job on a stuck buffer
+STALE_RESET_S = 2.5           # reset() only drops audio OLDER than this
 
 
 class StreamPlayer:
@@ -35,6 +37,9 @@ class StreamPlayer:
         self.bytes_in = 0
         self.bytes_out = 0
         self.underruns = 0
+        self.dropped = 0            # bytes thrown away (P0 loss accounting)
+        self.kept = 0               # bytes PRESERVED across a speak start
+        self._last_feed_ts = 0.0
 
     # -- producer side -----------------------------------------------------
     def feed(self, pcm: bytes):
@@ -44,15 +49,32 @@ class StreamPlayer:
             self._buf += pcm
             self.bytes_in += len(pcm)
             self.chunks += 1
+            self._last_feed_ts = time.monotonic()
             prebuffered = len(self._buf) >= int(PREBUF_S * self.rate * 2)
         if self._stream is None and prebuffered:
             self._open()
 
     def reset(self):
-        """speak 'start' — drop leftovers from a previous utterance."""
+        """speak 'start' — begin a new utterance.
+
+        P0 (2026-10-07): must NOT drop audio that is still draining. The body
+        handles `end` as a detached task, so the NEXT sentence's `start` can
+        arrive while the previous tail is still buffered — the old
+        clear-here threw away up to 42% of an utterance (user report:
+        "she is not speaking anymore"). Pending audio younger than
+        STALE_RESET_S is KEPT (consecutive sentences play continuously);
+        only genuinely stale leftovers (nothing fed for 2.5 s) are dropped —
+        and counted in `dropped`.
+        """
         with self._lock:
-            self._buf.clear()
-        self._playing = False
+            stale = (not self._buf) or (
+                time.monotonic() - self._last_feed_ts > STALE_RESET_S)
+            if stale:
+                self.dropped += len(self._buf)
+                self._buf.clear()
+            else:
+                self.kept += len(self._buf)     # continuous utterance
+            self._playing = False
 
     async def finish(self, tail: float = 1.0):
         """speak 'end' — flush whatever is buffered, then close cleanly."""
@@ -69,14 +91,25 @@ class StreamPlayer:
             _buffered = len(self._buf)
         deadline = (asyncio.get_event_loop().time() + 4
                     + (_buffered / max(1, self.rate * 2)) * 1.5 + 3)
+        expired = False
         while True:
             with self._lock:
                 empty = not self._buf
             if empty:
                 break
             if asyncio.get_event_loop().time() > deadline:
+                expired = True
                 break
             await asyncio.sleep(DRAIN_POLL_S)
+        if expired:
+            # device stalled: give up LOUDLY and account for the loss — never
+            # leave a dead tail to bleed into the next utterance
+            with self._lock:
+                left = len(self._buf)
+                self.dropped += left
+                self._buf.clear()
+            print(f"[audio_out] drain deadline expired — dropped {left}B "
+                  f"(device stalled?)", flush=True)
         await asyncio.sleep(min(tail, 0.5))  # let the last callback pull
         self._close()
 
@@ -129,6 +162,7 @@ class StreamPlayer:
         with self._lock:
             return {'chunks': self.chunks, 'bytes_in': self.bytes_in,
                     'bytes_out': self.bytes_out, 'underruns': self.underruns,
+                    'dropped': self.dropped, 'kept': self.kept,
                     'buffered': len(self._buf)}
 
     def active(self) -> bool:

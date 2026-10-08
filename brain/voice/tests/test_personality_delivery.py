@@ -59,6 +59,10 @@ class _FakeFish:
 
     async def synthesize(self, text):
         self.synth_calls += 1
+        if JP_REF.exists():
+            # reference-like audio so the P0 timbre gate ALLOWS caching
+            # (test_cache_is_keyed_by_what_was_actually_spoken asserts it)
+            return JP_REF.read_bytes()
         pytest.importorskip("soundfile")
         import io
 
