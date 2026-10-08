@@ -9,6 +9,15 @@ Updated: 2026-10-07 (Wave 3 open; CI ownership fix done)
   file:line evidence in docs/lanes/qa-security.md; **QA-3 = PARTIAL**
   (golden transcripts landed, cron+evals left); control-plane re-audit NOT
   started — both honestly unchecked above.
+- **DONE 2026-10-08: control-plane re-audit (last packet item)** —
+  `docs/reviews/2026-10-08-wave5h.md`: AUD-12/SEC-7 claims verified-first
+  (write-side event fencing ALREADY-DONE in coord.py; OPENCODE_BIN cron
+  resolver ALREADY-DONE + live keepalive log proof; REPO_ROOT scrub clean
+  post-rebase — my earlier 'stale literals' reading was the pre-rebase
+  branch). CONFIRMED x2: consumer prompts lack untrusted-data framing
+  (request) + dry-run handler vetoes a lane's own status/lane docs (request
+  + xfail). New gate suite `tests/test_dryrun_ownership_consistency.py`
+  (parser lane-set + 13 owner samples strict vs my checker).
 - **DONE 2026-10-08: Wave-5 evolution gate tests** —
   `tests/evolution_gate/` (9 tests, 0.5s): Core Guard tamper drill (CLI
   exit≠0 + restore), boot refusal + SAFE_MODE armed-and-disarmed (the
