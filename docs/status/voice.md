@@ -823,3 +823,45 @@ brain-side handoff is already instant; there is nothing to cut there.
    local STT (cloud_temp-forbidden + ~1 GB RAM).
 - Doc: `brain/voice/STT-REPLY-LATENCY.md` (stage table, ranked cuts, targets:
   close→subtitle ≤400 ms, perceived ≤1.7 s, zero split regressions).
+
+## Wave 5H — Cut A + Cut B landing (halves merged by partners, 2026-10-08)
+
+**Verify-first quotes (both halves in my tree after rebase):**
+- Cut B (router): `brain/router/roles.py:35` `"stt": ["turbo", "whisper", "distil-whisper", "speech-to-text"]` + `config.d/router.yaml:12`
+  `stt: [turbo, whisper, distil-whisper, speech-to-text]   # Cut B: fastest Groq STT slot`
+- Cut A (brain-core): `brain/ws.py:765-766` `if raw_reason == 'continuation':` +
+  their contract test `brain/tests/test_sec3_cloud_stt_gate.py:247-271`
+  (`start(wake) → part1 → start(continuation) → part2 → end` ⇒ **ONE** merged
+  transcribe with part1's `wake` decision; fresh starts still split; no-start fails closed).
+
+**Probe re-run (turbo live) — `stt_reply_latency.py`:**
+- usage-log A/B on the same box/day: **turbo median 643 ms (n=14, 396–1321)** vs
+  **plain v3 median 604 ms (n=6, 436–1289)** ⇒ turbo landed but is **neutral on this link**
+  (provider RTT variance dominates; better floor, similar median).
+- close→subtitle: **median 554 ms** (n=10; range 477–793) vs pre-turbo 578 ms ⇒ **≤400 ms target NOT met
+  at median**; observed physical floor ≈ 396–477 ms (Groq RTT + ASR for a 3.7 s clip).
+  Honest options for the ≤400 median: accept the floor, move STT closer/faster than Groq,
+  or revisit the rejected speculative-partial path — **the decision is the conductor's**;
+  brain-side handoff remains ≤3 ms (nothing to cut there).
+
+**My parked body half LANDED (per instruction):**
+- `body/win/audio_in.py`: `SILENCE_CLOSE 25 → 12` + **`CONTINUATION_GRACE = 13`** +
+  pure `EndGrace` state machine: VAD `end` now HOLDS the `audio_end` for 1.3 s; a resume
+  inside the window sends `reason='continuation'` (brain appends — matches their contract
+  test); grace expiry fires `audio_end`. **close(12)+grace(13) = 25 = the OLD 2.5 s slot ⇒
+  zero split regressions by construction** (worst-case end latency unchanged; resumes inside
+  the window now MERGE instead of keeping the segment open).
+- Tests: `test_activation.py` +5 (fires exactly on the 13th tick, resume→continuation with
+  hold cancelled, no-hold = plain wake, constants pin 12+13==25, source wiring incl. single
+  `on_end` reachable only via the grace tick).
+
+### Test output (one suite at a time — Rule 14)
+```
+$ brain/.venv/bin/python -m pytest brain/voice/tests -q
+153 passed, 2 skipped in 6.40s
+$ brain/.venv/bin/python -m pytest brain/tests -q
+242 passed in 56.43s
+$ brain/.venv/bin/python -m pytest brain/tests/test_sec3_cloud_stt_gate.py -q
+10 passed in 36.13s        (brain-core's SEC-3 + continuation contract)
+orphans: zero
+```

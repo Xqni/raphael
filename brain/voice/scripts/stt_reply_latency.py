@@ -135,7 +135,11 @@ async def main() -> int:
 
     total = [a + b + c + d for a, b, c, d in zip(s2, s3a, s3b, s3c)]
     report = {
-        "s1_body_vad_hangover_ms": 2500,      # SILENCE_CLOSE=25 x 100ms frames
+        # close(12 frames=1.2s) + continuation grace(13=1.3s) = 25 chunks —
+        # SAME 2.5s worst-case as the old SILENCE_CLOSE=25 (zero split
+        # regression), but resumes inside the window now MERGE instead of
+        # waiting in an open segment
+        "s1_body_vad_hangover_ms": 2500,
         "S2_cloud_stt_ms": {"median": round(statistics.median(s2)),
                             "min": round(min(s2)), "max": round(max(s2))},
         "S3a_gate_ms": round(statistics.median(s3a), 1),

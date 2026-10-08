@@ -209,3 +209,56 @@ def test_stream_player_active_flag():
     assert p.active() is True
     p.reset()                           # speak start -> leftovers dropped
     assert p.active() is False
+
+
+# ---- Cut A body half: deferred audio_end + continuation (2026-10-08) -------
+def test_end_grace_fires_exactly_after_grace():
+    from body.win.audio_in import EndGrace
+    g = EndGrace(13)
+    g.vad_end()                                # candidate close -> hold
+    fired = [g.tick() for _ in range(12)]
+    assert fired == [False] * 12               # never fires early
+    assert g.tick() is True                    # 13th tick = grace expiry
+    assert g.tick() is False                   # one shot
+
+
+def test_end_grace_resume_becomes_continuation():
+    from body.win.audio_in import EndGrace
+    g = EndGrace(13)
+    g.vad_end()
+    g.tick(); g.tick()
+    assert g.vad_start() is True               # resume inside window
+    assert g.tick() is False                   # hold cancelled: NO audio_end
+    # a later, genuine resume after expiry is a FRESH wake segment
+    assert g.vad_start() is False
+
+
+def test_end_grace_without_hold_is_plain_wake():
+    from body.win.audio_in import EndGrace
+    g = EndGrace(13)
+    assert g.vad_start() is False              # no held end -> fresh wake
+    assert g.tick() is False                   # nothing to fire
+
+
+def test_close_and_grace_keep_the_old_25_slot():
+    """close(12) + grace(13) == the OLD SILENCE_CLOSE(25): identical
+    worst-case audio_end latency and no-split coverage (accepted target:
+    ZERO split regressions) — only the merge structure is new."""
+    from body.win.audio_in import VadSegmenter
+    assert VadSegmenter.SILENCE_CLOSE == 12
+    assert VadSegmenter.CONTINUATION_GRACE == 13
+    assert VadSegmenter.SILENCE_CLOSE + VadSegmenter.CONTINUATION_GRACE == 25
+
+
+def test_wak_stream_wires_continuation_path():
+    """Source-level wiring (device loop is not unit-testable): the wake
+    stream holds its end, sends reason='continuation' on resume, and only
+    fires audio_end via the grace tick."""
+    src = (_REPO / "body/win/audio_in.py").read_text()
+    assert 'dict(self._start_dict, reason="continuation")' in src
+    assert "grace.vad_start()" in src and "grace.tick()" in src
+    assert "grace.vad_end()" in src
+    # on_end must only be reachable through the grace path in WakeStream.run
+    run_src = src.split("async def run(")[1]
+    assert run_src.count("await self.on_end()") == 1
+    assert "grace.tick()" in run_src.split("await self.on_end()")[0]
