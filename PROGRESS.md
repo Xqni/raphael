@@ -44,3 +44,11 @@ T1 fast free · T2 strong free · T3/T4 paid (log to docs/PAID_USAGE.md).
 2. Close orb boot-sequence AMENDMENT-2 when orb half lands (live double-restart check).
 3. Merge loop as wave_dones arrive (QA-4: require linked CI run).
 4. When human answers ATTENTION items: prepare history filter-repo plan (do not run).
+- **Wave-5H sprint report (34-event batch)**: SEC-2 live root-run disabled by human +
+  repo remediation landed; SEC-3 CONFIRMED->FIXED both halves (brain-core ws.py batch
+  MERGED pos2; voice activation fail-closed queued pos4); SEC-8 ledger hardened (router
+  MERGED pos1); SEC-4 PAT code-side eliminated (tools-memory); SEC-9 pip-in-runtime
+  removed (pc+voice); SEC-7 Core Guard 4->20 entries applied; F-1 propose-mode loop ran
+  live; F-5 decision record written; F-6 Ciel checklist; ARCH-1 plan delivered (Node
+  already installed!). wave_dones queued: pc(3)/voice(4)/computer-use(5)/tools(9)/
+  evolution(10) — all CI-linked per QA-4.
