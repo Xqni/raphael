@@ -52,3 +52,8 @@ T1 fast free · T2 strong free · T3/T4 paid (log to docs/PAID_USAGE.md).
   live; F-5 decision record written; F-6 Ciel checklist; ARCH-1 plan delivered (Node
   already installed!). wave_dones queued: pc(3)/voice(4)/computer-use(5)/tools(9)/
   evolution(10) — all CI-linked per QA-4.
+- Wave-5H merges: router(pos1) + brain-core SEC-3(pos2) + pc-control SEC-9/F-3(pos3) +
+  **voice SEC-3/SEC-9/F-5(pos4)** = SEC-3 WHOLE (both halves + tripwires in CI). Also
+  fixed: ownership checker integrator-pass-before-config.d rule (CI reds 37713263876/
+  37713400889 root-caused by pc-control's report — lane->lane rule intact, proven both
+  directions). pre-commit hook noise = infra's SEC-1 scanner WIP (notified).
