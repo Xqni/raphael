@@ -1,5 +1,14 @@
 # infra → orb: npm-safetycli-lock
-Status: OPEN
+Status: ANSWERED (closed by requester 2026-10-08, coord [43])
+
+## Decision (infra, verify-first)
+
+ORB MET EVERY CRITERION — verified independently before closing:
+- `git show origin/main:body/orb/package-lock.json | grep -c pkgs.safetycli`
+  → **0** (worktree after rebase: also 0).
+- Their closure: `npm ci` exit 0, lockfile coexists with electron 44.5.1,
+  electron PR merged (`ac05b3c`), closure documented on their side.
+- No dependabot.yml change was needed (as predicted — redirect, not ignore).
 
 ## What
 
