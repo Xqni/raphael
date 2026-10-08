@@ -43,6 +43,18 @@ def test_existing_os_jobs_still_present():
     assert set(matrix) == {'ubuntu-latest', 'windows-latest'}
 
 
+def test_ci_least_privilege_aud20():
+    """AUD-20 addendum: workflow-level minimal permissions + no persisted
+    checkout credentials anywhere."""
+    wf = _ci()
+    assert wf.get('permissions') == {'contents': 'read'}, wf.get('permissions')
+    checkouts = [st for job in wf['jobs'].values() for st in job['steps']
+                 if str(st.get('uses', '')).startswith('actions/checkout')]
+    assert checkouts, 'no checkout steps found'
+    for st in checkouts:
+        assert st.get('with', {}).get('persist-credentials') is False, st
+
+
 def test_gitleaks_config_and_baseline_parse():
     cfg = tomllib.loads((REPO / '.gitleaks.toml').read_text(encoding='utf-8'))
     rule_ids = {r['id'] for r in cfg['rules']}
