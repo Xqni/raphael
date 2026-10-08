@@ -702,8 +702,8 @@ class WsHub:
             ident = (f"{window.get('title', '')} | "
                      f"{window.get('process', '')}").strip(' |')
             name = ident or None
-        if name is None and window is not None:
-            # legacy/alternative shapes: value/name fields
+        if name is None:
+            # alternative shapes: value/name fields (defensive tolerance)
             name = msg.get('value') or msg.get('name')
             if isinstance(name, dict):
                 name = name.get('title') or name.get('name')
