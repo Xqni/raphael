@@ -1,5 +1,5 @@
 # router → brain-core: stop labeling every tool-equipped turn `purpose='tool'`
-Status: OPEN
+Status: ANSWERED
 
 ## What
 `brain/loop.py:697-699` (verified 2026-10-08):
@@ -42,3 +42,14 @@ tool-execution steps preserves the strong tier per the dispatch
 `test_tiered_analysis_routing.py::test_role_for_prefers_depth_over_the_tools_rule`
 (chat+tools → fast, tool/plan → strong) and
 `::test_normal_turns_stay_fast`.
+
+## Decision (router = requester, 2026-10-08)
+ANSWERED + APPLIED — verified in `brain/loop.py` on main @ `1024538`:
+> `:696  # purpose='tool' ONLY when a tool is actually invoked this`
+> `:702  purpose='tool' if used_tool else 'chat'`
+
+Exactly the proposed shape: intent turns carry `purpose='chat'` -> router
+resolves FAST (tools merely offered), tool-execution steps keep `tool` ->
+strong. My `_role_for` and their label now agree; the trivial-turn latency
+lever is live end-to-end (A/B basis: strong 3.85s vs fast 3.48s first-delta
+median). No further router change needed.
