@@ -63,7 +63,7 @@ Wave 4 is MERGED + **GATE PASSED** (tag `wave-4-gate`, 10/10 lanes, mock 308 gre
 
 ## Wave 5H — audit hardening sprint (inside wave 5; gate `wave-5h-gate`)
 
-- [ ] Read `docs/audit-tasks/router.md` → your IDs: **SEC-8, ARCH-5, F-4** — VERIFY-FIRST (verbatim file:line, then CONFIRMED / NOT-APPLICABLE / ALREADY-DONE), QA-4: link a green CI run with your wave_done. Source register + dedupe: `docs/AUDIT-2026-10-07.md`. Rules: stack down (spawn only for your test), one suite at a time, heavy suites in cloud (`gh workflow run tests-heavy.yml`), Rule 15 speed, cost not a factor.
+- [x] Read `docs/audit-tasks/router.md` → your IDs: **SEC-8, ARCH-5, F-4** — VERIFY-FIRST (verbatim file:line, then CONFIRMED / NOT-APPLICABLE / ALREADY-DONE), QA-4: link a green CI run with your wave_done. Source register + dedupe: `docs/AUDIT-2026-10-07.md`. Rules: stack down (spawn only for your test), one suite at a time, heavy suites in cloud (`gh workflow run tests-heavy.yml`), Rule 15 speed, cost not a factor. **DONE 2026-10-08** (verify-first, quotes in docs/status/router.md + coord task_dones): SEC-8 = CONFIRMED→FIXED (append-only `run/vision_paid_ledger.jsonl`, daily $1 + $10 total ceilings, `E_BUDGET` fail-closed incl. write-failure + race lock + malformed-usage floor, 8 tests); ARCH-5 = CONTRIBUTED (chain presets requested — fragment route blocked by Core-Guard, exact YAML in request; per-provider data-handling table with UNVERIFIED retention flags); F-4 = DONE (`rate_headroom()` in `/status`, orb shipped + closure ANSWERED, `router__to__orb__headroom-in-menu.md`); QA-4 = CI 37722900664 (branch green) + fresh heavy runs below.
 
 ## Later waves
 - Per docs/WAVES.md — do not start early (AGENT_RULES §11).
