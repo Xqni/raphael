@@ -32,11 +32,7 @@ Wave 4 is MERGED + **GATE PASSED** (tag `wave-4-gate`, 10/10 lanes, mock 308 gre
 
 ## Wave 5H — audit hardening sprint (inside wave 5; gate `wave-5h-gate`)
 
-- [ ] Read `docs/audit-tasks/computer-use.md` → your IDs: **SEC-3 egress co, SEC-3 context, QA-2 fixtures, ARCH-6 vision report** — VERIFY-FIRST (file:line → CONFIRMED/NOT-APPLICABLE/ALREADY-DONE), QA-4: link green CI run with wave_done. Register/dedupe: `docs/AUDIT-2026-10-07.md`.
-
-## Wave 5H — hardening sprint packet (2026-10-08, inside wave 5)
-
-Verify-first done with file:line quotes → docs/status/computer-use.md (Wave 5H section).
+- [x] Read `docs/audit-tasks/computer-use.md` → your IDs: **SEC-3 egress co, SEC-3 context, QA-2 fixtures, ARCH-6 vision report** — VERIFY-FIRST (file:line → CONFIRMED/NOT-APPLICABLE/ALREADY-DONE), QA-4: link green CI run with wave_done. Register/dedupe: `docs/AUDIT-2026-10-07.md`. Verify-first results with file:line quotes → docs/status/computer-use.md (Wave 5H section).
 
 - [x] 1. Screenshot egress tripwire: fails if image bytes hit disk/log/send while blocklisted (composite `title | process`), Private Mode, or no cloud-vision policy. — `brain/vision/tests/test_egress_tripwire.py` (+ runner twin): marker bytes after EOI, disk guard (open/os.open/Path writers), capsys marker+b64 checks, vision spy, control happy-path (send still works). Hardening found & fixed: unknown `vision.provider` slipped `check_profile` → now E_PROFILE fail-closed (`gate.check_profile`).
 - [x] 2. Sensitive contexts beyond the static blocklist: focused password fields (UIA IsPassword), UAC/secure desktop, configurable bank/wallet/2FA patterns — refuse with a short spoken reason. — `gate.check_foreground` + `matched_sensitive_pattern` (regex w/ literal fallback, defaults UNION config), `config.d/computer-use.yaml` (`computer_use.sensitive_title_patterns`), `password_focus` consumption in gateway/service/runner/gather_context; body-side flags requested: `docs/requests/computer-use__to__pc-control__focused-password-flag.md`.

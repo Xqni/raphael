@@ -11,6 +11,33 @@ Updated: 2026-10-08 (Wave 5H audit packet done — handoff below)
 | 3 | Untrusted wrapping + injection fixtures | **ALREADY-DONE → EXTENDED** | Wrapping existed: `runner.py` `wrap_observation` (`<untrusted_screen>` envelope + system-prompt rule 2) and brain-core's `brain/loop.py:699` `tool_reg.as_untrusted(...)` for every tool output (covers see_screen/gather_context/computer_use results); injection test existed: `test_runner.py:123` (INJECT_TREE). Added: hidden-text defense `strip_invisible` (Cc/Cf scrub, `\n\t` kept) applied in `redact_text` + `render_tree` (`brain/vision/redact.py`, `gateway.py`); new `test_injection_fixtures.py` — 3 fixtures (zero-width hidden text, fake "SYSTEM SECURITY" dialog, ignore-previous banner) × wrapped/stripped/never-dispatched + compromised-model case (powershell rejected by allow-list). |
 | 4 | Vision latency + cost per call | **NEW → REPORTED** | Source: `brain/router/usage.jsonl` (`router/core.py:808` cost hook, `spend.estimate_cost_usd` price 0.66/1.98 per Mtok). **Observed (live, read-only): 14 vision calls — 2 success: 1544 ms / 223+10 tok / $0.000167 and 3187 ms / 623+150 tok / $0.000708 (total $0.000875); 12 failed: 1400–2111 ms, E_OFFLINE+E_INTERNAL (outage window, 0 tokens = $0).** Budget takeaway for router: a gated see_screen call ≈ 1.5–3.2 s and ≈ $0.0002–0.0007 per call at typical payload sizes. Reported via coord `test_result`. |
 
+**Packet-specific quotes (docs/audit-tasks/computer-use.md):**
+- **SEC-3 (egress co)** decision points: `brain/vision/gate.py:91` `check_profile`
+  → `:100` "No cloud-vision policy is configured…" (fail-closed), `gate.py:41`
+  `PASSWORD_FOCUS_REASON`; dispatch order in `brain/vision/service.py::capture_screen`
+  (debug_capture → fg probe → password_focus → blocklist/sensitive → capture).
+- **SEC-3 (context)** gather_context gates: `brain/vision/context.py:99`
+  `password_focus` refusal, `:103/:128/:150/:162` `_blocked` filters (fg, window
+  list, history, screen section), `:168-171` profile + debug_capture before any
+  screenshot, `:203` `gate.redact(out)` on the whole payload.
+- **QA-2 (fixtures)** as_untrusted application: `brain/loop.py:699`
+  `tool_reg.as_untrusted(...)` wraps EVERY tool output before the model;
+  runner-side envelope `brain/tools/computer_use/runner.py:239`
+  `wrap_observation`; invisible-text chokepoint `brain/vision/redact.py:62`
+  `strip_invisible`.
+
+**ARCH-6 vision latency/cost report (one page, value-blind — no key material):**
+| metric | observed |
+|---|---|
+| source | `brain/router/usage.jsonl` (14 vision rows) + `run/vision_paid_daily.json` ledger |
+| success latency (n=2) | 1544 ms / 3187 ms (min 1.54 s, max 3.19 s) |
+| failure latency (n=12) | 1400–2111 ms, codes E_OFFLINE+E_INTERNAL, 0 tokens (outage window) |
+| cost per success call | $0.000167 (223+10 tok), $0.000708 (623+150 tok) @ 0.66/1.98 per Mtok (`config.d/router.yaml:52`) |
+| cost/day (ledger, 2026-10-07) | **$0.000708, 1 call** counted (`run/vision_paid_daily.json`) |
+| daily cap | `providers.vision_paid_daily_cap_usd: 1.00` (`config.yaml:49`) → hard stop E_OFFLINE |
+| **cap headroom** | **$0.999292 of $1.00 remaining (99.93%) — ≈1,412 calls/day at today's average before the stop** |
+| budget takeaway | a gated `see_screen` ≈ 1.5–3.2 s and ≈$0.0002–0.0007/call; nothing about the paid slot constrains Wave-5H usage |
+
 **Wave 5H tests (Rule 14, one suite at a time, RAPHAEL_INSTANCE=computer-use):**
 lane **146 passed, 3 skipped** (was 120 → +26 audit tests) · `brain/tests` **194 passed** ·
 `tests/regression` **54 passed, 4 xfailed** (prior instance-table failure fixed by qa) ·
