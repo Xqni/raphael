@@ -642,3 +642,61 @@ $ pip install --dry-run --require-hashes … (linux + win_amd64 targets)
 rc 0 / rc 0
 orphans: zero (stack down; no server spawned by this lane)
 ```
+
+## Wave 5H addenda — AUD-06 / AUD-07 / AUD-24 / AUD-32 (register PART 2)
+
+**AUD-06: CONFIRMED — mitigations PREPARED (human decides consent-vs-PTT).**
+- Quotes: `body/win/audio_in.py:302` `"encoding": "pcm_s16le", "reason": "wake"}` (every VAD segment = wake);
+  `brain/ws.py:776` `asyncio.to_thread(voice.transcribe_result, buf, reason=reason),` BEFORE
+  `brain/ws.py:807` `match = voice.wake.gate(res.text, reason=reason)` ⇒ cloud STT precedes the
+  wake check for every always-listen segment (SEC-3's fail-closed only covers *undecided*).
+- **Study: `brain/voice/AUD06-local-wake-gate-study.md`** (all numbers measured on this box):
+  - openWakeWord: **REJECTED** — venv 278 MB, RSS 141→240 MB (**+100 MB**), load 0.27 s,
+    43–67 ms/3 s clip; pretrained = `{alexa, hey_mycroft, hey_jarvis, timer, weather}`;
+    `predict()` on our wake fixture = **0 scores >0.01**; no custom-keyphrase API in source.
+  - sherpa-onnx KWS (gigaspeech-3.3M EN): venv **43→51 MB**, RSS +**40–49 MB**, load
+    **0.53–0.63 s**, decode **33–62 ms per 2.4–3.7 s clip (~60× RT)**, model 17.6 MB,
+    custom keyword tokenizes via official recipe → `keywords.txt = ▁RA P HA EL`;
+    **BLOCKED: end-to-end detection unproven** — even the upstream verbatim example flow on
+    the model's own sample wav returned no hits (4 usage variants tried; likely wheel behavior,
+    sherpa-onnx==1.13.8) → integration spike required before adoption.
+  - **PTT-only toggle: ALREADY-DONE, zero cost** — `config.yaml:76-77`
+    (`always_listen: true ... false = push-to-talk`), `body/win/ws_client.py:239`
+    `always = bool((cfg.get('voice', {}) or {}).get('always_listen', True))` → `:245`
+    WakeStream / `:257 elif ptt_hk:` (no always-on stream ⇒ nothing can reach cloud STT),
+    brain backstop `brain/voice/activation.py:159` `if not self.cfg.always_listen:`,
+    env flip `brain/voice/config.py:346` `cfg.always_listen = _env("RAPHAEL_ALWAYS_LISTEN", …)`.
+  - Fixtures: `~/.raphael/voice/kws/fixtures/{wake,nonwake1..3}.wav` + `*_measured.json`.
+
+**AUD-07: CONFIRMED → FIXED.** Quote (pre-fix) `brain/voice/tts.py` in `_spawn`:
+`env = dict(os.environ)` + `env.setdefault("HF_HUB_OFFLINE", "1")` ⇒ the third-party fish
+server inherited the Brain's whole environment (GROQ/HF/VAST/DISCORD secrets). Now
+`FishSpeechServer._build_env()` — allowlist {PATH, HOME, USER, LOGNAME, SHELL, TMP*, LANG*,
+LD/DYLD_LIBRARY_PATH, CUDA_VISIBLE_DEVICES, PYTHONPATH, PYTHONIOENCODING} +
+HF_HUB_OFFLINE/no_proxy/PYTHONUNBUFFERED. Test: `test_aud07_fish_env_never_inherits_secrets`
+(4 fake secrets ⇒ absent) + allowlist-size sanity.
+
+**AUD-24: CONFIRMED → FIXED.** Quote (pre-fix) `body/win/audio_in.py`:
+`self._queue = asyncio.Queue()  # unbounded: consumer is network-bound; QueueFull inside
+call_soon_threadsafe would kill the loop task` + `loop.call_soon_threadsafe(self._queue.put_nowait, chunk)`.
+Now: `QUEUE_MAX_CHUNKS = 600` + `_enqueue_bounded()` (drop-OLDEST, counted, rate-limited log)
+wired into BOTH handoffs (WakeStream + PTT MicStreamer). Tests: bounded size, drop-oldest
+ordering, log rate-limit, source-level "no raw threaded put" assertion.
+
+**AUD-32: CONFIRMED → FIXED (voice half).** Quote (pre-fix) `brain/voice/tts.py` `_spawn`:
+`logf = open(self.log_path, "ab")  # noqa: SIM115 — lives with subprocess` (unbounded append;
+live file measured at 1 620 606 bytes). Now `_rotate_log_path()` → `<name>.log.1` at a 5 MB
+cap (is_file()-guarded, chain never grows), called before the append handle opens; startup
+latency surfaced: `[tts] fish server ready in N ms (pid …)` in `_start_once`. Tests: no-rotate
+small, rotate-once, replace-existing `.1`, never-raises (4 tests).
+
+### Test output (real runs, one suite at a time — Rule 14)
+```
+$ brain/.venv/bin/python -m pytest brain/voice/tests -q
+141 passed, 2 skipped in 6.37s
+$ brain/.venv/bin/python -m pytest brain/tests -q
+216 passed, 1 warning in 17.45s
+  (first attempts this wake killed by external SIGKILL #5/#6 — systemd-oomd active while
+   another lane's Electron+opencode held RAM; immediate retries green both times;
+   zero orphans after: no fish/sherpa/oww processes running)
+```

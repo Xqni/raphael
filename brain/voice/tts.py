@@ -387,6 +387,45 @@ class FishSpeechServer:
         self.startup_ms: Optional[float] = None
 
     # -- lifecycle -----------------------------------------------------------
+    @staticmethod
+    def _build_env() -> Dict[str, str]:
+        """AUD-07 (Wave 5H): the fish server is third-party code — it must NOT
+        inherit the Brain's environment (API keys/tokens live there: GROQ_,
+        HF_, VAST_, DISCORD_…). Build a minimal allowlist instead: process
+        basics, loader paths for torch/CUDA, offline weights, no-proxy.
+        Unit-tested: a secret in os.environ never reaches the child.
+        """
+        keep = ("PATH", "HOME", "USER", "LOGNAME", "SHELL", "TMPDIR",
+                "TEMP", "TMP", "LANG", "LC_ALL", "LD_LIBRARY_PATH",
+                "DYLD_LIBRARY_PATH", "CUDA_VISIBLE_DEVICES", "PYTHONPATH",
+                "PYTHONIOENCODING")
+        env = {k: v for k, v in os.environ.items() if k in keep}
+        env["HF_HUB_OFFLINE"] = "1"            # weights are local
+        env["no_proxy"] = "127.0.0.1,localhost"
+        env["PYTHONUNBUFFERED"] = "1"          # fish logs flush as they happen
+        return env
+
+    @staticmethod
+    def _rotate_log_path(log: Path, max_bytes: int = 5 * 1024 * 1024
+                         ) -> Optional[Path]:
+        """AUD-32: fish_server.log grows without bound (lines per request).
+        Rotate to `<name>.1` once over the cap, BEFORE the append handle
+        opens. Returns the rotated-away path (None when nothing happened).
+        Pure-path version — unit-tested without a real server."""
+        try:
+            log = Path(log)
+            if not log.is_file():          # never rotate dirs/symlink weirdness
+                return None
+            if log.stat().st_size > max_bytes:
+                old = log.with_name(log.name + ".1")
+                if old.exists():
+                    old.unlink()
+                log.rename(old)
+                return old
+        except OSError:
+            return None
+        return None
+
     def _spawn(self) -> subprocess.Popen:
         ckpt = self.cfg.fish_checkpoint_path
         llama = ckpt
@@ -416,10 +455,9 @@ class FishSpeechServer:
         if device == "cuda":
             cmd.append("--half")
         self.log_dir.mkdir(parents=True, exist_ok=True)
+        self._rotate_log_path(self.log_path)    # AUD-32: keep the log bounded
         logf = open(self.log_path, "ab")  # noqa: SIM115 — lives with subprocess
-        env = dict(os.environ)
-        env.setdefault("HF_HUB_OFFLINE", "1")   # weights are local
-        env.setdefault("no_proxy", "127.0.0.1,localhost")
+        env = self._build_env()          # AUD-07: minimal env, no secrets
         return subprocess.Popen(
             cmd, cwd=str(self.cfg.fish_vendor_path), stdout=logf,
             stderr=subprocess.STDOUT, env=env, start_new_session=True)
@@ -457,6 +495,9 @@ class FishSpeechServer:
         while time.perf_counter() < deadline:
             if await self.health():
                 self.startup_ms = (time.perf_counter() - t0) * 1000.0
+                # AUD-32: surface startup latency (Rule-15 evidence)
+                _log(f"[tts] fish server ready in {self.startup_ms:.0f} ms "
+                     f"(pid {self.proc.pid if self.proc else '?'})")
                 self._starting = None
                 return
             if not self._alive():
