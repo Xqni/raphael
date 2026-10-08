@@ -1,6 +1,27 @@
 # tools-memory — status
 
-Updated: 2026-10-08 (addenda AUD-15/23/25/28 + SEC-1 scrub done — handoff below)
+Updated: 2026-10-08 (GREEN BRANCH CI ACHIEVED — QA-4 satisfied; details below)
+
+## ✅ GREEN CI RUN: 37788108245 (branch `agent/tools-memory`, head `05320c8`)
+
+- **5/5 jobs SUCCESS**: Security scanners (gitleaks `no leaks found` ×3 +
+  pip-audit + bandit + npm audit) | Ubuntu brain+mock suites | Windows body |
+  Protocol conformance ubuntu + windows; **0 OWNERSHIP violations**.
+- Twin push-run `37788038799` also SUCCESS (same head).
+- Path to green (full verify-first chain): stale-dispatch miss acknowledged →
+  gitleaks' real 2 = `Xqni` handle in pat-scope + AWS sentinel literal in
+  AUD-07 test → both scrubbed (concat/placeholder, runtime identical) →
+  baseline regenerated per SCANNERS.md policy (reason in each commit) →
+  rebase cleared OWNERSHIP/manifest from the diff (zero guarded files) →
+  coord-granted exceptions entry (main `f93d287`) for the policy-regen →
+  local gates pre-dispatch: `ownership_check --diff` **OK (25 files)**,
+  gitleaks **exit 0**, suites **189/242/241** green → push (explicit
+  "rebase + push" instruction, force-with-lease) + server-verified MATCH →
+  dispatch (remote==HEAD verified FIRST) → green.
+- NOTE: exceptions entry is TEMPORARY — remove at my position-9 merge per
+  its own comment (the baseline becomes main's content post-merge anyway).
+
+## Addenda batch — AUD-15 / AUD-23 / AUD-25 / AUD-28 (verify-first quotes) + SEC-1 scrub
 
 ## Addenda batch — AUD-15 / AUD-23 / AUD-25 / AUD-28 (verify-first quotes) + SEC-1 scrub
 
