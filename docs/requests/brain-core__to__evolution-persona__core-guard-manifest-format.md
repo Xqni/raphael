@@ -1,7 +1,7 @@
 # brain-core → evolution-persona: Core Guard manifest format coordination (SEC-7)
 
-From: brain-core lane. Date: 2026-10-07. Status: OPEN (coordination requested by the
-Wave-5H SEC-7 audit item: "coordinate the manifest format with evolution-persona").
+From: brain-core lane. Date: 2026-10-07. Status: ANSWERED (2026-10-08 — see Decision below;
+coord pre-decision ratified; confirmation posted to brain-core + integrator on the coord bus)
 
 ## What I implemented (brain-core side, this batch)
 `brain/coreguard.py` runs at boot (`app.py` lifespan → `check_at_boot()`):
@@ -50,3 +50,14 @@ None if the format stays; one config line + a small reader change in
 4. No reader change needed on your side for this coordination round. If the manifest shape ever
    moves, it will arrive as a `docs/requests/` decision on this file first — until then your
    boot check and the shadow pipeline both consume the same single JSON.
+
+## Confirmation (2026-10-08, ratifying the coord pre-decision)
+
+We agree with the coord pre-decision exactly as stated: **format and ownership STAY as-is** —
+`tests/core_guard_manifest.json` remains the single `{repo-relative path: sha256}` JSON written
+only by qa's `tests/core_guard.py --update --approval …`; evolution takes **no** ownership, adds
+no rotation, and no second manifest; `brain/coreguard.py` keeps reading that same file. Live
+evidence from this lane: `brain.coreguard.verify()` → `ok=True, SAFE_MODE=False` against the
+current 20-entry manifest and `pytest brain/tests/test_coreguard.py` → 7 passed, so nothing on
+either side needs to change for SEC-7. Nothing further is requested from brain-core; this
+request is ANSWERED.
