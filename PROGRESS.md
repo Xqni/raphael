@@ -542,3 +542,9 @@ live_e2e=false) when wanted.
   104/104 via colour). tests-heavy CI round 2 GREEN both jobs (full battery + orb gates
   in the cloud — laptop-free testing verified end to end). TTS research: PocketTTS wins
   (1.1GB CPU, clones JP ref) — voice eval task assigned.
+- Voice P0 COMPLETE on main: accent (namespaced cache + timbre gate + sweep) + gaps
+  (audio_out 42%-loss fix + reply-level pre-roll — probe max gap 1.0ms vs 12230ms).
+  Opencode chain live-verified (zen_free/go serve, groq STT-only caps + chat-cap require).
+  config.yaml HARD REFACTOR: 97/97 semantic equality, all suites green.
+  Cage restored (3D wireframe spheres, radius proof). Stack DOWN by default
+  (spawn-on-test policy broadcast); cost anxiety lifted (PAID_USAGE).
