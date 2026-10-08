@@ -148,7 +148,13 @@ def test_require_prefers_shared_body_helper(monkeypatch):
             "--require-hashes -r body/win/requirements.txt" % dist)
 
     fake.require = _req
+    # Full-suite runs import body.win.* earlier (pc conftest etc.), caching the
+    # REAL depfail as an attribute of the parent package — IMPORT_FROM does
+    # getattr(parent) FIRST, bypassing a sys.modules-only fake. Patch BOTH
+    # surfaces so the injected helper wins regardless of import order.
     monkeypatch.setitem(_sys.modules, "body.win.depfail", fake)
+    import body.win as _bw
+    monkeypatch.setattr(_bw, "depfail", fake, raising=False)
     from body.win.audio_in import _require_or_die
     with pytest.raises(RuntimeError, match="body/win/requirements.txt"):
         _require_or_die("definitely_not_installed_pkg_xyz_123", "0.0")
@@ -160,7 +166,12 @@ def test_require_falls_back_when_helper_absent(monkeypatch):
     manifests named (the audio modules never hard-depend on someone else's
     file landing first)."""
     import sys as _sys
+    # Absence = no parent attribute (getattr-first would otherwise find a
+    # cached real helper) + sys.modules poison (submodule import raises).
     monkeypatch.setitem(_sys.modules, "body.win.depfail", None)
+    import body.win as _bw
+    if hasattr(_bw, "depfail"):
+        monkeypatch.delattr(_bw, "depfail")
     from body.win.audio_in import _require_or_die
     with pytest.raises(RuntimeError) as ei:
         _require_or_die("definitely_not_installed_pkg_xyz_123", "0.0")
