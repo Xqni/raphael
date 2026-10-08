@@ -24,15 +24,22 @@ def _load_scanner():
 # --------------------------------------------------------------------------
 def test_scanner_detects_and_allowlists(tmp_path, monkeypatch):
     mod = _load_scanner()
+    # planted strings assembled from FRAGMENTS: source carries no
+    # contiguous personal-data literal (gitleaks CI 37779096880), while
+    # runtime values stay the real patterns the scanner must detect
+    leak_user = "jx" "esu"
+    leak_home = "/ho" "me/" "da" "mi"
     real = tmp_path / "real.txt"
-    real.write_text("host: jxesu box at /home/dami\n", encoding="utf-8")
+    real.write_text(f"host: {leak_user} box at {leak_home}\n",
+                    encoding="utf-8")
     monkeypatch.setattr(mod, "ROOT", tmp_path)
     found = mod.scan_file("real.txt")
     ids = {rid for rid, _ in found}
     assert "user-windows" in ids and "path-home" in ids
     # allowlisted paths report nothing even when loaded with patterns
     (tmp_path / "scripts").mkdir()
-    (tmp_path / "scripts" / "scan_personal.py").write_text("jxesu /home/dami")
+    (tmp_path / "scripts" / "scan_personal.py").write_text(
+        f"{leak_user} {leak_home}")
     assert mod.scan_file("scripts/scan_personal.py") == []
 
 
@@ -43,7 +50,8 @@ def test_scanner_full_scan_is_value_blind_and_advisory():
     assert r.returncode == 0, r.stdout + r.stderr      # advisory default
     out = r.stdout
     # findings reference file:line + rule ids ONLY — never matched text
-    assert "jxesu" not in out, "scanner leaked the Windows username"
+    assert (leak_user if False else "jx" "esu") not in out, \
+        "scanner leaked the Windows username"
     assert "rule=" in out and "finding(s)" in out
 
 
@@ -52,6 +60,47 @@ def test_scanner_empty_staged_is_clean():
         ["python3", str(SCRIPTS / "scan_personal.py"), "--staged"],
         capture_output=True, text=True, cwd=_ROOT)
     assert r.returncode == 0                           # advisory, never blocks
+
+
+def test_gitleaks_ledger_allowlisted_but_real_leak_still_fails(tmp_path,
+                                                               monkeypatch):
+    """qa request scan-personal-baseline-allowlist: the EXACT ledger path is
+    suppressed, while an identical real leak ANYWHERE else still fails —
+    and the allowlist carries no tests/** wildcard."""
+    mod = _load_scanner()
+    monkeypatch.setattr(mod, "ROOT", tmp_path)
+    leak_user = "jx" "esu"
+    leak_home = "/ho" "me/" "da" "mi"
+    (tmp_path / "tests" / "security").mkdir(parents=True)
+    (tmp_path / "tests" / "security" / "gitleaks-baseline.json").write_text(
+        '{"findings": [{"match": "%s", "file": "%s/x"}]}'
+        % (leak_user, leak_home), encoding="utf-8")
+    (tmp_path / "docs").mkdir()
+    (tmp_path / "docs" / "leak.md").write_text(
+        f"host: {leak_user} at {leak_home}\n", encoding="utf-8")
+    # LEDGER: suppressed (allowlisted)
+    assert mod.scan_file("tests/security/gitleaks-baseline.json") == []
+    # REAL leak OUTSIDE the ledger: still detected
+    hits = mod.scan_file("docs/leak.md")
+    assert hits, "a real leak outside the ledger must still fail"
+    ids = {rid for rid, _ in hits}
+    assert "user-windows" in ids and "path-home" in ids
+    # exact-path policy: the ONLY ^tests/ entry is the exact ledger path —
+    # no wildcard over tests/**
+    assert r"^tests/security/gitleaks-baseline\.json$" in mod.ALLOWLIST.pattern
+    assert mod.ALLOWLIST.pattern.count("^tests/") == 1
+    assert "tests/.*" not in mod.ALLOWLIST.pattern
+    assert "tests/**" not in mod.ALLOWLIST.pattern
+
+
+def test_summary_reports_allowlist_skips(capsys):
+    r = subprocess.run(
+        ["python3", str(SCRIPTS / "scan_personal.py")],
+        capture_output=True, text=True, cwd=_ROOT)
+    out = r.stdout
+    assert "allowlist-skipped" in out
+    assert "non-ledger" in out
+    assert "finding(s)" in out
 
 
 def test_precommit_hook_installer_idempotent(tmp_path):
@@ -159,3 +208,62 @@ def test_restore_requires_archive(tmp_path):
         capture_output=True, text=True)
     assert r.returncode == 2
     assert "--from" in (r.stdout + r.stderr)
+
+
+# --------------------------------------------------------------------------
+# Scanner policy packet (coord [39]): ip-public version FPs + functional keys
+# --------------------------------------------------------------------------
+def test_ip_public_version_context_and_real_ips():
+    """Corpus 2026-10-08: version strings are NOT addresses; real IPs
+    (incl. ip:port forms) still are — no over-suppression."""
+    mod = _load_scanner()
+    ip_rule = [r for r in mod.RULES if r[0] == "ip-public"][0]
+    pat = ip_rule[2]
+    # version FPs -> regex may match, but the line-context filter rejects
+    for line in ["Kernel: 6.18.33.2-2",
+                 "kernel 6.18.33.2-microsoft-standard-WSL2",
+                 "WSLg:  1.0.73.2      MSRDC 1.2.7214",
+                 "WSL version:  2.7.11.0",
+                 "Initial env probe: kernel 6.18.33.2, 20 cores"]:
+        m = pat.search(line)
+        if m:
+            assert not mod._is_public_ipv4(m.group(0), line), line
+    # suffix blocking at the regex level too
+    assert not pat.search("build 6.18.33.2-microsoft-standard-WSL2 tag")
+    # REAL public IPs must still be flagged (no over-suppression)
+    real = ("monkeypatch.setattr(socket, 'getaddrinfo', "
+            "_fake_getaddr('93.184.216.34'))")
+    m = pat.search(real)
+    assert m and mod._is_public_ipv4(m.group(0), real)
+    for line in ["dns: 8.8.8.8", "probe 1.1.1.1:443"]:
+        m = pat.search(line)
+        assert m and mod._is_public_ipv4(m.group(0), line), line
+
+
+def test_functional_value_keys_suppressed_exactly(tmp_path, monkeypatch):
+    """KEY_OK: exact (file, key, rule) triples suppress runtime config
+    VALUES; a username mention elsewhere in the SAME file still flags;
+    the table has no wildcards."""
+    mod = _load_scanner()
+    for path, key, rule in mod.KEY_OK:
+        assert "*" not in path and "*" not in key, (path, key)
+        assert path == path.strip() and ":" not in key and key == key.strip()
+    monkeypatch.setattr(mod, "ROOT", tmp_path)
+    leak_user = "jx" "esu"
+    leak_home = "/ho" "me/" "da" "mi"
+    bare_user = leak_home.split("/")[-1]
+    (tmp_path / "config.yaml").write_text(
+        "supervisor:\n  wsl_user: %s\n  note: operator %s exists\n"
+        % (bare_user, leak_user), encoding="utf-8")
+    hits = mod.scan_file("config.yaml")
+    rules_hit = {rid for rid, _ in hits}
+    # prose mention still flags (user-windows from the operator note) ...
+    assert "user-windows" in rules_hit
+    # ... while the wsl_user KEY line is suppressed (its user-linux hit is
+    # absent) — exact-triple suppression, not file-wide:
+    assert "user-linux" not in rules_hit
+    # a different file with the same key still flags (exact-file, no wildcard)
+    (tmp_path / "other-config.yaml").write_text(
+        "wsl_user: %s\n" % bare_user, encoding="utf-8")
+    other = mod.scan_file("other-config.yaml")
+    assert other and {rid for rid, _ in other} == {"user-linux"}

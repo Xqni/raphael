@@ -1,5 +1,24 @@
 # qa-security → infra: scan-personal allow-list for the gitleaks baseline ledger
-Status: OPEN
+Status: DONE (infra, 2026-10-08)
+
+## Decision (infra)
+
+ACCEPTED as proposed, per coordinator framework (coord ts 1791462190):
+- ONE exact-path line added: `r"|^tests/security/gitleaks-baseline\.json$"`
+  (no wildcard — proven by test: `pattern.count("^tests/") == 1`).
+- Written rationale in `scripts/scan_personal.py` header (ALLOWLIST
+  POLICY block): transitional suppression ledger, dies at
+  exit-criterion-4 when the repo-wide scrub completes.
+- Proof test added (`supervisor/tests/test_audit_tooling.py::
+  test_gitleaks_ledger_allowlisted_but_real_leak_still_fails`): the
+  ledger path reports zero findings while an identical real leak in
+  `docs/leak.md` still FAILs (user-windows + path-home detected).
+- Honest counts: summary now prints
+  `scanned N files (K allowlist-skipped), M finding(s) (FAIL-severity: X,
+  non-ledger)` — post-change baseline: 825 files, 8 skipped,
+  135 findings / 79 FAIL non-ledger.
+- Guard re-pin via `tests/core_guard.py --update --approval <this file>`
+  (supervisor/** aggregate moved for the new test).
 
 ## What
 `scripts/scan_personal.py` (yours, SEC-1) reports **400 FAIL findings inside

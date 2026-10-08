@@ -14,11 +14,19 @@ _ROOT = Path(__file__).resolve().parents[2]
 
 
 class _ClosedListener:
-    """Fake accepted-socket factory: first accept() raises -> the relay's
-    accept loop exits immediately (no real port ever bound in tests)."""
+    """Fake listener: accept() raises OSError — the relay accept-loop must
+    treat this as 'socket gone' and exit. fileno() == -1 satisfies the
+    integrator's zombie-listener guard (09092aa: only exit when the socket
+    itself is really gone; otherwise a transient error loops forever)."""
+
+    def fileno(self):
+        return -1
 
     def accept(self):
         raise OSError("test: listener closed")
+
+    def close(self):
+        pass
 
 
 @pytest.fixture
@@ -123,7 +131,7 @@ def _load_wsrelay():
 
 def test_wsl_helper_bind_never_wildcard():
     mod = _load_wsrelay()
-    assert mod.resolve_bind_addr("172.21.0.5") == "172.21.0.5"
+    assert mod.resolve_bind_addr("stub-nat-addr") == "stub-nat-addr"
     assert mod.resolve_bind_addr(None) is None      # no NAT addr -> NO bind
     src = (_ROOT / "scripts" / "wsl-relay.py").read_text(encoding="utf-8")
     assert 'or "0.0.0.0"' not in src                # old fallback is gone

@@ -7,8 +7,13 @@
   "brain/control.py": "db9bcf042115a74e7e1c0a4dce8f20b45c4bb7baea235190444e34e3217ff569",
   "brain/evolution/**": "2fcd09f1bd61d696faf39c0d02c9f1c5334a44f89f18b5271e7b77c9a726e6cd",
   "brain/mode.py": "9137e5e8e34201f9ecbb7bb9fb7daddfc0db8793972fe2d18f501bcd6687d03c",
+<<<<<<< HEAD
   "brain/raphael-brain.service": "5e8930ec15d96fb2eadc7442ffd004229309c71f12b9172c1ef058c8f8da4a9b",
   "docs/OWNERSHIP.md": "a2e4e1cdff47e65558d27f7b7dc3ec835eabe5372783a7420a849c7209551f43",
+=======
+  "brain/raphael-brain.service": "39dd34988a79da0c2b3e5d695e785adc2ce74f744a1bd36a02795cbe71877432",
+  "docs/OWNERSHIP.md": "f242bb100e0a8f393a35f76526220086c0cfd6bcde153768fdc85c555842ef46",
+>>>>>>> agent/infra
   "scripts/install-brain-unit.sh": "56d8b3cacc47c5cf5a283fa147834e14fa7bdc4691d7521c545f9c694c6789de",
   "scripts/setup.ps1": "86246033646b4441ea7bbddd932802ddf3cf3298622803a561ec0cdbd5f03e5d",
   "scripts/setup.sh": "4b30e3e82013486e0fa15a035b9fc6e9ba5f7769f1c9b0dc60917996f58ca9ef",
@@ -17,6 +22,11 @@
   "scripts/win/allow-brain-localhost.ps1": "630faa699eee95088f485f690aae25a823ba1cf53788ca2f08d9c74bf5854f48",
   "scripts/win/make-ref-voice.ps1": "60fb334719cab6f756cf1e538b350c13572fcec433a7de7688b17644dff667d1",
   "scripts/win/mute.ps1": "4afa81ae0537901e0533809d9ad32c2cc861a15e03a0677e14b2fd9581c9c1d3",
+<<<<<<< HEAD
   "supervisor/**": "cf7a366e0bd659434e3a3629fb33886623ea131094bb87803a172cc3465c3aab",
   "tools/conductor/**": "649f5d87021b9ab6a8a0e0645edf408ee84411895c9c9d51af947df9a0fcae04"
+=======
+  "supervisor/**": "acba2ff5fd36a80be760b2f6e7561d9c13906c1e788cbd037f1670c71590264b",
+  "tools/conductor/**": "fee963b3c03fba85893f14dbb60504b2a4050a1d63328fa70e83475581de5b8f"
+>>>>>>> agent/infra
 }

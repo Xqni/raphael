@@ -103,3 +103,9 @@ T1 fast free · T2 strong free · T3/T4 paid (log to docs/PAID_USAGE.md).
 - qa [50,51]: QA-3 COMPLETE accepted (12-eval harness + nightly cron + live CoreGuard-refusal proof; CI 37781177536 5/5, suites 384) -> NEXT = wave-5 evolution gate tests, then control-plane re-audit.
 - infra [33]: scanner policy packet ACCEPTED (ip-public FP both-directions proof + exact-triple allowlist + 79->66); branch REWRITTEN+synced 9449ca6 -> dispatch for green id.
 - voice [50]: Cut A body half accepted (close12+grace13==25 zero-split proof) + Cut B neutral-measurement accepted; LATENCY DECISION: accept ~550ms floor (perceived ~1.8s, -45%); closer-provider option needs human key (standing, not urgent); NEXT = branch CI + wave_done, position 4 behind pc.
+- MERGES: voice pos4 (63b6245) + orb pos6 (c9d0ac6) pushed; battery 440/169/8+guard green. infra 9449ca6 + tools-memory 0c5e06c pushed+server-verified (both dispatching for green ids, positions 7 & 9).
+- GATE LIVE PROVEN: hook=True -> consumer -> chat PASS provider=go/mimo subtitle2.97s + act 0.55s + refusal 16 tests. brain-core/pc/voice/orb notified.
+- F-3 ADJUDICATED: signed act-journal agreement canonical; pc's older activity-viewer-schema SUPERSEDED (pushed).
+- brain-core [68] heartbeat (idle WAIT).
+- qa [52,53]: wave-5 evolution gate tests ACCEPTED (9 drills incl. tamper/boot-refusal/rollback/probation; SAFE_MODE test-infra poison fixed; CI 37784899899 5/5, run_all 393) -> NEXT = control-plane re-audit (note: coord.py REPO_ROOT + keepalive cron fix on main need fresh verify), then wave_done.
+- voice [53] heartbeat; branch carry-over 7a224fc rides next cycle (noted, no action).

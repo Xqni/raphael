@@ -22,4 +22,8 @@ brain/logjson.py =brain-core  # 2026-10-08 ARCH-6 packet assignment: structured 
 .opencode/research/windows-native-electron-orb.md =orb  # 2026-10-08 Wave-5H ARCH-1 packet deliverable (research backing docs/orb/WINDOWS-NATIVE-PLAN.md)
 .gitleaks.toml =qa-security  # 2026-10-08 docs/audit-tasks/qa-security.md QA-1 (packet-mandated scanner location, integrator-assigned)
 .github/dependabot.yml =qa-security  # 2026-10-08 docs/audit-tasks/qa-security.md QA-1 (packet-mandated dependabot location, integrator-assigned)
+<<<<<<< HEAD
 docs/PROTOCOL.md =pc-control,brain-core  # 2026-10-08 integrator grants: pc-control AUD-05 foreground-frame rows (coord inbox [32] grant, accepted [35], request pc-control__to__integrator__ownership-grant-protocol-aud05.md) + brain-core audio_end "continuation" enum (cycle-2 assignment reply, landed 1024538); SCOPED: those rows/enum only — general PROTOCOL edits stay integrator-only
+=======
+tests/core_guard_manifest.json =infra  # 2026-10-08 coord [35]+[36] framework/acceptance: core_guard.py --update --approval docs/requests/infra__to__integrator__sec1-scrub-rehash.md (entry-level diffs reviewed; integrator remains exempt by design in check_file)
+>>>>>>> agent/infra
