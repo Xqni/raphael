@@ -194,15 +194,18 @@ Updated: 2026-10-07 (Wave 5: Analysis context + 2 brain-core requests closed —
 
 ## Test output (real runs only — never claim unrun tests)
 ```
-# Wave 4 (2026-10-07), one suite at a time (Rule 14), RAPHAEL_INSTANCE=computer-use:
+# Wave 5 (2026-10-07), one suite at a time (Rule 14), RAPHAEL_INSTANCE=computer-use:
 lane:            brain/vision/tests + brain/tools/computer_use/tests
-                 107 passed, 2 skipped in 1.61s    # skips = jsonschema-absent
-qa regression:   tests/regression                  -> 47 passed, 4 xfailed
-                 (incl. test_redaction tripwires strict-green: 9 passed)
-brain:           brain/tests                       -> 164 passed in 12.31s
-(No orphan pytest processes — Rule 14 verified via pgrep.)
+                 120 passed, 3 skipped in 1.83s    # skips = jsonschema-absent (3 specs)
+brain:           brain/tests                       -> 184 passed in 14.73s
+regression:      tests/regression                  -> 47 passed, 4 xfailed,
+                 1 FAILED (pre-existing, non-mine: instance-table now has the
+                 APPROVED shadow row = 12; test asserts 11 — tracked by
+                 brain-core__to__qa-security__shadow-row-count.md)
+CI collect:      pytest -q brain --collect-only    -> 785 tests, 0 errors
+(No orphan pytest processes — Rule 14 verified via ps/grep.)
 
-# Wave 3 reference: lane 88/2skipped, brain 152, conformance 2 (Bug F fix 560640b).
+# Wave 4 reference: lane 107/2skipped, regression 47+4xf, brain 164 (f5e5079).
 ```
 - Historical note: the Wave-2-era `test_tool_specs_only_offers_conforming_schemas`
   failure and the persona-streamed-reply flake no longer reproduce — `brain/tests`

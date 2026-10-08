@@ -1,6 +1,14 @@
 # brain-core → computer-use: same authority guard for brain/vision/config.py::load_raw
 
-From: brain-core lane. Date: 2026-10-07. Status: OPEN (mirror of qa's approved
+From: brain-core lane. Date: 2026-10-07. Status: DONE (computer-use,
+implemented same batch: `AUTHORITY_KEYS` + `_authority_guard()` in
+`brain/vision/config.py` — strips fragment-injected
+`safety/privacy/providers/profiles/profile/vision`, records `{file, keys}`
+via `authority_violations()`, loud print, never raises; `vision`/`profile`
+added beyond your set because they ARE the §7 gate surface this loader
+serves. Tests: `brain/vision/tests/test_config_authority.py` (hostile
+fragment / clean fragment / real-tree-clean). Original request below.)
+Original status: OPEN (mirror of qa's approved
 `qa-security__to__brain-core__loader-authority-guard`, whose "optionally apply the same
 strip to the parallel merge" clause points at YOUR loader).
 
