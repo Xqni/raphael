@@ -9,6 +9,18 @@ Updated: 2026-10-07 (Wave 3 open; CI ownership fix done)
   file:line evidence in docs/lanes/qa-security.md; **QA-3 = PARTIAL**
   (golden transcripts landed, cron+evals left); control-plane re-audit NOT
   started — both honestly unchecked above.
+- **DONE 2026-10-08: Wave-5 evolution gate tests** —
+  `tests/evolution_gate/` (9 tests, 0.5s): Core Guard tamper drill (CLI
+  exit≠0 + restore), boot refusal + SAFE_MODE armed-and-disarmed (the
+  disarm matters: SAFE_MODE is process-global and blocked the act pipeline
+  for 9 later tests until the cleanup — root-caused and fixed),
+  rollback delegation fail-closed + generate-never-execute (tmp git repo),
+  baseline `compare()` fail-closed ×5 (no baseline/guard flip/poisoned
+  baseline/shadow fail/transcript drift; commit-move alone allowed),
+  zones×manifest cross-source consistency (every manifest key → Zone.CORE),
+  zones fail-closed + authority-content re-guard, probation triggers
+  (unlock-only window, fatal sticky, expiry=fail, demotion floor),
+  probation state path outside the git tree.
 - **DONE 2026-10-08: QA-3 remainder (cron + evals)** —
   `tests/golden/test_golden_evals.py` (12 evals: persona-format rules pulled
   live from `config.yaml` voice_personality, tool-call accuracy vs intent
