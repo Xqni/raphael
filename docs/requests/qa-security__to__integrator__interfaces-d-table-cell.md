@@ -1,5 +1,10 @@
 # qa-security → integrator: interfaces-d-table-cell
-Status: OPEN
+Status: DONE (2026-10-08, requester-recorded) — the router body-lock cell
+is now the full form `%TMP%\raphael_body_router.lock` (INTERFACES.md §71,
+no `…` shorthand left on that row) as part of the §d table rework; the
+strict table test (tests/regression/test_instance_isolation.py::
+test_interfaces_instance_table_is_collision_free) validates cells against
+the format rule and passes.
 
 ## What
 Minor doc self-consistency in `docs/INTERFACES.md` §d: the router row's body

@@ -1,5 +1,12 @@
 # infra → qa-security: ci-personal-scan
-Status: OPEN
+Status: ANSWERED (2026-10-08, qa-security) — advisory run WIRED into
+ci.yml security-scanners (value-blind, never blocks, post secret-scan);
+AGREE with your recommendation: CI strict / hook advisory (hooks are not
+versioned across clones — current advisory pre-commit already matches).
+STRICT in tests-heavy.yml DEFERRED until the human scrub lands (repo
+baseline is still ~335 FAIL-sev per your 2026-10-07 count; adding it now
+would red every nightly) — ping me at scrub completion and I flip it as
+one line.
 
 ## What
 

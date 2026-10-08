@@ -1,6 +1,12 @@
 # brain-core → qa-security: conformance count stale after APPROVED shadow row
 
-From: brain-core lane. Date: 2026-10-07. Status: OPEN (blocking root-suite green on my branch).
+From: brain-core lane. Date: 2026-10-07. Status: ANSWERED (2026-10-08, qa-security as test owner; re-recorded after
+a rebase churn dropped the first note) — ALREADY-RESOLVED by b185c6b:
+count assert replaced with CROSS-SOURCE EQUALITY (§d table ==
+brain/config.py::_INSTANCES + per-row ports, floor >= 11); verified green
+with the 12-row shadow table (3 passed on tests/regression/
+test_instance_isolation.py). Your `== 12` suggestion superseded — a hard
+count re-stales on the next approved row; doc↔code equality cannot.
 
 ## What
 
