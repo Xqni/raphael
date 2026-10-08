@@ -1,6 +1,18 @@
 # brain-core — status
 
-Updated: 2026-10-07 (Wave 3: goals 1+2 DONE and rebased on main; goal 3 Notice BLOCKED on PROTOCOL decision — wave_done once decided+landed)
+Updated: 2026-10-08 (Wave-5H audit packet COMPLETE + reported in packet format; QA-4 CI green: tests-heavy 37714371665, ci 37714381234)
+
+## Wave-5H audit packet — verdicts (docs/audit-tasks/brain-core.md; verify-first, quotes inline)
+- **SEC-3: CONFIRMED (both layers) → FIXED (brain-core half) + voice request filed.** Quotes: `brain/ws.py:104` `self.audio_reason = 'wake'` (fabricated default), `brain/ws.py:690` `else 'wake'` (unknown label coerced) → straight into `voice.transcribe_result(buf, reason=reason)`; voice layer `brain/voice/activation.py:147-148` `# reason unknown/None -> ... do not drop audio` / `return GateDecision(True, reason or "unknown")` and `:150` `return GateDecision(True, "error_fail_open")` — FAIL OPEN → `brain-core__to__voice__sec3-gate-fail-closed.md`. Fix: explicit `Session.audio_started` (audio_end without audio_start returns before ANY transcription), `Voice input sent to cloud STT.` notice (ui+cli) when `should_transcribe` approves, upload fail-closed inside `transcribe_result` (single source of truth — keeps qa's contract mock authoritative). Determination: unknown reason WITH audio_start = local decision, label falls to wake (post-STT gate governs). Tripwire `test_sec3_cloud_stt_gate.py` **4/4**; qa contract `test_binary_frames` 7/7 unaffected.
+- **ARCH-5: DESIGN-ONLY (per packet)** — `config.yaml:174-180` `profiles:` = `cloud_temp: {}` + `local` only, header still "TEMPORARY PIVOT"; proposal filed (`arch5-profile-shape-design.md`): cloud_temp documented first-class (or canonical+`profile_aliases`), `hybrid` = cloud chat/tools + CPU-only local helpers (wake/VAD/echo gate; TTS local in every profile); my loader alias + switching tests ship with the chosen direction. Zero code.
+- **ARCH-6: NOT-APPLICABLE-as-found (zero pre-existing instrumentation) → IMPLEMENTED (co-share).** `brain/latency.py` uniform stages stt/routing/llm_first_token/tool_start/tts_first_audio (per-rowid anchors, honest omission, value-blind) exposed as `/status.latency`; emission in `ws.py`/`jobs/engine.py`/`loop.py`; `brain/logjson.py` value-blind slog (every string via `privacy.redact`, redactor-broken ⇒ drop, never raw). Tests `test_latency_logging.py` **5/5**.
+- **SEC-7 (standing-packet extra): NOT-APPLICABLE-as-found (no manifest check anywhere in brain) → IMPLEMENTED.** `brain/coreguard.py` boot check → drift ⇒ SAFE MODE + warn Notice (flush to first ui/cli) + `/status.core_guard` + structured log; never crash-loops; glob `dir/**` keys hash identically to `tests/core_guard.py` (post main's SEC-7 expansion — runtime verify `{ok: True}`). Request to evolution-persona: `core-guard-manifest-format.md`. Tests `test_coreguard.py` **5/5**.
+- **CONFIRM-VOICE (standing-packet item 5): ALREADY-FIXED-by-design → PINNED.** `brain/confirm.py resolve_ex` voice×high → `rejected_channel` (wave-2). Property test: 200 seeded utterances incl. TTS self-echo of her own confirm question — voice NEVER yields high-risk `yes` (reject+deny branches both exercised) + low-risk control. `test_confirm_hardening.py` **20/20**.
+- **QA-4:** tests-heavy **37714371665 SUCCESS**, ci **37714381234 SUCCESS** (workflow_dispatch, router-precedent); local five-suite **587 passed, 7 skipped**, root **214 passed, 7 xfailed**.
+
+## Done since Wave 3 (condensed, chronological)
+- **Wave 4 batch**: crash-recovery journal hardening (pending_confirm cleared on interrupted), kill-safety matrix (4 stages; FIX: engine.shutdown never fired the per-job speech-kill hook), Notice outage-storm drills, input-lock stress (30 workers), pidfile test-hygiene (never clobber live brain).
+- **Wave 5**: `brain/formats.py` answer+report emitters under APPROVED contract (server-side caps, answer every final reply, provider omitted without router hop) + job `kind`/`parent` (fastpath analyze/simulate, Simulation sandbox = predicted act_req stream NEVER executed, Analysis background+read-only+Report) + loader authority-guard (config.d fragments cannot touch safety/privacy/providers/profiles) + shadow-instance row + shape-hold (circle-only) + boot-settle idle-first + streamed-sentence batching (hold 2/1.5s → one speak per batch, gapless pre-roll) + STT-outage subtitle wiring.
 
 ## Done (Wave 3 goals, 2026-10-07)
 - **Job-concurrency polish — input-lock fairness + per-job cancel** (`brain/jobs/lock.py`, `engine.py`, `loop.py`):
@@ -40,14 +52,13 @@ Updated: 2026-10-07 (Wave 3: goals 1+2 DONE and rebased on main; goal 3 Notice B
   5. **Zero-arg schema relaxation** — `validate_schema` accepts `properties:{}` iff `required=[]` + `additionalProperties:false`; missing `required` still rejected (t_bad2/t_bad3 green) — pc's three PROTOCOL §7 zero-arg tools now register with schemas.
 
 ## In progress
-- — (Wave 2 lane tasks all checked off)
+- — (Wave-5H packet reported; awaiting review/merge)
 
 ## Blocked
-- — (live providers only: router lane's `brain.router.chat` facade; tests mock at the seam)
+- — (voice's `sec3-gate-fail-closed` request is THEIR file; ARCH-5 waits on integrator's direction)
 
 ## Next
-- voice `speak-warn-notices` request ([42] nudge: review with next batch) — reviewed: small `brain/notice.py` spoken-delivery wiring (speak_notice + level phrasing + actionable_only guard); implementing with the next batch after this P0 merges.
-- Wave 3 (only when docs/WAVES.md `current_wave` = 3): job concurrency polish (input-lock fairness, per-job cancel), conversation-memory hooks to tools-memory, proactive Notice events.
+- voice `speak-warn-notices` request ([42]): `brain/notice.py` spoken-delivery wiring (voice.speak_notice + level phrasing + actionable_only/private guards) — reviewed, next batch.
 
 ## Requests — all DECIDED (coord round 2)
 - `brain-core__to__integrator__pidfile-out-of-tmp.md` → **APPROVED + APPLIED** (INTERFACES §d updated, infra dual-reads; no action for me)
@@ -58,6 +69,7 @@ Updated: 2026-10-07 (Wave 3: goals 1+2 DONE and rebased on main; goal 3 Notice B
 - Nudge: PROTOCOL §7 act_req gained `list_windows`/`foreground_info`/`list_running_apps` — auto-covered once pc's tools register through discovery; no change needed from me.
 
 ## Test output (real runs only — never claim unrun tests)
+- (Wave-5H audit batch + glob-fix) brain 216 / router 172+2skip / voice 128+2skip / pc 11 / computer_use 60+3skip = **587 passed, 7 skipped**; root **214 passed, 7 xfailed**; CI: tests-heavy 37714371665 SUCCESS, ci 37714381234 SUCCESS
 - (Wave-5H audit batch) brain 215 / router 154 / voice 128+2skip / pc 11 / computer_use 60+3skip = **568 passed, 5 skipped**; root **214 passed, 7 xfailed** (incl. qa's contract/test_binary_frames 7/7 — SEC-3 layering keeps their transcribe mock authoritative)
 - (boot-settle batch) brain 194 / router 154 / voice 128+2skip / pc 11 / computer_use 60+3skip = **547 passed, 5 skipped**; root **214 passed, 7 xfailed**
 - (shape-hold batch) brain 193 / router 154 / voice 115+1skip / pc 11 / computer_use 60+3skip = **533 passed, 4 skipped**; root **214 passed, 7 xfailed**
