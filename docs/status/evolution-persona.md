@@ -3,6 +3,17 @@
 Updated: 2026-10-08 (Wave 5H + AUD-26)
 
 ## Done
+- **Branch CI (QA-4) GREEN 2026-10-08: run `37779671356` — conclusion success, ALL 5 jobs green**
+  (Ubuntu brain+mock suites, Protocol conformance ×2, Windows Body unit, Security scanners),
+  head `781482e`. Saga (3 prior reds, all mine + fixed): run 1 `37777566560` → my controller
+  `git commit` lacked identity on runners (`Author identity unknown`) → fixed with explicit
+  `-c user.name/user.email` in `controller._git` (verified locally with
+  `GIT_CONFIG_GLOBAL=/dev/null`: 19 controller tests pass); run 2 `37778157639` → built the STALE
+  remote branch (local unpushed) → pushed my lane branch (never main); run 3 `37778804596` →
+  ownership step flagged my exception-record edits → added the documented `=evolution-persona`
+  exception lines (manifest rehash + the registry self-line, coord decision inbox[17],
+  integrator/qa review at merge; local proof: ownership 17 files OK, qa's 40 ownership tests
+  green); run 4 **`37779671356` GREEN**.
 - **SEC-1/ARCH-4 personal-data scrub (2026-10-08): own paths CLEAN.** Before: 0 FAIL + 1 REVIEW
   (`docs/requests/evolution-persona__to__voice__ciel-voice-reference-slot.md:16`, rule=voice-clip);
   after rewording that line: **0 findings in my paths** (repo-wide 198 -> 197). Manual cross-check

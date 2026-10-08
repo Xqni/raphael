@@ -86,8 +86,10 @@ Wave 4 is MERGED + **GATE PASSED** (tag `wave-4-gate`, 10/10 lanes, mock 308 gre
   19 controller tests (guard-never-touched, symlink escape, real merge, dirty fail-closed).
   Suites: evolution **93**, persona **77**, Core Guard OK (20); post-fix real recheck cycle green
   (`docs/evolution/proposals/2026-10-07-aud26-recheck.md`).
-- [x] QA-4 green CI id linked with wave_done: **37716631721** (ci.yml, completed success,
-  main, 2026-10-08T02:11:16Z) + tests-heavy **37717108187** (success). wave_done = merge position 10.
+- [x] QA-4 green CI id linked with wave_done: **BRANCH CI `37779671356`** (ci.yml workflow_dispatch
+  on `agent/evolution-persona`, **success, 5/5 jobs**, head `781482e`, 2026-10-08) — dispatched per
+  coordinator order, covering the actual lane branch (earlier main-run ids 37716631721 /
+  tests-heavy 37717108187 also green). wave_done = merge position 10.
 
 ## Later waves
 - Per docs/WAVES.md — do not start early (AGENT_RULES §11).
