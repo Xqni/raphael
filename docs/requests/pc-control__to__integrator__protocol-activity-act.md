@@ -5,20 +5,26 @@ Status: OPEN
 Add the F-3 journal act to the `docs/PROTOCOL.md` §7 allow-list:
 
 ```
-`activity{op}` — op: list | undo.
-  list {op, limit?} — newest-first undoable-act journal entries
-      {seq, ts, kind, act, job, summary, inverse, undone} (cap 200/req).
-  undo {op, seq?}   — invert the newest undoable entry (or a specific seq);
-      inverse applies FIRST, only success marks it undone.
+`activity{op}` — op: list | log | undo.
+  list {op, limit?} — newest-first REVERSIBLE journal entries
+      {seq, ts, id, kind, act, job, summary, inverse, undone, undo}.
+  log  {op, limit?} — orb-viewer view: EVERY executed act joined with
+      reversibility {id, ts, job, action, args, ok, error, summary,
+      reversible, undo, undone, undo_ok} (redacted args; read-only).
+  undo {op, seq?, id?} — invert the newest undoable entry, or target one
+      by journal seq or stable id (seq XOR id); inverse applies FIRST,
+      success marks undone (ok:true marker), failure marks undo_ok:false
+      and changes nothing.
   lock:false, no confirm category (journaling adds NO confirmation bypass —
   every act keeps its existing risky/confirm metadata, AGENT_RULES §8).
 ```
 
 Proposed §7 line addition after `report{op, title, body, format}`:
 
-> …, `report{op, title, body, format}`, `activity{op, limit, seq}` (F-3
-> undoable-act journal: query + inverse-apply for reversible acts —
-> volume/brightness/window; `lock:false`, append-only JSONL store).
+> …, `report{op, title, body, format}`, `activity{op, limit, seq, id}`
+> (F-3 undoable-act journal: query — reversible list / full orb activity
+> log — and inverse-apply for reversible acts; `lock:false`, append-only
+> JSONL store; entry ids stable across restarts).
 
 Implementation + schema: `body/win/journal.py`, `body/win/act_activity.py`;
 tracked via `PENDING_PROTO_ADDITIONS = ('activity',)` (conformance test

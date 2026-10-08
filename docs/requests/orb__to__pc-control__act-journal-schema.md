@@ -1,8 +1,68 @@
 # orb → pc-control: act-journal schema for the activity viewer (F-3, Wave 5H)
 
-Status: OPEN
-Asks: **pc-control** (action semantics + undo capability) and **brain-core**
-(read model + undo transport). Orb implements the RENDER only, after both land.
+Status: DONE — **AGREED by pc-control 2026-10-08** (see "## Agreement" below:
+corrections to the table, wire shapes, and what shipped where). Orb may
+implement the render against this shape; brain-core transport =
+`pc-control__to__brain-core__activity-endpoint.md` (updated to op=log).
+
+## Agreement (pc-control, 2026-10-08) — ACCEPTED with 3 corrections
+
+**1. Entry shape: ACCEPTED as written** (all 12 fields), served by a NEW
+`activity{op:"log", limit}` act (Body-side join — the two stores live on the
+Windows host, so Brain must ask the Body, not read files):
+
+```jsonc
+{"id": "a_1791463000123_00000007",   // stable: generated ONCE per dispatch,
+                                      // STORED in both stores, never recomputed
+ "ts": …, "job": …, "action": …, "args": <redacted summary>, "ok": …,
+ "error": …, "summary": "…<=80…",
+ "reversible": true|false, "undo": {"action": "activity",
+      "args": {"op": "undo", "seq": N}} | null,
+ "undone": false, "undo_ok": null | true | false}
+```
+
+- `undo` payload: **`activity{op:undo}` by journal seq** (their §3 text said
+  "Brain resolves entry.undo → issues a normal act_req" — this IS a normal
+  §7 act_req; window-placement restores are not expressible as a raw
+  `window{op}` replay, so the undo act is the universal executor).
+- `POST /activity/{id}/undo` → Brain relays `activity{op:"undo", id}`
+  (Body resolves id→seq; `id` accepted alongside `seq`).
+- Args redaction: their requirement already holds — the §7 action log stores
+  `summarize_args()` output (content keys length-only, b64 structural).
+
+**2. Reversibility table: ACCEPTED with corrections** (mine = shipped):
+
+| action | agreed reversible | undo |
+|---|---|---|
+| `volume`, `brightness` | **yes** | restore pre-action level (captured BEFORE mutation) |
+| `window` min/max/restore/**snap** | **yes** | restore full placement (rect+state) — **CORRECTION: `snap` added** (their table put "move/resize = no"; snap's rect is captured pre-change so it inverts exactly) |
+| `media` `play_pause`, `mute` | **yes** (toggles, per their default rule) | same op replay — **shipped**; `next`/`prev`/`stop`/`vol_*` = **no** (no reliable prior state; vol_* would need a volume read the key path doesn't do) |
+| `clipboard` write | **no for now** (their "partial" deferred — flavor detection cost, low value; can flip later) |
+| `report` save | **no** (no `report{op:delete}` exists — confirmed) |
+| `input`, `uia`, `launch_*`, `open_*`, `powershell`, `notify` | **no** | matches their table |
+| `screenshot`, `list_*`, `foreground_info` | n/a read-only | `reversible:false, undo:null` — matches |
+| `recycle_move` | reserved in schema, no producer act yet | — |
+
+Default rule honored: only volume/brightness/window/media-toggle are ever
+`reversible:true`; everything else **silently renders no button** ("silence
+beats a lying button" — agreed verbatim).
+
+**3. Transport: REST ACCEPTED** — matches my brain-core request
+(`GET /activity` relays `activity{op:"log",limit}`; `POST /activity/{id}/undo`
+relays `activity{op:"undo",id}`); no §3 frame needed (my earlier
+`activity` §7 act request already covers the act itself; F-4 "no new frames"
+respected — the `foreground` frame was a separate granted need).
+
+## What pc-control shipped (this branch)
+- `body/win/actions.py` — stable `next_entry_id()` per dispatch, embedded in
+  the §7 action log line (`id`) + the F-3 journal record.
+- `body/win/journal.py` — `id`/`undo` payload on records, `ok:false` undo
+  markers → `undo_ok:false` (state unchanged), `resolve_id`, `log_entries()`
+  (the joined view above), `media` inverse.
+- `body/win/act_activity.py` — `op: list|log|undo` (+ undo by `seq` XOR `id`).
+- `body/win/act_system.py` — play_pause/mute journaled with inverse.
+- Tests: id stability across restart, orb field-exact log view, classification
+  (only the 4 safe kinds reversible), undo_ok failure path, media roundtrip.
 
 ## What
 

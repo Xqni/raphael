@@ -52,8 +52,14 @@ def _validate_media(args: Dict[str, Any]) -> Dict[str, Any]:
 
 
 async def _run_media(args: Dict[str, Any], backend) -> Dict[str, Any]:
-    await offload(backend.media_key, args['op'])
-    return {'sent': args['op']}
+    op = args['op']
+    await offload(backend.media_key, op)
+    # F-3/orb agreement: TOGGLE ops are journaled (inverse = the same op);
+    # next/prev/stop/vol_* are not reversible (no reliable prior state).
+    if op in ('play_pause', 'mute'):
+        journal.record('media', 'media', 'media %s (toggle)' % op,
+                       {'op': op})
+    return {'sent': op}
 
 
 # ------------------------------------------------------- volume/brightness

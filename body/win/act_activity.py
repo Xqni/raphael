@@ -29,22 +29,33 @@ except ImportError:  # script mode
     from actions import (offload, ActionError, opt_enum, opt_int, reject_extra,
                          register_action)
 
-_OPS = {'list', 'undo'}
+_OPS = {'list', 'undo', 'log'}
 
 
 def _validate_activity(args: Dict[str, Any]) -> Dict[str, Any]:
-    reject_extra(args, {'op', 'limit', 'seq'})
+    reject_extra(args, {'op', 'limit', 'seq', 'id'})
     op = opt_enum(args, 'op', _OPS)
-    if op == 'list':
-        if 'seq' in args:
-            raise ValueError("op 'list' does not take 'seq'")
-        return {'op': 'list',
-                'limit': opt_int(args, 'limit', lo=1, hi=200, default=20)}
+    if op in ('list', 'log'):
+        if 'seq' in args or 'id' in args:
+            raise ValueError("op '%s' does not take seq/id" % op)
+        return {'op': op,
+                'limit': opt_int(args, 'limit', lo=1, hi=200,
+                                 default=20 if op == 'list' else 30)}
+    # undo: optional seq XOR optional id (orb gives ids, brain/LLM may use seq)
     if 'limit' in args:
         raise ValueError("op 'undo' does not take 'limit'")
+    out = {'op': 'undo'}
+    if 'seq' in args and 'id' in args:
+        raise ValueError("pass either seq or id for undo, not both")
     if 'seq' in args:
-        return {'op': 'undo', 'seq': req_seq(args)}
-    return {'op': 'undo'}
+        out['seq'] = req_seq(args)
+    if 'id' in args:
+        entry_id = args['id']
+        if not isinstance(entry_id, str) or not entry_id.startswith('a_') \
+                or len(entry_id) > 48:
+            raise ValueError("field 'id' must be a journal entry id")
+        out['id'] = entry_id
+    return out
 
 
 def req_seq(args: Dict[str, Any]) -> int:
@@ -58,12 +69,18 @@ async def _run_activity(args: Dict[str, Any], backend) -> Any:
     if args['op'] == 'list':
         entries = await offload(journal.entries, args['limit'])
         return {'count': len(entries), 'entries': entries}
+    if args['op'] == 'log':
+        # orb-viewer contract: ALL executed acts joined with reversibility
+        entries = await offload(journal.log_entries, args['limit'])
+        return {'count': len(entries), 'entries': entries}
     try:
-        entry = await offload(journal.undo, args.get('seq'), backend)
+        entry = await offload(journal.undo, args.get('seq'), backend,
+                              entry_id=args.get('id'))
     except journal.UndoError as e:
         raise ActionError('E_INTERNAL', str(e)[:200])
     return {'undone': {'seq': entry['seq'], 'kind': entry['kind'],
-                       'summary': entry['summary']}}
+                       'summary': entry['summary'],
+                       **({'id': entry['id']} if entry.get('id') else {})}}
 
 
 register_action('activity', _run_activity, validate=_validate_activity,

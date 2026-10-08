@@ -97,6 +97,8 @@ POSITIVE_MATRIX = [
     ('foreground_info', {}, False, True),
     ('list_running_apps', {}, False, True),
     ('activity', {'op': 'list'}, False, True),
+    ('activity', {'op': 'log'}, False, True),
+    ('activity', {'op': 'undo'}, False, True),   # undo newest (media/volume)
     ('report', {'op': 'save', 'title': 'E2E Wave 5 Report',
                 'body': '# Findings\n- none\nconfidence: high'}, False, True),
     ('report', {'op': 'save', 'title': 'Second', 'body': '{"ok": true}',
@@ -274,6 +276,30 @@ async def mock_suite() -> int:
                 check('inject:timeout:drained', not automation.lock_held())
             finally:
                 fake.delays.clear()
+
+            # ---- AUD-05 foreground push wiring (mock sender, no sockets)
+            from body.win import foreground as fgmod
+            fg_frames = []
+
+            async def _cap(f):
+                fg_frames.append(f)
+                return True
+
+            fgmod.reset()
+            fgmod.set_sender(_cap)
+            try:
+                f1 = await fgmod.push(force=True)
+                check('fg:connect-push',
+                      f1 is not None and f1['type'] == 'foreground'
+                      and f1['window']['hwnd'] is not None, str(f1))
+                check('fg:dedupe', await fgmod.push() is None)
+                fake.foreground_window = fake.windows[1]
+                f3 = await fgmod.push()
+                check('fg:change-push',
+                      f3 is not None and f3['window']['hwnd'] == 1002, str(f3))
+                check('fg:lock-free', not automation.lock_held())
+            finally:
+                fgmod.reset()
         finally:
             import shutil
             shutil.rmtree(crash_dir, ignore_errors=True)
