@@ -102,12 +102,16 @@ jobs:
           esac
           BASE="${{ github.event.pull_request.base.sha || github.event.before }}"
           ZERO="0000000000000000000000000000000000000000"
-          if [ -z "$BASE" ] || [ "$BASE" = "$ZERO" ] || ! git cat-file -e "$BASE" 2>/dev/null; then
-            if [ "$REF" = "main" ]; then
-              BASE="$(git rev-parse HEAD~1 2>/dev/null || echo HEAD)"
-            else
-              BASE="$(git merge-base HEAD origin/main 2>/dev/null || git rev-parse HEAD~1 2>/dev/null || echo HEAD)"
-            fi
+          # CI improvement [40] (orb's diagnosis, integrator-confirmed): on a
+          # BRANCH/PR the base is the merge-base with origin/main, so the
+          # range is always the LANE's OWN diff — event.before ranges suddenly
+          # contain main's other-lane commits after a ff-merge of main into
+          # the branch (false "owned by other lanes" violations). On main
+          # pushes event.before IS the pushed range (kept).
+          if [ "$REF" != "main" ] && git rev-parse --verify origin/main >/dev/null 2>&1; then
+            BASE="$(git merge-base HEAD origin/main)"
+          elif [ -z "$BASE" ] || [ "$BASE" = "$ZERO" ] || ! git cat-file -e "$BASE" 2>/dev/null; then
+            BASE="$(git rev-parse HEAD~1 2>/dev/null || echo HEAD)"
           fi
           echo "lane=$LANE ref=$REF base=$BASE"
           python tests/ownership_check.py --lane "$LANE" --diff --base "$BASE"
