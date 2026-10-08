@@ -304,6 +304,10 @@ Wave 4 is MERGED + **GATE PASSED** (tag `wave-4-gate`, 10/10 lanes, mock 308 gre
       `orb:size` PASS (drift 4.6% of 12%) · `orb-diff` PASS · zero orphans,
       ports free.
 
+## Wave 5H — audit hardening sprint (inside wave 5; gate `wave-5h-gate`)
+
+- [ ] Read `docs/audit-tasks/orb.md` → your IDs: **ARCH-1, F-3, F-4** — VERIFY-FIRST (verbatim file:line, then CONFIRMED / NOT-APPLICABLE / ALREADY-DONE), QA-4: link a green CI run with your wave_done. Source register + dedupe: `docs/AUDIT-2026-10-07.md`. Rules: stack down (spawn only for your test), one suite at a time, heavy suites in cloud (`gh workflow run tests-heavy.yml`), Rule 15 speed, cost not a factor.
+
 ## Later waves
 - Per docs/WAVES.md — do not start early (AGENT_RULES §11).
 

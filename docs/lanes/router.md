@@ -61,5 +61,9 @@ Wave 4 is MERGED + **GATE PASSED** (tag `wave-4-gate`, 10/10 lanes, mock 308 gre
 
 - [x] Analysis-mode routing: tier-aware model policy (deeper model for Analysis/Simulation kinds, still Rule-15 fast for normal turns) + usage accounting for the new purposes. **DONE 2026-10-07** — new `deep` role (hints `120b…large/pro/max/ultra`, tie → BIGGEST id, deny-hints apply → `grok`/`kimi` unreachable in every tier); `purpose_roles: {analysis: deep, simulation: deep}` in code defaults + `config.d/router.yaml`; `_role_for` lets a deep-mapped purpose outrank the tools→strong rule (chat/ack/tools unchanged → Rule 15 intact); usage accounting buckets the new purposes (`usage_status().by_purpose.analysis|simulation`, `usage.jsonl.task_kind`, failure lines too). 10 tests (`test_tiered_analysis_routing.py`). Contract: `router__to__integrator__interfaces-purpose-enum-analysis.md` (OPEN) extends INTERFACES §a purpose enum — implementation backward-compatible either way. Known unrelated root failure `test_interfaces_instance_table_is_collision_free` (12 rows after the APPROVED shadow row) reproduces on clean main and is already filed by brain-core (`brain-core__to__qa-security__shadow-row-count.md`).
 
+## Wave 5H — audit hardening sprint (inside wave 5; gate `wave-5h-gate`)
+
+- [ ] Read `docs/audit-tasks/router.md` → your IDs: **SEC-8, ARCH-5, F-4** — VERIFY-FIRST (verbatim file:line, then CONFIRMED / NOT-APPLICABLE / ALREADY-DONE), QA-4: link a green CI run with your wave_done. Source register + dedupe: `docs/AUDIT-2026-10-07.md`. Rules: stack down (spawn only for your test), one suite at a time, heavy suites in cloud (`gh workflow run tests-heavy.yml`), Rule 15 speed, cost not a factor.
+
 ## Later waves
 - Per docs/WAVES.md — do not start early (AGENT_RULES §11).

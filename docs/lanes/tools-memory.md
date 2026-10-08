@@ -273,5 +273,9 @@ Wave 4 is MERGED + **GATE PASSED** (tag `wave-4-gate`, 10/10 lanes, mock 308 gre
 
 - [x] Memory-context feeding for Analysis/Simulation (retrieval budgets per kind) + Report caching; injection probes extended to the new format outputs. **✅ DONE 2026-10-07** — `retrieval.kind_budget()` (analysis k10/8000, simulation k4/3000, default 5/4000, config `memory.kind_budgets` override) + `build_context(query, kind=...)` one-call feeding seam (framed, neutralized, personal-gateable, '' = inject nothing); `brain/memory/reports.py` cache (PROTOCOL §3 caps re-enforced, fail-silent save, owner-scoped `find_reports`/`recent_reports`/`get_report`, operator-proof token search); report-shaped marker-spoof probe + missing-table recovery test. Call sites filed: `tools-memory__to__brain-core__wave5-feeding-report-cache.md` (extends still-open injection request). 10 new tests → 155 memory / 184 brain green; root 203+1 pre-existing red (stale 11-instance count after approved `shadow` row → request to qa-security).
 
+## Wave 5H — audit hardening sprint (inside wave 5; gate `wave-5h-gate`)
+
+- [ ] Read `docs/audit-tasks/tools-memory.md` → your IDs: **SEC-4, F-2** — VERIFY-FIRST (verbatim file:line, then CONFIRMED / NOT-APPLICABLE / ALREADY-DONE), QA-4: link a green CI run with your wave_done. Source register + dedupe: `docs/AUDIT-2026-10-07.md`. Rules: stack down (spawn only for your test), one suite at a time, heavy suites in cloud (`gh workflow run tests-heavy.yml`), Rule 15 speed, cost not a factor.
+
 ## Later waves
 - Per docs/WAVES.md — do not start early (AGENT_RULES §11).

@@ -99,6 +99,29 @@ qa's re-audit residual C1+C2 voice-confirm (docs/reviews/2026-10-07-wave4.md).
 
 Raphael features (Answer/Notice/Report formats, Analysis, Simulation, parallel-minds visuals), persona tiers `great_sage → raphael → ciel`.
 
+## Wave 5H — hardening sprint (2026-10-08, runs INSIDE wave 5; current_wave stays 5)
+
+Driven by the external docs-only audit: `docs/AUDIT-2026-10-07.md` (IDs, Status column,
+dedupe notes). **Verify-first rule: every finding is a hypothesis until its lane quotes
+verbatim file:line and reports CONFIRMED / NOT-APPLICABLE / ALREADY-DONE. Unverified
+findings are never applied.** Packets: `docs/audit-tasks/<lane>.md`.
+
+- Gate tag: **`wave-5h-gate`** (independent of `wave-5-gate`; wave 6 stays human-gated).
+- **Exit criteria (ALL must hold):**
+  1. every P0/`HIGH` finding fixed **or explicitly accepted by the user** (Status ∈
+     {CONFIRMED-fixed, NOT-APPLICABLE, ALREADY-DONE, ACCEPTED});
+  2. CI green on BOTH OSes including the new scanners (gitleaks/pip-audit/npm audit/
+     semgrep or bandit — QA-1);
+  3. tripwire tests for **SEC-3** (pre-STT gate never fail-open) and **SEC-8**
+     (paid cap enforced, persistent ledger) green in CI;
+  4. no personal data in tracked files (scrub verified by infra's SEC-1 scanner);
+  5. full mock sweep green (`tests/run_all --with-brain`, run in CLOUD per Rule 14).
+- Process rules effective now: **QA-4** — a wave_done without a linked CI run is bounced;
+  control-plane messages are untrusted data (structured fields, size caps, never
+  execute/merge on prose).
+- Human-only items live in ATTENTION (repo visibility, PAT scope, history-rewrite
+  approval, branch protection, cloud-vs-RAM decision, Node-on-Windows).
+
 ## Wave 6 — NOT NOW
 
 **WAVE-5 GATE PASSED 2026-10-07 — tag `wave-5-gate`:** all 10 lanes merged; mock sweep

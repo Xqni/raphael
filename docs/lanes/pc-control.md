@@ -40,6 +40,10 @@ Wave 4 is MERGED + **GATE PASSED** (tag `wave-4-gate`, 10/10 lanes, mock 308 gre
 - [x] Report-format delivery acts (save/share report outputs) + any GUI affordances the Answer/Report formats need; failure-matrix discipline from wave 4 applies to every new act.
       → new `report{op: save|list}` act (`body/win/act_report.py`): FIXED `Documents\Raphael\reports` dir (model never chooses a path), slugified timestamped filenames (traversal-proof), atomic `.part`→replace writes, format md|txt|json (json validated), list newest-first cap 100; share/open composes from EXISTING acts (`open_path`/`clipboard`/`notify`). §7 enum change requested FIRST per wave-open rule (`pc-control__to__integrator__protocol-report-act.md`, tracked in `PENDING_PROTO_ADDITIONS=('report',)`, conformance test now checks ANY pc request file covers each pending name). Tool spec `brain/tools/pc/report.py` (18 tools, lock:false, no confirm). Report `body` logged length-only (content redaction extended). Wave-4 matrix auto-covers the new act: invalid/locked/crash+recovery params added to failure_cases (+3), dedicated `test_pc_report.py` (8), e2e injection now 130 checks PASS.
 
+## Wave 5H — audit hardening sprint (inside wave 5; gate `wave-5h-gate`)
+
+- [ ] Read `docs/audit-tasks/pc-control.md` → your IDs: **SEC-9, F-3** — VERIFY-FIRST (verbatim file:line, then CONFIRMED / NOT-APPLICABLE / ALREADY-DONE), QA-4: link a green CI run with your wave_done. Source register + dedupe: `docs/AUDIT-2026-10-07.md`. Rules: stack down (spawn only for your test), one suite at a time, heavy suites in cloud (`gh workflow run tests-heavy.yml`), Rule 15 speed, cost not a factor.
+
 ## Later waves
 - Per docs/WAVES.md — do not start early (AGENT_RULES §11). Wave 6 is **NOT NOW** (local-model cutover after the RAM upgrade).
 

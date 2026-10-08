@@ -59,6 +59,10 @@ Wave 4 is MERGED + **GATE PASSED** (tag `wave-4-gate`, 10/10 lanes, mock 308 gre
 
 - [x] Output-format engine: Answer/Notice/Report format emitters per WAVES wave 5, Analysis + Simulation job kinds (fastpath + engine), parallel-minds job fan-out seams. **DONE 2026-10-07** (contract APPROVED as proposed): `brain/formats.py` answer/report emitters (roles ui+cli, caps sections≤10/summary≤500/text≤2000 trimmed pre-emit, answer on EVERY final reply, provider/model omitted when no router hop); engine validated `kind`/`parent` metadata + `submit_fanout()` seam + `job_event` kind/parent echo (absent when unknown); WS `command` + REST `POST /jobs` accept validated optional `kind`/`parent` (typos → E_BAD_MSG/422); fastpath `analyze/analyse/simulate` triggers; Simulation = tools[] + no prompt-block, Analysis keeps tools + report frame. Tests: test_formats.py (5) + test_agent_loop e2e (4) + kind/fanout units (2).
 
+## Wave 5H — audit hardening sprint (inside wave 5; gate `wave-5h-gate`)
+
+- [ ] Read `docs/audit-tasks/brain-core.md` → your IDs: **SEC-3, ARCH-5, ARCH-6** — VERIFY-FIRST (verbatim file:line, then CONFIRMED / NOT-APPLICABLE / ALREADY-DONE), QA-4: link a green CI run with your wave_done. Source register + dedupe: `docs/AUDIT-2026-10-07.md`. Rules: stack down (spawn only for your test), one suite at a time, heavy suites in cloud (`gh workflow run tests-heavy.yml`), Rule 15 speed, cost not a factor.
+
 ## Later waves
 - Per docs/WAVES.md — do not start early (AGENT_RULES §11).
 - Wave 3 (when current_wave=3): job concurrency polish (input-lock fairness, per-job cancel), conversation-memory hooks to tools-memory, proactive Notice events.

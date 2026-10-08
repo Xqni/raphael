@@ -37,6 +37,10 @@ Wave 4 is MERGED + **GATE PASSED** (tag `wave-4-gate`, 10/10 lanes, mock 308 gre
 
 - [x] Wave-5 gate tests: format contract conformance (new frames vs §3), tier-switch safety (deep-merge cannot touch safety/privacy/providers — extend evolution's 14 tests), Analysis/Simulation privacy tripwires.  (2026-10-07: production-emitter ⊆ §3 scan strict; tier safety = per-TIERS authority property STRICT + adversarial-fragment xfail with loader-authority-guard request; Analysis/Sim tripwire armed — skip-until-lands, fails-if-ungated — with analysis-simulation-privacy-contract request filed)
 
+## Wave 5H — audit hardening sprint (inside wave 5; gate `wave-5h-gate`)
+
+- [ ] Read `docs/audit-tasks/qa-security.md` → your IDs: **QA-1, QA-2, QA-3, QA-4, SEC-7** — VERIFY-FIRST (verbatim file:line, then CONFIRMED / NOT-APPLICABLE / ALREADY-DONE), QA-4: link a green CI run with your wave_done. Source register + dedupe: `docs/AUDIT-2026-10-07.md`. Rules: stack down (spawn only for your test), one suite at a time, heavy suites in cloud (`gh workflow run tests-heavy.yml`), Rule 15 speed, cost not a factor.
+
 ## Later waves (do not start early — AGENT_RULES §11; beyond current_wave 3)
 - [ ] Wave 3: golden job transcripts (replayable recorded conversations/tool traces as regression baseline).
 - [x] Wave 4: resilience test suites (with infra) + security re-review after fixes.  (`tests/resilience/` 3 drills green + `docs/reviews/2026-10-07-wave4.md`; matrix orchestration bullet above)

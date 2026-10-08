@@ -60,6 +60,10 @@ Wave 4 is MERGED + **GATE PASSED** (tag `wave-4-gate`, 10/10 lanes, mock 308 gre
       → **Shadow readiness (8911, carried item):** an instance WITHOUT a §d row now **fails closed** in `load_config` unless `RAPHAEL_PORT` is explicit (old behavior silently fell back to 8765 = collision with live main; aligned with brain-core's `port()` and qa's "never guess a port"). `main()` exits 1 with the actionable message; with `RAPHAEL_PORT=8911` everything derives collision-free (mutex `Raphael_Supervisor_shadow`, lock, pidfile, relay backend 9911) — asserted by tests. When brain-core lands the §d row, adding the name to `INSTANCE_ORDER` is the only change.
       → tests: `supervisor/tests/test_tier_and_jobs_cli.py` (11) + fail-closed config test update.
 
+## Wave 5H — audit hardening sprint (inside wave 5; gate `wave-5h-gate`)
+
+- [ ] Read `docs/audit-tasks/infra.md` → your IDs: **SEC-2, SEC-1, SEC-5, SEC-6, SEC-7, ARCH-2, ARCH-4, ARCH-6, ARCH-7, F-7** — VERIFY-FIRST (verbatim file:line, then CONFIRMED / NOT-APPLICABLE / ALREADY-DONE), QA-4: link a green CI run with your wave_done. Source register + dedupe: `docs/AUDIT-2026-10-07.md`. Rules: stack down (spawn only for your test), one suite at a time, heavy suites in cloud (`gh workflow run tests-heavy.yml`), Rule 15 speed, cost not a factor.
+
 ## Later waves
 - Per docs/WAVES.md — do not start early (AGENT_RULES §11).
   - Wave 3 (after integrator bumps `current_wave`): log rotation audit + crash reports with last-known state. NOTE: `supervisor/main.py` already ships size-cap rotation (5 MB × 3, selfcheck-verified); Wave 3 extends it to the other stack logs + adds last-known-state crash reports.
