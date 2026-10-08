@@ -1,0 +1,40 @@
+{
+  "pass": true,
+  "checks": [
+    {
+      "name": "rendered_sequence_starts_starting",
+      "ok": true,
+      "detail": "rendered=starting->idle",
+      "pass": true
+    },
+    {
+      "name": "settles_to_idle_next_before_anything_else",
+      "ok": true,
+      "detail": "first starting -> idle",
+      "pass": true
+    },
+    {
+      "name": "never_starting_straight_to_an_event_state",
+      "ok": true,
+      "detail": "rendered=starting->idle",
+      "pass": true
+    },
+    {
+      "name": "event_state_lands_after_idle",
+      "ok": true,
+      "detail": "rendered=starting->idle->thinking",
+      "pass": true
+    },
+    {
+      "name": "never_stuck_in_starting_or_reconnecting",
+      "ok": true,
+      "detail": "final=thinking",
+      "pass": true
+    }
+  ],
+  "sequence": [
+    "starting",
+    "idle",
+    "thinking"
+  ]
+}

@@ -1,5 +1,6 @@
 const path = require('path');
 const fs = require('fs');
+const http = require('http');
 const { app, BrowserWindow, Tray, Menu, ipcMain, nativeImage, screen, shell } = require('electron');
 
 // Capture ANY uncaught main-process error to a file (so errors from launches
@@ -466,6 +467,149 @@ function findLogsDir() {
   return app.getPath('userData');
 }
 
+// ---------------------------------------------------------------------------
+// F-4 (Wave 5H audit): provider usage + rate headroom rows in the right-click
+// menu, sourced from GET /status -> the ROUTER's usage_status() accessor
+// (docs/requests/router__to__brain-core__surface-usage-in-status.md).
+//
+// "no new frames" (packet docs/audit-tasks/orb.md): this is PROTOCOL §2 REST on
+// the SAME port as the WS, SAME token as the handshake — a local snapshot read
+// when the menu opens, so the idle path pays nothing. Never logged, never
+// displayed, never put in a WS frame (PROTOCOL §11).
+//
+// Degradation is deliberate: the mock brain answers 404 and the merged
+// brain-core /status may still return an EMPTY router block, so a failed or
+// partial read yields "(unavailable)" rows rather than a hang or a lie.
+// ---------------------------------------------------------------------------
+const STATUS_TTL_MS = 1000;      // coalesce menu-open reads to 1x/s
+const STATUS_TIMEOUT_MS = 600;   // a right-click must never feel stuck
+let statusSnap = null;           // last parsed /status body (null = unavailable)
+let statusSnapAt = 0;
+let statusInflight = null;
+
+/** PROTOCOL §1: REST is on the SAME port as the WS — so derive host/port FROM
+ *  the wsUrl the socket actually connects to (RAPHAEL_WS_URL wins over the
+ *  derived wsPort; using wsPort() alone would diverge whenever an override is
+ *  set). Falls back to the derived port if the URL is unparseable. */
+function statusEndpoint() {
+  const raw = (statusWS && statusWS.config && statusWS.config.wsUrl)
+    || (config && config.wsUrl) || '';
+  try {
+    const u = new URL(raw);
+    const port = Number(u.port) || (u.protocol === 'https:' ? 443 : 80);
+    if (u.hostname && port) return { host: u.hostname, port };
+  } catch (e) { /* fall through */ }
+  return { host: '127.0.0.1', port: Instance.wsPort() };
+}
+
+function refreshStatus(force) {
+  if (!force && statusSnapAt && (Date.now() - statusSnapAt) < STATUS_TTL_MS) {
+    return Promise.resolve(statusSnap);
+  }
+  if (statusInflight) return statusInflight;
+  const { host, port } = statusEndpoint();
+  const token = (statusWS && statusWS.config && statusWS.config.token) || (config && config.token) || '';
+  if (!port || !token) return Promise.resolve(null);
+  statusInflight = new Promise((resolve) => {
+    let done = false;
+    const finish = (v) => {
+      if (done) return;
+      done = true;
+      statusInflight = null;
+      statusSnapAt = Date.now();
+      resolve(v);
+    };
+    let req;
+    try {
+      req = http.request({
+        host, port, path: '/status', method: 'GET',
+        headers: { Authorization: 'Bearer ' + token, Accept: 'application/json' },
+        timeout: STATUS_TIMEOUT_MS,
+      }, (res) => {
+        let body = '';
+        res.setEncoding('utf8');
+        res.on('data', (c) => { if (body.length < 131072) body += c; });
+        res.on('end', () => {
+          if (res.statusCode === 200) {
+            try { statusSnap = JSON.parse(body); } catch (e) { statusSnap = null; }
+          } else statusSnap = null;
+          finish(statusSnap);
+        });
+      });
+    } catch (e) { finish(null); return; }
+    req.on('timeout', () => { try { req.destroy(); } catch (e) { /* gone */ } finish(null); });
+    req.on('error', () => finish(null));
+    req.end();
+  });
+  return statusInflight;
+}
+
+/** F-4 rows: usage totals + the TIGHTEST rate headroom across providers.
+ *  The two info rows are a STABLE contract — always present, degrading to
+ *  "(unavailable)" — so a consumer/test can key on the id, not on whether the
+ *  Brain's router block happened to be merged yet. */
+function usageRows() {
+  const r = (statusSnap && statusSnap.router && typeof statusSnap.router === 'object')
+    ? statusSnap.router : null;
+  const have = !!(r && !r.error && r.calls);
+  const c = (r && r.calls) || {};
+  const rows = [{
+    id: 'info-usage',
+    label: have
+      ? `Usage 24h: ${c.total || 0} calls · ${c.ok || 0} ok · ${c.errors || 0} err`
+      : 'Usage 24h: (unavailable)',
+    enabled: false,
+  }];
+  const provs = (r && r.providers) || {};
+  let tight = null;
+  for (const name of Object.keys(provs)) {
+    const p = provs[name] || {};
+    const rpm = p.rpm || {};
+    if (!Number.isFinite(rpm.cap) || rpm.cap <= 0) continue;
+    const used = Number(rpm.used) || 0;
+    const head = 1 - (used / rpm.cap);
+    if (!tight || head < tight.head) {
+      tight = { name, head, used, cap: rpm.cap, circuit: p.circuit };
+    }
+  }
+  if (tight) {
+    rows.push({
+      id: 'info-rate',
+      label: `Rate headroom: ${Math.max(0, Math.round(tight.head * 100))}% ` +
+             `· ${tight.name} ${tight.used}/${tight.cap} rpm`,
+      enabled: false,
+    });
+    if (tight.circuit && tight.circuit !== 'closed') {
+      rows.push({ id: 'info-circuit', label: `Circuit: ${tight.name} ${tight.circuit}`, enabled: false });
+    }
+  } else {
+    rows.push({
+      id: 'info-rate',
+      label: have ? 'Rate headroom: (none reported)' : 'Rate headroom: (unavailable)',
+      enabled: false,
+    });
+  }
+  return rows;
+}
+
+/**
+ * SEC-3 (Wave 5H audit): a CLEAR "mic audio is going to the cloud" indicator.
+ * Deliberately FAIL-SAFE — Private Mode is the only thing that provably stops
+ * cloud egress (PROTOCOL §7/§11), so anything else warns. brain-core does not
+ * yet publish an `stt_source` flag; requested in
+ * docs/requests/orb__to__brain-core__stt-source-in-status.md, and until it
+ * lands this over-warns rather than staying silent. Rendered BOTH here (menu,
+ * always readable) and as an on-orb badge while `listening`.
+ */
+function micCloudRow(s) {
+  const priv = !!s.private;
+  const listening = s.orbState === 'listening';
+  let label = 'Mic → cloud STT (when listening)';
+  if (priv) label = 'Mic: LOCAL only (Private Mode)';
+  else if (listening) label = 'Mic → CLOUD STT (recording now)';
+  return { id: 'mic-cloud', label, enabled: false };
+}
+
 /**
  * The menu as DATA rather than a built Menu, so tests can assert its structure
  * over IPC (`orb-menu-spec`) without popping a native window.
@@ -481,6 +625,8 @@ function orbMenuTemplate() {
     // INTERFACES §e: provider/model ride every orb_state frame — surfaced here
     { id: 'info-provider', label: `Provider: ${s.provider || '(none yet)'}`, enabled: false },
     { id: 'info-model', label: `Model: ${s.model || '(none yet)'}`, enabled: false },
+    ...usageRows(),                       // F-4: router usage + rate headroom
+    micCloudRow(s),                       // SEC-3: cloud-STT indicator
     { type: 'separator' },
     { id: 'pause', label: s.paused ? 'Resume' : 'Pause', type: 'checkbox',
       checked: !!s.paused, action: s.paused ? 'resume' : 'pause' },
@@ -505,7 +651,8 @@ function runMenuAction(it) {
   statusWS && statusWS.sendControl({ action: it.action });
 }
 
-function popupOrbMenu() {
+async function popupOrbMenu() {
+  await refreshStatus();   // F-4: bounded (600ms) local read before opening
   const build = (items) => items.map((it) => {
     if (it.type === 'separator') return { type: 'separator' };
     const out = { label: it.label };
@@ -597,7 +744,7 @@ function setupIPC() {
       return true;
     } catch (e) { return false; }
   });
-  ipcMain.handle('orb-menu-spec', () => orbMenuTemplate());
+  ipcMain.handle('orb-menu-spec', async () => { await refreshStatus(); return orbMenuTemplate(); });
   ipcMain.handle('orb-focus', () => {
     if (win && !win.isDestroyed()) { win.show(); win.focus(); }
     return true;
@@ -684,6 +831,9 @@ app.on('before-quit', () => {
   if (topmostWatcher) {
     try { topmostWatcher.kill(); } catch (e) { /* already gone */ }
     topmostWatcher = null;
+  }
+  if (statusWS && typeof statusWS.dispose === 'function') {
+    try { statusWS.dispose(); } catch (e) { /* already gone */ }
   }
 });
 

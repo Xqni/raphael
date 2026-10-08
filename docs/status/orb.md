@@ -1094,3 +1094,199 @@ node test/orb-diff.cjs  PASS
 3. **"A weird box underneath"** — still waiting on the coordinator's vision
    identification (amendment item 2). My own pass finds no rectangular
    boundary; the squares are the spec's floating data panes. **Nothing removed.**
+
+---
+
+# AMENDMENT 2 — BOOT SEQUENCE REWIRE: starting → idle → <event> (user, 2026-10-07)
+
+> "the starting state might need to be rewired — starting state → idle state →
+> then change based on what's happening."
+
+The brain-core lane owns the *emission* half (settle-to-idle-first after
+`finish_boot()`); the orb owned the *guarantee* half. Both halves are now in.
+
+## The two mechanisms (src/main/ws-status.js)
+
+| | what | why |
+|---|---|---|
+| **auto-escape** | `STARTING_ESCAPE_MS = 4000`, one-shot, armed while `starting`, retired by `_settleBoot()` | a socket that opens but is never answered used to leave the main-process status in `starting` **forever** — only the renderer's one-shot 5400 ms timer ever rescued it, and the status/menu never escaped at all |
+| **settle beat** | if the first non-boot frame is already an *event* state → show `idle` for `BOOT_IDLE_BEAT_MS = 400`, then apply it | guarantees `starting → idle → thinking` even if brain-core's half regresses; with brain-core working, the arriving frame *is* `idle` and no delay occurs |
+| **clean shutdown** | `StatusWS.dispose()` retires every timer + `_disposed` blocks reconnect re-arming; wired into `main.js` `before-quit` | before this, quit left a reconnect timer armed |
+
+`bootEscapeMs` is config-overridable so the unit test exercises the timer in
+250 ms instead of 4 s.
+
+## Evidence A — logic (plain Node, `tests/boot-sequence.test.cjs`)
+
+Wired into `npm run test:unit` — **13/13**:
+
+```
+A: starts in `starting`                                   starting->idle
+A: auto-escapes starting->idle when NO frame arrives      starting->idle
+A: escape fires inside the 250 ms budget                  escape after 259 ms
+A: never lingers — ends idle, not starting/reconnecting   final=idle
+A: a healthy open socket must not drop to reconnecting    starting->idle
+B: starts in `starting`                                   starting->idle->thinking
+B: never starting->thinking DIRECTLY (idle beat inserted) starting->idle->thinking
+B: idle shown before the event state                      starting->idle->thinking
+B: the deferred event state is still applied (not swallowed) thinking
+C: starts in `starting`                                   starting->idle->thinking
+C: settles to idle on auth                                starting->idle->thinking
+C: never starting->thinking DIRECTLY                      starting->idle->thinking
+C: sequence is starting -> idle -> <event>                starting->idle->thinking
+```
+
+(A) Brain accepts the socket and **never answers** · (B) Brain boots straight
+into an event state · (C) the normal `auth_ok` path. Runs on an ephemeral test
+port (18942) — never 8765, the live brain port (AGENT_RULES §14).
+
+## Evidence B — end-to-end rendered (`orb:trace --only=boot`)
+
+New probe **`window.__orbStateHistory()`** records every *rendered* transition,
+seeded at module scope with `starting` (a fast `auth_ok` can land before the
+first animation frame, so seeding on rAF would miss it).
+
+```
+$ npm run orb:trace -- --only=boot
+boot sequence: PASS (5/5)
+  ok rendered_sequence_starts_starting:            rendered=starting->idle
+  ok settles_to_idle_next_before_anything_else:    first starting -> idle
+  ok never_starting_straight_to_an_event_state:    rendered=starting->idle
+  ok event_state_lands_after_idle:                 rendered=starting->idle->thinking
+  ok never_stuck_in_starting_or_reconnecting:      final=thinking
+```
+
+`docs/orb/trace/boot-sequence.json` · the phase is a permanent part of the full
+`npm run orb:trace` run (a failure sets exit code 1), not a one-off.
+
+## Scope note
+
+The amendment says "kill/restart brain twice". The live stack is **down by
+default** (policy change, 2026-10-07), so the restart is simulated against the
+mock brain — same frames, same ports, no live process touched. The two
+scenarios that matter (`no frame arrives` / `first frame is an event`) are both
+covered; a live re-run is queued behind the brain-core merge alongside the
+existing Real-Brain `orb:trace` re-run.
+
+---
+
+# WAVE 5H AUDIT — ARCH-1 / F-4 / F-3 (2026-10-07)
+
+Packet: `docs/audit-tasks/orb.md`. Verify-first rule applied — every finding
+below is quoted with its `file:line`.
+
+## ARCH-1 (P1) — Windows-native Electron: **PLAN ONLY, delivered**
+
+**`docs/orb/WINDOWS-NATIVE-PLAN.md`** (plan, zero code, zero installs), backed by
+`.opencode/research/windows-native-electron-orb.md`.
+
+- **Node-on-Windows = ALREADY-DONE.** Measured on this box:
+  `C:\Program Files\nodejs\node.exe` = **`v24.1.0`**, and Node 24 is the correct
+  line (Electron 44 embeds Node 24.18.1; electron-builder v27 / `@electron/rebuild`
+  require ≥ 22.12). The plan documents the real trap instead: **Electron 44 = ABI
+  149 vs Node 24 = ABI 137**, so every native module must be `@electron/rebuild`ed
+  against Electron headers (`win_delay_load_hook` stays on).
+- **Prototype = BLOCKED, `coord user_attention` posted.** What needs approval is
+  the prototype (Electron dist download + unsigned `electron.exe` + a test port),
+  not a Node install.
+- Covers every required topic: Node version, config-path resolution (4-step order
+  preserving the current dev layout), token delivery (stdin/user-DACL pipe →
+  `safeStorage`; argv disqualified by WMI *and* by `second-instance` argv
+  forwarding; plain env readable same-user via `PROCESS_VM_READ`), always-on-top +
+  click-through, multi-monitor/DPI, GPU flags, **measured idle for both paths**,
+  a 10-item parity checklist, and rollback.
+- **Measured idle — WSLg path** (cited from `docs/orb/PERFORMANCE.md`): GPU
+  ≈0–0.5%, electron CPU 0.0–0.1%, `msrdc` bridge 0.52%, system 3.65%.
+  **Native path cannot honestly be numbered until a native build runs** — §7b
+  gives the exact `typeperf` / `\GPU Engine(*)` / WPR protocol so the two numbers
+  are comparable.
+- The retirement argument is not frame cost, it is compensations removed:
+  `weston-wrapper` + `boot-hook.sh` (the wrapper is *reset on every
+  `wsl --shutdown`*), `topmost.ps1` re-applied every 30 s, and the `SetWindowRgn`
+  clip for the **~32 px shadow margin WSLg bakes inside the surface** — a native
+  window needs none of them (`thickFrame:false` is the documented shadow killer).
+- **WSLg path untouched** and stays fully gated until §8 parity passes.
+
+## F-4 (P2) — usage/rate headroom + SEC-3 cloud-mic indicator: **DONE, gated**
+
+Verdict **CONFIRMED** (finding was real): `orbMenuTemplate()` showed only
+provider/model — `main.js` before this change had no `/status` consumer at all
+(`grep fetch/axios body/orb/src` → no hits), so rate headroom was unreachable.
+
+- **No new frames** (packet rule): reads `GET /status` — PROTOCOL §2 REST, same
+  port and same token as the WS — on menu open, `STATUS_TTL_MS = 1000`,
+  `STATUS_TIMEOUT_MS = 600`, never blocking a right-click.
+- **Stable row contract:** `info-usage` + `info-rate` always exist, degrading to
+  `(unavailable)` rather than vanishing; `info-circuit` appears only when a
+  circuit is not `closed`.
+- Headroom math = **tightest provider** across `router.providers[*].rpm`
+  (`1 - used/cap`), so the row shows the binding constraint, not an average.
+- **Token hygiene:** sent as `Authorization: Bearer`; the mock asserts only the
+  header's *presence* (`statusAuthSeen`), never its value. PROTOCOL §11 intact.
+- **SEC-3 indicator, fail-safe by design:** on-orb `#micbadge` shown while
+  `orb_state = listening` unless Private Mode (the only provable cloud off-
+  switch), + a `mic-cloud` menu row in all three readings. Placed **inside** the
+  orb silhouette and sized in `vw` because `orb:size` measures the radius
+  containing 97% of lit pixels (`test/orb-size.cjs:50`) — a badge poking past the
+  sphere would move that number. Known over-warning under a future `local`
+  profile → `docs/requests/orb__to__brain-core__stt-source-in-status.md` filed.
+- **Evidence:** `orb:trace` interaction phase **19/19 → 30/30**, incl.
+  `menu_rate_headroom_math` (`3% · zen_free 58/60 rpm`), `menu_circuit_row_when_open`,
+  `menu_status_sent_bearer_token`, `mic_badge_on_while_listening`,
+  `mic_badge_off_in_private_mode`, `menu_usage_degrades_honestly`.
+  Mock-brain gained a real `/status` (401 without Bearer, 404 when the test wants
+  the degradation path).
+
+## F-3 (P2) — activity viewer: **DESIGN ONLY, correctly blocked**
+
+Verdict **CONFIRMED + BLOCKED**: the packet calls it CO-SHARE and the user said
+"design first, implement after pc-control exposes the API".
+
+- Schema agreement filed: `docs/requests/orb__to__pc-control__act-journal-schema.md`
+  (entry shape, reversibility table, `GET /activity` + `POST /activity/{id}/undo`,
+  no new WS frames — the orb is `role: ui` and may never emit `act_req`).
+  Why pc-control must own it: **only `body/win/actions.py` knows whether an
+  action can be undone**; guessing in the renderer would offer an Undo that
+  silently does nothing.
+- Design: `docs/orb/ACTIVITY-VIEWER.md` — reached from the menu, rendered as an
+  in-orb panel (native menus cannot scroll 30 rows or show per-row undo results),
+  read-only, `[Undo]` rendered **only** when `reversible && !undone`, fail-closed
+  on server disagreement, plus a mock-brain test plan.
+- **Zero orb code**, as instructed. Panel is closed by default, so the design
+  changes no pixel of the current sweep.
+
+## Gate status after this wave
+
+See the run recorded at the bottom of this file for the post-change numbers.
+`test:unit` (7 suites), `orb:trace`, `orb:size`, `orb:diff` — all green or
+re-run pending at time of writing; distinctness is re-verified after **every**
+change per audit item 4.
+
+## Wave 5H gate record (post-change, final code)
+
+```
+npm run test:unit          PASS — 7 suites (7 morph + 4 gl-recovery + 5 morph-clock
+                                    + 8 palette + 8 port-safety + state-machine
+                                    + 13 boot-sequence)
+npm run orb:trace          PASS — boot sequence 5/5 · cage guard 4/4 ·
+                                    startup 7/7 (peak 2.043 rest 0.193 rad/s) ·
+                                    transparency border alpha 0 · BugC 6/6 ·
+                                    wave5 9/9 · interaction 30/30 ·
+                                    distinctness PASS (104 pairs, weakest
+                                    jobs vs thinking = 0.73) ·
+                                    shape directive ["circle"]
+npm run orb:size           PASS — 12 combos, worst drift 4.6% of 12%, edge gap 3px,
+                                    min coverage 62.9%
+node test/orb-diff.cjs     PASS — every pair of states renders differently
+```
+
+One transient failure occurred mid-wave (`startup phase FAILED: CDP timeout after
+30000ms: Runtime.evaluate`, EXIT=1) with no code correlation — unit, size and
+diff all passed either side of it, and an immediate re-run of the full trace was
+green end-to-end. Recorded for honesty, not a real defect.
+
+The F-4 endpoint fix (derive REST host/port from `wsUrl`, not from the derived
+`wsPort()`, so `RAPHAEL_WS_URL` overrides cannot desynchronise WS from REST) was
+made **after** the full-trace run, so that change was re-verified with
+`--only=interaction` (30/30) plus `test:unit`, `orb:size` and `orb:diff` on the
+final code — the renderer is untouched by it, so the trace's visual phases stand.

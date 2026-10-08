@@ -72,6 +72,10 @@ if (canvas) {
 }
 window.__orbGl = () => glRecovery.state();
 const subtitleEl = document.getElementById('subtitle');
+// SEC-3 (Wave 5H): fail-safe "mic audio is going to the cloud" badge — see the
+// #micbadge rule in index.html for why it is sized/positioned the way it is.
+const micBadgeEl = document.getElementById('micbadge');
+let micBadgeOn = false;
 const params = new URLSearchParams(window.location.search);
 const DEMO = params.get('demo') === '1';
 
@@ -100,6 +104,18 @@ const TRACE_RX = [];
 function traceRx(kind, data) {
   TRACE_RX.push({ t: Math.round(performance.now()), kind, data });
   if (TRACE_RX.length > TRACE_MAX) TRACE_RX.shift();
+}
+
+// AMENDMENT 2 evidence: every RENDERED state transition, seeded at module scope
+// with the constructor's `starting` (not on the first animation frame — a fast
+// auth_ok can land before rAF ever ticks). Read by test/orb-trace.cjs over CDP
+// so the sequence can be asserted end-to-end through the IPC wiring.
+const STATE_HISTORY = [{ state: orbState.orbState, at: 0 }];
+function noteState(now) {
+  const last = STATE_HISTORY[STATE_HISTORY.length - 1];
+  if (last && last.state === orbState.orbState) return;
+  STATE_HISTORY.push({ state: orbState.orbState, at: Math.round(now || performance.now()) });
+  if (STATE_HISTORY.length > 60) STATE_HISTORY.shift();
 }
 
 // Crossfade
@@ -750,6 +766,16 @@ function computeMotionBlur(dt) {
 
 function animate(now) {
   requestAnimationFrame(animate);
+  noteState(now); // AMENDMENT 2: record the rendered state sequence (boot -> idle -> ...)
+  // SEC-3: show the cloud-mic badge whenever the Brain says it is capturing
+  // (`listening`) unless Private Mode — the ONLY provably cloud-off switch — is
+  // on. Fail-safe by design: over-warning a privacy indicator is safe, silence
+  // is not. Written only on change so the idle path touches no DOM.
+  const wantMic = orbState.orbState === 'listening' && !orbState.private;
+  if (wantMic !== micBadgeOn) {
+    micBadgeOn = wantMic;
+    if (micBadgeEl) micBadgeEl.classList.toggle('on', wantMic);
+  }
   if (DEMO && !manualState && window.__orbDemoTimeline === true) {
     // Auto-timeline is OPT-IN now (default off): the natural boot story owns
     // the opening — starting plays the generation sequence, eases into idle.
@@ -1239,6 +1265,10 @@ window.__orbTrace = () => ({
   rx: TRACE_RX.slice(-50),
   stats: window.__orbStats ? window.__orbStats() : null,
 });
+// AMENDMENT 2: the RENDERED state sequence from module load — starting -> idle
+// -> <event>, whichever path changed it (IPC, boot timer, demo). Asserted
+// end-to-end by test/orb-trace.cjs over CDP.
+window.__orbStateHistory = () => STATE_HISTORY.slice();
 window.__orbStats = () => { // Phase-7 perf probe: true RENDERED frames + scene draw budget
   const r = renderer;
   if (!r) return { frame: -1 };

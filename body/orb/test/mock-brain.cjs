@@ -40,9 +40,41 @@ class MockBrain {
     this.closed = false;
     this.rejectAuth = false;   // set by the trace harness to reach 'offline'
     this.refuseConnections = false; // set by the trace harness to hold 'reconnecting'
+    this.holdAuth = false;     // AMENDMENT 2: accept the socket, never answer
+    this.authHeld = false;     // true once a client's auth was withheld
+    // F-4 test hook: the router block served on GET /status. Set to null to
+    // exercise the "Brain has no usage data yet" degradation path.
+    this.statusRouter = {
+      window_hours: 24,
+      calls: { total: 128, ok: 121, errors: 7 },
+      tokens: { input: 402113, output: 51204 },
+      errors: { E_PROVIDER_429: 7 },
+      providers: {
+        groq:     { circuit: 'closed', cooldown_s: 0,
+                    rpm: { used: 12, cap: 30, window_s: 60 },
+                    tpm: { used: 18000, cap: 20000, window_s: 60 } },
+        zen_free: { circuit: 'open', cooldown_s: 41,
+                    rpm: { used: 58, cap: 60, window_s: 60 },
+                    tpm: { used: 1200, cap: 60000, window_s: 60 } },
+      },
+    };
+    this.statusAuthSeen = false;   // presence only — the VALUE is never stored
     this._seq = 0;             // monotonic `speak` sequence counter
     this._t0 = Date.now();
     this.server = http.createServer((req, res) => {
+      // PROTOCOL §2: GET /status is REST on the SAME port as the WS and needs
+      // the same token as the handshake (Authorization: Bearer). Presence-only
+      // record so the F-4 test can prove the orb actually sent credentials
+      // WITHOUT ever persisting or logging the value.
+      if (req.url === '/status') {
+        this.statusAuthSeen = !!(req.headers.authorization || req.headers['x-raphael-token']);
+        if (!this.statusAuthSeen) { res.writeHead(401); res.end('{"detail":"not authenticated"}'); return; }
+        if (!this.statusRouter) { res.writeHead(404); res.end('mock-brain'); return; }
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: true, server_v: 'mock', mode: 'normal',
+                                 sessions: {}, router: this.statusRouter }));
+        return;
+      }
       res.writeHead(404); res.end('mock-brain');
     });
     this.wss = new WebSocketServer({ noServer: true });
@@ -91,6 +123,10 @@ class MockBrain {
           ws.close();
           return;
         }
+        // AMENDMENT 2 test hook: holdAuth simulates a Brain that accepts the
+        // socket but never answers — the orb must auto-escape starting->idle
+        // instead of lingering. releaseAuth() completes it later.
+        if (this.holdAuth) { this.authHeld = true; break; }
         this._send(ws, { type: 'auth_ok', v: 1, session: 'mock-' + Math.random().toString(36).slice(2, 8), server_v: 'mock' });
         // PROTOCOL §3: server kicks off keepalive immediately after auth_ok.
         this._send(ws, { type: 'ping', v: 1 });
@@ -110,6 +146,20 @@ class MockBrain {
         break;
       default: break;
     }
+  }
+
+  /** AMENDMENT 2: complete a held auth so the orb settles exactly once. */
+  releaseAuth() {
+    this.holdAuth = false;
+    if (!this.authHeld) return false;
+    this.authHeld = false;
+    for (const ws of this.clients) {
+      try {
+        this._send(ws, { type: 'auth_ok', v: 1, session: 'mock-' + Math.random().toString(36).slice(2, 8), server_v: 'mock' });
+        this._send(ws, { type: 'ping', v: 1 });
+      } catch (e) { /* gone */ }
+    }
+    return true;
   }
 
   _send(ws, frame) {
