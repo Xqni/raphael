@@ -1,0 +1,50 @@
+# gitleaks config — qa-security (Wave 5H QA-1)
+#
+# Purpose (audit packet QA-1): block RE-ENTRY of personal data — local
+# usernames, drive/home paths, local IP ranges — on top of gitleaks'
+# default secret rules.
+#
+# CI: `.github/workflows/ci.yml` job `security-scanners` runs
+#   gitleaks git --config .gitleaks.toml --baseline-path <file>
+# The BASELINE (tests/security/gitleaks-baseline.json) contains every
+# PRE-EXISTING finding so the job is green today while any NEW occurrence
+# fails. Regenerate the baseline ONLY when a finding is consciously fixed
+# or accepted (documented in the PR/commit):
+#   gitleaks git --config .gitleaks.toml --redact --report-format json \
+#                --report-path tests/security/gitleaks-baseline.json
+#
+title = "raphael personal-data + secret scan (qa-security)"
+
+[extend]
+useDefault = true
+
+[[rules]]
+id = "local-username-dami"
+description = "Local/dataset usernames that are personal data (must not re-enter)"
+# \b boundaries keep 'damianqt'/'damiel' from matching; (?i) for case drift
+regex = '(?i)\b(dami|jxesu(ki)?|xqni|xani)\b'
+keywords = ["dami", "jxesu", "Xqni", "xani"]
+
+[[rules]]
+id = "local-home-drive-path"
+description = "Machine-specific drive/home paths (usernames embedded)"
+regex = '(?i)(c:[\\/]users[\\/][a-z0-9._-]+|/home/[a-z0-9._-]+/|/mnt/c/users[\\/][a-z0-9._-]+)'
+keywords = ["C:\\Users", "/home/", "/mnt/c/"]
+
+[[rules]]
+id = "local-private-ip"
+description = "Local/private network IPs (WSL vNIC, LAN, host ranges) + the retired pod IP"
+regex = '\b((192\.168|10)\.\d{1,3}\.\d{1,3}\.\d{1,3}|172\.(1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}|76\.71\.\d{1,3}\.\d{1,3})\b'
+keywords = ["192.168.", "172.1", "172.2", "172.3", "10.0.", "10.1", "76.71."]
+
+[allowlist]
+# The baseline file is itself findings data; scanner configs are definitions.
+paths = [
+  '''tests/security/gitleaks-baseline\.json''',
+  '''\.gitleaks\.toml''',
+  # scanner DEFINITION files must quote the very patterns they gate
+  # (rule ids like local-username-dami, regeneration docs) — written reason:
+  # tests/security/SCANNERS.md; they contain no actual secrets/tokens.
+  '''tests/security/test_scanner_wiring\.py''',
+  '''tests/security/SCANNERS\.md''',
+]

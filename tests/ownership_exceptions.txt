@@ -20,3 +20,5 @@ brain/coreguard.py =brain-core  # 2026-10-08 SEC-7 packet extra + my nudge: boot
 brain/latency.py =brain-core  # 2026-10-08 ARCH-6 packet assignment: uniform stage latency instrumentation
 brain/logjson.py =brain-core  # 2026-10-08 ARCH-6 packet assignment: structured log lines
 .opencode/research/windows-native-electron-orb.md =orb  # 2026-10-08 Wave-5H ARCH-1 packet deliverable (research backing docs/orb/WINDOWS-NATIVE-PLAN.md)
+.gitleaks.toml =qa-security  # 2026-10-08 docs/audit-tasks/qa-security.md QA-1 (packet-mandated scanner location, integrator-assigned)
+.github/dependabot.yml =qa-security  # 2026-10-08 docs/audit-tasks/qa-security.md QA-1 (packet-mandated dependabot location, integrator-assigned)

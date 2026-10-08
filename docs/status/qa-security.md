@@ -2,6 +2,40 @@
 
 Updated: 2026-10-07 (Wave 3 open; CI ownership fix done)
 
+## Wave 5H — audit hardening sprint (packet: docs/audit-tasks/qa-security.md)
+
+- **QA-1 DONE 2026-10-08 (P0 scanners):**
+  - `.gitleaks.toml` — default secret rules + 3 custom personal-data rules
+    (local usernames / drive-home paths / private+pod IPs); CI-scoped with
+    `--log-opts=HEAD` (single-branch view; live-proven: unmerged sibling
+    refs otherwise redden the job).
+  - `tests/security/gitleaks-baseline.json` — documented allow-list for the
+    117 pre-existing findings (53 files); MUST be unredacted (redacted
+    baselines suppress nothing — verified live); negative test proven
+    (new `/home/dami/...` → exit 1).
+  - pip-audit `-r tests/requirements.txt` → **0 vulns** (no suppressions).
+  - bandit → `tests/security/bandit.yaml`: HIGH gate green; B602/B324
+    skipped with written reasons (shell-behind-Confirm-Guard is the model;
+    sha1 = cache keys, voice-owned files).
+  - npm audit (`body/orb`) → 6 vulns (4 moderate, **2 high: electron
+    30.5.1 ASAR bypass + extract-zip**) → CI gates at `--critical`
+    (green) + documented allow-list + request
+    `qa-security__to__orb__electron-audit-highs.md` (major bump = orb's).
+  - `.github/dependabot.yml` — pip(/tests), npm(/body/orb),
+    github-actions(/), weekly, no auto-merge.
+  - ci.yml new job `security-scanners` (4 scanners, checksum-pinned
+    gitleaks v8.30.1); BOTH existing OS jobs untouched; wiring guards in
+    `tests/security/test_scanner_wiring.py` (5 tests);
+    policy/commands in `tests/security/SCANNERS.md`.
+  - Core Guard: ci.yml is now a guarded file (SEC-7) — manifest re-pinned
+    with the packet approval (`--approval docs/audit-tasks/qa-security.md`,
+    20 files OK).
+  - Side duties: tools-memory instance-count request ANSWERED (already
+    resolved by b185c6b cross-source fix, verified 12-row green);
+    Analysis/Simulation privacy tripwire flipped SKIP→STRICT PASS (feature
+    landed gated).
+- QA-2/QA-3/QA-4/SEC-7: pending (next in packet order).
+
 ## Wave 5 (current — docs/WAVES.md current_wave: 5; wave-4 GATE PASSED)
 
 - **DONE 2026-10-07: approved shadow-row count fix [22]** — instead of a

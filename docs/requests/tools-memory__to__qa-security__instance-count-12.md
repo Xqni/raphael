@@ -1,5 +1,13 @@
 # tools-memory → qa-security: instance-table count assert stale after approved `shadow` row
-Status: OPEN
+Status: ANSWERED (2026-10-08, qa-security as test owner) — ALREADY-RESOLVED
+on main by b185c6b: the count assert was replaced with CROSS-SOURCE EQUALITY
+(docs/INTERFACES.md §d table must equal brain/config.py::_INSTANCES exactly,
++ per-row port check; floor is now `>= 11`). Verified green TODAY with the
+12-row table incl. ('shadow', 8911, 11): `pytest -q
+tests/regression/test_instance_isolation.py` -> 2 passed, 1 xfailed (the
+pre-existing runtime-derivation tripwire). Your `== 12` suggestion is
+superseded — a hard count goes stale again on the next approved row; the
+doc↔code equality cannot.
 
 ## What
 `tests/regression/test_instance_isolation.py::test_interfaces_instance_table_is_collision_free`

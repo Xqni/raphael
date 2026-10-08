@@ -105,6 +105,51 @@ jobs:
       - name: Core Guard manifest verify
         run: python tests/core_guard.py
 
+  # Wave 5H QA-1 (docs/audit-tasks/qa-security.md): dependency + secret +
+  # SAST scanners. Suppression policy + regeneration commands:
+  # tests/security/SCANNERS.md. Fails ONLY on real findings (baseline +
+  # documented skips); existing OS jobs above are untouched.
+  security-scanners:
+    name: Security scanners (gitleaks / pip-audit / bandit / npm audit)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # gitleaks scans git history
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: gitleaks (default secrets + local user/path/IP rules, baseline-allow-listed)
+        run: |
+          curl -sSL -o /tmp/gitleaks.tgz \
+            "https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz"
+          echo "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb  /tmp/gitleaks.tgz" | sha256sum -c -
+          tar xzf /tmp/gitleaks.tgz -C /tmp gitleaks
+          # --log-opts=HEAD: scan THIS branch's history only — matches the
+          # single-branch checkout and keeps lane-side scans deterministic
+          # (unmerged sibling branches must not redden this job)
+          /tmp/gitleaks git --log-opts=HEAD --config .gitleaks.toml \
+            --baseline-path tests/security/gitleaks-baseline.json
+      - name: pip-audit (tests/requirements.txt)
+        run: |
+          python -m pip install -q pip-audit
+          pip-audit -r tests/requirements.txt
+      - name: bandit SAST — HIGH gate (documented skips B602/B324)
+        run: |
+          python -m pip install -q bandit
+          bandit -r brain supervisor scripts tests body \
+            -c tests/security/bandit.yaml --severity-level high
+      - name: bandit report (medium+, non-gating visibility)
+        if: always()
+        run: |
+          python -m pip install -q bandit
+          bandit -r brain supervisor scripts tests body \
+            -c tests/security/bandit.yaml -ll || true
+      - name: npm audit (body/orb — critical gate; 2 documented highs in SCANNERS.md)
+        working-directory: body/orb
+        run: npm audit --audit-level=critical
+
   body-unit-windows:
     name: Windows — Body unit tests (no GUI)
     runs-on: windows-latest
