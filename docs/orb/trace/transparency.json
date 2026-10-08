@@ -8,7 +8,7 @@
       "scene": "idle",
       "blur": {
         "amount": 0.9,
-        "angle": 0.0030239999999979237,
+        "angle": 0.0030059999999968758,
         "taps": 4,
         "skipped": false,
         "reason": "on",
@@ -22,7 +22,7 @@
       "maxBorderAlpha": 0,
       "maxBorderRgb": 0,
       "maxAlpha": 25,
-      "litPixels": 8295,
+      "litPixels": 8002,
       "blurOn": true
     },
     {
@@ -43,7 +43,7 @@
       "maxBorderAlpha": 0,
       "maxBorderRgb": 0,
       "maxAlpha": 25,
-      "litPixels": 13142,
+      "litPixels": 14021,
       "blurOn": true
     },
     {
@@ -64,11 +64,32 @@
       "maxBorderAlpha": 0,
       "maxBorderRgb": 0,
       "maxAlpha": 25,
-      "litPixels": 7419,
+      "litPixels": 7184,
       "blurOn": true
     },
     {
       "scene": "paused",
+      "blur": {
+        "amount": 0.9,
+        "angle": 0.0030240000000031617,
+        "taps": 4,
+        "skipped": false,
+        "reason": "on",
+        "speed": 0.18000000000000113,
+        "reducedMotion": false,
+        "quality": "auto",
+        "config": "auto"
+      },
+      "w": 280,
+      "h": 280,
+      "maxBorderAlpha": 0,
+      "maxBorderRgb": 0,
+      "maxAlpha": 25,
+      "litPixels": 4955,
+      "blurOn": true
+    },
+    {
+      "scene": "reconnecting",
       "blur": {
         "amount": 0.9,
         "angle": 0.0030239999999979237,
@@ -85,28 +106,7 @@
       "maxBorderAlpha": 0,
       "maxBorderRgb": 0,
       "maxAlpha": 25,
-      "litPixels": 4910,
-      "blurOn": true
-    },
-    {
-      "scene": "reconnecting",
-      "blur": {
-        "amount": 0.9,
-        "angle": 0.0030059999999968758,
-        "taps": 4,
-        "skipped": false,
-        "reason": "on",
-        "speed": 0.18000000000000113,
-        "reducedMotion": false,
-        "quality": "auto",
-        "config": "auto"
-      },
-      "w": 280,
-      "h": 280,
-      "maxBorderAlpha": 0,
-      "maxBorderRgb": 0,
-      "maxAlpha": 25,
-      "litPixels": 4712,
+      "litPixels": 4883,
       "blurOn": true
     }
   ],

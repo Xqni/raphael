@@ -56,38 +56,6 @@
         opacity: 0;
         bottom: -40px;
       }
-      /* SEC-3 (Wave 5H): a CLEAR on-orb "mic audio is going to the cloud"
-         indicator. Deliberately FAIL-SAFE: Private Mode is the only thing that
-         provably stops cloud egress, so anything else warns.
-         Placement is INSIDE the orb silhouette and sized in vw so it scales
-         with the window — orb:size measures the radius containing 97% of lit
-         pixels (test/orb-size.cjs:50), so a badge poking past the sphere would
-         move that number. */
-      #micbadge {
-        position: absolute;
-        bottom: 24%;
-        left: 50%;
-        transform: translateX(-50%);
-        font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
-        font-size: 4.2vw;
-        font-weight: 600;
-        letter-spacing: 0.05em;
-        line-height: 1;
-        padding: 1.5vw 2.8vw;
-        border-radius: 999px;
-        background: rgba(116, 16, 20, 0.84);
-        border: 1px solid rgba(255, 96, 96, 0.9);
-        color: #ffe3e3;
-        text-shadow: 0 0 6px rgba(0, 0, 0, 0.85);
-        white-space: nowrap;
-        opacity: 0;
-        transition: opacity 0.22s ease;
-        pointer-events: none;
-        z-index: 3;
-      }
-      #micbadge.on {
-        opacity: 1;
-      }
       /* W2.3 typed input (TODO §3e): double-click opens this, Enter submits a
          PROTOCOL §3 `command` frame with source: orb. */
       #typed {
@@ -141,7 +109,6 @@
   <body>
     <canvas id="webgl"></canvas>
     <div id="subtitle"></div>
-    <div id="micbadge" title="Microphone audio is being sent to the cloud STT">MIC → CLOUD</div>
     <div id="typed">
       <input id="typedInput" type="text" maxlength="300"
              placeholder="Ask Raphael…" spellcheck="false" autocomplete="off" />

@@ -34,7 +34,7 @@
     {
       "name": "state_flip_latency",
       "ok": true,
-      "detail": "mean=2ms worst=4ms (delivery only; 300-600ms crossfade is by design) — listening:4 thinking:2 confirm:1 error:1 idle:2",
+      "detail": "mean=1ms worst=2ms (delivery only; 300-600ms crossfade is by design) — listening:2 thinking:2 confirm:1 error:1 idle:1",
       "pass": true
     }
   ],

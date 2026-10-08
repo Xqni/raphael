@@ -86,15 +86,15 @@
       "pass": true
     },
     {
-      "name": "mic_badge_on_while_listening",
+      "name": "mic_badge_absent_when_listening",
       "ok": true,
-      "detail": "on=true",
+      "detail": "micbadge element present? false",
       "pass": true
     },
     {
-      "name": "mic_badge_off_in_private_mode",
+      "name": "mic_badge_absent_in_private_mode",
       "ok": true,
-      "detail": "on=false",
+      "detail": "micbadge element present? false",
       "pass": true
     },
     {
@@ -124,13 +124,13 @@
     {
       "name": "mousemove_listener_wired",
       "ok": true,
-      "detail": "listener saw clientX=9 clientY=277 dist=189.6 inside=false seen=2 (expect inside == dist<=112)",
+      "detail": "listener saw clientX=140 clientY=140 dist=0.0 inside=true seen=1 (expect inside == dist<=112)",
       "pass": true
     },
     {
       "name": "main_follows_renderer",
       "ok": true,
-      "detail": "renderer.pointerInside=false -> main.mouseThrough=true (must be the exact opposite)",
+      "detail": "renderer.pointerInside=true -> main.mouseThrough=false (must be the exact opposite)",
       "pass": true
     },
     {
@@ -194,9 +194,9 @@
       "pass": true
     },
     {
-      "name": "notice_shown_as_banner",
+      "name": "notice_frame_not_rendered_as_text",
       "ok": true,
-      "detail": "banner={\"text\":\"Notice: disk almost full\",\"shown\":true}",
+      "detail": "banner={\"text\":\"\",\"shown\":false} (empty+hidden = speech only)",
       "pass": true
     },
     {

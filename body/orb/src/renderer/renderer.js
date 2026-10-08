@@ -72,10 +72,18 @@ if (canvas) {
 }
 window.__orbGl = () => glRecovery.state();
 const subtitleEl = document.getElementById('subtitle');
-// SEC-3 (Wave 5H): fail-safe "mic audio is going to the cloud" badge — see the
-// #micbadge rule in index.html for why it is sized/positioned the way it is.
-const micBadgeEl = document.getElementById('micbadge');
-let micBadgeOn = false;
+// AMENDMENT 3 (user, 2026-10-07): NO ON-SCREEN TEXT — "text displays under
+// her, a whole box of the answer, the red mic->cloud pill — none of that.
+// Just speech." EVERYTHING the orb could draw as text funnels through
+// updateSubtitle() — the brain's own `subtitle` frame, `notice`, `answer`,
+// `report` cards and the demo label — so this one gate kills all of it, and the
+// `#micbadge` element was deleted outright (the pill was the named offender).
+//
+// The PROTOCOL §3 frames are UNCHANGED: they still arrive and are still
+// recorded by traceRx, so CLI/API consumers keep working. The orb simply never
+// renders them. "KEEP cage/colors/pulse/job-dots + on-demand menu" — the
+// right-click menu (incl. the mic-cloud row) is user-invoked and untouched.
+const ORB_TEXT_ENABLED = false;
 const params = new URLSearchParams(window.location.search);
 const DEMO = params.get('demo') === '1';
 
@@ -739,7 +747,11 @@ function getStateTint(s) {
   if (s === 'offline') return 0x9aa5b1;           // desaturated grey (spec §3)
   if (s === 'acting') return 0xffd700;
   if (s === 'speaking') return 0xffe9c0;          // gold-white core (spec §2.2)
-  if (s === 'starting') return 0xfff4d6;
+  // USER (2026-10-07): "the starting state should be white not pink/purple".
+  // Was 0xfff4d6 (warm cream) — with the nebula haze on top that read lavender.
+  // Pure white; the existing bright 0.72 -> idle 1.00 ramp gives the requested
+  // "dim white -> full glow white" hand-off unchanged.
+  if (s === 'starting') return 0xffffff;
   return palInt(PAL.core_tint);                   // idle / private_overlay (theme token)
 }
 
@@ -792,15 +804,6 @@ function computeMotionBlur(dt) {
 function animate(now) {
   requestAnimationFrame(animate);
   noteState(now); // AMENDMENT 2: record the rendered state sequence (boot -> idle -> ...)
-  // SEC-3: show the cloud-mic badge whenever the Brain says it is capturing
-  // (`listening`) unless Private Mode — the ONLY provably cloud-off switch — is
-  // on. Fail-safe by design: over-warning a privacy indicator is safe, silence
-  // is not. Written only on change so the idle path touches no DOM.
-  const wantMic = orbState.orbState === 'listening' && !orbState.private;
-  if (wantMic !== micBadgeOn) {
-    micBadgeOn = wantMic;
-    if (micBadgeEl) micBadgeEl.classList.toggle('on', wantMic);
-  }
   if (DEMO && !manualState && window.__orbDemoTimeline === true) {
     // Auto-timeline is OPT-IN now (default off): the natural boot story owns
     // the opening — starting plays the generation sequence, eases into idle.
@@ -1036,6 +1039,15 @@ function updateReport(r) {
 
 function updateSubtitle(text, opts) {
   if (!subtitleEl) return; // demo page has no subtitle element
+  // AMENDMENT 3: speech only. Never paint, and scrub anything already showing
+  // so a frame that raced in ahead of the flag cannot leave words on screen.
+  if (!ORB_TEXT_ENABLED) {
+    if (subtitleTimer) { clearTimeout(subtitleTimer); subtitleTimer = null; }
+    subtitleEl.classList.remove('show', 'banner');
+    subtitleEl.classList.add('hide');
+    subtitleEl.textContent = '';
+    return;
+  }
   const isPrivate = orbState.private || orbState.mode === 'private' || orbState.orbState === 'private_overlay';
   const force = !!(opts && opts.force);
   if (!text || (isPrivate && !force)) {

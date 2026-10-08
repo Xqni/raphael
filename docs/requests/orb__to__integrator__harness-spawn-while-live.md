@@ -24,7 +24,7 @@ including *Electron* and *"extra headless runs of a kind already running"* —
 `pgrep`/check the port first, and if one exists **do not spawn**.
 
 An Electron orb **is** currently running (pid 191500, from
-`/home/dami/raphael/body/orb`, userData `~/.config/raphael-orb`, main
+`/home/<wsl-user>/raphael/body/orb`, userData `~/.config/raphael-orb`, main
 instance). So the rule as written says: do not spawn.
 
 ## What I need from you

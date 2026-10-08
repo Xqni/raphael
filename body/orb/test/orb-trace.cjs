@@ -302,13 +302,16 @@ async function runInteraction(cdp, brain, rec) {
     mode: 'normal', shape_hint: 'circle', task_kind: 'none' });
   await sleep(500);
   const onListening = await badge();
-  add('mic_badge_on_while_listening', onListening === true, `on=${onListening}`);
+  // AMENDMENT 3: the red MIC -> CLOUD pill is explicitly named as removed.
+  add('mic_badge_absent_when_listening', onListening === null,
+      `micbadge element present? ${onListening !== null}`);
 
   brain.broadcast({ type: 'orb_state', v: 1, state: 'listening', jobs_active: 0,
     mode: 'private', private: true, shape_hint: 'circle', task_kind: 'none' });
   await sleep(500);
   const onPrivate = await badge();
-  add('mic_badge_off_in_private_mode', onPrivate === false, `on=${onPrivate}`);
+  add('mic_badge_absent_in_private_mode', onPrivate === null,
+      `micbadge element present? ${onPrivate !== null}`);
 
   const micSpec = await cdp.evaluateJson('window.raphael.menuSpec()');
   const micPriv = (micSpec || []).find((i) => i.id === 'mic-cloud');
@@ -433,8 +436,10 @@ async function runInteraction(cdp, brain, rec) {
   const bannerObj = JSON.parse(banner);
   add('notice_reaches_renderer', rxAfter > rxBefore,
       `renderer rx notice frames: ${rxBefore} -> ${rxAfter}`);
-  add('notice_shown_as_banner', bannerObj.shown && /disk almost full/.test(bannerObj.text || ''),
-      `banner=${JSON.stringify(bannerObj)}`);
+  // AMENDMENT 3: the frame must ARRIVE (above) but must never be PAINTED.
+  add('notice_frame_not_rendered_as_text',
+      !bannerObj.shown && !(bannerObj.text || ''),
+      `banner=${JSON.stringify(bannerObj)} (empty+hidden = speech only)`);
   add('notice_never_changes_state', stateAfter === stateBefore && traceAfter.applied.state === stateBefore,
       `state ${stateBefore} -> ${stateAfter}, applied=${traceAfter.applied.state} (must be unchanged)`);
 
@@ -564,19 +569,24 @@ async function runWave5(cdp, brain, rec) {
   await sleep(700);
   let b = await banner();
   const t = await cdp.evaluateJson('JSON.stringify(window.__orbTrace())');
-  add('answer_renders_as_banner',
-      b.shown && /Answer ·/.test(b.text) && /groq/.test(b.text) && /banner/.test(b.cls),
-      `text=${JSON.stringify(b.text)} cls=${b.cls}`);
+  // AMENDMENT 3: "a whole box of the answer ... none of that. Just speech."
+  // The `answer` FRAME must still arrive (CLI/API consumers keep it) while the
+  // orb paints NOTHING — same inversion the notice check got.
+  const answerRx = (t.rx || []).filter((r) => r.kind === 'answer').length;
+  add('answer_frame_arrives_but_is_not_rendered',
+      answerRx > 0 && !b.shown && !(b.text || ''),
+      `rx answer frames=${answerRx} banner=${JSON.stringify(b)} (frame kept, text never painted)`);
   add('answer_does_not_change_state', t.applied.state === stateBefore,
       `state ${stateBefore} -> ${t.applied.state} (must be unchanged)`);
 
   brain.step('report');
   await sleep(700);
   b = await banner();
-  add('report_renders_as_banner',
-      b.shown && /Weekly pipeline report/.test(b.text) && /banner/.test(b.cls),
-      `text=${JSON.stringify(b.text.slice(0, 90))} cls=${b.cls}`);
   const t2 = await cdp.evaluateJson('JSON.stringify(window.__orbTrace())');
+  const reportRx = (t2.rx || []).filter((r) => r.kind === 'report').length;
+  add('report_frame_arrives_but_is_not_rendered',
+      reportRx > 0 && !b.shown && !(b.text || ''),
+      `rx report frames=${reportRx} banner=${JSON.stringify(b)} (frame kept, text never painted)`);
   add('report_does_not_change_state', t2.applied.state === stateBefore,
       `state ${stateBefore} -> ${t2.applied.state} (must be unchanged)`);
 

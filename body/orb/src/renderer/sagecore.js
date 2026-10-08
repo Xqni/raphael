@@ -33,7 +33,16 @@ const S = {
   speaking:        { nebula: 0.60, speed: 1.20, poly: 1.00, node: 1.20, ring: 1.00, spark: 0.30, spin: 0.00016, bright: 1.05, cage: 1.00 },
   confirm:         { nebula: 0.40, speed: 0.75, poly: 0.95, node: 1.10, ring: 0.70, spark: 0.50, spin: 0.00013, bright: 1.15, cage: 1.00 },
   error:           { nebula: 0.35, speed: 0.50, poly: 0.80, node: 0.80, ring: 0.50, spark: 0.30, spin: 0.00012, bright: 1.45, cage: 0.60 },
-  starting:        { nebula: 0.35, speed: 0.50, poly: 0.70, node: 0.70, ring: 0.40, spark: 0.35, spin: 0.00006, bright: 0.72, cage: 1.00 },
+  // USER (2026-10-07): "the starting state should be white not pink/purple".
+  // MEASURED on docs/orb/starting-dark.png: r12=73,50,63  r24=92,58,75
+  // r40=85,57,76 — green lowest at every ring = magenta cast, while
+  // idle-dark r12 = 255,226,255 (white). Cause: the nebula is an UNSCALED
+  // 4.8-unit plane at z=-0.9 (sagecore.js:180) whose body term
+  // smoothstep(0.9, 0.2, r) covers the core region, so its lime/teal/BLUE
+  // wash sat over the dim core at 0.35 opacity. `speed`/`spark`/`ring` are all
+  // white and the state tint was cream, so the haze was the only colour source.
+  // Boot is now the one state with the nebula OFF; idle still gets it (0.55).
+  starting:        { nebula: 0.00, speed: 0.50, poly: 0.70, node: 0.70, ring: 0.40, spark: 0.35, spin: 0.00006, bright: 0.72, cage: 1.00 },
   reconnecting:    { nebula: 0.45, speed: 0.55, poly: 0.85, node: 0.90, ring: 0.55, spark: 0.45, spin: 0.00008, bright: 0.75, cage: 0.80 },
   offline:         { nebula: 0.00, speed: 0.00, poly: 0.30, node: 0.30, ring: 0.00, spark: 0.00, spin: 0.000006, bright: 0.30, cage: 0.25 },
   paused:          { nebula: 0.16, speed: 0.00, poly: 0.75, node: 0.70, ring: 0.40, spark: 0.10, spin: 0.000014, bright: 0.60, cage: 0.50 },

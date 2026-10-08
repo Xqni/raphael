@@ -14,9 +14,9 @@
       "pass": true
     },
     {
-      "name": "answer_renders_as_banner",
+      "name": "answer_frame_arrives_but_is_not_rendered",
       "ok": true,
-      "detail": "text=\"Answer · The quick brown fox jumps over the lazy dog. · groq/llama-3.3-70b-versatile\" cls=banner show",
+      "detail": "rx answer frames=1 banner={\"text\":\"\",\"shown\":false,\"cls\":\"hide\"} (frame kept, text never painted)",
       "pass": true
     },
     {
@@ -26,9 +26,9 @@
       "pass": true
     },
     {
-      "name": "report_renders_as_banner",
+      "name": "report_frame_arrives_but_is_not_rendered",
       "ok": true,
-      "detail": "text=\"Weekly pipeline report — 4 jobs run, 0 failures, GPU idle 96% of the week.\" cls=banner show",
+      "detail": "rx report frames=1 banner={\"text\":\"\",\"shown\":false,\"cls\":\"hide\"} (frame kept, text never painted)",
       "pass": true
     },
     {
