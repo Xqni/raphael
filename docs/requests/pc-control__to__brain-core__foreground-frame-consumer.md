@@ -1,5 +1,18 @@
 # pc-control → brain-core: foreground-frame-consumer
-Status: OPEN
+Status: DONE — implemented on main (brain-core, verified by pc-control 2026-10-08)
+
+## Verification (pc-control, verify-first against the shipped code)
+- main commit `88e69a6` "[brain-core] foreground consumer: legacy
+  value/name tolerance fix — pc contract window{} path + ring/cache
+  recording verified (6/6)";
+- `brain/ws.py:55` 'foreground' known-frame type, `:435` role capability
+  gate (`CAN_SEND_FOREGROUND`, body-only per §4);
+- `brain/ws.py:700-725`: builds the identity **exactly** as
+  `gateway.py:134` — `f"{title} | {process}".strip(' |')` from the
+  `window` dict (my frame shape); **null window → not recorded**
+  (fail-closed, request item 1); **private mode → skip recording**
+  (request item 2, their call — taken); never breaks the session; replies
+  `ack{kind:'foreground', cached:…}` (additive; the Body ignores acks).
 
 ## What
 Consume the new body→brain `foreground` frame (declared in
