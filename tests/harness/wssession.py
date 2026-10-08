@@ -87,6 +87,7 @@ class WSSession:
         self.client_name = client_name or self.client_name
         self._ws = None
         self.frames: List[Dict[str, Any]] = []   # every JSON frame read (excl. ping)
+        self.sent: List[Dict[str, Any]] = []     # every JSON frame we sent (golden recorder)
         self.binary: List[bytes] = []            # every binary frame read
         self.pings: List[Dict[str, Any]] = []
         self.session_id: Optional[str] = None
@@ -120,6 +121,7 @@ class WSSession:
 
     # -- send ---------------------------------------------------------------
     def send(self, obj: Dict[str, Any]) -> None:
+        self.sent.append(obj)
         self._ws.send_text(json.dumps(obj, ensure_ascii=False))
 
     def send_raw_text(self, raw: str) -> None:

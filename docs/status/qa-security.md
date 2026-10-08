@@ -4,6 +4,21 @@ Updated: 2026-10-07 (Wave 3 open; CI ownership fix done)
 
 ## Wave 5H — audit hardening sprint (packet: docs/audit-tasks/qa-security.md)
 
+- **2026-10-08 later: batch MERGED (08622fe) + wave_done accepted (37775644704).**
+- **Packet reconcile (per inbox [36]):** QA-1/QA-2/QA-4/SEC-7-CI = DONE with
+  file:line evidence in docs/lanes/qa-security.md; **QA-3 = PARTIAL**
+  (golden transcripts landed, cron+evals left); control-plane re-audit NOT
+  started — both honestly unchecked above.
+- **DONE 2026-10-08: Wave-3 golden job transcripts** —
+  `tests/golden/{scenarios,replay}.py` + `tests/golden/test_golden_replay.py`
+  (replay through a FRESH instance, multiset+job-chain compare, token/session/
+  job-id normalization) + 3 recorded transcripts in `tests/golden/transcripts/`
+  (echo, confirm_deny, gui_act). Record tool: `GOLDEN_RECORD=1 pytest
+  tests/golden`. Verified: record → 2× verify runs green (cross-process
+  determinism), 0 scan_personal findings, `<token>` never stored.
+  Suites: **372 passed, 2 skipped, 7 xfailed**.
+
+
 - **QA-1 DONE 2026-10-08 (P0 scanners):**
   - `.gitleaks.toml` — default secret rules + 3 custom personal-data rules
     (local usernames / drive-home paths / private+pod IPs); CI-scoped with

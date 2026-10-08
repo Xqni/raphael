@@ -39,6 +39,12 @@ Wave 4 is MERGED + **GATE PASSED** (tag `wave-4-gate`, 10/10 lanes, mock 308 gre
 
 ## Wave 5H — audit hardening sprint (inside wave 5; gate `wave-5h-gate`)
 
+- [x] **QA-1** DONE — `.gitleaks.toml` (custom user/path/IP rules, HEAD-scope+baseline), `ci.yml` job `security-scanners` (gitleaks/secret-scan/pip-audit/bandit/npm) + `.github/dependabot.yml`; gates green in CI run 37775644704; suppressions documented `tests/security/SCANNERS.md` + `tests/security/bandit.yaml`.
+- [x] **QA-2** DONE — `tests/fuzz/test_property_fuzz.py` (7 seeded tests: confirm totality/fail-closed, wake injection, frame fuzz, act_res fuzz+replay, auth replay) + `tests/harness/fuzz.py`.
+- [~] **QA-3** PARTIAL — golden transcripts DONE: `tests/golden/` (3 recorded transcripts + replay-vs-fresh-instance test 4/4 + `GOLDEN_RECORD=1` recorder); REMAINING: nightly cron sweep + the eval layer (persona format, tool-call accuracy vs recorded fixtures).
+- [x] **QA-4** DONE — `tests/wave_done_lint.py` (+`tests/test_wave_done_lint.py`, 10 tests); accepted wave_done carried ci_run 37775644704; schema adopted by integrator.
+- [x] **SEC-7 CI side** DONE — SHA-pinned actions + `permissions: contents:read` + `persist-credentials:false` in `ci.yml`/`tests-heavy.yml`, enforced by `tests/security/test_workflow_integrity.py`; branch-protection ATTENTION posted (human half).
+- [ ] **control-plane re-audit** (brief item 6): `docs/reviews/<date>-wave5h.md` + requests — NOT started.
 - [ ] Read `docs/audit-tasks/qa-security.md` → your IDs: **QA-1, QA-2, QA-3, QA-4, SEC-7** — VERIFY-FIRST (verbatim file:line, then CONFIRMED / NOT-APPLICABLE / ALREADY-DONE), QA-4: link a green CI run with your wave_done. Source register + dedupe: `docs/AUDIT-2026-10-07.md`. Rules: stack down (spawn only for your test), one suite at a time, heavy suites in cloud (`gh workflow run tests-heavy.yml`), Rule 15 speed, cost not a factor.
 
 ## Later waves (do not start early — AGENT_RULES §11; beyond current_wave 3)
