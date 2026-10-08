@@ -111,6 +111,9 @@ def load_exceptions() -> dict:
             continue
         entry = line.split('#', 1)[0].split()
         if len(entry) >= 2 and entry[1].startswith('='):
+            # comma list = multiple sanctioned lanes per path (2026-10-08:
+            # docs/PROTOCOL.md carries grants for pc-control AND brain-core);
+            # single-lane entries parse exactly as before.
             out[entry[0]] = entry[1][1:]
     return out
 
@@ -119,7 +122,8 @@ def check_file(rel: str, lane: str, lanes: dict) -> str | None:
     """-> violation reason or None if allowed."""
     rel = rel[2:] if rel.startswith('./') else rel
     exc = load_exceptions()
-    if exc.get(rel) == lane:
+    sanctioned = exc.get(rel, "")
+    if lane in [s.strip() for s in sanctioned.split(",") if s.strip()]:
         return None                      # sanctioned by documented assignment
     # universal write allowances
     if rel.startswith('docs/requests/'):
