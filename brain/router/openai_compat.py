@@ -121,12 +121,23 @@ class OpenAICompatProvider(Provider):
         """HTTP status → RouterError with a PROTOCOL §10 code (secrets scrubbed)."""
         code = code_for_status(resp.status)
         reason = None
+        body = resp.text[:600].lower()
         if resp.status == 404:
             reason = "model_not_found"
         elif resp.status in (401, 403):
             reason = "auth"
         elif resp.status == 429:
             reason = "rate_limited"
+        elif resp.status == 400 and (
+                "protocolunsupported" in body
+                or "does not support this protocol" in body):
+            # this MODEL cannot be served at all (e.g. zen's
+            # gemini-3.5-flash-lite) → learning path, not provider ill-health
+            reason = "model_unsupported"
+        elif resp.status == 400 and (
+                "tool calling" in body or "does not support tools" in body
+                or "tools" in body and "not supported" in body):
+            reason = "no_tool_support"
         retry_after = httputil.parse_retry_after(resp.headers)
         snippet = redact_secrets(resp.text[:300]).replace("\n", " ").strip()
         return RouterError(

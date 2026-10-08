@@ -310,3 +310,31 @@ def test_speed_mandate_fast_hint_and_never_models_denied() -> None:
 
     # deny never blocks a normal model
     assert pick([ModelInfo("allam-2-7b", "groq")], "fast").id == "allam-2-7b"
+
+
+def test_stt_slot_prefers_the_fast_variant() -> None:
+    """voice Cut B (request voice__to__router__turbo-stt-for-purpose-transcribe):
+    the STT slot must resolve to whisper-large-v3-TURBO regardless of the
+    provider's list order (live Groq listed plain v3 first on 2026-10-08)."""
+    from brain.router.roles import ModelInfo, pick
+    # live order observed: plain v3 BEFORE turbo
+    models = [ModelInfo("whisper-large-v3", "groq",
+                        capabilities=frozenset({"audio"})),
+              ModelInfo("whisper-large-v3-turbo", "groq",
+                        capabilities=frozenset({"audio"}))]
+    assert pick(models, "stt").id == "whisper-large-v3-turbo"
+    # order-inverted → same answer
+    assert pick(list(reversed(models)), "stt").id == "whisper-large-v3-turbo"
+    # turbo absent → plain v3 still serves (no dead slot)
+    assert pick(models[:1], "stt").id == "whisper-large-v3"
+
+
+def test_repo_config_carries_the_turbo_stt_hint() -> None:
+    import os
+    saved = os.environ.pop("RAPHAEL_PROFILE", None)
+    try:
+        cfg = router.load_config()
+    finally:
+        if saved is not None:
+            os.environ["RAPHAEL_PROFILE"] = saved
+    assert "turbo" in cfg.providers.role_hints["stt"]

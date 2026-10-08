@@ -71,7 +71,8 @@ async def test_fast_and_strong_role_mapping(tmp_path, make_server, keys) -> None
     with_tool = await router.chat(
         _msgs(), tools=[{"type": "function",
                          "function": {"name": "shell",
-                                      "parameters": {"type": "object"}}}])
+                                      "parameters": {"type": "object"}}}],
+        purpose="tool")                    # explicit strong-path label
     assert with_tool["model"] == "giant-plus-70b"     # tools → strong slot
     assert with_tool["finish"] == "tool_calls"
     assert with_tool["tool_calls"][0]["function"]["name"] == "shell"

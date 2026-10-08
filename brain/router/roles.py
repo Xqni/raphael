@@ -29,7 +29,10 @@ DEFAULT_ROLE_HINTS: dict[str, list[str]] = {
              "plus", "pro", "max", "ultra", "large"],
     "vision": ["vision", "llava", "multimodal", "-vl", "vl-", "maverick",
                "scout", "4a", "4u"],
-    "stt": ["whisper", "distil-whisper", "speech-to-text"],
+    # STT: 'turbo'/'distil' weight the FAST variants so the slot resolves to
+    # whisper-large-v3-turbo regardless of provider list order (voice Cut B,
+    # request voice__to__router__turbo-stt-for-purpose-transcribe)
+    "stt": ["turbo", "whisper", "distil-whisper", "speech-to-text"],
 }
 
 # Models that must NEVER land in a chat/vision slot even as a fallback:

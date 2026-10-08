@@ -44,6 +44,10 @@ class ScriptedServer:
         self.chat_script: list[Any] = []
         self.transcribe_script: list[Any] = []
         self.ollama_script: list[Any] = []
+        # per-model responses (model-capability learning tests): model id →
+        # response, and model ids that 400 ONLY when the payload has tools
+        self.model_script: dict[str, Any] = {}
+        self.tool_fail_models: set[str] = set()
         self.status_by_path: dict[str, int] = {}
         self._lock = threading.Lock()
         self._http: ThreadingHTTPServer | None = None
@@ -125,8 +129,16 @@ class ScriptedServer:
                 self._send(404, b'{"error":"not found"}')
 
             def _handle_chat(self, body: bytes) -> None:
+                model, has_tools = _payload_model_tools(body)
                 with server._lock:
-                    step = server.chat_script.pop(0) if server.chat_script else None
+                    if model in server.tool_fail_models and has_tools:
+                        step = (400, {}, b'{"error":{"message":"tool calling '
+                                b'is not supported with this model"}}')
+                    elif model in server.model_script:
+                        step = server.model_script[model]
+                    else:
+                        step = (server.chat_script.pop(0)
+                                if server.chat_script else None)
                 if step is None:
                     step = _default_reply(body)
                 self._emit(step)
@@ -230,6 +242,14 @@ class ScriptedServer:
     def bodies(self) -> list[bytes]:
         with self._lock:
             return [r["body"] for r in self.requests]
+
+
+def _payload_model_tools(body: bytes) -> tuple[str, bool]:
+    try:
+        payload = json.loads(body.decode("utf-8", errors="replace"))
+    except json.JSONDecodeError:
+        return "", False
+    return str(payload.get("model") or ""), bool(payload.get("tools"))
 
 
 def _default_reply(body: bytes) -> Any:

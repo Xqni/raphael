@@ -1,6 +1,49 @@
 # router — status
 
-Updated: 2026-10-08 (Wave 5H P0 packet complete — 204 router + 2 skipped / 216 brain / 214 root green; CI runs 37720486202 + 37720097390 green)
+Updated: 2026-10-08 (Wave 5H follow-up batch complete — 211 router + 2 skipped / 232 brain / 241 root green; CI branch 37722900664 green)
+
+## Wave 5H follow-up batch (2026-10-08: dispatched tasks — all ACCEPTED in coord)
+
+1. **Chat→fast-role latency lever #2** (dispatch) — `_role_for` tier follows
+   PURPOSE not payload shape: `purpose='chat'` + tools merely available → FAST
+   (was `if tools: return strong`); strong kept for `tool`/`plan`, deep for
+   `analysis`/`simulation`, unknown+tools conservative. Loop label is
+   brain-core's half → `router__to__brain-core__chat-purpose-label.md`
+   (ACCEPTED, assigned; `loop.py:699 purpose='tool' if specs`). **Live A/B**
+   (real cloud, n=6/arm, seam first-delta): strong/qwen3.6-plus **3.85s** vs
+   fast/mimo-v2.6-flash **3.48s** medians (first-sentence 3.94→3.53), model
+   switch verified, ~0.4s gain, tail=provider variance. Side findings fixed:
+   go RPM 10→30 (`config.d`, the A/B hit `local_rpm_budget`); zen400/groq-tools400
+   findings → next item. Commits `8b40c9e`, `934d93d`. Tests: role matrix +
+   facade both tiers (`test_tiered_analysis_routing.py` 10).
+2. **turbo-STT Cut B** (voice request ACCEPTED) — live diagnosis: seam picked
+   `whisper-large-v3` by first-seen tie (Groq listed plain v3 first); fix =
+   stt hints weight fast variants (`turbo` first) → order-independent.
+   **Live clip A/B** (`assets/raphael_reference_jp.wav`, 15.66 s, free, n=3):
+   v3 med **1.29 s** (rtf .082) vs turbo med **1.16 s** (rtf .074), warm turbo
+   0.68–1.16 s (≈ −0.4 s), transcripts identical (76 ch), seam lands turbo
+   (`rtf 0.050`). Commit `8ad9a4e`, 2 tests.
+3. **zen tool-slot finding** → fixed as **model-capability learning** with a
+   live probe table: `gemini-3.5-flash-lite` (fast pick) 400s on EVERYTHING;
+   `mistral-large-4` serves plain/stream/**tools**/tool_calls → provider-wide
+   ban would have been wrong. 400s classified (`model_unsupported` /
+   `no_tool_support`, both skip-reasons), dead/tools-dead sets on the provider,
+   re-pick within the same provider (stream learns too), breaker never trips.
+   5 tests (`test_model_capability_learning.py`). Live re-strike proof:
+   `dead=['gemini-3.5-flash-lite']`; zen free quota then hit **403** (free
+   tier exhausted — chat unaffected via go head). Commits `160e4dc`/`6f4f695`.
+   Offer recorded: static provider ban available on request.
+4. **Closures/reviews:** orb headroom request → **ANSWERED** (contract match,
+   `lanes/orb.md:235-240`); audit packet boxes → **ticked** in
+   `docs/lanes/router.md` (SEC-8/ARCH-5/F-4 evidence in the section below);
+   loop-label + arch5 + e-budget requests remain with their owners.
+5. **Blockers reported (not mine):** root `test_lock_action_sets_lock_true`
+   was failing on clean main (3 heavy runs + local stash proof) → **fixed on
+   main by others, re-verified green after rebase** (root 241+7 now).
+
+**Suites after rebase onto the act/guard fixes:** router **211 passed + 2
+skipped** · brain **232 passed** · root **241 passed + 7 xfailed** (all green,
+sequential, stack untouched).
 
 ## Wave 5H P0 packet (inbox register PART 2: AUD-02/04/05/27) — DONE
 
@@ -54,7 +97,7 @@ stack untouched (policy 2026-10-07: DOWN by default), one suite at a time (Rule 
     `spend.py:189` `self.path.parent.mkdir(parents=True, exist_ok=True)` + one JSONL
     line per event (`call|alert|import`) at `<repo>/run/vision_paid_ledger.jsonl`;
     file is the source of truth, survives restarts, malformed line charged at floor;
-  - legacy live state carried forward: `/home/dami/raphael/run/vision_paid_daily.json`
+  - legacy live state carried forward: `<repo-root>/run/vision_paid_daily.json` (main worktree)
     (113 B, 2026-10-07 07:14) is imported once then renamed `*.imported`
     (`spend.py::_import_legacy`);
   - daily + **all-time** ceilings: `config.py:200` `vision_paid_total_cap_usd: float = 10.00`
