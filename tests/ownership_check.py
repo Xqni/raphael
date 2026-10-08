@@ -128,12 +128,17 @@ def check_file(rel: str, lane: str, lanes: dict) -> str | None:
         return None
     if rel == f'config.d/{lane}.yaml':
         return None
-    # another lane's config fragment is never writable
+    if lane == 'integrator':
+        # integrator owns ALL merges (documented contract — ci.yml relies on
+        # this for main pushes). The config.d cross-lane rule below governs
+        # LANES writing each other's fragments; it must not trip the
+        # integrator (CI run 37713263876: lane=integrator flagged
+        # config.d/router.yaml on a router merge).
+        return None
+    # another lane's config fragment is never writable (lane -> lane)
     m = re.match(r'config\.d/([a-z0-9-]+)\.yaml$', rel)
     if m and m.group(1) != lane:
         return f"config fragment belongs to lane '{m.group(1)}'"
-    if lane == 'integrator':
-        return None                      # integrator owns all merges
     owner, matched = _owner_of(rel, lanes)
     if not matched:
         return 'unlisted path — integrator-owned by default'
