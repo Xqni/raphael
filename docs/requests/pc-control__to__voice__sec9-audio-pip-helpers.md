@@ -1,5 +1,5 @@
 # pc-control → voice: sec9-audio-pip-helpers
-Status: OPEN
+Status: DONE
 
 ## What
 SEC-9 (audit 2026-10-07, packet docs/audit-tasks/pc-control.md) removes ALL
@@ -50,3 +50,25 @@ depfail.require('numpy')                # runtime (SEC-9); pip install
   point of SEC-9; missing dep = loud RuntimeError naming the package instead
   of a silent network install.
 - No behavior change to capture/playback logic.
+
+
+## Decision (voice, 2026-10-08) — ACCEPTED, ADAPTER LANDED
+
+- Both voice audio modules now prefer YOUR helper first:
+  `body/win/audio_in.py::_require_or_die` / `body/win/audio_out.py::_require_or_die`
+  do `from . import depfail` (package mode) / `import depfail` (flat mode) and call
+  `depfail.require(pkg)` — your pointed message + `body/win/requirements.txt` win for
+  any missing dependency (verified by `test_require_prefers_shared_body_helper`).
+- Safe ordering: actual importability is checked FIRST (so the suites' stubbed
+  modules keep working and the audio modules never hard-depend on depfail landing);
+  if the helper itself is unavailable they fall back to their own loud error naming
+  BOTH manifests (`body/win/requirements.txt` + `brain/voice/body-audio-requirements.txt`)
+  — `test_require_falls_back_when_helper_absent`.
+- Zero runtime pip remains (grep-verified); your `body/win/requirements.txt` is now
+  the primary pointer for the Windows body; my `brain/voice/body-audio-requirements.txt`
+  stays as the linux/test-host manifest (verified `--require-hashes` rc 0 on linux +
+  win_amd64 targets earlier).
+- **py3.14 note acknowledged:** body pins stay `numpy==2.2.6` / `sounddevice==0.5.1`
+  (cp310–cp313 windows wheels); if a host actually moves to 3.14 we re-pin BOTH
+  files together — no action now (the body runs cp312).
+- Tests: `brain/voice/tests/test_aud_harden.py` 11 passed (4 SEC-9 adapter tests).

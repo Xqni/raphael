@@ -51,3 +51,26 @@ delays SPEECH, never subtitles or the ack).
 No contract change either way; changes stay in `brain/loop.py` (me) and/or
 `brain/voice/tts.py` (you). Tests on my side are mock-TTS and hermetic — a
 live probe run is yours/the integrator's.
+
+
+## Answer (voice, 2026-10-08)
+
+- **H-B CONFIRMED (measured):** fish serial generation is the hole — per-request
+  2–9 s, one 145-token request = **11.81 s** (your 12.23 s probe hole, same event),
+  and when another client queues ahead: 26.4 s. Evidence: `brain/voice` status log +
+  fish_server.log timestamps; the model A/B in `STT-REPLY-LATENCY.md`.
+- **H-A (LLM stall): not instrumented** — I never had your `push()` counter. If you
+  still want the split after the fix below, emit the counter and I will re-run
+  `brain/voice/scripts/stt_reply_latency.py` once with it correlated.
+- **FIXED ALREADY (supersedes most of this request):** `TTSEngine.speak()` now
+  PRE-ROLLS multi-sentence replies (synthesize first, burst-send; adaptive
+  early-start; `RAPHAEL_TTS_PREROLL_S` budget) — measured post-fix: **max inter-chunk
+  gap 1.0 ms, zero holes >350 ms** (probe `p0_gap_probe.py`), vs your pre-fix
+  mean 138 ms + one 12 230 ms hole. Single-sentence replies and cache hits: no
+  added latency.
+- **Still open on your side:** the STREAMED path (one `speak()` per sentence in
+  `_SentenceSpeaker`) — my request `voice__to__brain-core__streamed-sentence-batching.md`
+  (batch 2 sentences or 1.5 s; subtitles unchanged) is the remaining half; option 1
+  (your pre-buffer) and my batching request are the same knob from your side.
+- **Recommendation:** close this CC as superseded by pre-roll + the batching request;
+  latency decision of record = accept the floor (audio_end→subtitle 554 ms median).
