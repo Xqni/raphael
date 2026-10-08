@@ -32,6 +32,9 @@ logs/jobs/cancel/say/selftest — REST only, no new PROTOCOL frames):
                        runtime switch: fail-closed validation, active-jobs
                        guard, single-spawner brain recycle so the running
                        supervisor never double-respawns)
+  doctor             whole-stack triage with actionable fixes (ARCH-6);
+                       keys/token reported present/absent ONLY, never
+                       values; exit 1 if any FAIL
 
 Exit codes: 0 = ok, 1 = command failed (HTTP error/bad usage),
             2 = brain unreachable.
@@ -381,6 +384,293 @@ def cmd_selftest(ctx, args):
         [sys.executable, str(ROOT / "supervisor" / "main.py"), "--selfcheck"],
         cwd=str(ROOT))
     return proc.returncode
+
+
+# --------------------------------------------------------------------------
+# ARCH-6 — `raphael doctor`: whole-stack triage, value-blind (keys/token
+# are reported present/absent ONLY — never values, never lengths).
+# --------------------------------------------------------------------------
+import shutil as _shutil
+
+_ENV_SECRETISH = ("GROQ_API_KEY", "OPENCODE_API_KEY", "CIVITAI_TOKEN",
+                  "HF_TOKEN", "GITHUB_TOKEN", "DISCORD_WEBHOOK")
+
+
+def _status_line(status, name, detail, fix=None):
+    print("[%s] %-16s %s" % (status, name, detail))
+    if fix and status in ("WARN", "FAIL"):
+        print("%9s fix: %s" % ("", fix))
+
+
+def _mode_of(path):
+    try:
+        return oct(Path(path).stat().st_mode)[-3:]
+    except OSError:
+        return None
+
+
+def _check_token(ctx):
+    path = Path(ctx.token_path)
+    if not path.is_file():
+        return "WARN", "token", "absent at %s" % path, \
+            "run scripts/token-gen.sh"
+    mode = _mode_of(path)
+    if mode not in ("600", "400", "440"):
+        return "WARN", "token", "present, mode %s at %s (want 600)" % (
+            mode, path), "chmod 600 %s" % path
+    return "PASS", "token", "present, mode %s (value not shown)" % mode, None
+
+
+def _check_env_file(env_file):
+    env_file = Path(env_file)
+    if not env_file.is_file():
+        return "WARN", ".env", "absent at %s" % env_file, \
+            "copy .env.example -> .env (live stack only; mode 600)"
+    mode = _mode_of(env_file)
+    try:
+        text = env_file.read_text(encoding="utf-8", errors="replace")
+    except OSError as exc:
+        return "FAIL", ".env", "unreadable: %s" % exc, None
+    kv = {}
+    for ln in text.splitlines():
+        ln = ln.strip()
+        if ln.startswith("#") or "=" not in ln:
+            continue
+        k, v = ln.split("=", 1)
+        if k.strip():
+            kv[k.strip()] = v
+    keys = list(kv)
+    present = [k for k in _ENV_SECRETISH if k in kv]
+    empty = [k for k in present if not kv[k].strip()]
+    detail = ("present, mode %s, %d key name(s) (%s%s%s); values never shown"
+              % (mode, len(keys), ", ".join(present[:4]),
+                 ", …" if len(present) > 4 else "",
+                 "; empty: " + ",".join(empty) if empty else ""))
+    fixes = []
+    status = "PASS"
+    if mode not in ("600", "400"):
+        status = "WARN"
+        fixes.append("chmod 600 %s" % env_file)
+    return status, ".env", detail, ("; ".join(fixes) or None)
+
+
+def _check_brain(ctx):
+    code, payload = api(ctx, "GET", "/health", timeout=3.0)
+    if code == 200:
+        return "PASS", "brain", "healthy @ %s" % ctx.base, None
+    if code == 401:
+        return "WARN", "brain", "reachable, token rejected @ %s" % ctx.base, \
+            "token mismatch — regenerate with scripts/token-gen.sh"
+    if code is None:
+        return "WARN", "brain", "not reachable (%s)" % payload, \
+            "raphael start (stack is down by default — bring her up only " \
+            "for a live test, then raphael stop)"
+    return "FAIL", "brain", "HTTP %s" % code, "see logs/supervisor.log"
+
+
+def _local_ss_listener(port):
+    """-> local-addr string or None (runs on THIS host only)."""
+    r = subprocess.run(["ss", "-tln"], capture_output=True, text=True)
+    if r.returncode != 0:
+        return None
+    for line in r.stdout.splitlines():
+        parts = line.split()
+        if len(parts) >= 4 and parts[3].endswith(":%d" % port):
+            return parts[3]
+        if len(parts) >= 4 and ":%d" % port in parts[3]:
+            return parts[3]
+    return None
+
+
+def _check_brain_bind(ctx):
+    local = _local_ss_listener(ctx.port)          # works inside WSL/Linux
+    if local:
+        if local.startswith("127.0.0.1:"):
+            return "PASS", "brain bind", "%s (loopback only)" % local, None
+        return "FAIL", "brain bind", "%s is NOT loopback" % local, \
+            "bind must be 127.0.0.1 (scripts/NETWORK-SECURITY.md)"
+    if IS_WINDOWS:
+        out = _wsl_ss(ctx.port)                   # listener lives inside WSL
+        if out:
+            ok = out.startswith("127.0.0.1:")
+            return ("PASS" if ok else "FAIL"), "brain bind", \
+                "%s (via wsl)" % out, \
+                (None if ok else
+                 "bind must be 127.0.0.1 (scripts/NETWORK-SECURITY.md)")
+    return "SKIP", "brain bind", "not listening here", None
+
+
+def _wsl_ss(port):
+    rc, out = sup.wsl_run(sup.load_config()[0],
+                          "sh", "-c",
+                          "ss -tln | grep ':%d ' | awk '{print $4}'" % port,
+                          timeout=10)
+    return out.strip().splitlines()[0] if rc == 0 and out.strip() else None
+
+
+def _check_relay(ctx, cfg):
+    if not cfg["paths"].get("brain_relay", True):
+        return "PASS", "relay", "disabled by config (native forwarding)", None
+    backend = inst_mod.relay_backend_port(ctx.port)
+    local = _local_ss_listener(backend)
+    if local:
+        return "PASS", "relay", "helper listening %s" % local, None
+    if IS_WINDOWS:
+        out = _wsl_ss(backend)               # helper lives inside WSL
+        if out:
+            return "PASS", "relay", "helper listening %s (via wsl)" % out, None
+    pid, _s, _p, _st = sup.read_supervisor_pidfile()
+    if pid and sup._pid_exists(pid):
+        return "PASS", "relay", "supervisor pid=%s up (windows leg in-process)" \
+            % pid, None
+    return "WARN", "relay", "helper not visible here", \
+        "stack down is normal; supervisor start spawns it"
+
+
+def _check_orb(ctx):
+    pid = sup._resolve_orb_pid(ctx.cfg)
+    if pid:
+        return "PASS", "orb", "running (real pid=%d)" % pid, None
+    return "WARN", "orb", "not running", "raphael start brings the orb up"
+
+
+def _check_fish(ctx):
+    probe = ("import socket;s=socket.socket();s.settimeout(1);"
+             "print('up' if s.connect_ex(('127.0.0.1',8777))==0 else 'down')")
+    if not IS_WINDOWS:                        # we ARE on the WSL/Linux side
+        r = subprocess.run(["python3", "-c", probe],
+                           capture_output=True, text=True, timeout=10)
+        here = r.stdout.strip()
+    else:
+        rc, out = sup.wsl_run(ctx.cfg, "python3", "-c", probe, timeout=10)
+        here = out.strip() if rc == 0 else "unknown"
+    if here == "up":
+        return "PASS", "fish", "TTS reachable on 127.0.0.1:8777", None
+    return "WARN", "fish", "not reachable (%s)" % here, \
+        "fish starts with the brain voice layer (TTS stays local)"
+
+
+def _check_disk():
+    out = []
+    worst = "PASS"
+    for label, path in (("repo", str(ROOT)),
+                        ("win-c", "/mnt/c")):
+        if not Path(path).exists():
+            continue
+        try:
+            du = _shutil.disk_usage(path)
+        except OSError:
+            continue
+        free_gb = du.free / (1024 ** 3)
+        st = "PASS" if free_gb >= 5 else ("WARN" if free_gb >= 1 else "FAIL")
+        if st == "FAIL" or (st == "WARN" and worst == "PASS"):
+            worst = st
+        out.append("%s %.1fGB free" % (label, free_gb))
+    if not out:
+        return "SKIP", "disk", "no mounts checkable", None
+    fix = None if worst == "PASS" else "free disk (old logs/backups?): scripts + manual"
+    return worst, "disk", ", ".join(out), fix
+
+
+def _check_wsl_memory(ctx):
+    cmd = ("sh", "-c", "awk '/MemAvailable/{print int($2/1024)\"MB\"; exit}' "
+           "/proc/meminfo")
+    if not IS_WINDOWS:                        # local /proc (we are in WSL)
+        r = subprocess.run(list(cmd), capture_output=True, text=True)
+        mem = r.stdout.strip()
+    else:
+        rc, out = sup.wsl_run(ctx.cfg, *cmd, timeout=10)
+        mem = out.strip().split()[0] if rc == 0 and out.strip() else ""
+    if not mem:
+        return "SKIP", "wsl memory", "not readable here", None
+    try:
+        mb = int(mem.lower().replace("mb", ""))
+    except ValueError:
+        return "SKIP", "wsl memory", mem, None
+    if mb < 400:
+        return "WARN", "wsl memory", "MemAvailable %s (low)" % mem, \
+            "close apps / check the RAM upgrade status"
+    return "PASS", "wsl memory", "MemAvailable %s" % mem, None
+
+
+def _check_conductor():
+    coord = Path.home() / ".raphael-coord"
+    if not (coord / "bin" / "coord").exists():
+        return "WARN", "conductor", "coord bus not found at %s" % coord, None
+    detail = []
+    status = "PASS"
+    locks = coord / "locks"
+    if locks.is_dir():
+        holders = [p for p in locks.iterdir() if p.is_file()]
+        detail.append("%d lane hold(s)" % len(holders))
+    events = coord / "events"
+    if events.is_dir():
+        newest = 0.0
+        for f in events.glob("*.jsonl"):
+            try:
+                newest = max(newest, f.stat().st_mtime)
+            except OSError:
+                pass
+        if newest:
+            age_h = (time.time() - newest) / 3600
+            detail.append("last event %.1fh ago" % age_h)
+    attention = coord / "ATTENTION.md"
+    if attention.is_file():
+        detail.append("attention open (%.1fh)"
+                      % ((time.time() - attention.stat().st_mtime) / 3600))
+    return status, "conductor", ", ".join(detail) or "present", None
+
+
+def _check_supervisor_log(log_file):
+    log_file = Path(log_file)
+    if not log_file.is_file():
+        return "WARN", "supervisor log", "absent at %s" % log_file, \
+            "starts when the supervisor runs"
+    try:
+        with open(log_file, "r", encoding="utf-8", errors="replace") as fh:
+            tail = fh.readlines()[-20:]
+    except OSError as exc:
+        return "WARN", "supervisor log", "unreadable: %s" % exc, None
+    ts = re.compile(r"^\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\] "
+                    r"(INFO|WARN|ERROR|DEBUG) ")
+    stamped = [ln for ln in tail if ts.match(ln)]
+    errs = sum(1 for ln in tail
+               if ts.match(ln) and ts.match(ln).group(1) == "ERROR")
+    age_h = (time.time() - log_file.stat().st_mtime) / 3600
+    detail = ("%d/%d tail lines timestamped, %d ERROR in tail, "
+              "last write %.1fh ago" % (len(stamped), len(tail), errs, age_h))
+    if not stamped:
+        return "WARN", "supervisor log", detail + " — format NOT structured", \
+            "expected '[YYYY-MM-DD HH:MM:SS] LEVEL msg'"
+    return "PASS", "supervisor log", detail, None
+
+
+def cmd_doctor(ctx, args):
+    """ARCH-6: triage everything; value-blind; actionable fixes."""
+    env_file = args.env_file or (ROOT / ".env")
+    log_file = args.log_file or inst_mod.log_path("supervisor")
+    print("raphael doctor — instance=%s port=%d (present/absent only; "
+          "no values ever printed)" % (ctx.instance, ctx.port))
+    checks = [
+        _check_token(ctx),
+        _check_env_file(env_file),
+        _check_brain(ctx),
+        _check_brain_bind(ctx),
+        _check_relay(ctx, ctx.cfg),
+        _check_orb(ctx),
+        _check_fish(ctx),
+        _check_disk(),
+        _check_wsl_memory(ctx),
+        _check_conductor(),
+        _check_supervisor_log(log_file),
+    ]
+    counts = {"PASS": 0, "WARN": 0, "FAIL": 0, "SKIP": 0}
+    for status, name, detail, fix in checks:
+        counts[status] = counts.get(status, 0) + 1
+        _status_line(status, name, detail, fix)
+    print("DOCTOR RESULT: PASS=%(PASS)d WARN=%(WARN)d FAIL=%(FAIL)d "
+          "SKIP=%(SKIP)d" % counts)
+    return 1 if counts["FAIL"] else 0
 
 
 # --------------------------------------------------------------------------
@@ -849,6 +1139,13 @@ def build_parser():
                     help="also take the input lock (screen-driving input)")
 
     sub.add_parser("selftest", help="supervisor environment self-check")
+
+    doc = sub.add_parser(
+        "doctor",
+        help="whole-stack triage: token/.env/brain/bind/relay/orb/fish/"
+             "disk/WSL-memory/conductor/log — present-absent only")
+    doc.add_argument("--env-file", default=None, help=argparse.SUPPRESS)
+    doc.add_argument("--log-file", default=None, help=argparse.SUPPRESS)
     return p
 
 
@@ -857,7 +1154,7 @@ HANDLERS = {
     "restart": cmd_restart, "pause": cmd_pause, "resume": cmd_resume,
     "private": cmd_private, "logs": cmd_logs, "jobs": cmd_jobs,
     "cancel": cmd_cancel, "say": cmd_say, "selftest": cmd_selftest,
-    "tier": cmd_tier,
+    "tier": cmd_tier, "doctor": cmd_doctor,
 }
 
 

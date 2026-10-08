@@ -1,6 +1,6 @@
 # infra — status
 
-Updated: 2026-10-07 (Wave 5 open — tier/simulation/shadow plumbing complete; coord rule §13)
+Updated: 2026-10-07 (Wave 5H audit packet COMPLETE — verify-first table above; coord rule §13)
 
 ## Done (Wave 2 — all tasks, commits `0451dba..737e216` on `agent/infra`)
 
@@ -249,6 +249,91 @@ class on the next `raphael stop`). No orphans from this session (Rule 14).
   integrator reruns at review. (Known cross-lane memory/tests order flake
   from wave 4 still reported in the error log.)
 - selfcheck exit 0 · secret-scan exit 0.
+
+## Wave 5H audit packet (docs/audit-tasks/infra.md — VERIFY-FIRST honored)
+
+### Verification table (quotes verbatim; status per packet format)
+
+- **SEC-2: CONFIRMED (live) → FIXED repo-side / NEUTRALIZED by human** —
+  `scripts/wslg-shadow/raphael-wslg-shadow.service:7`
+  `ExecStart=/home/dami/scripts/raphael-wslg-shadow.sh` (live:
+  `systemctl cat` → `/etc/systemd/system/...`, is-enabled=enabled,
+  is-active=active, payload `755 dami:dami` == repo boot-hook.sh);
+  `boot-hook.sh:11` `BACKUP=/mnt/wslg/raphael-shadow-fix` (root exec via
+  `wsl --system`); `install.sh:11` `WRAPPER_SRC=/mnt/wslg/...` → `:22-23`
+  `mv "$REAL" "$WRAPPED"` / `cp "$WRAPPER_SRC" "$REAL"`. Human ran
+  `systemctl disable --now` (neutralized). Repo half: root-owned
+  `/usr/local/lib/raphael` chain, unit pins `@BOOT_SHA@` pre-exec,
+  tar-pipe transfer, pin-verified wrapper, install-rooted.sh
+  **disabled-by-default** + fail-loud path audits, uninstall rollback,
+  README retirement trigger (ARCH-1). Never re-enabled without fresh
+  approval.
+- **SEC-1: CONFIRMED (no tooling) → DONE** — scanner
+  `scripts/scan_personal.py` (locations only, value-blind), hook
+  `scripts/install-git-hooks.sh` (advisory, refuses foreign hooks),
+  `scripts/GIT-SCRUB-PLAN.md` (prepared, never run), qa CI request OPEN.
+  Baseline: 741 files / 200 findings (120 FAIL) = scrub inventory.
+- **SEC-5: CONFIRMED → PROPOSED (integrator lines pending)** —
+  `ls -la ~/raphael-wt/*/.env` → all 10 lanes `-> /home/dami/raphael/.env`
+  (real file `-rw------- 1 dami dami` = 600). Shipped:
+  `scripts/env.dev.template` (valueless, zero GROQ/GITHUB) +
+  `scripts/install-env-dev.sh` (600, idempotent, redacted value guard,
+  gitignore loud-warn). Request:
+  `infra__to__integrator__sec5-env-dev-and-docs.md` (.gitignore, LAUNCH).
+- **SEC-6: CONFIRMED → FIXED (docs request OPEN)** —
+  `scripts/wsl-relay.py:66` + `supervisor/main.py:1426`
+  `backend.settimeout(None)` (deliberate — recv timeout kills WS);
+  `config.yaml:21` `host: 127.0.0.1` (ALREADY-DONE); blanket-allow sources:
+  `docs/TROUBLESHOOTING.md:13` + `docs/TODO.md:35` (integrator files →
+  request bundled in sec5-env-dev-and-docs). FIXED: TCP keepalive + select
+  idle cap ≥3×ping (default90s, `RAPHAEL_RELAY_IDLE_CAP`) on BOTH legs,
+  semaphore kept; **real-duration proof: 2 passed in480s** (silent reaped
+  ~90s, pinger survived5min; `/tmp/opencode/sec6_long_proof.log`).
+  **Runtime ss proof (own live test, torn down):**
+  `LISTEN 0 2048 127.0.0.1:8907 0.0.0.0:* users:(("python",pid=83607,fd=15))`
+  — loopback ONLY; teardown verified (graceful drain, port free, temp
+  files removed).
+- **SEC-7: DONE (file list for Core Guard manifest)** — root/boot scripts
+  owned by infra: `brain/raphael-brain.service`,
+  `scripts/install-brain-unit.sh`, `scripts/brain-sudoers.snippet`,
+  `scripts/setup.ps1`, `scripts/setup-startup.ps1`, `scripts/setup.sh`,
+  `scripts/uninstall.ps1`, `scripts/win/allow-brain-localhost.ps1`
+  (admin), `scripts/wslg-shadow/{raphael-wslg-shadow.service, boot-hook.sh,
+  install.sh, install-rooted.sh, uninstall-rooted.sh}`.
+- **ARCH-2: REPORTED (process mode authoritative)** —
+  `supervisor/main.py:1294` `"brain/.venv/bin/python -m uvicorn brain.app:app "`
+  + `:1245` `def brain_run_mode` ("auto: systemd unit when installed, else
+  'process'") vs `brain/raphael-brain.service:34` `ExecStart=... -m brain.run`;
+  live `systemctl show -p LoadState raphael-brain` → `LoadState=not-found`
+  ⇒ **process mode**; double-management prevented by the auto probe
+  (unit installed ⇒ supervisor stops spawning).
+- **ARCH-4: DONE (code + tests)** — `supervisor/main.py` DEFAULT
+  `wsl_user` now `os.environ.get("USER") or os.environ.get("USERNAME") or ...`
+  and `_normalize` honors `RAPHAEL_WSL_USER` (env > config > derived);
+  wslg payloads all `RAPHAEL_*`-parameterized; no hardcoded IPs (WSL IP
+  discovered at runtime); config.yaml comment proposal in the request.
+- **ARCH-6: DONE** — `raphael doctor` (11 checks, value-blind, actionable
+  fixes, structured-log timestamp audit). Live: PASS=6 WARN=4 FAIL=0
+  SKIP=1 exit0. Tests plant a secret and assert it never appears.
+- **ARCH-7: DONE** — `scripts/backup-raphael.sh` + `restore-raphael.sh`
+  (`--root` test mode, pre-restore safety copy, token 600) with an
+  automated temp-dir round-trip test.
+- **F-7: DRAFT (co-sign pending)** — `scripts/ALWAYS-ON-READINESS.md`
+  (7 gate groups; task stays Disabled until the human acts).
+
+### Wave 5H test output (real, sequential — Rule 14)
+
+- `pytest supervisor/tests -q` → **127 passed, 2 skipped** (skips =
+  env-gated SEC-6 long proof, which RAN separately: **2 passed in480s**)
+- `pytest tests -q` → **214 passed, 7 xfailed**
+- `pytest body -q` → **150 passed**
+- `pytest supervisor/tests/test_doctor.py` → 6 passed; audit tooling → 8;
+  sec2 → 7; keepalive fast →5; config →7
+- selfcheck exit0 · secret-scan exit0 · personal scan advisory exit0
+  (741 files/200 findings — inventory, not a gate until scrub)
+- live doctor smoke (stack down): PASS=6 WARN=4 FAIL=0 exit0
+- no elevated commands run by this lane; stack spawned once for the ss
+  proof and torn down (policy 2026-10-07).
 
 ## Next
 

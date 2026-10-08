@@ -1,6 +1,12 @@
 """load_config + active_profile: instance overrides on top of config.yaml,
 main untouched, profile source precedence (INTERFACES §c)."""
+import os
+import sys
+from pathlib import Path
+
 from supervisor import main as sup
+
+_ROOT = Path(__file__).resolve().parents[2]
 
 
 def test_load_config_main_unchanged(monkeypatch):
@@ -54,3 +60,32 @@ def test_active_profile_precedence(monkeypatch):
     assert sup.active_profile(cfg) == "local"
     # env wins even over an explicit cfg value
     assert sup.active_profile({"profile": "cloud_temp"}) == "local"
+
+
+def test_wsl_user_env_override_wins(monkeypatch):
+    # ARCH-4: identity comes from env/config, never baked into tests either
+    monkeypatch.delenv("RAPHAEL_WSL_USER", raising=False)
+    cfg, _ = sup.load_config()
+    from_config = cfg["paths"]["wsl_user"]
+    assert from_config                      # config.yaml supervisor.wsl_user
+    monkeypatch.setenv("RAPHAEL_WSL_USER", "lane-user")
+    cfg, _ = sup.load_config()
+    assert cfg["paths"]["wsl_user"] == "lane-user"     # env override wins
+
+
+def test_wsl_user_default_is_environment_derived():
+    # DEFAULT_CONFIG no longer bakes an identity: USER/USERNAME first —
+    # proven in a subprocess with a controlled environment (the dict is
+    # built once, at import).
+    import subprocess
+    env = dict(os.environ)
+    env["USER"] = "derivable-user"
+    env.pop("USERNAME", None)
+    r = subprocess.run(
+        [sys.executable, "-c",
+         "import sys; sys.path.insert(0, %r); "
+         "import supervisor.main as m; "
+         "print(m.DEFAULT_CONFIG['paths']['wsl_user'])" % str(_ROOT)],
+        capture_output=True, text=True, env=env, cwd=str(_ROOT))
+    assert r.returncode == 0, r.stderr
+    assert r.stdout.strip() == "derivable-user"

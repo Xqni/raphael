@@ -39,6 +39,7 @@ import copy
 import ctypes
 import json
 import os
+import select
 import shlex
 import shutil
 import signal
@@ -92,9 +93,14 @@ DEFAULT_CONFIG = {
         # supervisor contract requires from config.yaml; everything has a default.
         "body_cmd": "python body/win/main.py",
         "body_venv": "",            # optional override of the pinned Body venv
+        # ARCH-4: no baked-in identity — env USER/USERNAME first (the Linux
+        # wsl_user can only be confirmed from config/env on a Windows host),
+        # config.yaml supervisor.wsl_user stays authoritative, and
+        # RAPHAEL_WSL_USER overrides both (see _normalize).
+        "wsl_user": (os.environ.get("USER") or os.environ.get("USERNAME")
+                     or "dami"),
         "orb_dir": "body/orb",
         "distro": "Ubuntu-26.04",
-        "wsl_user": "dami",
         "brain_unit": "raphael-brain",
         "ollama_unit": "ollama",
         "token_win": "",            # default: %APPDATA%\Raphael\token
@@ -341,6 +347,11 @@ def _normalize(cfg, parsed):
             sup["health_interval"] = float(alt["health_interval_s"])
         except (TypeError, ValueError):
             pass
+    # ARCH-4: RAPHAEL_WSL_USER env overrides config (identity is never
+    # baked in; config.yaml supervisor.wsl_user remains the default source)
+    env_user = os.environ.get("RAPHAEL_WSL_USER", "").strip()
+    if env_user:
+        paths["wsl_user"] = env_user
     # /health URL: PROTOCOL says Windows probes 127.0.0.1 even though the
     # server binds 0.0.0.0 — derive it only when no explicit health_url.
     parsed_sup = parsed.get("supervisor")
@@ -662,6 +673,90 @@ def stop_brain(cfg, log):
              % " ".join(wsl_argv(cfg, "systemctl", "stop", unit,
                                  sudo=bool(cfg["paths"].get("wsl_sudo")))))
     return systemctl_action(cfg, log, "stop", unit)
+
+
+def _set_socket_keepalive(sock):
+    """SEC-6: TCP keepalive on relay sockets so a silently-dead peer is
+    detected by the OS (~30s idle + 3x1s probes) even before the app-level
+    idle cap fires. Never raises (platform option gaps are fine)."""
+    try:
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
+    except OSError:
+        return
+    if IS_WINDOWS:
+        # SIO_KEEPALIVE_VALS: keepalive times are MILLISECONDS
+        try:
+            import struct
+            sock.ioctl(socket.SIO_KEEPALIVE_VALS,
+                       struct.pack("IIII", 1, 30000, 3000, 3))
+        except (OSError, AttributeError):
+            pass
+        return
+    for opt_name, value in (("TCP_KEEPIDLE", 30), ("TCP_KEEPINTVL", 3),
+                            ("TCP_KEEPCNT", 3)):
+        opt = getattr(socket, opt_name, None)
+        if opt is None:
+            continue
+        try:
+            sock.setsockopt(socket.IPPROTO_TCP, opt, value)
+        except OSError:
+            pass
+
+
+def relay_pipe(src, dst, idle_cap=None):
+    """SEC-6 splice with an idle cap: forward until EOF, but close a leg
+    that has been SILENT longer than `idle_cap` (default >= 3x the 10 s
+    server ping — a pinging peer never hits it; a hung/lost peer is
+    reaped). Uses select, so the deliberate `settimeout(None)` blocking
+    behavior for healthy streams is preserved (a short recv timeout would
+    tear down legit WS silence — see the wave-2 comment). Connection-limit
+    semaphore stays with the callers.
+    """
+    if idle_cap is None:
+        idle_cap = _relay_idle_cap()
+    last = time.monotonic()
+    try:
+        while True:
+            remaining = idle_cap - (time.monotonic() - last)
+            if remaining <= 0:
+                log = "[relay] idle cap %.0fs reached — reaping silent peer" \
+                      % idle_cap
+                try:
+                    sys.stderr.write(log + "\n")
+                except Exception:      # noqa: BLE001
+                    pass
+                break
+            try:
+                readable, _, _ = select.select([src], [], [],
+                                               min(remaining, 1.0))
+            except (OSError, ValueError):
+                break
+            if not readable:
+                continue
+            data = src.recv(65536)
+            if not data:
+                break
+            dst.sendall(data)
+            last = time.monotonic()
+    except OSError:
+        pass
+    finally:
+        try:
+            dst.shutdown(socket.SHUT_WR)
+        except OSError:
+            pass
+
+
+# SEC-6 idle cap: >= 3x the PROTOCOL 10 s WS ping (default 90 s).
+# Override: RAPHAEL_RELAY_IDLE_CAP (seconds; tests use small values).
+def _relay_idle_cap():
+    try:
+        return float(os.environ.get("RAPHAEL_RELAY_IDLE_CAP", "90"))
+    except ValueError:
+        return 90.0
+
+
+RELAY_IDLE_CAP = _relay_idle_cap()
 
 
 def _wsl_cleanup_shell(cfg):
@@ -1400,22 +1495,8 @@ def start_brain_relay(cfg, log, listen_port=None, backend_port=None):
             log.info("brain relay: backend wsl %s:%d (helper leg)" % (ip, backend_port))
         return ip
 
-    def pipe(src, dst):
-        try:
-            while True:
-                data = src.recv(65536)
-                if not data:
-                    break
-                dst.sendall(data)
-        except OSError:
-            pass
-        finally:
-            try:
-                dst.shutdown(socket.SHUT_WR)
-            except OSError:
-                pass
-
     def handle(client):
+        _set_socket_keepalive(client)           # SEC-6: detect dead peers
         backend = None
         for _attempt in (0, 1):
             ip = state["ip"] or discover()
@@ -1426,6 +1507,7 @@ def start_brain_relay(cfg, log, listen_port=None, backend_port=None):
                 backend.settimeout(None)  # connect timeout must NOT stick (see
                 # scripts/wsl-relay.py header comment — it killed WS streams
                 # after ~5s of silence between server pings)
+                _set_socket_keepalive(backend)  # SEC-6
                 break
             except OSError:
                 state["ip"] = None  # distro restarted -> IP changed, rediscover
@@ -1441,9 +1523,11 @@ def start_brain_relay(cfg, log, listen_port=None, backend_port=None):
                          "brain not up yet?) — client disconnected; retrying"
                          % backend_port)
             return
-        threading.Thread(target=pipe, args=(client, backend),
+        # SEC-6: select-based idle cap >= 3x the 10s WS ping reaps silent
+        # peers; the connection-limit semaphore stays with the accept loop.
+        threading.Thread(target=relay_pipe, args=(client, backend),
                          daemon=True).start()
-        pipe(backend, client)
+        relay_pipe(backend, client)
         for sock in (client, backend):
             try:
                 sock.close()

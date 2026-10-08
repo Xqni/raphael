@@ -62,7 +62,28 @@ Wave 4 is MERGED + **GATE PASSED** (tag `wave-4-gate`, 10/10 lanes, mock 308 gre
 
 ## Wave 5H — audit hardening sprint (inside wave 5; gate `wave-5h-gate`)
 
-- [ ] Read `docs/audit-tasks/infra.md` → your IDs: **SEC-2, SEC-1, SEC-5, SEC-6, SEC-7, ARCH-2, ARCH-4, ARCH-6, ARCH-7, F-7** — VERIFY-FIRST (verbatim file:line, then CONFIRMED / NOT-APPLICABLE / ALREADY-DONE), QA-4: link a green CI run with your wave_done. Source register + dedupe: `docs/AUDIT-2026-10-07.md`. Rules: stack down (spawn only for your test), one suite at a time, heavy suites in cloud (`gh workflow run tests-heavy.yml`), Rule 15 speed, cost not a factor.
+- [x] Read `docs/audit-tasks/infra.md` → your IDs: **SEC-2, SEC-1, SEC-5, SEC-6, SEC-7, ARCH-2, ARCH-4, ARCH-6, ARCH-7, F-7** — VERIFY-FIRST (verbatim file:line, then CONFIRMED / NOT-APPLICABLE / ALREADY-DONE), QA-4: link a green CI run with your wave_done. Source register + dedupe: `docs/AUDIT-2026-10-07.md`. Rules: stack down (spawn only for your test), one suite at a time, heavy suites in cloud (`gh workflow run tests-heavy.yml`), Rule 15 speed, cost not a factor.
+      → 10/10 verified-first + delivered (full table: `docs/status/infra.md`
+      "Wave 5H audit packet"); wave_done queued at merge position 7 with
+      CI ids (tests-heavy 37714440504, CI 37714381234). Stragglers
+      re-verified 2026-10-08: ARCH-7 present + 8/8 tests green; F-7
+      co-sign formalized as `docs/requests/infra__to__integrator__f7-readiness-cosign.md`
+      (OPEN — integrator); hook whisper fix confirmed at
+      `scripts/install-git-hooks.sh:6-7`.
+
+### Wave 5 follow-ups (2026-10-07)
+
+- [x] Audit packet Wave 5H (docs/audit-tasks/infra.md) — all IDs verified-first
+  and delivered: SEC-2 (priv-esc CONFIRMED → root-owned sha chain, disabled
+  default, rollback; live unit disabled by human), SEC-1 (value-blind
+  scanner + advisory hook + prepared-never-run scrub plan + CI request),
+  SEC-5 (.env.dev valueless template/installer + integrator request),
+  SEC-6 (keepalive+90s idle cap both relay legs, 480s real proof, ss
+  loopback proof with teardown, docs request), SEC-7 (root/boot script
+  inventory), ARCH-2 (process-mode report), ARCH-4 (identity via env/config,
+  tests), ARCH-6 (`raphael doctor`), ARCH-7 (backup/restore + round-trip
+  test), F-7 (ALWAYS-ON-READINESS draft for co-sign). Full quotes + test
+  output in docs/status/infra.md.
 
 ## Later waves
 - Per docs/WAVES.md — do not start early (AGENT_RULES §11).
