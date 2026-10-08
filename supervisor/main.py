@@ -1497,10 +1497,15 @@ def start_brain_relay(cfg, log, listen_port=None, backend_port=None):
     state = {"ip": None, "warned_at": 0.0}
 
     def discover():
+        # Instrumented (integrator, 2026-10-08): body saw "invalid HTTP response"
+        # because this returned None silently on the live box.
+        rc, out = wsl_run(cfg, "hostname", "-I", timeout=15)
         ip = _wsl_ip(cfg)
         if ip:
             state["ip"] = ip
             log.info("brain relay: backend wsl %s:%d (helper leg)" % (ip, backend_port))
+        else:
+            log.warning("brain relay: wsl_ip discovery FAILED rc=%s out=%r" % (rc, str(out)[:120]))
         return ip
 
     def handle(client):

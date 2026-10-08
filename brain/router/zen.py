@@ -182,7 +182,7 @@ class ZenProvider(OpenAICompatProvider):
 
 
 class GoProvider(OpenAICompatProvider):
-    """Go endpoint — code kept, gated OFF (`providers.allow_go_runtime=false`)."""
+    """Go endpoint — paid, gated by `providers.allow_go_runtime` (user-approved true 2026-10-07)."""
 
     def __init__(self, config: RouterConfig) -> None:
         super().__init__(
@@ -193,6 +193,11 @@ class GoProvider(OpenAICompatProvider):
             caps=frozenset({"chat", "tools"}),
             gated=True,
             assume_billed=True,
+            # Same mandatory header as GoVisionProvider: the Go endpoint rejects
+            # requests without x-opencode-session (HTTP 400 MissingSessionID),
+            # which silently failed over chat to slow zen_free (user report:
+            # "zen_free taking a long time"). Stable id per process.
+            extra_headers={"x-opencode-session": f"raphael-brain-{os.getpid()}"},
         )
 
 
