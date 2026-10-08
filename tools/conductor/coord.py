@@ -30,6 +30,7 @@ import base64
 import contextlib
 import fcntl
 import json
+import re
 import os
 import signal
 import subprocess
@@ -270,7 +271,35 @@ def conductor_running(cd: Path) -> int | None:
     return pid if "conductor" in cmd else None
 
 
+MSG_MAX = 4000          # AUD-12 / SEC-7 Part C rule 2: msg is display prose, capped
+DATA_MAX = 8 * 1024     # data is structured JSON only, hard size cap
+_REF_RE = re.compile(r'^(docs|config\.d|tests|scripts|brain|body|supervisor|tools|'
+                     r'\.github|assets|\.opencode|run)/[A-Za-z0-9._/\-]+$')
+
+
+def _validate_event(msg, ref, data) -> None:
+    """AUD-12: event content is UNTRUSTED data — structured fields only, size
+    caps, safe repo-relative refs. Never commands, never prose directives
+    (the handler prompt treats msg as display text; QA-4 gates merges)."""
+    if not isinstance(msg, str) or not msg:
+        raise ValueError("msg must be a non-empty string (display prose only)")
+    if len(msg) > MSG_MAX:
+        raise ValueError(f"msg too large ({len(msg)} > {MSG_MAX} chars) — dropped, not truncated")
+    if data is not None:
+        if not isinstance(data, dict):
+            raise ValueError("data must be a JSON object (structured fields only)")
+        size = len(json.dumps(data).encode())
+        if size > DATA_MAX:
+            raise ValueError(f"data too large ({size} > {DATA_MAX} bytes) — dropped")
+    if ref is not None:
+        if not isinstance(ref, str) or not _REF_RE.match(ref):
+            raise ValueError(f"ref must be a safe repo-relative path, got: {ref!r}")
+        if '..' in ref or '://' in ref or ref.startswith('/'):
+            raise ValueError(f"ref rejected (absolute/traversal/url): {ref!r}")
+
+
 def envelope(lane: str, etype: str, msg: str, ref, data, wave: int | None = None) -> dict:
+    _validate_event(msg, ref, data)
     if wave is None:
         wave = read_state(coord_dir())["current_wave"]
     return {
@@ -369,7 +398,11 @@ def cmd_post(args) -> int:
     else:
         data = args.data
     cd = coord_dir()
-    obj = envelope(args.lane, args.type, args.msg, args.ref, data)
+    try:
+        obj = envelope(args.lane, args.type, args.msg, args.ref, data)
+    except ValueError as e:
+        print(f"coord: rejected event ({e})", file=sys.stderr)
+        return 2
     if args.type == "heartbeat" and isinstance(data, dict) and data.get("session_id"):
         sid = data["session_id"]
 
@@ -391,8 +424,12 @@ def cmd_reply(args) -> int:
     else:
         data = args.data
     cd = coord_dir()
-    append_jsonl(cd / "inbox" / f"{args.lane}.jsonl",
-                 envelope(args.lane, args.type, args.msg, args.ref, data), cd)
+    try:
+        obj = envelope(args.lane, args.type, args.msg, args.ref, data)
+    except ValueError as e:
+        print(f"coord: rejected event ({e})", file=sys.stderr)
+        return 2
+    append_jsonl(cd / "inbox" / f"{args.lane}.jsonl", obj, cd)
     print(f"coord: replied {args.type} -> inbox/{args.lane}.jsonl")
     return 0
 
