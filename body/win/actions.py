@@ -318,11 +318,55 @@ def _timeout_s(timeout_ms: Any) -> float:
     return min(ms, MAX_TIMEOUT_MS) / 1000.0
 
 
-# ------------------------------------------------------------ dispatch ----
+# ---- AUD-16: executor quarantine -----------------------------------------
+# wait_for timeout / dispatch cancel stop the AWAIT, never the worker
+# thread. The input lock must stay held until every worker started by the
+# in-flight act has truly returned, or a queued act could inject input
+# while a "timed-out" powershell/clipboard/UIA call is still running.
+# Invariant: the Body processes ONE act_req at a time (sequential receive
+# loop), so a single module-global counter is sound.
+_inflight = 0
+_release_pending = False
+
+
+def _worker_done() -> None:
+    """Runs ON THE LOOP when a worker thread truly ends (AUD-16)."""
+    global _inflight, _release_pending
+    _inflight -= 1
+    if _inflight <= 0 and _release_pending:
+        _release_pending = False
+        automation.release_input_lock()
+
+
+async def offload(fn, *args, **kwargs):
+    """`asyncio.to_thread` + quarantine tracking (AUD-16).
+
+    The returned await can be cancelled/timed out — the thread cannot; the
+    wrapper's finally marks the worker done when the thread actually exits,
+    which is what defers the input-lock release in dispatch()."""
+    global _inflight
+    loop = asyncio.get_running_loop()
+
+    def _wrapped():
+        try:
+            return fn(*args, **kwargs)
+        finally:
+            loop.call_soon_threadsafe(_worker_done)
+
+    _inflight += 1
+    task = asyncio.ensure_future(asyncio.to_thread(_wrapped))
+    try:
+        return await task
+    except asyncio.CancelledError:
+        raise          # thread keeps running; _worker_done releases later
+
+
+# -------------------------------------------------------------- dispatch ----
 async def dispatch(action: str, args: Any, *, lock: bool = False,
                    job: Any = None, timeout_ms: Any = None,
                    backend: Any = None) -> Dict[str, Any]:
     """Execute one act_req. Returns the act_res payload (ok/result/error[/queued])."""
+    global _release_pending
     load_groups()
     t0 = time.monotonic()
     held = False
@@ -394,7 +438,12 @@ async def dispatch(action: str, args: Any, *, lock: bool = False,
             res = {"ok": True, "result": out}
     finally:
         if held:
-            automation.release_input_lock()
+            if _inflight > 0:
+                # AUD-16: a timed-out/cancelled worker may still be touching
+                # the OS — quarantine the lock; _worker_done releases it.
+                _release_pending = True
+            else:
+                automation.release_input_lock()
         journal.set_job(None)
 
     _log(job, action, norm, res, t0, held)

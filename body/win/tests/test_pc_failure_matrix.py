@@ -71,17 +71,66 @@ async def test_backend_crash_truthful_then_recovers(action, actlog, fake,
 
 
 @pytest.mark.asyncio
-async def test_timeout_releases_lock_and_body_recovers(actlog, fake):
+async def test_timeout_quarantines_lock_until_worker_ends(actlog, fake):
+    """AUD-16: wait_for timeout cancels the AWAIT, not the worker thread —
+    the input lock must stay quarantined until the blocked backend call
+    truly returns, then a recovery dispatch must succeed."""
     fake.delays['clipboard_set'] = 0.6
     try:
         res = await actions.dispatch('clipboard',
                                      {'op': 'write', 'text': 'slow'},
                                      lock=True, job='j_slow', timeout_ms=100)
         assert res['ok'] is False and res['error'].startswith('E_TIMEOUT'), res
-        assert not automation.lock_held()
+        assert automation.lock_held(), \
+            'lock released while the worker is still running (AUD-16)'
+        # quarantined: a competing locked act is refused, no input injected
+        blocked = await actions.dispatch('input', {'keys': ['enter']},
+                                         lock=True, job='j_blocked')
+        assert blocked == {'ok': False, 'error': 'E_LOCK_BUSY',
+                           'queued': True}, blocked
+        await asyncio.sleep(0.7)              # worker drains
     finally:
         fake.delays.clear()
-    rec = await actions.dispatch('foreground_info', {}, job='j_after_timeout')
+    assert not automation.lock_held(), 'lock never released after drain'
+    rec = await actions.dispatch('foreground_info', {}, lock=True,
+                                 job='j_after_timeout')
+    assert rec['ok'] is True, rec
+
+
+@pytest.mark.asyncio
+async def test_cancel_quarantines_lock_until_worker_ends(actlog, fake):
+    """AUD-16 kill/disconnect variant: cancel mid-worker keeps the lock
+    quarantined (E_CANCELLED audited), released only when the thread ends."""
+    fake.delays['media_key'] = 0.5
+    task = asyncio.create_task(
+        actions.dispatch('media', {'op': 'play_pause'}, lock=True,
+                         job='j_cancel16'))
+    try:
+        for _ in range(200):                  # wait until the worker is live
+            if fake.calls('media_key'):
+                break
+            await asyncio.sleep(0.01)
+        assert fake.calls('media_key'), 'worker never started'
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        assert automation.lock_held(), \
+            'cancel released the lock while the worker still runs (AUD-16)'
+        blocked = await actions.dispatch('input', {'keys': ['enter']},
+                                         lock=True, job='j_cancel16b')
+        assert blocked.get('error') == 'E_LOCK_BUSY'
+        await asyncio.sleep(0.6)              # worker drains
+        assert not automation.lock_held(), \
+            'lock must free once the worker truly ends (AUD-16)'
+    finally:
+        fake.delays.clear()
+        if automation.lock_held():            # safety net: never leak across tests
+            automation.release_input_lock()
+    lines = [json.loads(l) for l in actlog.read_text().splitlines()]
+    assert any(str(l.get('error') or '').startswith('E_CANCELLED')
+               for l in lines), 'cancel must still be audited'
+    rec = await actions.dispatch('foreground_info', {}, lock=True,
+                                 job='j_cancel16c')
     assert rec['ok'] is True, rec
 
 

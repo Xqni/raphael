@@ -11,9 +11,9 @@ import base64
 from typing import Any, Dict
 
 try:
-    from .actions import opt_int, reject_extra, register_action
+    from .actions import offload, opt_int, reject_extra, register_action
 except ImportError:  # script mode
-    from actions import opt_int, reject_extra, register_action
+    from actions import offload, opt_int, reject_extra, register_action
 
 
 def _validate_screenshot(args: Dict[str, Any]) -> Dict[str, Any]:
@@ -25,7 +25,7 @@ def _validate_screenshot(args: Dict[str, Any]) -> Dict[str, Any]:
 
 
 async def _run_screenshot(args: Dict[str, Any], backend) -> Dict[str, Any]:
-    shot = await asyncio.to_thread(backend.capture, args['max_px'],
+    shot = await offload(backend.capture, args['max_px'],
                                    args['quality'])
     # Legacy result shape (e2e_phase3 / tests/e2e_wave2.py expect b64+bytes).
     return {'b64': base64.b64encode(shot).decode('ascii'),

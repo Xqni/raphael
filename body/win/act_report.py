@@ -25,10 +25,12 @@ from pathlib import Path
 from typing import Any, Dict
 
 try:
-    from .actions import (ActionError, opt_enum, reject_extra, register_action,
-                          req_str)
+    from .actions import (offload,
+ActionError, opt_enum, reject_extra, register_action,
+                          req_str
+)
 except ImportError:  # script mode
-    from actions import (ActionError, opt_enum, reject_extra, register_action,
+    from actions import (offload, ActionError, opt_enum, reject_extra, register_action,
                          req_str)
 
 _OPS = {'save', 'list'}
@@ -74,7 +76,7 @@ def _unique_path(directory: Path, stem: str, ext: str) -> Path:
 
 
 async def _run_report(args: Dict[str, Any], backend) -> Any:
-    directory = Path(await asyncio.to_thread(backend.reports_dir))
+    directory = Path(await offload(backend.reports_dir))
     if args['op'] == 'list':
         entries = []
         if directory.is_dir():
@@ -109,7 +111,7 @@ async def _run_report(args: Dict[str, Any], backend) -> Any:
                 'bytes': len(data.encode('utf-8')),
                 'lines': data.count('\n') + 1}
 
-    return await asyncio.to_thread(_write)
+    return await offload(_write)
 
 
 register_action('report', _run_report, validate=_validate_report,

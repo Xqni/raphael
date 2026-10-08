@@ -12,10 +12,12 @@ import asyncio
 from typing import Any, Dict, Optional
 
 try:
-    from .actions import (ActionError, journal, opt_enum, reject_extra,
-                          req_str, register_action)
+    from .actions import (offload,
+ActionError, journal, opt_enum, reject_extra,
+                          req_str, register_action
+)
 except ImportError:  # script mode
-    from actions import (ActionError, journal, opt_enum, reject_extra,
+    from actions import (offload, ActionError, journal, opt_enum, reject_extra,
                          req_str, register_action)
 
 _OPS = {'list', 'focus', 'minimize', 'maximize', 'restore', 'snap'}
@@ -67,8 +69,8 @@ def _entry(w: Dict[str, Any], foreground_hwnd: Optional[int]) -> Dict[str, Any]:
 
 
 async def _resolve(args: Dict[str, Any], backend) -> Dict[str, Any]:
-    windows = await asyncio.to_thread(backend.list_windows)
-    fg = await asyncio.to_thread(backend.foreground)
+    windows = await offload(backend.list_windows)
+    fg = await offload(backend.foreground)
     fg_hwnd = (fg or {}).get('hwnd')
     if 'hwnd' in args:
         matches = [w for w in windows if w.get('hwnd') == args['hwnd']]
@@ -92,19 +94,19 @@ async def _run_window(args: Dict[str, Any], backend) -> Any:
     target = await _resolve(args, backend)
     hwnd = target['hwnd']
     if op == 'focus':
-        await asyncio.to_thread(backend.focus_window, hwnd)
+        await offload(backend.focus_window, hwnd)
         return {'focused': hwnd, 'title': target.get('title') or ''}
     # F-3: capture the placement BEFORE mutating (inverse op); focus is not
     # journaled (foreground races make its inverse unreliable).
-    before = await asyncio.to_thread(backend.window_placement, hwnd)
+    before = await offload(backend.window_placement, hwnd)
     if op == 'snap':
-        rect = await asyncio.to_thread(backend.snap_window, hwnd, args['zone'])
+        rect = await offload(backend.snap_window, hwnd, args['zone'])
         summary = 'window snapped %s (hwnd %d)' % (args['zone'], hwnd)
         result = {'snapped': hwnd, 'zone': args['zone'], 'rect': rect}
     else:
         mode = {'minimize': 'minimize', 'maximize': 'maximize',
                 'restore': 'restore'}[op]
-        await asyncio.to_thread(backend.show_window, hwnd, mode)
+        await offload(backend.show_window, hwnd, mode)
         summary = 'window %s (hwnd %d)' % (op, hwnd)
         result = {'window': hwnd, 'op': op, 'title': target.get('title') or ''}
     journal.record('window', 'window', summary,
@@ -113,8 +115,8 @@ async def _run_window(args: Dict[str, Any], backend) -> Any:
 
 
 async def _run_list(backend) -> Dict[str, Any]:
-    windows = await asyncio.to_thread(backend.list_windows)
-    fg = await asyncio.to_thread(backend.foreground)
+    windows = await offload(backend.list_windows)
+    fg = await offload(backend.foreground)
     fg_hwnd = (fg or {}).get('hwnd')
     entries = [_entry(w, fg_hwnd) for w in windows[:_MAX_WINDOWS]]
     return {'count': len(windows), 'windows': entries,
@@ -130,7 +132,7 @@ async def _run_foreground_info(args: Dict[str, Any], backend) -> Dict[str, Any]:
     """Foreground window facts — Brain applies privacy.blocklist_apps to
     these (title/process) BEFORE deciding a screenshot may leave the box."""
     reject_extra(args, set())
-    fg = await asyncio.to_thread(backend.foreground)
+    fg = await offload(backend.foreground)
     return {'window': _entry(fg, (fg or {}).get('hwnd')) if fg else None}
 
 

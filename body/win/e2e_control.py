@@ -267,7 +267,11 @@ async def mock_suite() -> int:
                 check('inject:timeout',
                       res.get('ok') is False
                       and str(res.get('error', '')).startswith('E_TIMEOUT')
-                      and not automation.lock_held(), str(res)[:160])
+                      and automation.lock_held(), str(res)[:160])
+                # AUD-16: the blocked worker keeps the lock quarantined …
+                check('inject:timeout:quarantined', automation.lock_held())
+                await asyncio.sleep(0.8)        # … until it truly drains
+                check('inject:timeout:drained', not automation.lock_held())
             finally:
                 fake.delays.clear()
         finally:

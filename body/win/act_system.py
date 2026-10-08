@@ -11,12 +11,12 @@ import asyncio
 from typing import Any, Dict
 
 try:
-    from .actions import (ActionError, opt_enum, reject_extra, journal,
-                          register_action, req_int, req_str)
+    from .actions import (offload, ActionError, opt_enum, reject_extra,
+                          journal, register_action, req_int, req_str)
     from .winlayer import MEDIA_KEYS
 except ImportError:  # script mode
-    from actions import (ActionError, opt_enum, reject_extra, journal,
-                         register_action, req_int, req_str)
+    from actions import (offload, ActionError, opt_enum, reject_extra,
+                         journal, register_action, req_int, req_str)
     from winlayer import MEDIA_KEYS
 
 _MAX_CLIPBOARD = 100000
@@ -39,8 +39,8 @@ def _validate_clipboard(args: Dict[str, Any]) -> Dict[str, Any]:
 async def _run_clipboard(args: Dict[str, Any], backend) -> Any:
     if args['op'] == 'read':
         # Legacy result shape: the raw string (e2e_phase3 asserts equality).
-        return await asyncio.to_thread(backend.clipboard_get)
-    await asyncio.to_thread(backend.clipboard_set, args['text'])
+        return await offload(backend.clipboard_get)
+    await offload(backend.clipboard_set, args['text'])
     return {'written': len(args['text'])}
 
 
@@ -52,7 +52,7 @@ def _validate_media(args: Dict[str, Any]) -> Dict[str, Any]:
 
 
 async def _run_media(args: Dict[str, Any], backend) -> Dict[str, Any]:
-    await asyncio.to_thread(backend.media_key, args['op'])
+    await offload(backend.media_key, args['op'])
     return {'sent': args['op']}
 
 
@@ -64,8 +64,8 @@ def _validate_level(args: Dict[str, Any]) -> Dict[str, Any]:
 
 async def _run_volume(args: Dict[str, Any], backend) -> Dict[str, Any]:
     level = args['level']
-    prev = await asyncio.to_thread(backend.get_volume)      # F-3 inverse: before
-    ok = await asyncio.to_thread(backend.set_volume, level)
+    prev = await offload(backend.get_volume)      # F-3 inverse: before
+    ok = await offload(backend.set_volume, level)
     if not ok:
         raise ActionError('E_INTERNAL', 'volume set failed')  # truthful act_res
     if prev is not None and int(prev) != level:
@@ -76,8 +76,8 @@ async def _run_volume(args: Dict[str, Any], backend) -> Dict[str, Any]:
 
 async def _run_brightness(args: Dict[str, Any], backend) -> Dict[str, Any]:
     level = args['level']
-    prev = await asyncio.to_thread(backend.get_brightness)  # F-3 inverse: before
-    ok = await asyncio.to_thread(backend.set_brightness, level)
+    prev = await offload(backend.get_brightness)  # F-3 inverse: before
+    ok = await offload(backend.set_brightness, level)
     if not ok:
         raise ActionError('E_INTERNAL', 'brightness set failed')
     if prev is not None and int(prev) != level:
@@ -94,7 +94,7 @@ def _validate_notify(args: Dict[str, Any]) -> Dict[str, Any]:
 
 
 async def _run_notify(args: Dict[str, Any], backend) -> Dict[str, Any]:
-    await asyncio.to_thread(backend.notify, args['text'])
+    await offload(backend.notify, args['text'])
     return {'notified': True}
 
 
