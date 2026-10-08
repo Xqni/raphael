@@ -207,19 +207,61 @@ user's own wording, then what actually changed.
       TTS amplitude** (fast attack / slow release). Alpha-only on purpose:
       scaling the band's geometry would move pixels into `orb:size`'s
       `size_matches_spec`.
-- [ ] **"for starting up dont start from pink/purple color please start from
+- [x] **"for starting up dont start from pink/purple color please start from
       white only just dim white then full glow white into the idle state"** —
-      diagnosed: `S.starting.nebula = 0.35` shows the *coloured* haze (lime/teal/
-      blue/**magenta #C026D3**) during boot while `bright = 0.72` (dim) — so boot
-      reads as a dim COLOUR wash, not dim white. Pending: nebula 0 during
-      `starting` + pure-white tint, keeping the existing `bright 0.72 → 1.00`
-      ramp into idle.
-- [ ] **"NOTHING SHOULD FEEL OR SEE LIKE 2D"** — remaining flat billboards:
-      nebula plane (user likes it — leave), sun corona glow plane (a bloom has to
-      be a billboard), `jobdots` `CircleGeometry` halos, Answer-Mode petal/bokeh
-      sprites, and the DOM `#micbadge` pill (vision flagged it as "the flattest
-      element in the whole set"; it is the SEC-3 indicator, so it stays until an
-      in-canvas replacement is agreed).
+      **DONE + measured.** `S.starting.nebula 0.35 → 0.00` (`sagecore.js`, the
+      4.8-unit plane at `z = -0.9` covers the core region, so its lime/teal/blue
+      wash over the core was the colour source — `speed`/`spark`/`ring` are all
+      white) and `getStateTint('starting') 0xfff4d6 → 0xffffff`
+      (`renderer.js:754`). Then dimmed to the requested read: `bright 0.72 →
+      0.45`, `poly/node 0.70 → 0.55`, `ring 0.40 → 0.26`, `spark 0.35 → 0.22`,
+      `speed 0.50 → 0.34` — so boot is **dim white** and eases into idle's
+      `bright 1.00` (**full glow white**).
+      **Evidence (regenerated matrix):** `starting-dark.png` r12 `62,59,62`
+      spread **3**, r24 `80,75,80` spread **5**, r40 `69,65,69` spread **4** —
+      all `[WHITE]`. Before: r24 `92,59,92` spread **32** (magenta).
+      `starting-light.png` spread 5–6 across all radii.
+      *(Also root-caused why the first attempt still LOOKED magenta in the
+      evidence PNG: the capture harness slept a fixed 1400 ms and photographed
+      violet Data-Ring/nebula residue mid-damp — it now polls for convergence.
+      Full chain in `docs/status/orb.md`.)*
+- [x] **"NOTHING SHOULD FEEL OR SEE LIKE 2D"** — **converted everything in
+      scope; the two that must stay are documented as accepted-by-design.**
+      Scope agreed with the coordinator (coord [40]): convert the `jobdots`
+      halos and the Answer-Mode petal/bokeh sprites; leave the nebula; document
+      the corona.
+      **Converted:**
+      1. **`jobdots` halo** — was `new THREE.CircleGeometry(HALO_R, 20)` with a
+         flat `MeshBasicMaterial` colour and **no map**: a hard-edged 2D disc.
+         Now `SphereGeometry(HALO_R, 16, 12)` shaded by view-facing with
+         `alpha = pow(f, 1.6)` so it falls to **zero at the limb** — a soft glow
+         *ball*, no silhouette edge, 3D from any angle. Uniforms are now
+         `uColor`/`uAlpha` (the three `haloMat.color`/`haloMat.opacity` writes
+         were updated) and `halo.scale` went `set(s,s,1)` → `set(s,s,s)`.
+         Notably the file already carried *"beads must not be flat 2D discs —
+         they are shaded SPHERES"* from 10-06: the **beads** were fixed then,
+         the **halo** was missed.
+      2. **Answer-Mode bokeh** — was a radial-gradient canvas texture on a
+         camera-facing `PlaneGeometry`. Now `SphereGeometry(0.5,16,12)` with a
+         new `glowVert`/`glowFrag` pair (same limb-falloff idea,
+         `premultipliedAlpha: true`). Same soft coloured glow, now a 3D ball;
+         `makeBokehTexture` is retained but unused.
+      3. **Answer-Mode petals** — were camera-facing (`rotation.z` only), i.e.
+         flat against the screen. Each now gets a **fixed 3D tilt**
+         (`rotation.set(0.75+…, ±1.0, 0)`); the per-frame update only writes
+         `rotation.z`, so x/y persist and a petal never squares up to the
+         camera.
+      **Accepted by design (documented, not converted):**
+      - **nebula plane** — user explicitly likes the cloud; it is a *cloud*, not
+        a structural element.
+      - **sun corona glow plane** — a bloom is inherently a billboard: it must
+        face the camera to read as light rather than as a card. Converting it to
+        geometry would make the sun look solid-edged, which is the opposite of
+        spec §3.1 ("no visible edge").
+      - **`#micbadge` pill** — **STALE ENTRY, now deleted**: the bullet listed it
+        as the SEC-3 indicator to keep, but AMENDMENT 3 removed the element
+        outright, so there is no DOM pill left to convert. (The SEC-3 indicator
+        survives as the on-demand `mic-cloud` menu row.)
 
 ## WAVE 5H AUDIT TASKS (packet `docs/audit-tasks/orb.md`)
 
@@ -242,8 +284,16 @@ green CI run.
       Schema request `docs/requests/orb__to__pc-control__act-journal-schema.md`,
       design `docs/orb/ACTIVITY-VIEWER.md`. **No orb code** until pc-control
       exposes `reversible`/`undo`.
-- [ ] **Item 4 — state-distinctness green after every change** (all 104 pairs).
-      Re-verified on every commit in this wave.
+- [x] **Item 4 — state-distinctness green after every change** (all 104 pairs).
+      Re-verified on every commit in this wave; **final: 104/104 pass, failures
+      0, threshold 0.300, temporal noise floor 0.000** (`orb:diff` +
+      `docs/orb/trace/distinctness.json`). Mid-wave it went red (13 pairs, `need
+      10.18`) and was root-caused to `starting@dark` temporal noise 6.79 while
+      every other scene measured exactly 0.000 — caused by my own AMENDMENT-2
+      auto-escape converting a synthetic `starting` into `idle` between rep1 and
+      rep2. Fixed behaviourally (escape now restarts on ANY inbound frame, per
+      *"if no frame arrives"*; harness re-asserts like a live Brain); **no gate
+      formula, `ABS_FLOOR` or `NOISE_FACTOR` was touched.**
 
 ### AMENDMENT 3 (user, 2026-10-08): NO ON-SCREEN TEXT — SPEECH ONLY
 
@@ -252,11 +302,27 @@ the answer she is giving, i dont want any of those. and when she is listening th
 red pill with text 'mic -> cloud' which i dont want. there shouldnt be any text that
 shows up with her please. just speech."
 
-- [ ] REMOVE from the default orb view (do-first, above other work):
+- [x] REMOVE from the default orb view (do-first, above other work) — **DONE:**
+
   1. the **subtitle line** (fading status text under the orb) — stop rendering;
   2. the **answer/report banner cards** (wave-5 "wrapped cards") — stop rendering;
   3. the **red "mic -> cloud" pill** (SEC-3 indicator, b0ed6ce) — stop rendering;
   4. ANY other persistent/auto text near the orb (notice text, task labels — same rule).
+  Verified on a **fresh production build** (`index.html`, `--demo` absent,
+  `main.js:337-340`): `#fps` **false**, `#micbadge` **false**,
+  `#subtitle` text `""` shown `false`, `document.body.innerText` length **0**,
+  0 exceptions. Implementation = ONE gate, `ORB_TEXT_ENABLED = false` in
+  `renderer.js`, wrapped around `updateSubtitle()` — the single funnel for items
+  1/2/4 (subtitle frame, `notice`, `answer`, `report`, demo label) — which
+  **scrubs** rather than skips so a racing frame cannot paint; item 3 was the
+  `#micbadge` element itself, deleted from `index.html`.
+  **Config choice (spec left it to me):** a module const, not `orb.show_text` —
+  a config key can be flipped by a config edit and reintroduce text silently;
+  the directive says *default must be NO TEXT*, and hard-coding it makes that
+  un-overrideable until someone deliberately changes code. Machinery kept.
+  Gates inverted to prove it: `notice_frame_not_rendered_as_text`,
+  `answer/report_frame_arrives_but_is_not_rendered` (frame still arrives for
+  CLI/API, text never painted), `mic_badge_absent_*`.
 - KEEP: cage, colors/theme per state, speaking pulse, job DOTS (not labels), the
   right-click menu + tray (on-demand UI is fine — nothing AUTO-SHOWS with text).
 - Speech stays the channel: long-form answers still exist as `report`/`answer` frames
@@ -335,9 +401,25 @@ shows up with her please. just speech."
   only on the first state event), otherwise the lattice sits at build-time default = the
   weird look the user saw. ACCEPTANCE: at rest AND mid-task, the orb is the familiar cage
   ball; screenshot proof before/after (matrix render), gates green.
-- [ ] (VISION PENDING) "a weird box underneath" the orb — user screenshot taken, vision
-  analysis incoming; will be appended here with the element's identity. Do not guess-remove
-  banners/subtitles until identified.
+- [x] (VISION DONE) **"a weird box underneath" — IDENTIFIED AS HOST-ELEMENT.**
+      Vision on the user's screenshot returned: **the box is NOT an orb widget.**
+      The capture is the Windows Terminal running the opencode TUI, and what sits
+      under the orb is the **TUI's own right-sidebar panel** (Voice / Context /
+      tokens / shell-style data rows) showing *behind* the transparent overlay.
+      **No subtitle line, no banner card, no red mic→cloud pill anywhere in the
+      frame.**
+      **CONCLUSION: nothing to remove from the orb for this.** The standing
+      instruction "do not guess-remove banners/subtitles until identified" is
+      therefore satisfied by *removing nothing*.
+      **Decisive follow-up, already answered by existing gates** — "if a dark
+      rectangle still appears around/below the sphere, that is an
+      overlay-transparency bug": the trace's transparency phase reports
+      `idle borderA0/rgb0` (border alpha **0**, border rgb **0**) over the light
+      and dark backdrops, and measuring `docs/orb/idle-light.png` directly gives
+      backdrop **235** at r96–r128 — i.e. exactly the backdrop, **no dark
+      rectangle** around or below the sphere. Closing as HOST-ELEMENT.
+      (The Windows path in the coordinator's message was deliberately NOT
+      reproduced here — SEC-1.)
 
 ### CAGES -> 3D WIREFRAME SPHERES (user, 2026-10-07 — supersedes the octagram call)
 
@@ -458,7 +540,7 @@ Wave 4 is MERGED + **GATE PASSED** (tag `wave-4-gate`, 10/10 lanes, mock 308 gre
 
 ## Wave 5H — audit hardening sprint (inside wave 5; gate `wave-5h-gate`)
 
-- [ ] Read `docs/audit-tasks/orb.md` → your IDs: **ARCH-1, F-3, F-4** — VERIFY-FIRST (verbatim file:line, then CONFIRMED / NOT-APPLICABLE / ALREADY-DONE), QA-4: link a green CI run with your wave_done. Source register + dedupe: `docs/AUDIT-2026-10-07.md`. Rules: stack down (spawn only for your test), one suite at a time, heavy suites in cloud (`gh workflow run tests-heavy.yml`), Rule 15 speed, cost not a factor.
+- [x] Read `docs/audit-tasks/orb.md` → your IDs: **ARCH-1, F-3, F-4** — VERIFY-FIRST (verbatim file:line, then CONFIRMED / NOT-APPLICABLE / ALREADY-DONE), QA-4: link a green CI run with your wave_done. Source register + dedupe: `docs/AUDIT-2026-10-07.md`. Rules: stack down (spawn only for your test), one suite at a time, heavy suites in cloud (`gh workflow run tests-heavy.yml`), Rule 15 speed, cost not a factor.
 
 ## Later waves
 - Per docs/WAVES.md — do not start early (AGENT_RULES §11).

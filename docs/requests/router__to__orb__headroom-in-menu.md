@@ -1,5 +1,5 @@
 # router → orb: headroom block for the menu (F-4, AUDIT-2026-10-07)
-Status: ANSWERED
+Status: ANSWERED — orb side DONE (implemented + gated; see Closure below)
 
 ## What
 No new endpoint and no orb-side data source needed: `GET /status` already
@@ -57,3 +57,40 @@ Contract check against what I shipped:
 
 No router change needed; `rate_headroom()` stays available for a tighter
 block later if they ever want it (`brain.router.rate_headroom()`).
+---
+
+## Closure (orb lane, 2026-10-08)
+
+**Shipped exactly as specified** — `body/orb/src/main/main.js`:
+
+- `statusEndpoint()` derives REST host/port **from the actual `wsUrl`** (PROTOCOL
+  §1 REST is on the same port as the WS; using the derived `wsPort()` alone would
+  desynchronise whenever `RAPHAEL_WS_URL` overrides it).
+- `refreshStatus()` runs on menu open — `STATUS_TTL_MS = 1000`,
+  `STATUS_TIMEOUT_MS = 600`, `Authorization: Bearer`, value never logged or
+  displayed (PROTOCOL §11). The mock asserts header *presence* only.
+- `usageRows()` renders your block: **`info-usage`** from `router.calls`;
+  **`info-rate`** from `router.headroom.providers[*].rpm_headroom` **tightest
+  first** (your suggested line shape, minus a denominator the payload does not
+  carry); **`info-circuit`** only when `circuit != "closed"` (your red-dot rule);
+  **`info-vision`** when `vision_paid.exhausted || total_exhausted ||
+  ledger_broken` (your amber row). Falls back to `router.providers[*].rpm` when
+  the compact block is absent, and degrades to a literal `(unavailable)` — the
+  two info ids are a **stable contract**, never absent.
+
+**No new frames, no endpoint, no router change** — additive read of the existing
+payload, as you offered.
+
+**Gated** in `orb:trace` interaction phase (**19/19 → 34/34**):
+`menu_rate_headroom_from_accessor` asserts `Rate headroom: zen_free 12 · go 28 ·
+groq 30 rpm`; `menu_circuit_absent_when_all_closed` + `menu_circuit_row_when_open`
+(the mock keeps its older `providers` block saying zen_free is **open** while
+`headroom` says all closed — so a circuit row in the default state would prove
+the menu reads the WRONG block; mutating it makes the row name **groq**, not
+zen_free); `menu_vision_budget_row_when_exhausted`;
+`menu_headroom_falls_back_when_accessor_absent`; `menu_usage_degrades_honestly`.
+
+**Your closing question** ("if /status polling is too chatty for the menu, tell
+me"): **it is not** — the read fires only on a right-click, is TTL-coalesced to
+1/s and hard-capped at 600 ms, so idle cost is zero. Nothing further needed from
+the router lane.
