@@ -21,7 +21,9 @@ import re
 from typing import Any, Dict, Optional
 
 try:
-    from .actions import (ActionError, reject_extra, register_action, req_str)
+    from .actions import (offload,
+ActionError, reject_extra, register_action, req_str
+)
 except ImportError:  # script mode
     from actions import (ActionError, reject_extra, register_action, req_str)
 
@@ -226,7 +228,9 @@ def _validate_powershell(args: Dict[str, Any]) -> Dict[str, Any]:
 
 
 async def _run_powershell(args: Dict[str, Any], backend) -> Any:
-    return run_script(args['script_id'], args['args'], backend)
+    # offload (AUD-16): subprocess must not block the loop AND its worker
+    # is tracked for input-lock quarantine on timeout/cancel.
+    return await offload(run_script, args['script_id'], args['args'], backend)
 
 
 register_action('powershell', _run_powershell, validate=_validate_powershell,

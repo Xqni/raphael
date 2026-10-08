@@ -20,8 +20,10 @@ from typing import Any, Dict
 
 try:
     from . import journal
-    from .actions import (ActionError, opt_enum, opt_int, reject_extra,
-                          register_action)
+    from .actions import (offload,
+ActionError, opt_enum, opt_int, reject_extra,
+                          register_action
+)
 except ImportError:  # script mode
     import journal
     from actions import (ActionError, opt_enum, opt_int, reject_extra,
@@ -54,10 +56,10 @@ def req_seq(args: Dict[str, Any]) -> int:
 
 async def _run_activity(args: Dict[str, Any], backend) -> Any:
     if args['op'] == 'list':
-        entries = await asyncio.to_thread(journal.entries, args['limit'])
+        entries = await offload(journal.entries, args['limit'])
         return {'count': len(entries), 'entries': entries}
     try:
-        entry = await asyncio.to_thread(journal.undo, args.get('seq'), backend)
+        entry = await offload(journal.undo, args.get('seq'), backend)
     except journal.UndoError as e:
         raise ActionError('E_INTERNAL', str(e)[:200])
     return {'undone': {'seq': entry['seq'], 'kind': entry['kind'],

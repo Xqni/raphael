@@ -19,9 +19,9 @@ import asyncio
 from typing import Any, Dict
 
 try:
-    from .actions import opt_bool, reject_extra, register_action
+    from .actions import offload, opt_bool, reject_extra, register_action
 except ImportError:  # script mode
-    from actions import opt_bool, reject_extra, register_action
+    from actions import offload, opt_bool, reject_extra, register_action
 
 _OPS = {'find', 'click', 'type', 'read', 'tree'}
 _SELECTOR_KEYS = {'name', 'control_type', 'automation_id', 'class_name', 'index'}
@@ -118,18 +118,18 @@ async def _run_uia(args: Dict[str, Any], backend) -> Any:
     op, sel = args['op'], args['element']
     timeout_s = args['timeout_s']
     if op == 'find':
-        found = await asyncio.to_thread(backend.uia_find, sel, timeout_s)
+        found = await offload(backend.uia_find, sel, timeout_s)
         return found if found is not None else {'found': False}
     if op == 'click':
-        return await asyncio.to_thread(backend.uia_click, sel, timeout_s,
+        return await offload(backend.uia_click, sel, timeout_s,
                                        args['button'])
     if op == 'type':
-        return await asyncio.to_thread(backend.uia_type, sel, args['text'],
+        return await offload(backend.uia_type, sel, args['text'],
                                        args['clear'], timeout_s)
     if op == 'read':
-        return await asyncio.to_thread(backend.uia_read, sel, timeout_s)
+        return await offload(backend.uia_read, sel, timeout_s)
     # tree
-    return await asyncio.to_thread(backend.uia_tree, sel, args['depth'],
+    return await offload(backend.uia_tree, sel, args['depth'],
                                    timeout_s)
 
 

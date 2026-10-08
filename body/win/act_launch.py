@@ -15,8 +15,10 @@ from typing import Any, Dict, List, Tuple
 from urllib.parse import quote_plus
 
 try:
-    from .actions import (ActionError, opt_str, register_action, req_str,
-                          reject_extra)
+    from .actions import (offload,
+ActionError, opt_str, register_action, req_str,
+                          reject_extra
+)
 except ImportError:  # script mode
     from actions import (ActionError, opt_str, register_action, req_str,
                          reject_extra)
@@ -50,7 +52,7 @@ def _validate_launch_url(args: Dict[str, Any]) -> Dict[str, Any]:
 
 
 async def _run_launch_url(args: Dict[str, Any], backend) -> Dict[str, Any]:
-    await asyncio.to_thread(backend.open_url, args['url'])
+    await offload(backend.open_url, args['url'])
     return {'opened': args['url']}
 
 
@@ -64,7 +66,7 @@ def _validate_search_youtube(args: Dict[str, Any]) -> Dict[str, Any]:
 async def _run_search_youtube(args: Dict[str, Any], backend) -> Dict[str, Any]:
     url = ('https://www.youtube.com/results?search_query='
            + quote_plus(args['query']))
-    await asyncio.to_thread(backend.open_url, url)
+    await offload(backend.open_url, url)
     return {'opened': url, 'query': args['query']}
 
 
@@ -152,11 +154,11 @@ def _clean_name(name: str) -> str:
 
 
 async def _run_open_app(args: Dict[str, Any], backend) -> Dict[str, Any]:
-    kind, payload = await asyncio.to_thread(resolve_app, args['name'], backend)
+    kind, payload = await offload(resolve_app, args['name'], backend)
     if kind == 'uwp':
-        await asyncio.to_thread(backend.launch_uwp, payload)
+        await offload(backend.launch_uwp, payload)
     else:
-        await asyncio.to_thread(backend.launch_path, payload)
+        await offload(backend.launch_path, payload)
     return {'launched': args['name'], 'kind': kind, 'resolved': payload}
 
 
@@ -175,7 +177,7 @@ def _validate_open_path(args: Dict[str, Any]) -> Dict[str, Any]:
 
 
 async def _run_open_path(args: Dict[str, Any], backend) -> Dict[str, Any]:
-    await asyncio.to_thread(backend.open_shell, args['path'])
+    await offload(backend.open_shell, args['path'])
     return {'opened': args['path']}
 
 
@@ -186,8 +188,8 @@ def _validate_list_running(args: Dict[str, Any]) -> Dict[str, Any]:
 
 
 async def _run_list_running(args: Dict[str, Any], backend) -> Dict[str, Any]:
-    procs = await asyncio.to_thread(backend.list_processes)
-    windows = await asyncio.to_thread(backend.list_windows)
+    procs = await offload(backend.list_processes)
+    windows = await offload(backend.list_windows)
     titles: Dict[int, List[str]] = {}
     for w in windows:
         if w.get('title'):
