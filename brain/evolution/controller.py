@@ -137,6 +137,7 @@ def run_cycle(mode: str, changes: Dict[str, str],
         decision = "promoted" if can_promote else "proposal"
         entry = J.make_entry(
             finding=slug, zone=zone.value, mode=mode, decision=decision,
+            paths=sorted(changes),
             reason=f"first-run style cycle: {zone.value} target, mode={mode}",
             tests=(f"shadow: {'green' if post.get('ok') else 'RED'} "
                    f"(rc={post.get('rc')}); compare ok={verdict['ok']} "
