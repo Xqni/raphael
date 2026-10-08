@@ -241,27 +241,54 @@ async function runInteraction(cdp, brain, rec) {
   add('menu_pause_is_checkbox', !!pauseItem && pauseItem.type === 'checkbox',
       pauseItem && `label="${pauseItem.label}" type=${pauseItem.type} action=${pauseItem.action}`);
 
-  // --- F-4 (Wave 5H audit): usage + rate-headroom rows, NO new frames -------
-  // Source is GET /status (PROTOCOL §2 REST, SAME port + token as the WS), read
-  // when the menu opens. The mock SERVES a realistic router block, so this
-  // asserts the headroom MATH — tightest provider is zen_free at 58/60 rpm =
-  // 3% headroom with an OPEN circuit — not merely that a row exists.
+  // --- F-4 (Wave 5H): usage + rate headroom, from the ROUTER's accessor ----
+  // Primary source is router.headroom (router__to__orb__headroom-in-menu.md,
+  // IN MAIN via brain/router/core.py::rate_headroom()); GET /status only, NO new
+  // frames. The mock serves headroom with ALL circuits closed while its older
+  // `providers` block still says zen_free is open — so seeing a circuit row in
+  // the DEFAULT state would prove the menu reads the wrong block.
   const usage = (spec || []).find((i) => i.id === 'info-usage');
   const rate = (spec || []).find((i) => i.id === 'info-rate');
+  const circ = (spec || []).find((i) => i.id === 'info-circuit');
+  const vision = (spec || []).find((i) => i.id === 'info-vision');
   add('menu_usage_and_rate_rows', !!usage && !!rate,
       `${usage && usage.label} | ${rate && rate.label}`);
   add('menu_usage_totals_from_router',
       !!usage && /128 calls · 121 ok · 7 err/.test(usage.label || ''),
       `label="${usage && usage.label}"`);
-  add('menu_rate_headroom_math',
-      !!rate && /3%/.test(rate.label || '') && /zen_free/.test(rate.label || '') &&
-      /58\/60/.test(rate.label || ''),
-      `label="${rate && rate.label}"`);
-  const circ = (spec || []).find((i) => i.id === 'info-circuit');
-  add('menu_circuit_row_when_open',
-      !!circ && /zen_free open/.test(circ.label || ''), `label="${circ && circ.label}"`);
+  add('menu_rate_headroom_from_accessor',
+      !!rate && /Rate headroom: zen_free 12 · go 28 · groq 30 rpm/.test(rate.label || ''),
+      `label="${rate && rate.label}" (tightest first)`);
+  add('menu_circuit_absent_when_all_closed', !circ,
+      circ ? `unexpected: ${circ.label}` : 'no circuit row (headroom says all closed)');
+  add('menu_vision_absent_when_healthy', !vision,
+      vision ? `unexpected: ${vision.label}` : 'no vision row (not exhausted)');
   add('menu_status_sent_bearer_token', brain.statusAuthSeen === true,
       `Authorization header present on GET /status: ${brain.statusAuthSeen} (value never stored)`);
+
+  // flip ONLY the headroom block: open a circuit + exhaust today's vision budget
+  brain.statusRouter.headroom.providers.groq.circuit = 'open';
+  brain.statusRouter.headroom.providers.groq.cooldown_s = 41;
+  brain.statusRouter.headroom.vision_paid.exhausted = true;
+  await sleep(1300);                       // > STATUS_TTL_MS so it re-reads
+  const specB = await cdp.evaluateJson('window.raphael.menuSpec()');
+  const circB = (specB || []).find((i) => i.id === 'info-circuit');
+  const visB = (specB || []).find((i) => i.id === 'info-vision');
+  add('menu_circuit_row_when_open',
+      !!circB && /groq open \(41s\)/.test(circB.label || ''),
+      `label="${circB && circB.label}" (groq, not zen_free — proves the source)`);
+  add('menu_vision_budget_row_when_exhausted',
+      !!visB && /Vision budget: today \$0\.0007\/1/.test(visB.label || ''),
+      `label="${visB && visB.label}"`);
+
+  // fallback: compact block removed -> derive from router.providers[*].rpm
+  delete brain.statusRouter.headroom;
+  await sleep(1300);
+  const specC = await cdp.evaluateJson('window.raphael.menuSpec()');
+  const rateC = (specC || []).find((i) => i.id === 'info-rate');
+  add('menu_headroom_falls_back_when_accessor_absent',
+      !!rateC && /Rate headroom: 3% · zen_free 58\/60 rpm/.test(rateC.label || ''),
+      `label="${rateC && rateC.label}"`);
 
   // --- SEC-3: "mic audio is going to the cloud" indicator ------------------
   const mic = (spec || []).find((i) => i.id === 'mic-cloud');
@@ -275,13 +302,16 @@ async function runInteraction(cdp, brain, rec) {
     mode: 'normal', shape_hint: 'circle', task_kind: 'none' });
   await sleep(500);
   const onListening = await badge();
-  add('mic_badge_on_while_listening', onListening === true, `on=${onListening}`);
+  // AMENDMENT 3: the red MIC -> CLOUD pill is explicitly named as removed.
+  add('mic_badge_absent_when_listening', onListening === null,
+      `micbadge element present? ${onListening !== null}`);
 
   brain.broadcast({ type: 'orb_state', v: 1, state: 'listening', jobs_active: 0,
     mode: 'private', private: true, shape_hint: 'circle', task_kind: 'none' });
   await sleep(500);
   const onPrivate = await badge();
-  add('mic_badge_off_in_private_mode', onPrivate === false, `on=${onPrivate}`);
+  add('mic_badge_absent_in_private_mode', onPrivate === null,
+      `micbadge element present? ${onPrivate !== null}`);
 
   const micSpec = await cdp.evaluateJson('window.raphael.menuSpec()');
   const micPriv = (micSpec || []).find((i) => i.id === 'mic-cloud');
@@ -290,7 +320,7 @@ async function runInteraction(cdp, brain, rec) {
 
   // --- F-4 degradation: Brain reports no usage block -> honest, not missing --
   brain.statusRouter = null;
-  await sleep(1200);                 // > STATUS_TTL_MS so the next open re-reads
+  await sleep(1300);                 // > STATUS_TTL_MS so the next open re-reads
   const specDeg = await cdp.evaluateJson('window.raphael.menuSpec()');
   const usage2 = (specDeg || []).find((i) => i.id === 'info-usage');
   const rate2 = (specDeg || []).find((i) => i.id === 'info-rate');
@@ -406,8 +436,10 @@ async function runInteraction(cdp, brain, rec) {
   const bannerObj = JSON.parse(banner);
   add('notice_reaches_renderer', rxAfter > rxBefore,
       `renderer rx notice frames: ${rxBefore} -> ${rxAfter}`);
-  add('notice_shown_as_banner', bannerObj.shown && /disk almost full/.test(bannerObj.text || ''),
-      `banner=${JSON.stringify(bannerObj)}`);
+  // AMENDMENT 3: the frame must ARRIVE (above) but must never be PAINTED.
+  add('notice_frame_not_rendered_as_text',
+      !bannerObj.shown && !(bannerObj.text || ''),
+      `banner=${JSON.stringify(bannerObj)} (empty+hidden = speech only)`);
   add('notice_never_changes_state', stateAfter === stateBefore && traceAfter.applied.state === stateBefore,
       `state ${stateBefore} -> ${stateAfter}, applied=${traceAfter.applied.state} (must be unchanged)`);
 
@@ -537,19 +569,24 @@ async function runWave5(cdp, brain, rec) {
   await sleep(700);
   let b = await banner();
   const t = await cdp.evaluateJson('JSON.stringify(window.__orbTrace())');
-  add('answer_renders_as_banner',
-      b.shown && /Answer ·/.test(b.text) && /groq/.test(b.text) && /banner/.test(b.cls),
-      `text=${JSON.stringify(b.text)} cls=${b.cls}`);
+  // AMENDMENT 3: "a whole box of the answer ... none of that. Just speech."
+  // The `answer` FRAME must still arrive (CLI/API consumers keep it) while the
+  // orb paints NOTHING — same inversion the notice check got.
+  const answerRx = (t.rx || []).filter((r) => r.kind === 'answer').length;
+  add('answer_frame_arrives_but_is_not_rendered',
+      answerRx > 0 && !b.shown && !(b.text || ''),
+      `rx answer frames=${answerRx} banner=${JSON.stringify(b)} (frame kept, text never painted)`);
   add('answer_does_not_change_state', t.applied.state === stateBefore,
       `state ${stateBefore} -> ${t.applied.state} (must be unchanged)`);
 
   brain.step('report');
   await sleep(700);
   b = await banner();
-  add('report_renders_as_banner',
-      b.shown && /Weekly pipeline report/.test(b.text) && /banner/.test(b.cls),
-      `text=${JSON.stringify(b.text.slice(0, 90))} cls=${b.cls}`);
   const t2 = await cdp.evaluateJson('JSON.stringify(window.__orbTrace())');
+  const reportRx = (t2.rx || []).filter((r) => r.kind === 'report').length;
+  add('report_frame_arrives_but_is_not_rendered',
+      reportRx > 0 && !b.shown && !(b.text || ''),
+      `rx report frames=${reportRx} banner=${JSON.stringify(b)} (frame kept, text never painted)`);
   add('report_does_not_change_state', t2.applied.state === stateBefore,
       `state ${stateBefore} -> ${t2.applied.state} (must be unchanged)`);
 

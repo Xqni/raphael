@@ -938,7 +938,7 @@ node test/orb-diff.cjs  PASS
 The revert landed **14 minutes AFTER** the running orb started, and Electron
 does not hot-reload renderer modules — so the user was watching a process that
 still had the pre-revert `effectiveShape()`. The deployed checkout
-(`/home/dami/raphael/body/orb`) *does* contain `SHAPE_MORPHS_ENABLED` (grep = 2
+(`/home/<wsl-user>/raphael/body/orb`) *does* contain `SHAPE_MORPHS_ENABLED` (grep = 2
 hits) and its `effectiveShape()` returns `BASE_SHAPE` immediately, so **a
 restart is all that is needed to put the fix on screen**. I did not touch the
 live stack (AGENT_RULES §5/§12 — it stays the integrator's call).
@@ -1290,3 +1290,94 @@ The F-4 endpoint fix (derive REST host/port from `wsUrl`, not from the derived
 made **after** the full-trace run, so that change was re-verified with
 `--only=interaction` (30/30) plus `test:unit`, `orb:size` and `orb:diff` on the
 final code — the renderer is untouched by it, so the trace's visual phases stand.
+
+---
+
+# AMENDMENT 3 — NO ON-SCREEN TEXT (user, 2026-10-07)
+
+> "text displays under her, a whole box of the answer, the red mic->cloud pill —
+> none of that. **Just speech.**"
+
+## What was removed
+
+Every text path in the orb funnels through **one** function,
+`renderer.js updateSubtitle()`, so the fix is a single gate rather than six
+scattered deletions:
+
+```js
+const ORB_TEXT_ENABLED = false;   // AMENDMENT 3: speech only
+```
+
+| Formerly painted | Caller | Now |
+|---|---|---|
+| status/narration line under the orb | `onOrbState` subtitle (`renderer.js:1360`) | never painted; element scrubbed |
+| `subtitle` frame text | `onSubtitle` (`renderer.js:1377`) | never painted |
+| **answer box** ("a whole box of the answer") | `updateAnswer` (`:1024` → banner card) | never painted |
+| report card | `updateReport` (`:1033` → banner card) | never painted |
+| `notice` banner | `updateNotice` (`:1010`) | never painted |
+| demo state label | `runDemo` (`:671`) | never painted |
+| **red `MIC → CLOUD` pill** | `#micbadge` | **element deleted** (`index.html`) + toggle removed |
+
+The gate also **scrubs** (clears `textContent`, forces `.hide`) rather than
+merely skipping, so a frame that raced in ahead of the flag cannot leave words on
+screen.
+
+**Deliberately kept:**
+- **PROTOCOL §3 frames are unchanged** — `subtitle` / `notice` / `answer` /
+  `report` still arrive and are still recorded by `traceRx`. CLI/API consumers
+  are unaffected; the orb just never renders them. (Also proven by the gate
+  below: the notice frame *arrives*, the text does *not appear*.)
+- **Cage, colours, pulse, job-dots** and the **on-demand right-click menu** —
+  including its `mic-cloud` row, which is user-invoked, not auto-displayed.
+- **Typed input** (`#typed`) — user-initiated on double-click, not auto text,
+  and it is the vehicle for `command{source:'orb'}`.
+- Glyph/rune rings, data panes, Data-Ring bars — abstract marks, not readable
+  text.
+- `#fps` overlay: `renderer.js:40` documents it is **null on the production
+  page** (`index.html` has no `#fps`), demo-only.
+
+## Gate changes (explicitly sanctioned: "update gates (color+shape distinctness only)")
+
+Two assertions were *inverted* so they now **prove the directive** instead of
+fighting it:
+
+| was | now |
+|---|---|
+| `notice_shown_as_banner` — required `.show` + `/disk almost full/` in `textContent` | `notice_frame_not_rendered_as_text` — requires `shown === false` **and** empty text, while `notice_reaches_renderer` still proves the frame arrived |
+| `mic_badge_on_while_listening` — required `on === true` | `mic_badge_absent_when_listening` — requires the **element to be gone** (`null`) |
+| `mic_badge_off_in_private_mode` — required `on === false` | `mic_badge_absent_in_private_mode` — requires `null` |
+
+Distinctness stays a **colour + shape** gate (104 pairs) — unchanged, and the
+one that must stay green.
+
+---
+
+# SEC-1 / ARCH-4 PERSONAL-DATA SCRUB (orb-owned files only)
+
+`python3 scripts/scan_personal.py`, own-lane files only per the ownership rule.
+
+| | before | after |
+|---|---|---|
+| **orb-owned FAIL findings** | **7** | **0** |
+| repo-wide findings | 204 | 197 |
+| repo-wide FAIL | 119 | **112** (exactly −7, my share) |
+
+Scrubbed (placeholders per the nudge: `<wsl-user>` / `<win-user>`):
+
+| file:line | was | now |
+|---|---|---|
+| `.opencode/research/windows-native-electron-orb.md:20` | `C:\Users\<u>\…` (path-windows) | `C:\<win-user>\…` |
+| `docs/orb/trace/audit.json:7` | `/home/dami/.raphael/orb/orb` | `/home/<wsl-user>/.raphael/orb/orb` |
+| `docs/requests/orb__to__integrator__harness-spawn-while-live.md:27` | `` /home/dami/raphael/body/orb `` | `` /home/<wsl-user>/raphael/body/orb `` |
+| `docs/status/orb.md:941` | `` (/home/dami/raphael/body/orb) `` | `` (/home/<wsl-user>/raphael/body/orb) `` |
+
+**Not scrubbed (NOT-APPLICABLE):** the 5 remaining `REVIEW` hits in
+`body/orb/package-lock.json` (`rule=ip-private`). That is a **generated npm
+lockfile** — rewriting it would invalidate npm's integrity hashes, it carries no
+personal data I authored, and it is REVIEW severity, not FAIL. Flagging to infra
+that generated/lockfile artifacts likely want an exclusion rather than a scrub.
+
+**Recurrence risk (infra's call, not mine):** `docs/orb/trace/*.json` are
+*regenerated* by every `orb:trace` run and will re-emit the real `userData`
+path. Scrubbing is correct today but the finding will return on the next
+regeneration unless the scanner excludes generated trace artifacts.

@@ -147,6 +147,80 @@ Wave 2 is MERGED; live gate was 3/5 — evidence + bug dossiers: `docs/BUGS-WAVE
       **interaction PASS 19/19** incl. `notice_reaches_renderer`,
       `notice_shown_as_banner`, `notice_never_changes_state`.
 
+## USER ART-DIRECTION PASS (2026-10-07, re-pasted fidelity task + follow-ups)
+
+Base spec stays `docs/ORB_REBUILD_TASK.md`; this refines it. Each item is the
+user's own wording, then what actually changed.
+
+- [x] **"i dont like the 3d spheres for the outer and inner cages"** → cage is
+      back to the spec's **geodesic wireframe** (`ORB_REBUILD_TASK` §2.1.4 *"a
+      large geodesic/irregular polyhedron of thin white lines connecting bright
+      node dots at the vertices"* / re-pasted §3.3 *"FEWER lines than now … must
+      not look like tangled yarn"*). Lat/long globe **out** (196 edges, reads as
+      stacked latitude rings + pole convergence); `IcosahedronGeometry(1.15,1)`
+      **in** — **42 vertices / 120 edges**, node dots on the real vertices.
+- [x] **"make those thin white lines have a real bright glow so they are visible
+      on any screen"** → root-caused, not cranked: every shader writes
+      **premultiplied** `vec4(col*a, a)` but no material set
+      `premultipliedAlpha`, so three.js blended with `SRC_ALPHA` and applied the
+      alpha **twice** (`col*a²`). For additive lines that meant every cage line
+      drew at `b²` instead of `b` (0.76 → 0.58). `premultipliedAlpha: true` on
+      `L.polyMat` + `L.nodeMat` (+ `coreMat`, see next item).
+- [x] **"get rid of the black haze around the sun at the center, the nebula cloud
+      is good but the black cloud/haze is not"** → **same bug**, opposite
+      symptom: `coreMat` is NormalBlending, so `col*a² + bg*(1-a)` dips BELOW the
+      backdrop wherever alpha is partial. Measured before/after on
+      `docs/orb/idle-light.png` (backdrop 235): **mean 195 at r=24px with 91% of
+      the ring under the backdrop** = the visible dark annulus. With the flag on
+      the term can only ever be `bg + col*a`. **Nebula left untouched** (user
+      likes it) and `glowMat` deliberately left at the default — fixing it
+      brightened the corona *skirt* over its 2.6-unit plane and pushed
+      `orb:size` from 183px to **199px vs the 175px target (13.8% > 12% allowed)**,
+      which failed `size_matches_spec` + `scales_with_window`. Reverting that one
+      material put size back to **drift 4.3%**. Weakening the gate was never an
+      option; recorded as a known gap.
+- [x] **"just remove those blue particles you are using bruh they are looking
+      very weird"** → removed. They were 80 raw `PointsMaterial` dots in `#58c4f2`
+      with **no map**, so three.js drew **square** points — cyan specks that read
+      as dirt on the glass. Removed outright (his first choice over "make them
+      very small and blue"); decorative only, nothing referenced them.
+- [x] **"the glyphs or [rune] texts should be rings around the sun and the inner
+      cage … revolving around them in a continuous motion instead of rotating
+      with them … like a ring around them, not flat 2d discs"** → the offenders
+      were the **data panes**: 18 axis-aligned, camera-facing squares floating in
+      `scene`. Vision QC (blind, comparing against the speaking state) named
+      **thinking** as the worst: *"flat, straight-on glyph tokens … NO
+      foreshortening, NO tilt, NO occlusion — every one faces the camera
+      square-on, i.e. pasted stickers"*, versus speaking's ring which
+      *"foreshortens into an ellipse and passes behind the core"*. Rebuilt as
+      **two tilted rings** — one around the sun (r 0.78), one around the inner
+      cage (r 1.02), sitting between the two cage shells — each pane oriented
+      **radially outward** (`lookAt` a point 2× its offset from the ring centre)
+      so it lies on the ring cylinder and foreshortens at the sides. They stay in
+      `scene`, **not** `group`, so they **revolve** continuously and are never
+      spin-locked to the sun or the cage; with `depthWrite:false` and the core
+      writing depth, the far half is occluded — the "passes behind" read.
+- [x] **"also make sure it pulsated when speaking the words"** → the speaking
+      glyph rings' `uAlpha` was `a * 1.1` (state weight ONLY) so they sat at a
+      constant brightness while she spoke — only the gold streaks reacted. Now
+      `a * 1.1 * (0.85 + AM.ampS * 0.6)`, i.e. **0.85 → ~1.45 with the smoothed
+      TTS amplitude** (fast attack / slow release). Alpha-only on purpose:
+      scaling the band's geometry would move pixels into `orb:size`'s
+      `size_matches_spec`.
+- [ ] **"for starting up dont start from pink/purple color please start from
+      white only just dim white then full glow white into the idle state"** —
+      diagnosed: `S.starting.nebula = 0.35` shows the *coloured* haze (lime/teal/
+      blue/**magenta #C026D3**) during boot while `bright = 0.72` (dim) — so boot
+      reads as a dim COLOUR wash, not dim white. Pending: nebula 0 during
+      `starting` + pure-white tint, keeping the existing `bright 0.72 → 1.00`
+      ramp into idle.
+- [ ] **"NOTHING SHOULD FEEL OR SEE LIKE 2D"** — remaining flat billboards:
+      nebula plane (user likes it — leave), sun corona glow plane (a bloom has to
+      be a billboard), `jobdots` `CircleGeometry` halos, Answer-Mode petal/bokeh
+      sprites, and the DOM `#micbadge` pill (vision flagged it as "the flattest
+      element in the whole set"; it is the SEC-3 indicator, so it stays until an
+      in-canvas replacement is agreed).
+
 ## WAVE 5H AUDIT TASKS (packet `docs/audit-tasks/orb.md`)
 
 Verify-first: every finding quoted with `file:line`, reported CONFIRMED /

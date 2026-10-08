@@ -47,9 +47,9 @@
       "maxErr": 0,
       "active": false,
       "shape": "circle",
-      "radiusMin": 1.14999995906139,
-      "radiusMax": 1.1500000306110496,
-      "radiusSpread": 7.154965953048986e-8
+      "radiusMin": 1.149999976158142,
+      "radiusMax": 1.1500000023987176,
+      "radiusSpread": 2.624057549027725e-8
     }
   },
   "mid": {
@@ -73,9 +73,9 @@
       "maxErr": 0,
       "active": false,
       "shape": "circle",
-      "radiusMin": 1.14999995906139,
-      "radiusMax": 1.1500000306110496,
-      "radiusSpread": 7.154965953048986e-8
+      "radiusMin": 1.149999976158142,
+      "radiusMax": 1.1500000023987176,
+      "radiusSpread": 2.624057549027725e-8
     }
   }
 }

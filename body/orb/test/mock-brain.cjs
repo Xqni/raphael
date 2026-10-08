@@ -49,6 +49,21 @@ class MockBrain {
       calls: { total: 128, ok: 121, errors: 7 },
       tokens: { input: 402113, output: 51204 },
       errors: { E_PROVIDER_429: 7 },
+      // F-4 primary source: router's COMPACT headroom block, byte-for-byte the
+      // shape in docs/requests/router__to__orb__headroom-in-menu.md. NB every
+      // circuit here is 'closed' while `providers` below still has zen_free
+      // 'open' — so a circuit row in the default state would PROVE the menu is
+      // reading the wrong block.
+      headroom: {
+        providers: {
+          go:       { rpm_headroom: 28, tpm_headroom: 42000, cooldown_s: 0.0, circuit: 'closed' },
+          zen_free: { rpm_headroom: 12, tpm_headroom: 12000, cooldown_s: 0.0, circuit: 'closed' },
+          groq:     { rpm_headroom: 30, tpm_headroom: 60000, cooldown_s: 0.0, circuit: 'closed' },
+        },
+        vision_paid: { today_usd: 0.0007, day_cap_usd: 1.0, total_usd: 0.0007,
+                       total_cap_usd: 10.0, exhausted: false,
+                       total_exhausted: false, ledger_broken: false },
+      },
       providers: {
         groq:     { circuit: 'closed', cooldown_s: 0,
                     rpm: { used: 12, cap: 30, window_s: 60 },

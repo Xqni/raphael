@@ -423,7 +423,14 @@ export function updateAnswerMode(AM, ctx) {
     const a = (i === 0) ? F + Q * 0.4 : F;
     R.pivot.rotation.y += R.dir * 0.55 * spinDt;                // orbital precession = band WRAPS the sphere
     R.band.rotation.z += R.dir * (0.35 + 0.65 * F) * spinDt;    // glyphs travel along the tilted band
-    R.glyphMat.uniforms.uAlpha.value = a * 1.1; // glyphs only (glow = shader stroke-halo)
+    // USER (2026-10-07): "make sure it pulsated when speaking the words".
+    // uAlpha was driven by STATE WEIGHT ONLY, so the rings sat at a constant
+    // brightness while she spoke — only the gold streaks reacted. Now the glyph
+    // marks breathe with the smoothed TTS amplitude (fast attack / slow release
+    // from AM.ampS above): ~0.85 at silence up to ~1.45 at peak, i.e. a clear
+    // per-word pulse. Alpha-only on purpose: scaling the band's GEOMETRY would
+    // move pixels and could push orb:size's size_matches_spec check.
+    R.glyphMat.uniforms.uAlpha.value = a * 1.1 * (0.85 + AM.ampS * 0.6);
   }
 
   // diamond frame + center squares: full in speaking, quiet signature in acting

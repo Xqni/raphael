@@ -373,3 +373,71 @@ Rollback is deliberately trivial because **nothing in the WSLg path is deleted**
 | Prototype | **BLOCKED on human approval** — `coord user_attention` posted |
 | Code / installs | **NONE** (ARCH-1 is explicitly plan-only) |
 | WSLg path | untouched and still fully gated |
+
+---
+
+## 12. AUD-30/22 fold-in — Electron supply-chain + hardening (wave-5H addendum)
+
+Raised by the integrator: *"qa-security filed
+`qa-security__to__orb__electron-audit-highs.md` (electron 30.5.1 = 2 npm highs:
+ASAR bypass + extract-zip, fix = major bump) — read + fold into your ARCH-1 plan
+(supported Electron + restore sandbox + will-navigate/IPC sender validation per
+the audit; audit checklist refs: security checklist + timelines)."*
+
+**Verify-first verdicts (every claim quoted from code in this repo):**
+
+| # | Claim | Verdict | Evidence |
+|---|---|---|---|
+| 1 | Electron is pinned at 30.5.1 | **CONFIRMED** | `body/orb/package.json` → `"electron": "30.5.1"`; `package-lock.json` → `node_modules/electron -> 30.5.1` |
+| 2 | 2 npm highs (ASAR bypass + extract-zip) | **TAKEN ON QA'S WORD — not independently reproducible here** | `npm audit` in `body/orb` returns `400 Bad Request … Invalid request payload JSON format` from the configured registry (`pkgs.safetycli.com`); and `docs/ORB_REBUILD_TASK.md:116` already records: *"npm audit endpoint broken (ignore audit failures)."* I could not confirm severity or fix range myself. |
+| 3 | Sandbox is off | **CONFIRMED** | `src/main/main.js:326` → `sandbox: false,` |
+| 4 | No `will-navigate` / window-open guard | **CONFIRMED** | `grep -rn "will-navigate\|setWindowOpenHandler\|new-window\|navigate" body/orb/src/` → **NONE FOUND** |
+| 5 | No IPC sender validation | **CONFIRMED** | 9 × `ipcMain.handle(...)` in `src/main/main.js`; `grep -rn "senderFrame\|event.sender\|validateSender" src/main/main.js` → **no hits** |
+| 6 | Mitigations already present | **ALREADY-DONE** | `src/main/main.js:324-325` → `contextIsolation: true, nodeIntegration: false` |
+
+So: the renderer is not a free RCE path (`contextIsolation` on, `nodeIntegration`
+off), and the residual surface is exactly what the audit names — **navigation
+guards, IPC sender validation, sandbox, and an unsupported Electron major.**
+
+### What this does to the migration plan (the important part)
+
+1. **The major bump is a PREREQUISITE, not a parallel chore.** The plan targets
+   Electron 44 (§1); we are on 30.5.1 — **14 majors behind**. Migrating to a
+   native build *on 30.5.1* would ship an EOL runtime and then require a second,
+   full parity pass at 44. **Do ONE upgrade to a supported major, then run the
+   native prototype on it**, reusing the §8 parity checklist as the upgrade's own
+   regression gate.
+2. **It conflicts with the base spec, so it needs an integrator decision.**
+   `docs/ORB_REBUILD_TASK.md:116` pins *"electron 30.5.1, three 0.170.0, ws
+   8.22.0 — **no version drift**."* Bumping Electron is a deliberate spec change,
+   not a routine dependency update — ARCH-1 is plan-only, so **no bump is made
+   here**; raised for decision instead.
+3. **ABI is the cost driver, not the version number** (§1): Electron 44 = ABI
+   149 vs Node 24 = ABI 137, so *any* native module must be `@electron/rebuild`ed
+   (`win_delay_load_hook` stays on). Budget the bump for that, not for the
+   semver diff.
+
+### Hardening timeline (sequenced so nothing is done twice)
+
+| Step | Item | Owner | Gate |
+|---|---|---|---|
+| **H1 (cheap, now)** | `will-navigate` block + `setWindowOpenHandler({action:'deny'})` on the orb window | orb | new `orb:trace` check; no visual change |
+| **H2 (cheap, now)** | IPC sender validation on the 9 `ipcMain.handle` routes (reject any `event.senderFrame` that is not the orb window) | orb | new `orb:trace` check |
+| **H3 (needs a decision)** | Electron 30.5.1 → supported major; resolve `ORB_REBUILD_TASK.md:116` "no version drift" | integrator + orb | **full §8 parity checklist** (this becomes the bump's regression suite) |
+| **H4 (with H3)** | `sandbox: true` — verify `preload.js` still works (it only uses `contextBridge` + `ipcRenderer`, both allowed in a sandboxed preload) | orb | `test:unit` + `orb:trace` + interaction 34/34 |
+| **H5 (after H3)** | Native prototype (§9) **on the new major** | orb, human-gated | §8 parity + §7 measurement |
+
+H1/H2 are independent of the native migration and of H3 — they can land on
+30.5.1 today. H4 is deliberately sequenced *with* H3 because restoring the
+sandbox on an EOL runtime would have to be re-verified after the bump anyway.
+
+### Audit checklist / timeline references
+
+- Packet: `docs/audit-tasks/orb.md` (ARCH-1 row, plan-only + human gate).
+- Project audit: `docs/AUDIT-2026-10-07.md` (priority waves; the electron
+  highs are a *later* filing than that document — `grep -n "AUD-30\|AUD-22"`
+  over `docs/` returns nothing, so the qa-security request file itself has not
+  landed in the tree yet. The findings above are verified from **our own code**,
+  not from that file.)
+- Deps policy being superseded: `docs/ORB_REBUILD_TASK.md:116`.
+- Security invariants that already bind us: `docs/PROTOCOL.md` §11.

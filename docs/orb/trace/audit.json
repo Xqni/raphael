@@ -4,7 +4,7 @@
   "isolation": {
     "wsPort": 8906,
     "cdpPort": 9406,
-    "userData": "/home/dami/.raphael/orb/orb",
+    "userData": "/home/<wsl-user>/.raphael/orb/orb",
     "mockBrainOnly": true
   },
   "gl": {

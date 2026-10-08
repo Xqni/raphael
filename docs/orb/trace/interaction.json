@@ -4,7 +4,7 @@
     {
       "name": "menu_provider_and_model",
       "ok": true,
-      "detail": "ids: info-provider, info-model, info-usage, info-rate, info-circuit",
+      "detail": "ids: info-provider, info-model, info-usage, info-rate",
       "pass": true
     },
     {
@@ -28,7 +28,7 @@
     {
       "name": "menu_usage_and_rate_rows",
       "ok": true,
-      "detail": "Usage 24h: 128 calls · 121 ok · 7 err | Rate headroom: 3% · zen_free 58/60 rpm",
+      "detail": "Usage 24h: 128 calls · 121 ok · 7 err | Rate headroom: zen_free 12 · go 28 · groq 30 rpm",
       "pass": true
     },
     {
@@ -38,15 +38,21 @@
       "pass": true
     },
     {
-      "name": "menu_rate_headroom_math",
+      "name": "menu_rate_headroom_from_accessor",
       "ok": true,
-      "detail": "label=\"Rate headroom: 3% · zen_free 58/60 rpm\"",
+      "detail": "label=\"Rate headroom: zen_free 12 · go 28 · groq 30 rpm\" (tightest first)",
       "pass": true
     },
     {
-      "name": "menu_circuit_row_when_open",
+      "name": "menu_circuit_absent_when_all_closed",
       "ok": true,
-      "detail": "label=\"Circuit: zen_free open\"",
+      "detail": "no circuit row (headroom says all closed)",
+      "pass": true
+    },
+    {
+      "name": "menu_vision_absent_when_healthy",
+      "ok": true,
+      "detail": "no vision row (not exhausted)",
       "pass": true
     },
     {
@@ -56,21 +62,39 @@
       "pass": true
     },
     {
+      "name": "menu_circuit_row_when_open",
+      "ok": true,
+      "detail": "label=\"Circuit: groq open (41s)\" (groq, not zen_free — proves the source)",
+      "pass": true
+    },
+    {
+      "name": "menu_vision_budget_row_when_exhausted",
+      "ok": true,
+      "detail": "label=\"Vision budget: today $0.0007/1\"",
+      "pass": true
+    },
+    {
+      "name": "menu_headroom_falls_back_when_accessor_absent",
+      "ok": true,
+      "detail": "label=\"Rate headroom: 3% · zen_free 58/60 rpm\"",
+      "pass": true
+    },
+    {
       "name": "menu_mic_cloud_row",
       "ok": true,
       "detail": "label=\"Mic → cloud STT (when listening)\"",
       "pass": true
     },
     {
-      "name": "mic_badge_on_while_listening",
+      "name": "mic_badge_absent_when_listening",
       "ok": true,
-      "detail": "on=true",
+      "detail": "micbadge element present? false",
       "pass": true
     },
     {
-      "name": "mic_badge_off_in_private_mode",
+      "name": "mic_badge_absent_in_private_mode",
       "ok": true,
-      "detail": "on=false",
+      "detail": "micbadge element present? false",
       "pass": true
     },
     {
@@ -170,9 +194,9 @@
       "pass": true
     },
     {
-      "name": "notice_shown_as_banner",
+      "name": "notice_frame_not_rendered_as_text",
       "ok": true,
-      "detail": "banner={\"text\":\"Notice: disk almost full\",\"shown\":true}",
+      "detail": "banner={\"text\":\"\",\"shown\":false} (empty+hidden = speech only)",
       "pass": true
     },
     {
@@ -200,12 +224,7 @@
     },
     {
       "id": "info-rate",
-      "label": "Rate headroom: 3% · zen_free 58/60 rpm",
-      "enabled": false
-    },
-    {
-      "id": "info-circuit",
-      "label": "Circuit: zen_free open",
+      "label": "Rate headroom: zen_free 12 · go 28 · groq 30 rpm",
       "enabled": false
     },
     {
