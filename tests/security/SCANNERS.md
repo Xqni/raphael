@@ -22,12 +22,19 @@
 # (90 local-username, 9 private-IP, 8 home/drive-path, 10 generic-api-key
 # from test fixtures) across 53 tracked files. They are ALLOWED, not
 # forgotten: any NEW occurrence (new fingerprint) fails the job — proven by
-# a live negative test (new `/home/dami/...` line → exit 1, 2026-10-08).
+# a live negative test (new `<wsl-user>/...` path → exit 1, 2026-10-08).
 #
 # The baseline MUST be generated WITHOUT --redact (gitleaks matches the
 # finding's Match/Secret fields as well as the fingerprint — a redacted
-# baseline suppresses nothing). Regenerate ONLY when a finding is fixed or
-# consciously accepted, with the reason in the commit message:
+# baseline suppresses nothing). Fingerprints embed COMMIT SHAs — REGENERATE
+# AFTER EVERY REBASE of this branch (rewritten commits invalidate the whole
+# baseline; observed live 2026-10-08: post-rebase scan went 0 -> 41) and
+# before each push, with the reason in the commit message.
+# The file itself is a TRANSITIONAL suppression ledger (400 scan_personal
+# findings): infra allow-list requested (scan_personal allowlist entry) —
+# it disappears when wave-5H exit criterion 4 (zero personal data in tracked
+# files) completes repo-wide. Regenerate when a finding is fixed or
+# consciously accepted:
 #
 #   gitleaks git --config .gitleaks.toml --report-format json \
 #                --report-path tests/security/gitleaks-baseline.json

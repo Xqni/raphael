@@ -9,7 +9,7 @@ import wave_done_lint as lint
 
 
 @pytest.mark.parametrize('msg,ok_kind', [
-    ('Wave 5 DONE — https://github.com/Xqni/raphael/actions/runs/37714371665',
+    ('Wave 5 DONE — https://github.com/<gh-owner>/raphael/actions/runs/37714371665',
      'ci-run-url'),
     ('wave done, see run 37714092239', 'ci-run-id'),
     ('wave done (runs/37714092239)', 'ci-run-id'),
@@ -24,7 +24,7 @@ def test_valid_messages_pass(msg, ok_kind):
 @pytest.mark.parametrize('msg', [
     'wave done, everything green',
     'wave done — local: 319 passed (no run id)',
-    'https://github.com/Xqni/raphael/actions',   # no /runs/<id>
+    'https://github.com/<gh-owner>/raphael/actions',   # no /runs/<id>
     'sha256:notahexdigest',                       # not 64 hex
 ])
 def test_invalid_messages_bounce(msg):

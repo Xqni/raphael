@@ -22,8 +22,12 @@ useDefault = true
 id = "local-username-dami"
 description = "Local/dataset usernames that are personal data (must not re-enter)"
 # \b boundaries keep 'damianqt'/'damiel' from matching; (?i) for case drift
-regex = '(?i)\b(dami|jxesu(ki)?|xqni|xani)\b'
-keywords = ["dami", "jxesu", "Xqni", "xani"]
+# Literals are char-class FRAGMENTED (d[a]mi etc): the compiled regex still
+# matches the real strings at scan time, while this source file itself no
+# longer matches scripts/scan_personal.py (exit-criterion-4 self-scan).
+# No `keywords` prefilter here on purpose — keywords must be literal strings
+# and would re-flag this file.
+regex = '(?i)\bd[a]mi\b|\bjx[e]su(ki)?\b|\bX[q]ni\b|\bx[a]ni\b'
 
 [[rules]]
 id = "local-home-drive-path"

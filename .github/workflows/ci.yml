@@ -132,15 +132,19 @@ jobs:
           python-version: '3.12'
       - name: gitleaks (default secrets + local user/path/IP rules, baseline-allow-listed)
         run: |
+          mkdir -p "$HOME/bin"
           curl -sSL -o /tmp/gitleaks.tgz \
             "https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz"
           echo "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb  /tmp/gitleaks.tgz" | sha256sum -c -
-          tar xzf /tmp/gitleaks.tgz -C /tmp gitleaks
+          tar xzf /tmp/gitleaks.tgz -C "$HOME/bin" gitleaks
+          echo "$HOME/bin" >> "$GITHUB_PATH"   # infra's secret-scan.sh picks it up too
           # --log-opts=HEAD: scan THIS branch's history only — matches the
           # single-branch checkout and keeps lane-side scans deterministic
           # (unmerged sibling branches must not redden this job)
-          /tmp/gitleaks git --log-opts=HEAD --config .gitleaks.toml \
+          "$HOME/bin/gitleaks" git --log-opts=HEAD --config .gitleaks.toml \
             --baseline-path tests/security/gitleaks-baseline.json
+      - name: secret-scan (infra engine, requested in scripts/gitleaks.toml header)
+        run: bash scripts/secret-scan.sh
       - name: pip-audit (tests/requirements.txt)
         run: |
           python -m pip install -q pip-audit
