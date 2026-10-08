@@ -70,6 +70,50 @@ _SENT_SPLIT_RE = re.compile(r"(?<=[.!?。！？;:])\s+")
 _LOG_DIR = Path(__file__).resolve().parent / "logs"
 
 
+def expand_spoken_numbers(text: str) -> str:
+    """P0 non-English drift (2026-10-08): fish garbles standalone digit runs
+    ("The sum of 2 plus 2 is 4." was its worst battery case). Expand isolated
+    1-3 digit integers to words so every spoken digit becomes an unambiguous
+    word; NEVER touch decimals (v1.5, 192.168), times/dates/IPs/ranges (no
+    adjacency to . : / - or another digit) or 4+ digit runs (years/ids).
+    Idempotent (expanding words is a no-op), so it is safe on any input path
+    (speak, /say, tools). Subtitles still show the ORIGINAL text — spoken and
+    subtitled readings match ("2" IS spoken "two")."""
+    ones = ["zero", "one", "two", "three", "four", "five", "six", "seven",
+            "eight", "nine", "ten", "eleven", "twelve", "thirteen",
+            "fourteen", "fifteen", "sixteen", "seventeen", "eighteen",
+            "nineteen"]
+    tens = ["", "", "twenty", "thirty", "forty", "fifty", "sixty", "seventy",
+            "eighty", "ninety"]
+
+    def spell(n: int) -> str:
+        if n < 20:
+            return ones[n]
+        if n < 100:
+            return tens[n // 10] + (" " + ones[n % 10] if n % 10 else "")
+        if n < 1000:
+            return ones[n // 100] + " hundred" + (
+                " " + spell(n % 100) if n % 100 else "")
+        return spell(n // 1000) + " thousand" + (
+            " " + spell(n % 1000) if n % 1000 else "")
+
+    def sub(m: "re.Match") -> str:
+        prev = text[m.start() - 1] if m.start() > 0 else ""
+        nxt = text[m.end()] if m.end() < len(text) else ""
+        after = text[m.end():m.end() + 2]
+        if re.match(r"\.\d", after):            # decimal: 4.5, v1.5, IPs
+            return m.group(0)
+        if nxt and nxt in ":/-":                # time/date/range/paths
+            return m.group(0)
+        if prev and prev in ".:/-":              # prev separator (e.g. ".5")
+            return m.group(0)
+        if (prev and prev.isdigit()) or (nxt and nxt.isdigit()):
+            return m.group(0)                    # digit adjacency (ranges)
+        return spell(int(m.group(1)))
+
+    return re.sub(r"\b(\d{1,3})\b", sub, text or "")
+
+
 class TTSError(Exception):
     """Typed TTS failure — loop.py maps .code into a PROTOCOL error frame."""
 
@@ -385,6 +429,7 @@ class FishSpeechServer:
         self.log_path = self.log_dir / "fish_server.log"
         self.last_error: Optional[str] = None
         self.startup_ms: Optional[float] = None
+        self._ref_text_warned = False   # P0 drift: one-time missing-transcript log
 
     # -- lifecycle -----------------------------------------------------------
     @staticmethod
@@ -578,6 +623,14 @@ class FishSpeechServer:
                 ref_text = txt.read_text(encoding="utf-8").strip()
             except OSError:
                 ref_text = ""
+        if not ref_text and not self._ref_text_warned and self.cfg.tts_reference_required:
+            # P0 drift (2026-10-08): without the reference TRANSCRIPT fish
+            # conditions on audio only -> foreign-phonation drift on hard
+            # sentences (measured 2/10 vs 8-10/10 with the transcript).
+            self._ref_text_warned = True
+            _log(f"[tts] reference transcript missing ({voice.with_suffix('.txt')}) "
+                 f"— conditioning on audio only; English drift likely "
+                 f"(create the .txt with the reference's transcript)")
         return [{"audio": base64.b64encode(raw).decode("ascii"),
                  "text": ref_text}]
 
@@ -586,8 +639,19 @@ class FishSpeechServer:
         # change it would replay the OLD voice (Bug D suspect #3), so it is
         # OFF and our reference-namespaced PhraseCache is the only cache.
         return {
-            "text": text, "format": "wav", "streaming": False,
+            # P0 drift fix #1 (2026-10-08): spell out isolated digits — fish
+            # garbled digit runs with a JP reference ("2 plus 2 is 4").
+            "text": expand_spoken_numbers(text),
+            "format": "wav", "streaming": False,
             "normalize": True, "use_memory_cache": "off",
+            # P0 drift fix #2: default temp0.7 drifted toward the JP
+            # reference's phonation on hard sentences. Measured full battery:
+            # BEFORE (text="", temp0.7) = 2/10; +ref-text = 8/10; +T0.2 = 
+            # 10/10, 9/10, 9/10 across three runs (residual: single-word
+            # near-misses 0.846-0.881, e.g. Working->Walking). RP1.3 was
+            # tried and measured WORSE overall (9/10, 8/10) — kept RP1.2.
+            "temperature": 0.2,
+            "repetition_penalty": 1.2,
             "references": references,
         }
 
@@ -857,8 +921,9 @@ class TTSEngine:
         spoken = " ".join(sentences)
         # Playback-echo bookkeeping: remember what she is about to SAY so the
         # activation gate can drop her own voice when it bounces back through
-        # the mic (self-trigger loop prevention — activation.py).
-        get_playback_echoes().remember(spoken)
+        # the mic (self-trigger loop prevention — activation.py). Key on the
+        # EXPANDED text (digits become words on the wire — STT returns words).
+        get_playback_echoes().remember(expand_spoken_numbers(spoken))
         # Reference handshake (Bug D): re-fingerprint + re-namespace the phrase
         # cache BEFORE any cache lookup, so a swapped reference is picked up
         # immediately and old-voice wavs are unreachable from the first chunk.

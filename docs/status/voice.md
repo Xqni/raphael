@@ -700,3 +700,60 @@ $ brain/.venv/bin/python -m pytest brain/tests -q
    another lane's Electron+opencode held RAM; immediate retries green both times;
    zero orphans after: no fish/sherpa/oww processes running)
 ```
+
+## P0 2026-10-08 — non-English drift on some responses (user report) — FIXED
+
+**Verify-first diagnosis (my probes, live fish):**
+- The approved reference is **NATIVE Japanese narration** — two independent
+  transcripts agree: Groq `router.transcribe(language='ja')` =
+  'コク カウンターにいる兵士に話しかけるとエントリーが可能です。…コク 敵は速攻重視の戦法のようです。' (81 chars) and
+  local whisper-small (ja, p=1.00) essentially the same. Source = Japanese
+  game narration (sys clips) — matching the conductor's diagnosis.
+- We were sending it with **`references[].text = ""`** (no sidecar exists →
+  `_references()` fell back to empty): fish conditioned on speaker audio only
+  → content/phonation drift on hard English sentences.
+- **BEFORE measured: 2/10** sentences ≥0.90 whisper round-trip (10-sentence
+  battery, `brain/voice/scripts/p0_drift_ab.py`), e.g.
+  'The sum of 2 plus 2 is 4.' → 'The sum of outflies and eggy suit.' (0.561),
+  'Please open YouTube…' → 'Thank you very much for watching until the end.' (0.370).
+
+**Three fixes (all A/B'd against the same battery):**
+1. **Reference transcript on the wire** — `assets/raphael_reference_jp.txt`
+   (Groq transcript; also copied to the live worktree) is picked up by the
+   existing sidecar read → `references[].text` now carries 81 chars of the
+   reference's own language. Absence is now LOUD: one-time
+   `[tts] reference transcript missing (…) — conditioning on audio only…`.
+   Effect: 2/10 → **8/10**.
+2. **Digit spelling** — `expand_spoken_numbers()` applied inside
+   `FishSpeechServer._payload()` (so EVERY path benefits: speak, /say,
+   battery): isolated 1–3-digit integers → words; decimals/versions/IPs/
+   times/ranges/years/alnum tokens untouched; idempotent (test matrix in
+   `test_p0_drift.py`). Echo registry keys the EXPANDED text (STT returns
+   words) so self-trigger rejection still matches.
+3. **Sampling params** — grids on the worst sentences ×3 draws each:
+   T0.1+RP1.2, T0.2+RP1.2, T0.3+RP1.25, T0.2+RP1.3, seeds 1/2.
+   Winner **temperature 0.2 + repetition_penalty 1.2** (6/6 on the worst
+   pair; RP1.3 measured worse on the full battery: 9/10 + 8/10 — honest
+   negative result kept in the report).
+
+**ACCEPTANCE (10 varied English sentences, ≥0.90 each):**
+| run | result |
+|---|---|
+| BEFORE (audio-only ref, temp0.7) | **2/10** |
+| + ref transcript | 8/10 |
+| + digits + T0.2/RP1.2 (final) | **10/10 MEETS** (`scores_SHIPPED.json`) |
+| re-runs (final code) | 9/10, 9/10 — single-word near-misses 0.846–0.881 (Working→Walking etc.), fish residual variance |
+
+Samples for the user (gitignored dir): `assets/reference/samples/P0_DRIFT_BEFORE_01..10.wav` +
+`P0_DRIFT_AFTER_01..10.wav`. Full per-sentence tables: `~/.raphael/voice/eval/drift_{before,after}/`.
+
+### Test output
+```
+$ brain/.venv/bin/python -m pytest brain/voice/tests -q
+149 passed, 1 skipped in 12.64s     (7 new test_p0_drift.py)
+$ brain/.venv/bin/python -m pytest brain/tests -q
+216 passed, 1 warning in 17.35s
+fish: reused the running server (never spawned by me; it died mid-run externally and was
+externally restarted — my spawn attempt found it already healthy and spawned nothing);
+zero orphans from this lane.
+```
