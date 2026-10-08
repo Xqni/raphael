@@ -11,6 +11,7 @@ Public API (INTERFACES §a)::
     await vision(image, question, purpose="vision")       -> {"text", "provider", "model"}
     await transcribe(audio, language=None)                -> {"text", "rtf"}
     await health()                                        -> {"ok", "providers": {name: {ok, models, last_error}}}
+    rate_headroom()                                       -> compact RPM/TPM headroom + vision spend (F-4, orb menu)
     await usage_status()                                  -> 24 h usage + live rate/circuit state
                                                              (Wave 3: brain-core surfaces it in GET /status)
 
@@ -48,6 +49,7 @@ from .core import (
     get_router,
     init_router,
     report_usage,
+    rate_headroom,
     reset_router,
     shutdown_router,
     usage_status,
@@ -114,6 +116,7 @@ __all__ = [
     "CallResult", "Outcome", "UsageEvent", "ChatResult", "Provider",
     "init_router", "get_router", "shutdown_router", "reset_router",
     "acquire_model", "complete", "report_usage", "usage_status",
+    "rate_headroom",
     # resilience primitives (exposed for tests)
     "CircuitBreaker", "RateLimiter", "TokenBudget", "ProviderStats",
 ]

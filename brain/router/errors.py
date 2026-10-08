@@ -37,6 +37,7 @@ RETRYABLE_CODES = frozenset({
 
 # PROTOCOL §10 — detail may be surfaced as subtitle text ONLY for these
 SPOKEN_CODES = frozenset({
+    "E_BUDGET",
     "E_LOCK_BUSY",
     "E_TIMEOUT",
     "E_CONFIRM_TIMEOUT",
@@ -47,7 +48,11 @@ SPOKEN_CODES = frozenset({
 })
 
 # PROTOCOL §10 — fatal (never auto-retried)
+# E_BUDGET: spend ceiling reached (SEC-8, AUDIT-2026-10-07) — fatal for the
+# window (auto-retry cannot help until the ledger resets); requested for the
+# §10 catalog in docs/requests/router__to__integrator__e-budget-code.md.
 FATAL_CODES = frozenset({
+    "E_BUDGET",
     "E_AUTH",
     "E_AUTH_RATE",
     "E_PROTO",
@@ -66,6 +71,7 @@ _AGGREGATE_PRECEDENCE = (
     "E_PROVIDER_AUTH",
     "E_PROVIDER_429",
     "E_TIMEOUT",
+    "E_BUDGET",
     "E_PROVIDER_5XX",
     "E_LOCAL_DOWN",
     "E_OFFLINE",
@@ -79,6 +85,7 @@ _SPOKEN_DETAIL = {
     "E_LOCAL_DOWN":   "Local model service is not responding.",
     "E_OFFLINE":      "No model service is reachable right now.",
     "E_TIMEOUT":      "The model service timed out.",
+    "E_BUDGET":       "Vision budget reached — image analysis resumes after the reset.",
 }
 
 

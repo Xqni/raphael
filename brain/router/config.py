@@ -197,6 +197,8 @@ class RouterSettings:
     # keep using allow_go_runtime/allow_paid_runtime (both stay false).
     allow_vision_paid: bool = False
     vision_paid_daily_cap_usd: float = 1.00
+    vision_paid_total_cap_usd: float = 10.00   # SEC-8 all-time ceiling
+    vision_paid_unknown_call_floor_usd: float = 0.005  # conservative charge
     vision_paid_price_per_mtok: dict[str, float] = field(
         default_factory=lambda: dict(DEFAULT_PRICE_PER_MTOK)
     )
@@ -349,6 +351,10 @@ def load_config(path: Path | None = None) -> RouterConfig:
         allow_vision_paid=bool(providers_data.get("allow_vision_paid", False)),
         vision_paid_daily_cap_usd=float(
             providers_data.get("vision_paid_daily_cap_usd", 1.00)),
+        vision_paid_total_cap_usd=float(
+            providers_data.get("vision_paid_total_cap_usd", 10.00)),
+        vision_paid_unknown_call_floor_usd=float(
+            router_data.get("vision_paid_unknown_call_floor_usd", 0.005)),
         vision_paid_price_per_mtok={
             str(k): float(v)
             for k, v in (_get(router_data, "vision_paid_price_per_mtok")
