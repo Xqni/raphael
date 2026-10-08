@@ -12,7 +12,7 @@
 #   pip-audit: pip-audit -r tests/requirements.txt
 #   bandit:    bandit -r brain supervisor scripts tests body \
 #                    -c tests/security/bandit.yaml --severity-level high
-#   npm audit: (cd body/orb && npm audit --audit-level=critical)
+#   npm audit: (cd body/orb && npm audit --audit-level=high)
 #              # local machines behind the safetycli npm mirror need
 #              # --registry=https://registry.npmjs.org (CI uses npmjs).
 #

@@ -67,6 +67,14 @@ def test_ownership_step_uses_merge_base_for_branches():
     assert 'if [ "$REF" != "main" ]' in src
 
 
+def test_tests_heavy_carries_personal_data_strict_gate():
+    """SEC-1 criterion-4 gate: strict FAIL-only scan in the heavy battery
+    (infra option 1 landed coord [46], qa proposal)."""
+    src = Path('.github/workflows/tests-heavy.yml').read_text(encoding='utf-8')
+    assert 'scripts/scan_personal.py --strict' in src, (
+        'tests-heavy lost the personal-data STRICT gate')
+
+
 def test_gitleaks_config_and_baseline_parse():
     cfg = tomllib.loads((REPO / '.gitleaks.toml').read_text(encoding='utf-8'))
     rule_ids = {r['id'] for r in cfg['rules']}
