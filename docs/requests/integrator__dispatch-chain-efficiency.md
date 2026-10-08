@@ -38,3 +38,22 @@ top-level session-directory discovery.
 ## Live dispatch verification (2026-10-08)
 
 After restarting only the conductor (Raphael stack unchanged/down), `coord ping --lane router` found the registered session via its persisted id and returned `coord: pinged router (...)` in one prompt. Conductor log shows the new process booted after this patch. Full battery is dispatched to GitHub Actions; no local heavy suites were run.
+
+## Addendum: autonomous keepalive (same user ask — "cron jobs ... fully autonomous")
+
+`tools/conductor/keepalive.py` (Core Guard covered under this approval):
+- `dispatch` — ensures conductor is running, pings lanes that have pending events or
+  unread inbox AND an inactive session (5-min per-lane cooldown), wakes the integrator
+  after 10 min of idleness-with-pending. **Never writes state.json** (a whole-state write
+  reverted every cursor on 2026-10-08 — regression test enforces this); its own cooldown
+  lives in `keepalive-state.json`.
+- `usage` — rolling 5h/weekly/monthly Go-spend ESTIMATES from the value-blind
+  `brain/router/usage.jsonl` (budgets seeded $12/$30/$60, adjustable in
+  `usage-watch.json`; no unauthenticated console API exists, so estimates are the
+  early-warning layer), limit hits detected from recorded `FreeUsageLimit`/rate error
+  codes, then an hourly 1-token availability probe (key read from .env, never printed)
+  whose success = RESET → attention + integrator wake.
+- Cron (appended to the user's crontab, existing entries preserved):
+  `*/10 * * * * ... keepalive.py dispatch` and `*/20 * * * * ... keepalive.py usage`.
+- Tests: `tools/conductor/tests/test_keepalive.py` (window math, hit-state roundtrip,
+  ping decisions incl. paused/active/cooldown, never-rewrite-state regression).
