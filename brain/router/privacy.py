@@ -268,15 +268,64 @@ def redact_categories(text: str, categories: Iterable[str]) -> str:
     return out
 
 
-def redact_messages(messages: Any) -> Any:
-    """Deep-copy OpenAI-style messages with every string redacted."""
-    if isinstance(messages, str):
-        return redact_secrets(messages)
-    if isinstance(messages, list):
-        return [redact_messages(m) for m in messages]
-    if isinstance(messages, dict):
-        return {k: redact_messages(v) for k, v in messages.items()}
-    return messages
+# categories that count as PERSONAL data for the free-model gate
+# (allow_free_models_for_personal_data) — the PII trio from privacy.redact
+PERSONAL_CATEGORIES: tuple[str, ...] = ("email", "phone", "card")
+
+
+def detect_personal_data(messages: Any,
+                         categories: Iterable[str] = PERSONAL_CATEGORIES) -> set[str]:
+    """Which configured PII categories appear in the OUTBOUND content,
+    checked BEFORE redaction (AUD-04). Walks strings the same way
+    redact_messages does; never raises."""
+    found: set[str] = set()
+    cats = [str(c).lower() for c in categories or ()]
+    if not cats:
+        return found
+
+    def _walk(node: Any) -> None:
+        if isinstance(node, str):
+            for cat in cats:
+                if cat in found:
+                    continue
+                for pat, _repl in CATEGORY_PATTERNS.get(cat, ()):
+                    if pat.search(node):
+                        found.add(cat)
+                        break
+        elif isinstance(node, list):
+            for item in node:
+                _walk(item)
+        elif isinstance(node, dict):
+            for value in node.values():
+                _walk(value)
+
+    _walk(messages)
+    return found
+
+
+def redact_messages(messages: Any, categories: Iterable[str] | None = None) -> Any:
+    """Deep-copy OpenAI-style messages with every string redacted.
+
+    `categories` = config `privacy.redact` (AUD-04: the CONFIGURED categories
+    — email/phone/card/… — now apply to every outbound chat path; secrets are
+    always scrubbed regardless)."""
+    cats = tuple(str(c).lower() for c in categories or ())
+
+    def _one(text: str) -> str:
+        if cats:
+            return redact_categories(text, cats)
+        return redact_secrets(text)
+
+    def _walk(node: Any) -> Any:
+        if isinstance(node, str):
+            return _one(node)
+        if isinstance(node, list):
+            return [_walk(m) for m in node]
+        if isinstance(node, dict):
+            return {k: _walk(v) for k, v in node.items()}
+        return node
+
+    return _walk(messages)
 
 
 # --------------------------------------------------------------------------- #

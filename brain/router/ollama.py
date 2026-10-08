@@ -79,6 +79,7 @@ class OllamaLocalProvider(Provider):
     name = "ollama"
     caps = frozenset({"chat", "tools", "vision"})
     key_env = None  # local — no key
+    free_tier = False  # LOCAL is always allowed for personal data (AUD-04)
 
     def __init__(self, config: RouterConfig) -> None:
         super().__init__(config)
