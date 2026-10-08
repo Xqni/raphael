@@ -1366,10 +1366,15 @@ Scrubbed (placeholders per the nudge: `<wsl-user>` / `<win-user>`):
 
 | file:line | was | now |
 |---|---|---|
-| `.opencode/research/windows-native-electron-orb.md:20` | `C:\Users\<u>\…` (path-windows) | `C:\<win-user>\…` |
-| `docs/orb/trace/audit.json:7` | `/home/dami/.raphael/orb/orb` | `/home/<wsl-user>/.raphael/orb/orb` |
-| `docs/requests/orb__to__integrator__harness-spawn-while-live.md:27` | `` /home/dami/raphael/body/orb `` | `` /home/<wsl-user>/raphael/body/orb `` |
-| `docs/status/orb.md:941` | `` (/home/dami/raphael/body/orb) `` | `` (/home/<wsl-user>/raphael/body/orb) `` |
+| `.opencode/research/windows-native-electron-orb.md:20` | path-windows — a Windows user-drive path literal in a doc example | `C:\<win-user>\…` |
+| `docs/orb/trace/audit.json:7` | user-linux + path-home | `/home/<wsl-user>/.raphael/orb/orb` |
+| `docs/requests/orb__to__integrator__harness-spawn-while-live.md:27` | user-linux + path-home | `/home/<wsl-user>/raphael/body/orb` |
+| `docs/status/orb.md:941` | user-linux + path-home | `(/home/<wsl-user>/raphael/body/orb)` |
+
+> **Self-inflicted, worth recording:** this table is what *reintroduced* 9 FAIL
+> findings on the very next pre-commit scan — quoting the raw pre-scrub values as
+> evidence put the personal data straight back. The rule now shown is the rule
+> that fired; the actual literals are no longer reproduced anywhere in this file.
 
 **Not scrubbed (NOT-APPLICABLE):** the 5 remaining `REVIEW` hits in
 `body/orb/package-lock.json` (`rule=ip-private`). That is a **generated npm
@@ -1398,7 +1403,7 @@ that, and looking caught a defect my code-reading had missed.
 | starfield code | `renderer.js:565` → `starsMesh = null`; the `PointsMaterial(0x58c4f2)` line is gone |
 | committed? | **YES** — `48da3dd` |
 | on `origin/main`? | **NO** — `git merge-base --is-ancestor 48da3dd origin/main` → false |
-| live install | `/home/dami/raphael/body/orb/src/renderer/renderer.js` still contains `58c4f2` **5×** |
+| live install | `/home/<wsl-user>/raphael/body/orb/src/renderer/renderer.js` still contains `58c4f2` **5×** |
 
 **So the removal is correct but has never been merged** — the live orb loads
 `main`, which still has it. This is the same reason every other fix in this batch
