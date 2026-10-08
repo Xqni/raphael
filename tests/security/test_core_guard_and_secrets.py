@@ -51,6 +51,26 @@ def _sha(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def _guard_sha(rel: str) -> str:
+    """Matches tests/core_guard.py semantics: '/**' entries aggregate-hash
+    every tracked file beneath the directory (git ls-files)."""
+    if not rel.endswith('/**'):
+        return _sha(REPO / rel)
+    import subprocess
+    base = rel[:-3]
+    try:
+        out = subprocess.run(['git', 'ls-files', '--', base], cwd=REPO,
+                             capture_output=True, text=True, timeout=30)
+        files = [ln for ln in out.stdout.splitlines() if ln]
+    except Exception:  # noqa: BLE001
+        files = []
+    agg = hashlib.sha256()
+    for f in files:
+        agg.update(f.encode('utf-8'))
+        agg.update(hashlib.sha256((REPO / f).read_bytes()).digest())
+    return agg.hexdigest()
+
+
 def test_core_guard_byte_stable():
     assert MANIFEST.exists(), \
         f'{MANIFEST} missing — run: python tests/core_guard.py --update'
@@ -58,7 +78,7 @@ def test_core_guard_byte_stable():
     drift = []
     for rel, owner in CORE_GUARD.items():
         expected = manifest.get(rel)
-        actual = _sha(REPO / rel)
+        actual = _guard_sha(rel)
         if expected != actual:
             drift.append(f'{rel} ({owner}): expected {expected}, got {actual}')
     assert not drift, (
