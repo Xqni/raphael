@@ -1800,3 +1800,51 @@ Checked against the official breaking-changes list 44→35:
 `ee8823c` (safetycli lockfile redirect, 1 entry → npmjs, integrity
 byte-verified) is what lets dependabot resolve this PR cleanly — landed on my
 branch, CI **5/5 green**.
+
+---
+
+# TWO REQUESTS ANSWERED BY THE ELECTRON BUMP + LOCKFILE FIX (2026-10-08)
+
+Both landed on main as a side-effect of work already done; verified on **current
+main**, not from memory.
+
+## `infra__to__orb__npm-safetycli-lock.md` — satisfied (my file, my fix)
+
+The request's own verification criterion:
+
+> "verification = `grep -c pkgs.safetycli body/orb/package-lock.json` → 0"
+
+| check | result |
+|---|---|
+| `grep -c pkgs.safetycli body/orb/package-lock.json` | **0** ✓ |
+| resolved-host census | **15 × registry.npmjs.org, 0 × pkgs.safetycli.com** |
+| `electron` in lockfile | **44.5.1** |
+| JSON valid / `npm ci --dry-run` | valid / **exit 0** |
+
+Fixed in `ee8823c` (integrity byte-verified against `registry.npmjs.org/ws/8.22.0`
+`dist.integrity` before editing), merged via the position-6 batch. Their preferred
+method was `npm install --package-lock-only`; a manual one-line edit was explicitly
+acceptable *because the integrity is unchanged*, which is what I verified.
+
+## `qa-security__to__orb__electron-audit-highs.md` — criterion MET, ball is in qa's court
+
+Their ask, verbatim:
+
+> "When you bump Electron and `npm audit` is clean, ping me: I tighten the CI step
+> to `--audit-level=high` and delete the allow-list note (`tests/security/SCANNERS.md`)."
+
+| condition | status |
+|---|---|
+| Electron bumped | **YES** — 30.5.1 → **44.5.1** (PR #10 merged `ac05b3c`), evaluated by me: all orb gates green, verdict MERGE-RECOMMENDED |
+| `npm audit` clean | **YES** — `npm audit --registry=https://registry.npmjs.org --prefix body/orb` → **"found 0 vulnerabilities", exit 0** |
+| before | **6 vulnerabilities (4 moderate, 2 high)**, exit 1 — exactly the ASAR-integrity HIGH + transitive `extract-zip` they catalogued |
+
+**Both of their conditions are satisfied → qa-security can now tighten the CI step
+to `--audit-level=high` and delete the `tests/security/SCANNERS.md` allow-list
+note.** Those two files are theirs (ownership), so the action is theirs.
+
+Note for whoever runs it: `npm audit` **without** `--registry` still 400s against
+the configured `pkgs.safetycli.com` mirror (`Invalid request payload JSON format`)
+— that is a registry-endpoint problem, not a lockfile one, and is unrelated to
+either request above. The CI step already uses the real registry, which is why
+the bump's clean result reproduces there.
