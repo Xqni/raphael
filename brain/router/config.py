@@ -114,12 +114,84 @@ def deep_merge(base: dict[str, Any], over: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
-def _merge_fragments(base: dict[str, Any], config_d: Path) -> dict[str, Any]:
-    data = base
-    if not config_d.is_dir():
-        return data
-    for frag in sorted(config_d.glob("*.yaml")):
-        data = deep_merge(data, _load_yaml(frag))
+# --------------------------------------------------------------------------- #
+# Authority guard (AUD-02, AUDIT-2026-10-07 P0)
+#
+# The router loader used to deep-merge config.d fragments with NO authority
+# strip — a fragment could pivot `providers.groq_base_url` (key exfil), flip
+# `allow_paid_runtime`, or inject `profiles:` (pivot the overlay). The policy
+# is brain-core's Core-Guard (brain/config.py:129 AUTHORITY_KEYS + wholesale
+# `profiles` strip, qa APPROVED 2026-10-07); this module now uses that loader
+# as the SINGLE authoritative merger when importable, and otherwise applies
+# the EXACT same policy locally (fail CLOSED: base values win, loudly logged).
+# --------------------------------------------------------------------------- #
+AUTHORITY_KEYS: tuple[str, ...] = ("safety", "privacy", "providers")
+
+_local_violations: list[dict[str, Any]] = []
+
+
+def _brain_cfg():
+    """brain-core's config module = the authoritative merger (light import:
+    os/threading/Path only; `brain` is a PEP 420 namespace package)."""
+    try:
+        from brain import config as brain_cfg  # noqa: WPS433 (lazy on purpose)
+        return brain_cfg
+    except Exception:  # noqa: BLE001 — standalone/venv runs fall back below
+        return None
+
+
+def authority_violations() -> list[dict[str, Any]]:
+    """Violations recorded during the last loads (delegates to brain-core's
+    Core-Guard list when that loader is active)."""
+    mod = _brain_cfg()
+    if mod is not None:
+        try:
+            return list(mod.authority_violations())
+        except Exception:  # noqa: BLE001
+            pass
+    return list(_local_violations)
+
+
+def _strip_fragment(frag: dict[str, Any], name: str) -> dict[str, Any]:
+    """EXACT brain/config.py `_merge_fragment` policy (keep for the fallback
+    path): safety/privacy/providers/profiles are integrator-only."""
+    if not frag:
+        return frag
+    stripped = [k for k in AUTHORITY_KEYS if k in frag]
+    if "profiles" in frag:
+        stripped.append("profiles")
+    if stripped:
+        _local_violations.append({"file": name, "keys": stripped})
+        print(f"[router/config] AUTHORITY VIOLATION in config.d/{name}: "
+              f"stripped {stripped} — safety/privacy/providers/profiles are "
+              "integrator-only (AGENT_RULES §3/§8); base values kept",
+              flush=True)
+        frag = {k: v for k, v in frag.items() if k not in stripped}
+    return frag
+
+
+def _merged_tree(cfg_path: Path) -> dict[str, Any]:
+    """base → config.d (authority-stripped) → profile overlay (INTERFACES §c).
+
+    Uses brain-core's loader when importable so there is ONE authority policy
+    in the repo; the local path below is byte-for-byte the same policy."""
+    mod = _brain_cfg()
+    if mod is not None:
+        try:
+            return dict(mod.load_config(cfg_path, force=True))
+        except Exception:  # noqa: BLE001 — fall through to the local loader
+            pass
+    data = _load_yaml(cfg_path)
+    config_d = cfg_path.parent / "config.d"
+    if config_d.is_dir():
+        for frag in sorted(config_d.glob("*.yaml")):
+            data = deep_merge(data, _strip_fragment(_load_yaml(frag), frag.name))
+    profile = (os.environ.get("RAPHAEL_PROFILE")
+               or str(data.get("profile") or "cloud_temp"))
+    overlay = (_get(data, "profiles") or {}).get(profile)
+    if isinstance(overlay, dict):
+        data = deep_merge(data, overlay)
+    data["profile"] = profile
     return data
 
 
@@ -280,14 +352,8 @@ def _as_str_list(val: Any, fallback: list[str]) -> list[str]:
 def load_config(path: Path | None = None) -> RouterConfig:
     """Load the effective config (base → config.d → profile overlay → env)."""
     cfg_path = Path(path) if path else DEFAULT_CONFIG_PATH
-    data = _load_yaml(cfg_path)
-    data = _merge_fragments(data, cfg_path.parent / "config.d")
-
+    data = _merged_tree(cfg_path)   # authority-guarded merge (AUD-02)
     profile = os.environ.get("RAPHAEL_PROFILE") or str(data.get("profile") or "cloud_temp")
-    profiles = _get(data, "profiles")
-    overlay = profiles.get(profile)
-    if isinstance(overlay, dict):
-        data = deep_merge(data, overlay)
 
     providers_data = _get(data, "providers")
     local_data = _get(data, "local_model")
