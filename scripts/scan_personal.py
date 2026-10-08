@@ -16,6 +16,7 @@ Usage:
   scripts/scan_personal.py --staged      # only git-staged files (pre-commit)
   scripts/scan_personal.sh [args]        # thin wrapper
 """
+from __future__ import annotations
 # ALLOWLIST POLICY (coordinator decision, coord ts 1791462190):
 # exact paths ONLY — never a wildcard over tests/** or docs/**. Every entry
 # carries a written reason; entries DIE when their reason does:
@@ -31,10 +32,27 @@ Usage:
 #     2026-10-08). It dies naturally at exit-criterion-4, when the
 #     repo-wide scrub completes and BOTH scanners run empty; then this
 #     line goes.
+# FUNCTIONAL-VALUE KEYS (coord packet answer, 2026-10-08): some config
+# VALUES legitimately ARE the username/paths because RUNTIME code reads
+# them (scanning them would force breaking the runtime to satisfy a
+# privacy count). Suppressed via exact (file, key, rule) triples in
+# KEY_OK — no wildcards, value-blind (only the KEY name is compared,
+# values are never read into output), each entry removable when the key
+# becomes dynamic. Approved: config.yaml wsl_user; conductor.yaml
+# repo_root / wt_root / integrator_cwd (repo+wt runtime paths).
+KEY_OK = {
+    ("config.yaml", "wsl_user", "user-linux"),
+    ("tools/conductor/conductor.yaml", "repo_root", "path-home"),
+    ("tools/conductor/conductor.yaml", "repo_root", "user-linux"),
+    ("tools/conductor/conductor.yaml", "wt_root", "path-home"),
+    ("tools/conductor/conductor.yaml", "wt_root", "user-linux"),
+    ("tools/conductor/conductor.yaml", "integrator_cwd", "path-home"),
+    ("tools/conductor/conductor.yaml", "integrator_cwd", "user-linux"),
+}
+
 # The summary reports allowlist-skipped file counts so the human-facing
 # exit-criteria count stays honest (scrub tracks the NON-ledger FAILs).
 
-from __future__ import annotations
 
 import re
 import subprocess
@@ -43,10 +61,19 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 
-def _is_public_ipv4(matched: str) -> bool:
+# Version-string contexts (corpus 2026-10-08: every ip-public FP —
+# kernel 6.18.33.2(-microsoft-standard-WSL2|-2), WSLg 1.0.73.2, WSL
+# version 2.7.11.0 — carries one of these words on its line; a real
+# IP line in the corpus (example.com 93.184.216.34) carries none).
+_VERSION_CONTEXT = re.compile(r"(?i)\b(kernel|wslg|msrdc|version)\b")
+
+
+def _is_public_ipv4(matched: str, line: str = "") -> bool:
     """Filter for ip-public: real PUBLIC addresses only (loopback, RFC1918
     privates, link-local, multicast, 0.0.0.0 and version noise are other
     rules' business or not findings at all)."""
+    if line and _VERSION_CONTEXT.search(line):
+        return False                    # version/probe context, not an address
     parts = matched.split(".")
     if len(parts) != 4:
         return False
@@ -83,7 +110,7 @@ RULES = [
     ("path-home", "FAIL", re.compile(r"/home/dami(?![\w.-])"),
      "home directory path"),
     ("ip-public", "FAIL", re.compile(
-        r"\b(?:\d{1,3}\.){3}\d{1,3}\b(?![\d.])"),
+        r"\b(?:\d{1,3}\.){3}\d{1,3}(?![-\w])"),
      "public IPv4", _is_public_ipv4),
     ("ip-private", "REVIEW", re.compile(
         r"\b(?:192\.168\.\d{1,3}\.\d{1,3}|10\.\d{1,3}\.\d{1,3}\.\d{1,3}"
@@ -133,13 +160,19 @@ def scan_file(rel: str) -> list[tuple[str, int]]:
     if "\0" in text:                       # binary
         return []
     hits = []
+    key_re = re.compile(r'''^[\s"']*([A-Za-z0-9_.-]+)["']?\s*[:=]''')
     for lineno, line in enumerate(text.splitlines(), 1):
+        km = key_re.match(line)
+        key = km.group(1) if km else None
         for rule in RULES:
             rule_id, _sev, pat = rule[0], rule[1], rule[2]
             m = pat.search(line)
             if not m:
                 continue
-            if len(rule) > 4 and rule[4] is not None and not rule[4](m.group(0)):
+            if key and (rel, key, rule_id) in KEY_OK:
+                continue        # functional runtime value (exact triple)
+            if len(rule) > 4 and rule[4] is not None and rule[4](
+                    m.group(0), line) is False:
                 continue
             hits.append((rule_id, lineno))
     return hits
