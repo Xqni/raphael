@@ -1,8 +1,34 @@
 # evolution-persona — status
 
-Updated: 2026-10-07 (Wave 5)
+Updated: 2026-10-07 (Wave 5H audit sprint)
 
 ## Done
+- **Wave 5H audit packet (2026-10-07) — all four items reported via coord:**
+  - **SEC-7 (P0): CONFIRMED → APPROVED → APPLIED.** Verify-first quote: `tests/core_guard.py:19-24`
+    `CORE_GUARD_FILES = [brain/confirm.py, brain/auth.py, brain/control.py, brain/mode.py]` (4 files).
+    Request `evolution-persona__to__integrator__sec7-core-guard-expansion.md` (manifest expansion +
+    untrusted control-plane message spec) filed FIRST; integrator merged my zones mirror (58ed877),
+    applied the manifest **4 → 20 entries** (66e67fa, dir-aware hashing, `--update` with my approval
+    ref), coverage test updated (5bd13c7). My `zones.py` mirrors it (conductor/workflows/OWNERSHIP/
+    PS-registry/boot unit = CORE).
+  - **TASK-3 (supervisor rollback hardening): DONE.** ownership CONFIRMED (`docs/OWNERSHIP.md:26`
+    infra owns `supervisor/**`); zones refuse it (`zones.py:47`); manifest covers it post SEC-7
+    (`tests/core_guard.py:36 'supervisor/**'`); supervisor rollback code itself = 0 matches
+    (NOT-APPLICABLE until infra builds it); **forced bad-promotion drill PASSED**
+    (`brain/evolution/tests/test_bad_promotion_rollback.py` — baseline+LKG → bad promote → journal
+    rollback cmd → probation fatal → revert restores tree → LKG re-pointed → decision rolled_back).
+  - **F-1: DONE — first end-to-end PROPOSE-mode loop run** (`docs/evolution/FIRST-RUN.md`): new
+    `brain/evolution/controller.py` (guard → classify → worktree branch → shadow (160 passed, rc=0)
+    → baseline compare (only `commit moved` delta, 1 golden identical) → proposal file + journal →
+    probation SIMULATION in tmp). Target = comment wording fix on `config.d/evolution-persona.yaml`
+    (mutable). **Never auto-applied:** main tree byte-unchanged, worktree+branch cleaned up,
+    proposal-only. First attempt was REFUSED by the fail-closed guard (uncommitted edit over a
+    guarded file) — recorded in FIRST-RUN §1 as guard evidence.
+  - **F-6: DONE** — `docs/evolution/CIEL-PROMOTION.md` (criteria/evidence/user-approval/voice slot/
+    palette/probation checklist; NOT promoted; both Ciel requests verified DONE with commits).
+  - Structural follow-through: SEC-7 manifest rehash runs (`--update --approval <sec7 ref>`) needed
+    after each guarded-file commit; ownership exception for the lane-published manifest hunk
+    requested from integrator/qa (corrected request posted; I did not touch their exceptions file).
 - **Wave 5 closed for this lane (2026-10-07)** — `wave_done` posted (final merge position 10).
   Integrator decisions: `minds[]` **APPROVED as proposed**; `task_kind analysis|simulation` +
   shape_map **APPROVED** (config.yaml entries `analysis: octagram`, `simulation: triangle` added by
@@ -67,10 +93,8 @@ Updated: 2026-10-07 (Wave 5)
 - Full controller (`controller/worktree/promote`) still waits on: infra rollback-hook seam,
   qa-security golden-harness seam + CORE_GUARD_FILES extension, router weights ownership
   (all listed in `docs/evolution/03-wave4-spikes.md` § Dependencies).
-- Wave-5 shared-contract follow-through: integrator contracts **APPROVED** (minds[]; task_kind
-  analysis/simulation + shape_map in config.yaml); engine/render/voice implementation is now on
-  brain-core (job types), orb (minds render + gold palette), voice (Ciel slot) — my requests are
-  approved/forwarded, nothing unblocked left on this lane.
+- — (nothing pending on this lane: all four contracts approved/forwarded; brain-core/orb/voice own
+  the remaining implementation)
 
 ## Next
 - On ping: re-check requests to this lane + shadow request status; if landed, build `worktree.py` +
@@ -79,10 +103,12 @@ Updated: 2026-10-07 (Wave 5)
   router weights) from 01 §7.
 
 ## Test output (real runs only — never claim unrun tests)
-- 2026-10-07 (wave 5, part 3): `tests/.venv/bin/python -m pytest brain/persona/tests -q` → **77 passed in 0.19s**
-- 2026-10-07 (wave 5, part 3): `tests/.venv/bin/python -m pytest brain/evolution/tests -q` → **63 passed in 0.78s**
-- 2026-10-07 (wave 5, part 3): `python3 tests/core_guard.py` → `Core Guard OK (4 files byte-stable)`; `ownership_check --worktree` → `ownership OK (18 checked)`
-- 2026-10-07 (wave 5, part 2): `pytest brain/persona/tests -q` → **56 passed in 0.13s**
+- 2026-10-07 (5H): `pytest brain/evolution/tests -q` → **83 passed in 0.99s** (+ F-1 live cycle:
+  shadow verify `160 passed in 1.23s` rc=0 on the patched worktree)
+- 2026-10-07 (5H): `pytest brain/persona/tests -q` → **77 passed in 0.17s**
+- 2026-10-07 (5H): `python3 tests/core_guard.py` → `Core Guard OK (20 files byte-stable)` (exit 0)
+- 2026-10-07 (5H): `ownership_check --lane evolution-persona --worktree` → OK except the sanctioned
+  `tests/core_guard_manifest.json` rehash (exception request pending — see Done)
 - 2026-10-07 (wave 5): `tests/.venv/bin/python -m pytest brain/evolution/tests -q` → **63 passed in 0.80s**
 - 2026-10-07 (wave 5): `python3 tests/core_guard.py` → `Core Guard OK (4 files byte-stable)` (exit 0)
 - 2026-10-07 (wave 5): `tests/ownership_check.py --lane evolution-persona --worktree` → `ownership OK (10 checked)`
