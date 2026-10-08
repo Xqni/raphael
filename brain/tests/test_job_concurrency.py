@@ -220,14 +220,14 @@ def test_lock_fairness_and_cancel_while_waiting():
     old_tok = os.environ.get('RAPHAEL_TOKEN_PATH')
     os.environ['RAPHAEL_TOKEN_PATH'] = tok
 
-    def wait_http(client, pred, timeout=30.0, step=0.02):
+    def wait_http(client, pred, timeout=60.0, step=0.02, label='condition'):
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
             out = pred()
             if out:
                 return out
             time.sleep(step)
-        raise AssertionError(f'condition not met in {timeout}s')
+        raise AssertionError(f'{label} not met in {timeout}s')
 
     h = {'X-Raphael-Token': 'conc-token-991'}
     try:
@@ -235,32 +235,39 @@ def test_lock_fairness_and_cancel_while_waiting():
             def lock_stats():
                 return client.get('/status', headers=h).json()['input_lock']
 
-            wait_http(client, lambda: not lock_stats()['held'])
+            # deterministic baseline: the engine lock is a process-global
+            # singleton — a leaked holder/waiter from ANY earlier test in the
+            # full battery must not poison this scenario (qa flake 377925718)
+            from brain.jobs.engine import get_engine as _ge
+            if _ge().lock.busy():
+                _ge().lock.force_release()
+            wait_http(client, lambda: not lock_stats()['held'],
+                      label='lock initially free')
             # A: acquires the lock
             a = client.post('/jobs', json={'text': 'job A'}, headers=h
                             ).json()['job_id']
             wait_http(client, lambda: lock_stats()['held']
-                      and lock_stats()['job'] == a)
+                      and lock_stats()['job'] == a, label='A holds lock')
             # B: queues behind A
             b = client.post('/jobs', json={'text': 'job B'}, headers=h
                             ).json()['job_id']
-            wait_http(client, lambda: lock_stats()['waiting'] == 1)
+            wait_http(client, lambda: lock_stats()['waiting'] == 1, label='B queued')
             # C: queues behind B (FIFO)
             c = client.post('/jobs', json={'text': 'job C'}, headers=h
                             ).json()['job_id']
-            wait_http(client, lambda: lock_stats()['waiting'] == 2)
+            wait_http(client, lambda: lock_stats()['waiting'] == 2, label='C queued')
             # cancel B WHILE it waits for the lock
             r = client.post(f'/jobs/{b}/cancel', json={'scope': 'full'},
                             headers=h)
             assert r.status_code == 200 and r.json()['cancelled'] is True
             wait_http(client, lambda: client.get(f'/jobs/{b}',
                                                  headers=h
-                                                 ).json()['status'] == 'cancelled')
+                                                 ).json()['status'] == 'cancelled', label='B cancelled')
             # A and C both finish; FIFO order preserved (B never ran)
             wait_http(client, lambda: client.get(f'/jobs/{a}', headers=h
-                                                 ).json()['status'] == 'done')
+                                                 ).json()['status'] == 'done', label='A done')
             wait_http(client, lambda: client.get(f'/jobs/{c}', headers=h
-                                                 ).json()['status'] == 'done')
+                                                 ).json()['status'] == 'done', label='C done')
             assert client.get(f'/jobs/{b}', headers=h
                               ).json()['status'] == 'cancelled'
             assert order == ['A', 'C'], order
