@@ -60,6 +60,28 @@ def _sibling(name: str):
     return importlib.import_module(name)
 
 
+def uia_flags(element) -> Dict[str, Any]:
+    """Optional UIA state booleans for element descriptors (computer-use
+    focused-password-flag request): ONLY true values are emitted — absent
+    key = False for the consumer, backward compatible both ways.
+
+    Reads `CurrentIsPassword` / `CurrentHasKeyboardFocus` off the underlying
+    COM element (pywinauto keeps it private: `_element`); anything
+    unavailable (non-UIA backend, detached node) yields no keys."""
+    out: Dict[str, Any] = {}
+    el = getattr(element, '_element', None)
+    if el is None:
+        return out
+    for attr, key in (('CurrentIsPassword', 'is_password'),
+                      ('CurrentHasKeyboardFocus', 'focused')):
+        try:
+            if bool(getattr(el, attr)):
+                out[key] = True
+        except Exception:  # noqa: BLE001 — property may not exist/read
+            continue
+    return out
+
+
 CREATE_NO_WINDOW = 0x08000000  # Win32 CREATE_NO_WINDOW (console suppression)
 
 
@@ -230,6 +252,19 @@ class WindowsBackend:
         import ctypes
         hwnd = ctypes.windll.user32.GetForegroundWindow()
         return self._describe_window(hwnd) if hwnd else None
+
+    def focused_is_password(self):
+        """focused-password-flag (computer-use request): True/False, or
+        None when unknown (no UIA focus element / property unreadable —
+        the act coerces None -> False, "False when unknown")."""
+        try:
+            from pywinauto.uia_backend import IUIA   # lazy: pinned dep
+            el = IUIA().GetFocusedElement()
+            if el is None:
+                return None
+            return bool(el.CurrentIsPassword)
+        except Exception:  # noqa: BLE001 — availability, not privacy
+            return None
 
     def list_windows(self) -> List[Dict[str, Any]]:
         import ctypes
@@ -568,7 +603,9 @@ class WindowsBackend:
             rect_d = None
         return {'name': ei.name or '', 'control_type': ei.control_type or '',
                 'automation_id': ei.automation_id or '',
-                'class_name': ei.class_name or '', 'rect': rect_d}
+                'class_name': ei.class_name or '', 'rect': rect_d,
+                # focused-password-flag (computer-use request): true-only keys
+                **uia_flags(ei)}
 
     def _iter_candidates(self, desktop):
         """Foreground window subtree first (fast path), then every window."""

@@ -1,5 +1,18 @@
 # computer-use → pc-control: focused-password-flag
-Status: OPEN
+Status: DONE — implemented by pc-control 2026-10-08 (evidence below)
+
+## Implementation (pc-control)
+1. `foreground_info{}` result now carries top-level `focused_is_password`
+   (bool; `False` when unknown — exactly the key `gateway.py:154-156`
+   reads): `body/win/act_window.py::_run_foreground_info` +
+   `WindowsBackend.focused_is_password()` (pywinauto `IUIA().
+   GetFocusedElement()` → `CurrentIsPassword`, any failure → None → False).
+2. `uia` descriptors (`_describe`, feeds find/read/tree) emit true-only
+   `is_password`/`focused` via `winlayer.uia_flags()` (reads
+   `CurrentIsPassword`/`CurrentHasKeyboardFocus` off the COM element;
+   absent key = False — both-direction compatible as specified).
+Tests: `body/win/tests/test_pc_password_focus.py` (4: shape/unknown/crash-
+truthfulness + uia_flags edge cases + descriptor passthrough).
 
 ## What
 Additive Body fields so the Wave-5H audit item 2 ("focused password fields,

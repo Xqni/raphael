@@ -128,12 +128,17 @@ async def _run_list_windows(args: Dict[str, Any], backend) -> Dict[str, Any]:
     return await _run_list(backend)
 
 
-async def _run_foreground_info(args: Dict[str, Any], backend) -> Dict[str, Any]:
+async def _run_foreground_info(args: Dict[str, Any], backend) -> Any:
     """Foreground window facts — Brain applies privacy.blocklist_apps to
-    these (title/process) BEFORE deciding a screenshot may leave the box."""
+    these (title/process) BEFORE deciding a screenshot may leave the box.
+    `focused_is_password` (computer-use focused-password-flag): True when
+    the focused element reports UIA IsPassword, False when unknown."""
     reject_extra(args, set())
     fg = await offload(backend.foreground)
-    return {'window': _entry(fg, (fg or {}).get('hwnd')) if fg else None}
+    pwd = await offload(getattr(backend, 'focused_is_password',
+                                lambda: None))
+    return {'window': _entry(fg, (fg or {}).get('hwnd')) if fg else None,
+            'focused_is_password': bool(pwd)}
 
 
 def _validate_inspect(args: Dict[str, Any]) -> Dict[str, Any]:

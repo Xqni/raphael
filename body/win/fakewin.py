@@ -64,6 +64,8 @@ class FakeWin:
         self.clipboard_value: str = overrides.pop('clipboard', '')
         self.volume = overrides.pop('volume', 50)      # F-3: seeded so undo
         self.brightness = overrides.pop('brightness', 70)  # has a 'previous'
+        self.focused_is_password_value = overrides.pop(
+            'focused_is_password', False)             # focused-password-flag
         self.placements: Dict[int, Dict[str, Any]] = {}
         self.cursor: Tuple[int, int] = overrides.pop('cursor', (100, 100))
         self.powershell_result: Dict[str, Any] = overrides.pop(
@@ -325,6 +327,11 @@ class FakeWin:
         return b'\xff\xd8' + b'FAKEJPEG' * 32 + b'\xff\xd9'
 
     # -- report delivery --------------------------------------------------
+    def focused_is_password(self):
+        """focused-password-flag: configurable True/False/None for tests."""
+        self._rec('focused_is_password')
+        return self.focused_is_password_value
+
     def reports_dir(self) -> str:
         # _rec applies delay/failure injection — crash drills work here too
         self._rec('reports_dir')
