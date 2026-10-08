@@ -1,11 +1,28 @@
 # pc-control → orb: activity-viewer-schema
-Status: SUPERSEDED (integrator 2026-10-08)
+
+Status: **SUPERSEDED (integrator 2026-10-08; adjudicated coord inbox [38])** — this
+file's schema was an EARLY draft. The **canonical, signed agreement** is
+`docs/requests/orb__to__pc-control__act-journal-schema.md` (Status DONE,
+pc-control's "Agreement" section + corrections). **Consumers (orb render,
+brain-core relay, fixtures) must follow THAT file**, whose operative shape is:
+
+- entry per executed act: `{id, ts, job, action, args, ok, error, summary,
+  reversible, undo, undone, undo_ok}` (12 fields, ids stable across restarts);
+- `undo` wire payload = `{"action": "activity", "args": {"op": "undo",
+  "seq": N}}`; undo also accepts a stable `id`;
+- reversible only for volume / brightness / window(min|max|restore|snap) /
+  media(play_pause, mute); everything else renders NO button;
+- transport: `GET /activity` (= `activity{op:"log",limit}` relay) and
+  `POST /activity/{id}/undo` (= `activity{op:"undo",id}` relay) — see
+  `pc-control__to__brain-core__activity-endpoint.md`.
+
+Kept below for audit history only — do not implement from it.
 
 ## What
 Co-share contract for the F-3 activity viewer (packet: "CO-SHARE with orb …
 orb renders the viewer"). pc-control owns the journal + inverse ops + schema;
 this file is the render-side spec. Data source once brain-core's relay lands
-(pc-control__to__brain-core__activity-endpoint.md):
+(`pc-control__to__brain-core__activity-endpoint.md`):
 `GET /activity?limit=20`.
 
 ### Entry schema (JSON, append-only journal — `body/win/journal.py`)
