@@ -14,8 +14,8 @@ def test_unit_template_pins_payload_and_never_home_path():
     unit = (SHADOW / "raphael-wslg-shadow.service").read_text()
     assert "@BOOT_SHA@" in unit and "@LIB@" in unit      # rendered by installer
     assert "sha256sum -c" in unit                        # pin verified BEFORE exec
-    assert "/home/dami" not in unit                      # the SEC-2 hole is gone
-    assert "/home/" not in unit
+    assert "/home/" not in unit                          # the SEC-2 hole is gone
+    assert "/mnt/" not in unit
 
 
 def test_boot_hook_verifies_and_pipes_no_user_fs_code():

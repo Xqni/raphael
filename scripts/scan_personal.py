@@ -25,7 +25,34 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 
-# rule id -> (severity, compiled pattern, human label)
+def _is_public_ipv4(matched: str) -> bool:
+    """Filter for ip-public: real PUBLIC addresses only (loopback, RFC1918
+    privates, link-local, multicast, 0.0.0.0 and version noise are other
+    rules' business or not findings at all)."""
+    parts = matched.split(".")
+    if len(parts) != 4:
+        return False
+    try:
+        octets = [int(p) for p in parts]
+    except ValueError:
+        return False
+    if any(o > 255 for o in octets):
+        return False
+    a, b = octets[0], octets[1]
+    if a in (0, 10, 127) or a >= 224:            # this-net/loopback/mcast+
+        return False
+    if a == 169 and b == 254:                    # link-local
+        return False
+    if a == 172 and 16 <= b <= 31:               # RFC1918 (REVIEW rule)
+        return False
+    if a == 192 and b == 168:                    # RFC1918 (REVIEW rule)
+        return False
+    if a == 100 and 64 <= b <= 127:              # CGNAT
+        return False
+    return True
+
+
+# rule id -> (severity, compiled pattern, human label, match-filter|None)
 RULES = [
     ("user-windows", "FAIL", re.compile(r"jxesu"),
      "Windows login name"),
@@ -39,16 +66,16 @@ RULES = [
      "home directory path"),
     ("ip-public", "FAIL", re.compile(
         r"\b(?:\d{1,3}\.){3}\d{1,3}\b(?![\d.])"),
-     "IPv4 (validate by hand: public = scrub)"),
+     "public IPv4", _is_public_ipv4),
     ("ip-private", "REVIEW", re.compile(
         r"\b(?:192\.168|10|172\.(?:1[6-9]|2\d|3[01]))\.\d{1,3}\.\d{1,3}\b"),
-     "private-range IP"),
+     "private-range IP", None),
     ("voice-clip", "REVIEW", re.compile(
         r"raphael_reference_jp|\bZira\b|\bslime\b", re.IGNORECASE),
-     "anime voice-clip related name"),
+     "anime voice-clip related name", None),
     ("serial", "REVIEW", re.compile(
         r"\b(S/N|Serial(?:Number)?|SSN)[:= ]+[A-Za-z0-9-]{6,}\b"),
-     "device serial"),
+     "device serial", None),
 ]
 
 # files that legitimately CONTAIN the patterns (the scanner itself, the
@@ -56,7 +83,9 @@ RULES = [
 ALLOWLIST = re.compile(
     r"^scripts/scan_personal\.(py|sh)$|^scripts/GIT-SCRUB-PLAN\.md$"
     r"|^scripts/SECRETS\.md$|^scripts/env\.dev\.template$"
-    r"|^scripts/install-env-dev\.sh$")
+    r"|^scripts/install-env-dev\.sh$"
+    # test files whose FIXTURES are deliberately the pattern strings
+    r"|^supervisor/tests/test_audit_tooling\.py$")
 
 
 def tracked_files(staged_only: bool) -> list[str] | None:
@@ -83,9 +112,14 @@ def scan_file(rel: str) -> list[tuple[str, int]]:
         return []
     hits = []
     for lineno, line in enumerate(text.splitlines(), 1):
-        for rule_id, _sev, pat, _label in RULES:
-            if pat.search(line):
-                hits.append((rule_id, lineno))
+        for rule in RULES:
+            rule_id, _sev, pat = rule[0], rule[1], rule[2]
+            m = pat.search(line)
+            if not m:
+                continue
+            if len(rule) > 4 and rule[4] is not None and not rule[4](m.group(0)):
+                continue
+            hits.append((rule_id, lineno))
     return hits
 
 

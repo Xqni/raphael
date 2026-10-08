@@ -63,10 +63,11 @@ def test_active_profile_precedence(monkeypatch):
 
 
 def test_wsl_user_env_override_wins(monkeypatch):
-    # ARCH-4: identity comes from env/config, never baked in
+    # ARCH-4: identity comes from env/config, never baked into tests either
     monkeypatch.delenv("RAPHAEL_WSL_USER", raising=False)
     cfg, _ = sup.load_config()
-    assert cfg["paths"]["wsl_user"] == "dami"          # config authoritative
+    from_config = cfg["paths"]["wsl_user"]
+    assert from_config                      # config.yaml supervisor.wsl_user
     monkeypatch.setenv("RAPHAEL_WSL_USER", "lane-user")
     cfg, _ = sup.load_config()
     assert cfg["paths"]["wsl_user"] == "lane-user"     # env override wins
