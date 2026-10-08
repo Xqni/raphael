@@ -1,0 +1,31 @@
+# SEC-9 (Wave 5H) — hash-pinned audio runtime for the Body's voice path.
+#
+# body/win/audio_in.py + audio_out.py no longer pip-install at runtime
+# (SEC-9); they fail loud and point here. Provision ONCE:
+#
+#   pip install --require-hashes -r brain/voice/body-audio-requirements.txt
+#   (or: uv pip install --require-hashes -r brain/voice/body-audio-requirements.txt)
+#
+# Pins MUST match the _require_or_die pins in the two audio modules.
+# Hashes cover the deployment targets: linux cp312 (manylinux2014_x86_64) and
+# windows cp312 (win_amd64). Verified 2026-10-07 with
+# `pip install --dry-run --require-hashes --platform ... --python-version 3.12`
+# (see docs/status/voice.md for the command + result).
+#
+# Provenance: wheels downloaded from PyPI (pip download --no-deps), sha256 via
+# `pip hash`. Regenerate by re-downloading the same pins and re-hashing.
+
+numpy==2.2.6 \
+    --hash=sha256:fd83c01228a688733f1ded5201c678f0c53ecc1006ffbc404db9f7a899ac6249 \
+    --hash=sha256:c1f9540be57940698ed329904db803cf7a402f3fc200bfe599334c9bd84a40b2
+
+sounddevice==0.5.1 \
+    --hash=sha256:e2017f182888c3f3c280d9fbac92e5dbddac024a7e3442f6e6116bd79dab8a9c \
+    --hash=sha256:4313b63f2076552b23ac3e0abd3bcfc0c1c6a696fc356759a13bd113c9df90f1
+
+cffi==2.1.1 \
+    --hash=sha256:c1453022f490d2459a11819d83ad1d586e9ff65a12ac3e705ffebd46d3685dcf \
+    --hash=sha256:f53e442b08449d42821fa4a4fba000095af9f62742a500f978a9f557ec44339a
+
+pycparser==3.0 \
+    --hash=sha256:b727414169a36b7d524c1c3e31839a521725078d7b2ff038656844266160a992

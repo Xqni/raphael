@@ -135,19 +135,38 @@ class ActivationGate:
     # -- 1. pre-STT ---------------------------------------------------------
     def should_transcribe(self, pcm: bytes, reason: Optional[str] = None,
                           sample_rate: int = STT_SAMPLE_RATE) -> GateDecision:
-        """May this segment go to the cloud STT engine? (never raises)"""
+        """May this segment go to the cloud STT engine?
+
+        SEC-3 (Wave 5H) FAIL-CLOSED: audio is uploaded ONLY with an explicit
+        verdict — `reason='ptt'` (hotkey) or `reason='wake'` (always-listen
+        VAD segment). Any UNDECIDED state (reason missing/unknown, or an
+        unexpected error inside the gate) DISCARDS the segment locally: it
+        never reaches a provider and never touches disk.
+
+        The previous implementation failed open on both paths
+        (`return GateDecision(True, reason or "unknown")` and
+        `return GateDecision(True, "error_fail_open")`) — a buggy or
+        miswired caller would have shipped every VAD segment to cloud STT
+        before any wake check. Silence still short-circuits first (cheapest,
+        no verdict needed to DROP).
+        """
         try:
             if is_effectively_silent(pcm, sample_rate):
                 return GateDecision(False, "silence")
             if reason == "ptt":
                 return GateDecision(True, "ptt")     # hotkey = proven intent
-            if reason == "wake" and not self.cfg.always_listen:
-                # PTT-only profile: wake segments are not expected at all
-                return GateDecision(False, "ptt_only")
-            # reason unknown/None -> caller has not told us; do not drop audio
-            return GateDecision(True, reason or "unknown")
-        except Exception:  # noqa: BLE001 — activation must never break audio
-            return GateDecision(True, "error_fail_open")
+            if reason == "wake":
+                if not self.cfg.always_listen:
+                    # PTT-only profile: wake segments are not expected at all
+                    return GateDecision(False, "ptt_only")
+                return GateDecision(True, "wake")
+            # SEC-3: undecided (reason is None / unknown / anything else)
+            # -> NO upload without a wake/ptt verdict
+            return GateDecision(False, f"undecided:{reason!r}")
+        except Exception as e:  # noqa: BLE001 — but never fail OPEN
+            print(f"[voice] activation gate error — segment discarded "
+                  f"(SEC-3 fail-closed): {type(e).__name__}: {e}", flush=True)
+            return GateDecision(False, "error_fail_closed")
 
     # -- 2. post-STT --------------------------------------------------------
     def gate(self, transcript: str, reason: str = "wake") -> WakeMatch:

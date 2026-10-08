@@ -66,9 +66,10 @@ def test_pre_gate_ptt_always_allowed():
 def test_pre_gate_ptt_only_mode_drops_wake_segments():
     g = ActivationGate(VoiceConfig(always_listen=False))
     assert not g.should_transcribe(_pcm(LOUD, ms=300), reason="wake")
-    # unknown reason (caller hasn't told us) -> fail open, never drop audio
+    # SEC-3 (Wave 5H): undecided reason -> FAIL CLOSED (no upload without a
+    # wake/ptt verdict); the old behavior returned ok=True ("fail open")
     d = g.should_transcribe(_pcm(LOUD, ms=300), reason=None)
-    assert d.ok and d.reason == "unknown"
+    assert not d.ok and d.reason.startswith("undecided")
 
 
 def test_pre_gate_decision_is_truthy():
