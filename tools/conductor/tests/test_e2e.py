@@ -32,7 +32,7 @@ CDIR = HERE.parent
 COORD = CDIR / "coord.py"
 HANDLER = CDIR / "handler_dryrun.py"
 CONDUCTOR = CDIR / "conductor.py"
-REPO = CDIR.parents[1]          # /home/dami/raphael
+REPO = CDIR.parents[1]          # repo root (derived)
 
 
 def wait_until(fn, timeout=20.0, interval=0.2, what="condition"):

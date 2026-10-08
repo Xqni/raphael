@@ -318,7 +318,7 @@ class Conductor:
         if self.lane_locked(lane):
             self.log(f"{lane}: lane lock held (interactive session) — no headless launch")
             return False
-        wt = Path(self.cfg.get("wt_root", "/home/dami/raphael-wt")) / lane
+        wt = Path(self.cfg.get("wt_root", str(Path.home() / "raphael-wt"))) / lane
         if not wt.is_dir():
             self.log(f"{lane}: no session and no worktree at {wt} — nothing to wake")
             return False

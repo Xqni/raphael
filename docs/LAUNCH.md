@@ -4,22 +4,22 @@ Each lane works in its own git worktree on its own branch. The scheduled task **
 
 ## Worktrees (created by the integrator)
 
-Location: `/home/dami/raphael-wt/<lane>` on branch `agent/<lane>` (base: main).
+Location: `<home>/raphael-wt/<lane>` on branch `agent/<lane>` (base: main).
 Lanes: `router`, `brain-core`, `pc-control`, `voice`, `computer-use`, `orb`, `infra`, `qa-security`, `tools-memory`, `evolution-persona`.
-The integrator works directly in `/home/dami/raphael` on `main`.
+The integrator works directly in `<repo-root>` on `main`.
 
 Recreate one (only if missing):
 
 ```bash
-cd /home/dami/raphael
+cd <repo-root>
 git worktree add -b agent/<lane> ../raphael-wt/<lane> main
-ln -s /home/dami/raphael/.env ../raphael-wt/<lane>/.env      # secrets: symlink, NEVER copy
+ln -s <repo-root>/.env ../raphael-wt/<lane>/.env      # secrets: symlink, NEVER copy
 ```
 
 ## Start a lane session
 
 ```bash
-cd /home/dami/raphael-wt/<lane>
+cd <home>/raphael-wt/<lane>
 git status --short --branch          # expect: ## agent/<lane>
 ls docs/requests/*__to__<lane>__*.md 2>/dev/null   # 1) requests addressed to you (AGENT_RULES §2)
 cat docs/status/<lane>.md            # 2) your last status
@@ -30,7 +30,7 @@ opencode                             # 4) session opens scoped to this worktree
 ## Rebase before each new task (AGENT_RULES §4)
 
 ```bash
-cd /home/dami/raphael-wt/<lane>
+cd <home>/raphael-wt/<lane>
 git fetch origin && git rebase origin/main     # read-only against origin; NEVER push
 ```
 

@@ -31,7 +31,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 CD = Path(os.environ.get("RAPHAEL_COORD_DIR", Path.home() / ".raphael-coord"))
-REPO = Path("/home/dami/raphael")
+REPO = Path(__file__).resolve().parents[2]  # repo root derived, no hard-coded home (SEC-1)
 USAGE_LOG = REPO / "brain/router/usage.jsonl"
 STATE_FILE = CD / "usage-watch.json"
 LANES = ["infra", "router", "brain-core", "orb", "voice", "pc-control",

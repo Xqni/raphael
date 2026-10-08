@@ -33,7 +33,7 @@ Adapt Odysseus's skills layer (`data/skills/<name>/SKILL.md`):
 
 ## 6. RAM / .wslconfig
 - Low free RAM during scouting was **Premiere Pro running**, not systemic (user directive). 
-- `.wslconfig` created at `C:\Users\jxesu\.wslconfig` (backed by user approval): `memory=10GB`, `swap=4GB`, `vmIdleTimeout=600000`. Applies at next WSL restart/reboot — never `wsl --shutdown` mid-session.
+- `.wslconfig` created at `C:\\Users\\<win-user>\.wslconfig` (backed by user approval): `memory=10GB`, `swap=4GB`, `vmIdleTimeout=600000`. Applies at next WSL restart/reboot — never `wsl --shutdown` mid-session.
 - WSL sizing implications for concurrency limits (brief §3B): 10 GiB WSL RAM, 8 GB VRAM shared GPU → local-model semaphore = 1-2 concurrent inferences.
 
 ## 7. Voice-first confirmation loop (user directive, 2026-10-04)
@@ -46,7 +46,7 @@ Raphael's runtime spawns OpenCode (and other worker agents) **on her own authori
 - This applies to RUNTIME workers only; it does not change the build-time agent permissions in `.opencode/agents/`.
 
 ## 9. GitHub build repo (user provided)
-- Remote: `https://github.com/Xqni/raphael.git` (private). Add at `git init`; push happens once history exists (needs auth — see §2).
+- Remote: `https://github.com/<gh-owner>/raphael.git` (private). Add at `git init`; push happens once history exists (needs auth — see §2).
 
 ## 10. Character = Raphael / Great Sage from Tensei Shitara Slime Datta Ken (user correction, 2026-10-05)
 The "Jarvis-style" phrasing in the original brief is superseded: Raphael's personality is **Great Sage**, not JARVIS.
@@ -126,7 +126,7 @@ Two independent axes — one permissive, one strict; neither softens the other.
 **The line, stated once:** *uncensored governs what she will say or help with; guarded governs what can touch the machine, the money, and the credentials — and the guarded side never relaxes.*
 
 ## 11. Orb = 3D morphing orb from user's reference art (user directive, 2026-10-05)
-References: `C:\Users\jxesu\OneDrive\Desktop\Raphael Orb` (6 Tensura visuals, copied to `assets/orb-reference/*.jpg`, originals untouched). Art brief extracted via vision subagent → `assets/orb-reference/DESCRIPTIONS.md`.
+References: `C:\\Users\\<win-user>\OneDrive\Desktop\Raphael Orb` (6 Tensura visuals, copied to `assets/orb-reference/*.jpg`, originals untouched). Art brief extracted via vision subagent → `assets/orb-reference/DESCRIPTIONS.md`.
 - **3D orb** (Three.js/WebGL in the Electron renderer), based on/referenced by that art — original rendering only, no official assets copied.
 - **At rest:** slow spinning/revolving motion (plus subtle breathing).
 - **When talking:** pulsates based on **word and pitch** (driven by `speak` amplitude/pitch_hz events per PROTOCOL §8).

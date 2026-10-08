@@ -129,7 +129,7 @@ class CoordBase(unittest.TestCase):
             args=[], returncode=0,
             stdout=json.dumps([
                 {"id": "ses_other", "directory": "/tmp/other"},
-                {"id": "ses_voice", "directory": "/home/dami/raphael-wt/voice"},
+                {"id": "ses_voice", "directory": str(__import__("pathlib").Path.home() / "raphael-wt" / "voice")},
             ]), stderr="")
         active = subprocess.CompletedProcess(
             args=[], returncode=0,
@@ -139,8 +139,12 @@ class CoordBase(unittest.TestCase):
             sid = coord_module.find_session(self.d, "voice", st)
         self.assertEqual(sid, "ses_voice")
         self.assertEqual(st["lanes"]["voice"]["session_id"], "ses_voice")
-        self.assertEqual(run.call_args_list[0].args[0][:4],
-                         ["opencode", "session", "list", "--format"])
+        # SEC-1 PATH fix: coord resolves the opencode binary (shutil.which ->
+        # ~/.opencode/bin/opencode fallback) so cron's minimal PATH works;
+        # subprocess.run is called with the argv LIST as one positional arg.
+        argv = run.call_args_list[0].args[0]
+        self.assertTrue(argv[0].endswith("opencode"), argv[0])
+        self.assertEqual(argv[1:4], ["session", "list", "--format"])
 
     def _fake_conductor(self) -> int:
         """Start a process whose /proc cmdline contains 'conductor'; return its pid."""

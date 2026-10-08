@@ -22,7 +22,7 @@ Job: Orb npm gates (node only)
 Summary: Both jobs failed - one due to a behavioral/test expectation mismatch in vision service error messaging, and one due to npm cache resolution of a potentially missing lockfile.
 
 ## Round 2
-- Run: 37703322866 (workflow: tests-heavy, repo: /home/dami/raphael)
+- Run: 37703322866 (workflow: tests-heavy, repo: <repo-root>)
 - Status: completed, conclusion: success
 - Created → Updated duration (approx): 188s (~3m 8s)
 - Jobs:

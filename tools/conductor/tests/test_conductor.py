@@ -24,6 +24,7 @@ sys.path.insert(0, str(CDIR))
 import conductor as cond  # noqa: E402
 from coord import line_count  # noqa: E402
 import coord  # noqa: E402
+REPO_ROOT = str(__import__("pathlib").Path(__file__).resolve().parents[2])
 
 BASE_CFG = {
     "tick_s": 0.2,
@@ -42,9 +43,9 @@ BASE_CFG = {
                  "computer-use", "qa-security", "tools-memory", "evolution-persona"],
     "start_conditions": {"tools-memory": {"min_wave": 3},
                          "evolution-persona": {"min_wave": 4}},
-    "repo_root": "/home/dami/raphael",
+    "repo_root": REPO_ROOT,
     "wt_root": "",           # per-test
-    "integrator_cwd": "/home/dami/raphael",
+    "integrator_cwd": REPO_ROOT,
     "integrator_cmd": ["/bin/true"],
     "integrator_prompt": "prompts/integrator_event.md",
     "lane_headless_cmd": ["/bin/false"],

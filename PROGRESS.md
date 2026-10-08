@@ -75,3 +75,18 @@ T1 fast free · T2 strong free · T3/T4 paid (log to docs/PAID_USAGE.md).
 - router [43,44]: fast-role A/B accepted (~0.4s med, model switch verified; RPM 10->30 accepted); loop-label request -> brain-core; zen_free tool-400 finding queued; CI red = qa P0 acked.
 - tools-memory [37]: ownership request DECIDED (grant both trees), branch force-pushed d65d056 (stale pre-rebase remote realigned); re-dispatch CI assigned.
 - orb [35]: verification-only accepted (rebase byte-identical to green gate, 7/7); ARCH-1 human gate re-surfaced in ATTENTION; NEXT restated = branch CI + wave_done with data.ci_run.
+- MAIN GREEN PUSH aa8503e: guard fixed (dirty-pin root cause, evolution's catch) + qa merged (AUD-11 lock test) + coord.py SEC-1 scrub + OWNERSHIP qa scanner grant. Battery 182/232/8/guard OK.
+- evolution [32] incident RESOLVED+replied; pc [35,36] fg half accepted -> brain-core consumer = critical path; router [45,46] turbo-STT + closure accepted -> next zen_free+packet; tools-memory [38] + orb [36,37] -> rebase+green-run instructions; computer-use [29] heartbeat.
+- qa [46,47]: wave_done GREEN 5/5 (37775644704) accepted; batch merged 08622fe; NEXT = packet checkbox reconcile + wave-3 golden transcripts (eligible at wave5); ledger allowlist request -> infra.
+- evolution [33]: guard follow-up verified green post-rebase; WAIT (wave_done queued pos10).
+- router [47]: zen_free exclusion accepted as model-capability learning (evidence-first correction of my dispatch; no static ban); next = audit packet + wave_done w/ fresh CI id.
+- tools-memory [39]: rebased f131c1a pushed (force-with-lease); dispatching CI for position-9 green id.
+- voice [49]: QA-4 main-green 37776358400 accepted (ALL jobs); Cut B merges next cycle (voice re-measures on ping), Cut A parked on brain-core half. evolution pinged to post pos-10 wave_done.
+- WAKE-COUNT RECORD: 74 = 73 stale state.json lag (10 lanes) + 1 real.
+- tools-memory [40]: branch CI dispatched on rebased head f131c1a (run 37777015314, queued) — conclusion follows; merge position 9 waits on that green id.
+- infra [29]: qa allowlist request DONE (exact-path + proof test) + own scrub 23->0 accepted; scanner FPs fixed; tests-heavy 37777005138 SUCCESS. NEXT: wave_done + per-owner breakdown of remaining 79 non-ledger FAILs (exit criterion 4 routing).
+- MAIN GREEN CONFIRMED (watcher): 37776358400 CI + 37776618319 tests-heavy both success on aa8503e; report at .local/share/opencode/research/main-ci-green-attempt.md.
+- ROUTED: orb -> evaluate dependabot electron-44.5.1 PR (urgent CVE line) vs full gates, verdict to me; infra -> safetycli private-source auth failure blocking dependabot npm on body/orb.
+- pc [37]: F-3 co-share half accepted (schema agreement + stable ids + undo semantics); corrected their CI-id (was a dependabot run) + their misattributed red (it's the known job-concurrency flake, brain-core's stabilization list — NOT evolution); NEXT = wave_done w/ branch CI.
+- tests-heavy 37777792901 red = known flake test_lock_fairness_and_cancel_while_waiting (brain-core stabilization queue).
+- infra [30,31,32]: safetycli root-caused (integrity-verified, redirect fix) -> orb handoff relayed; 79-FAIL routing: INTEGRATOR 77 (mine — scrub queue: SYSTEM_REPORT 18, LAUNCH 12, .opencode 8, conductor 10, misc) + tools-memory 2 (post-merge) + infra 0; wave_done received w/ honest stale-branch disclosure -> branch PUSHED f963427, re-dispatch assigned.
