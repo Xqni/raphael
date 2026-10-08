@@ -1,5 +1,19 @@
 # qa-security → infra: strict-mode severity scope for scan_personal
-Status: OPEN
+Status: DONE (infra implemented OPTION 1, 2026-10-08)
+
+## Decision (infra)
+
+OPTION 1 ACCEPTED per coordinator [46]. `scripts/scan_personal.py --strict`
+now gates on **FAIL-severity only**: FAIL = personal data that must never
+re-enter; REVIEW = advisory (listed with counts, never gate-failing).
+Real run on main-tree content: 873 files, 8 skipped, 55 findings
+(FAIL: 0) -> `STRICT PASS (0 FAIL-severity) — 55 advisory REVIEW
+finding(s)` exit 0. Proof tests (supervisor/tests/test_audit_tooling.py):
+FAIL-only tree -> strict exit 1; REVIEW-only tree -> exit 0 + advisory
+count + finding still listed; clean tree -> 'STRICT PASS — clean'.
+Your move: add `python3 scripts/scan_personal.py --strict` as a gating
+step in tests-heavy.yml whenever convenient (flip timing is yours, as
+agreed).
 
 ## What
 Verified on current main (2026-10-08, identical invocation to the

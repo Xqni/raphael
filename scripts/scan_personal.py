@@ -12,7 +12,9 @@ Rules (tune in RULES below):
 
 Usage:
   scripts/scan_personal.py               # full tracked scan, advisory (0)
-  scripts/scan_personal.py --strict      # exit 1 if any non-allowlisted hit
+  scripts/scan_personal.py --strict      # exit 1 ONLY on FAIL-severity hits
+                                        # (REVIEW = advisory, listed, counts
+                                        # reported; coord [46] OPTION 1)
   scripts/scan_personal.py --staged      # only git-staged files (pre-commit)
   scripts/scan_personal.sh [args]        # thin wrapper
 """
@@ -212,10 +214,25 @@ def main(argv=None) -> int:
     print("[scan_personal] scanned %d %s files (%d allowlist-skipped), "
           "%d finding(s) (FAIL-severity: %d, non-ledger)"
           % (len(files), scope, allow_skipped, total, fail_total))
-    if strict and total:
-        print("[scan_personal] STRICT: findings present — scrub or "
-              "coordinate (docs/scrub plan: scripts/GIT-SCRUB-PLAN.md)")
-        return 1
+    # STRICT = FAIL-severity gate only (coord [46], OPTION 1 accepted from
+    # qa-security__to__infra__personal-scan-strict-severity-scope.md):
+    # FAIL = personal data that must never re-enter (usernames, drive/home
+    # paths, public IPs); REVIEW = human-scrubs-with-context advisory class
+    # (voice-clip names, private-range IPs) — listed above with counts but
+    # NOT gate-failing. Counts stay honest either way.
+    if strict:
+        if fail_total:
+            print("[scan_personal] STRICT: %d FAIL-severity finding(s) — "
+                  "scrub or coordinate (docs/scrub plan: "
+                  "scripts/GIT-SCRUB-PLAN.md)" % fail_total)
+            return 1
+        if total:
+            print("[scan_personal] STRICT PASS (0 FAIL-severity) — "
+                  "%d advisory REVIEW finding(s) listed above (human "
+                  "with-context class, not gate-failing)" % total)
+        else:
+            print("[scan_personal] STRICT PASS — clean")
+        return 0
     return 0
 
 
