@@ -29,6 +29,29 @@ Wave 2 is MERGED; live gate was 3/5 — evidence + bug dossiers: `docs/BUGS-WAVE
 - [x] [COORD] spawn-kill-safe fish test fixture (Rule 14 RAM): integration tests spawn ONLY with `RAPHAEL_FISH_SPAWN=1`, and anything spawned is registered + killed per-test (fixture) AND at process exit (atexit) — `_kill_spawned_fish`, unit-tested; a server we didn't spawn is never touched.
 - [x] [SPEED] Sentence-streamed fish TTS stays local and instant (Rule 15). Verified: `speak()` streams sentence N while N+1 generates (test_speak_frames_and_binary_audio asserts incremental chunk arrival), and there is no cloud-TTS code path at all — fish is the only synthesis engine (cache hit → fish → subtitle-only fallback).
 
+## P0 2026-10-07 (user report) — LOST ACCENT + SPEAKING GAPS — fix FIRST
+
+- [ ] **Accent loss = stale cache serving pre-JP audio.** Live triage evidence: ref IS sent
+  every sentence (`[tts] ref sent: raphael_reference_jp.wav bytes=751686 sha1=f64bd512ea1e`), fish alive, tier
+  great_sage, chat+speak path works (25 speak events) — but `assets/acks/` is FLAT with **18
+  pre-JP wavs** alongside 24 recent ones, i.e. wave-5's re-key ("cache keyed by the SPOKEN
+  text") appears to have DROPPED the wave-4 ref-sha1 namespace. Two suspects to fix:
+  (1) brain PhraseCache/ack cache must include the ref sha1 in EVERY key (as wave-4 did) +
+  one-time invalidation of all pre-JP entries; (2) fish-side `use_memory_cache:"on"` is
+  text-keyed across references — repeated phrases replay old-voice audio from fish itself:
+  pass a reference_id / namespace it, or disable fish memory cache when a reference is in
+  use (GPU synthesis is fast enough for Rule 15). ACCEPTANCE: the SAME phrase spoken twice
+  in a row is audibly JP both times; no non-namespaced wav survives in assets/acks.
+- [ ] **Speaking gaps: `audio_out` shows underruns=123 with out=343KB of in=595KB (42% of
+  the utterance never played!)** on body playback — user reports "she is not speaking
+  anymore". Find who regressed chunk pacing/buffering (wave-5 sentence-cap synthesis vs
+  body playback buffer). If the fix is body/win-side, coordinate pc-control (nudged).
+  ACCEPTANCE: a 3-sentence reply plays end-to-end with underruns=0 (or documented tiny)
+  and audible completeness. NOTE: the stack was also DOWN during the server restart —
+  confirm against the current stack, not that window.
+- [ ] Prove both live on the running stack (reuse fish, one-server rule) + user-listenable
+  before/after samples in assets/reference/samples/.
+
 ## TASK 2026-10-07 — lightweight TTS evaluation (PocketTTS vs fish)
 
 - [ ] Evaluate **PocketTTS (Kyutai)** as fish-speech replacement (research winner:
