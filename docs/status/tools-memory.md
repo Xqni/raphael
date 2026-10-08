@@ -1,6 +1,72 @@
 # tools-memory — status
 
-Updated: 2026-10-07 (wave 5 COMPLETE — handoff below the wave-5 record)
+Updated: 2026-10-08 (Wave 5H audit packet: SEC-4 + F-2 done — handoff below)
+
+## Wave 5H — audit packet (docs/audit-tasks/tools-memory.md), VERIFY-FIRST applied
+
+**SEC-4: DONE (HUMAN applies the PAT) — report `CONFIRMED + ALREADY-DONE + NOT-APPLICABLE`:**
+- **CONFIRMED (visibility tool forced Administration scope) — removed:**
+  `brain/tools/github/__init__.py` (pre-fix, was line 194):
+  `rc, out = _run(['gh', 'repo', 'edit', r, f'--visibility', v], timeout=60.0)`
+  → `github_set_visibility` + `github_create_repo_public` (was line 136
+  `argv.append('--public')`) **DELETED** — the namespace now registers exactly
+  `github_status` + `github_push`.
+- **CONFIRMED (creation) → human action:** register block was
+  `reg.register('github_create_repo', github_create_repo, risky=False, ...)`;
+  GitHub docs (*Permissions required for fine-grained PATs*): **`POST/user/repos`
+  requires `Administration: write`** — impossible under the packet's NO-Administration
+  token, so creation tools were removed = "user action" branch of SEC-4.
+- **ALREADY-DONE (push confirm):** `reg.register('github_push', github_push, risky=True, category='local',`
+  — every push confirm-gated in code.
+- **ALREADY-DONE (tokens value-blind):** was line 119
+  `token = 'set' if _have_token() else 'MISSING'` + line 91
+  `return _TOKEN_RE.sub('***REDACTED***', str(text or ''))` — every gh/git
+  output scrubbed; new test proves `github_status` with a real-shaped token in
+  env never surfaces the value.
+- **NOT-APPLICABLE (deletion/settings):** grep scan
+  (`repo delete|repo archive|--allow-update|repo rename|gh api`) → only the
+  visibility line matched; no deletion/settings tool ever existed.
+- **DOC WRITTEN: `docs/security/pat-scope.md`** — fine-grained PAT, Selected
+  repositories ONLY, Contents/Actions/PRs RW, NO Administration, NO org perms,
+  expiry ≤90d, 6-step rotation, consequence table (creation/visibility =
+  human), hygiene rules. Value-blind presence checker = existing `github_status`
+  (quoted above). **ATTENTION post for the human to apply it.**
+- Tests: `brain/memory/tests/test_tools_github.py` 9 tests (removal proofs,
+  SPEC/registry sync, scrub, argv-no-shell).
+
+**F-2: DONE (design + stubs, disabled) — report `CONFIRMED → BUILT`:**
+- **CONFIRMED (missing):** `ls brain/memory/` → no `acquisition.py`; no
+  `acquisition` string anywhere in `brain/memory/` or `config.d/` (grep = none).
+  Existing infra verified live: `skills.py:324` `WHERE status = 'published' AND confidence >= ?`
+  (the gate F-2 must feed).
+- **BUILT:** `docs/skills/ACQUISITION.md` (5-stage design: observe → sandbox
+  draft in `skills/.drafts/` → injected-runner test → human approval →
+  `finalize_draft` move + human two-step publish; security invariants; config
+  table). `brain/memory/acquisition.py` — every public fn gates on
+  `skills.acquisition_enabled` (default **false**, config fragment) →
+  `{'enabled': False}` + zero side effects; no execution primitives anywhere
+  (`test_draft` without a runner = `'skipped'`, never auto-executes);
+  inherits create_skill dedup/name validation; NO publish function by design.
+- Tests: `brain/memory/tests/test_wave5_acquisition.py` **8 mock tests**
+  (flag-off zero-effects, threshold counting + signature normalization,
+  sandbox-not-live + gate exclusion + dedup bump, not-ready, no-runner skip,
+  injected runner pass/fail, human two-step activation only, flag-off-midway).
+
+**Packet scope note:** the earlier 4-item message's items 2 (injection fixture
+battery) and 3 (memory privacy: retention/per-category/redaction) are NOT in
+the packet table ("Scope = ONLY the IDs below") — not built in this pass;
+existing coverage already includes shell-registry proofs
+(`test_tools_shell.py`: argv-only/metacharacter-literal/unknown-script),
+marker-neutralization probes, and token scrubbing. Say the word and I'll run
+items 2/3 as a follow-up batch.
+
+**Wave-5H verification runs (2026-10-08, one suite at a time per Rule 14):**
+`brain/memory/tests` **165 passed** | `brain/tests` **194 passed** |
+root `tests/` **214 passed, 7 xfailed, 0 failed** (instance-count red gone —
+qa's fix landed). CI green reference for QA-4: run **37711404220**
+(`completed success`, main, 2026-10-08T01:08).
+
+## Wave 5 (MERGED — queued pos 9; call-site requests ride with it)
 
 ## Wave 5 (current_wave=5)
 

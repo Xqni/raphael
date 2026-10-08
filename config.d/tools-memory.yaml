@@ -22,6 +22,8 @@ skills:
   dedup_jaccard: 0.82            # >= this similarity at creation -> bump usage, no new skill
   inject_drafts: false
   audit_grace_days: 30           # wave-4 aging: published+never-used+older -> demoted to draft
+  acquisition_enabled: false     # F-2 predator loop: DESIGN ONLY (docs/skills/ACQUISITION.md) — user flips
+  acquisition_min_repeats: 3     # failures of one signature before a sandbox draft is proposed
 
 plugins:
   dir: plugins                   # user-authored manifests; enabled only by the user
