@@ -3,7 +3,7 @@
 #   python3 -m venv tests/.venv && tests/.venv/bin/pip install -r tests/requirements.txt
 # CI installs this file on both the Ubuntu (brain + mocks) and Windows
 # (Body unit tests) jobs.
-pytest>=8,<10
+pytest>=9.1.1,<10
 pytest-asyncio>=0.24          # tests/body_win async hotkey test
 anyio>=4                      # timed TestClient WS receives
 fastapi>=0.115                # brain.app (contract/regression suites)
