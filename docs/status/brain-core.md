@@ -58,6 +58,7 @@ Updated: 2026-10-07 (Wave 3: goals 1+2 DONE and rebased on main; goal 3 Notice B
 - Nudge: PROTOCOL §7 act_req gained `list_windows`/`foreground_info`/`list_running_apps` — auto-covered once pc's tools register through discovery; no change needed from me.
 
 ## Test output (real runs only — never claim unrun tests)
+- (shape-hold batch) brain 193 / router 154 / voice 115+1skip / pc 11 / computer_use 60+3skip = **533 passed, 4 skipped**; root **214 passed, 7 xfailed**
 - (P0 analysis/sim batch) brain 192 / router 154 / voice 115+1skip / pc 11 / computer_use 60+3skip = **532 passed, 4 skipped** (sequential, Rule 14); root **214 passed, 7 xfailed** (qa stale count ALSO fixed upstream — no failures)
 - (authority-guard batch) brain 184 / router 154 / voice 104+1skip / pc 11 / computer_use 60+2skip = **513 passed, 3 skipped** (sequential, Rule 14); root **203 passed, 1 known-fail** (qa's approved `==11`→12 fix still pending on their side), 7 xfailed
 - (emitters batch) brain 181 / router 144 / voice 104+1skip / pc 11 / computer_use 60+2skip = **500 passed, 3 skipped** (sequential Rule 14; computer_use default-mode fixed by integrator c60c23c — verified in my tree); root **203 passed, 1 known-fail** (qa stale count, approved fix pending), 7 xfailed

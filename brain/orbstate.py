@@ -129,7 +129,18 @@ def finish_boot():
 
 
 # ---- frame building --------------------------------------------------------
+# TEMP central hold (integrator decision 2026-10-07): shape_hint is CIRCLE
+# ONLY while shape-changing is reserved for the user's future plans. The
+# renderer revert alone was not enough — the brain still sent llm->octagram
+# etc. and the live orb morphed mid-task ("a weird shape, not the cage").
+# NOT a contract removal: the field and config orb.shape_map stay intact;
+# flip this constant to re-enable per-kind derivation later.
+_SHAPE_CIRCLE_ONLY = True
+
+
 def _shape_for(kind: str) -> str:
+    if _SHAPE_CIRCLE_ONLY:
+        return 'circle'
     try:
         shape_map = appcfg.cfg_get(appcfg.get_config(), 'orb.shape_map', {}) or {}
     except Exception:  # noqa: BLE001 — orb must render even if config breaks
