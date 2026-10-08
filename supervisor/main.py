@@ -1500,7 +1500,12 @@ def start_brain_relay(cfg, log, listen_port=None, backend_port=None):
         # Instrumented (integrator, 2026-10-08): body saw "invalid HTTP response"
         # because this returned None silently on the live box.
         rc, out = wsl_run(cfg, "hostname", "-I", timeout=15)
-        ip = _wsl_ip(cfg)
+        ip = None
+        if rc == 0:
+            for tok in out.replace(",", " ").split():
+                if tok.count(".") == 3:
+                    ip = tok
+                    break
         if ip:
             state["ip"] = ip
             log.info("brain relay: backend wsl %s:%d (helper leg)" % (ip, backend_port))
@@ -1561,8 +1566,20 @@ def start_brain_relay(cfg, log, listen_port=None, backend_port=None):
         while True:
             try:
                 client, _addr = srv.accept()
-            except OSError:
-                return
+            except OSError as exc:
+                # 2026-10-08 (integrator): a transient accept OSError used to
+                # `return` — killing the loop while the bound socket stayed
+                # open => ZOMBIE listener (backlog fills, body's Win clients
+                # time out with "invalid HTTP response", foreground goes
+                # unknown, router fails closed E_OFFLINE). Only exit when the
+                # socket itself is really gone; otherwise log + keep serving.
+                if srv.fileno() == -1:
+                    log.warn("brain relay: listener closed — accept loop exiting")
+                    return
+                log.warn("brain relay: transient accept OSError (%s) — "
+                         "continuing" % exc)
+                time.sleep(0.1)
+                continue
             if not slots.acquire(blocking=False):
                 try:
                     client.close()
