@@ -241,6 +241,69 @@ async function runInteraction(cdp, brain, rec) {
   add('menu_pause_is_checkbox', !!pauseItem && pauseItem.type === 'checkbox',
       pauseItem && `label="${pauseItem.label}" type=${pauseItem.type} action=${pauseItem.action}`);
 
+  // --- F-4 (Wave 5H audit): usage + rate-headroom rows, NO new frames -------
+  // Source is GET /status (PROTOCOL §2 REST, SAME port + token as the WS), read
+  // when the menu opens. The mock SERVES a realistic router block, so this
+  // asserts the headroom MATH — tightest provider is zen_free at 58/60 rpm =
+  // 3% headroom with an OPEN circuit — not merely that a row exists.
+  const usage = (spec || []).find((i) => i.id === 'info-usage');
+  const rate = (spec || []).find((i) => i.id === 'info-rate');
+  add('menu_usage_and_rate_rows', !!usage && !!rate,
+      `${usage && usage.label} | ${rate && rate.label}`);
+  add('menu_usage_totals_from_router',
+      !!usage && /128 calls · 121 ok · 7 err/.test(usage.label || ''),
+      `label="${usage && usage.label}"`);
+  add('menu_rate_headroom_math',
+      !!rate && /3%/.test(rate.label || '') && /zen_free/.test(rate.label || '') &&
+      /58\/60/.test(rate.label || ''),
+      `label="${rate && rate.label}"`);
+  const circ = (spec || []).find((i) => i.id === 'info-circuit');
+  add('menu_circuit_row_when_open',
+      !!circ && /zen_free open/.test(circ.label || ''), `label="${circ && circ.label}"`);
+  add('menu_status_sent_bearer_token', brain.statusAuthSeen === true,
+      `Authorization header present on GET /status: ${brain.statusAuthSeen} (value never stored)`);
+
+  // --- SEC-3: "mic audio is going to the cloud" indicator ------------------
+  const mic = (spec || []).find((i) => i.id === 'mic-cloud');
+  add('menu_mic_cloud_row', !!mic && /cloud|local/i.test(mic.label || ''),
+      `label="${mic && mic.label}"`);
+
+  const badge = () => cdp.evaluateJson(
+    'document.getElementById("micbadge") ? ' +
+    'document.getElementById("micbadge").classList.contains("on") : null');
+  brain.broadcast({ type: 'orb_state', v: 1, state: 'listening', jobs_active: 0,
+    mode: 'normal', shape_hint: 'circle', task_kind: 'none' });
+  await sleep(500);
+  const onListening = await badge();
+  add('mic_badge_on_while_listening', onListening === true, `on=${onListening}`);
+
+  brain.broadcast({ type: 'orb_state', v: 1, state: 'listening', jobs_active: 0,
+    mode: 'private', private: true, shape_hint: 'circle', task_kind: 'none' });
+  await sleep(500);
+  const onPrivate = await badge();
+  add('mic_badge_off_in_private_mode', onPrivate === false, `on=${onPrivate}`);
+
+  const micSpec = await cdp.evaluateJson('window.raphael.menuSpec()');
+  const micPriv = (micSpec || []).find((i) => i.id === 'mic-cloud');
+  add('menu_mic_cloud_says_local_in_private',
+      !!micPriv && /local/i.test(micPriv.label || ''), `label="${micPriv && micPriv.label}"`);
+
+  // --- F-4 degradation: Brain reports no usage block -> honest, not missing --
+  brain.statusRouter = null;
+  await sleep(1200);                 // > STATUS_TTL_MS so the next open re-reads
+  const specDeg = await cdp.evaluateJson('window.raphael.menuSpec()');
+  const usage2 = (specDeg || []).find((i) => i.id === 'info-usage');
+  const rate2 = (specDeg || []).find((i) => i.id === 'info-rate');
+  add('menu_usage_degrades_honestly',
+      !!usage2 && /unavailable/.test(usage2.label || ''),
+      `label="${usage2 && usage2.label}"`);
+  add('menu_rate_row_survives_degradation',
+      !!rate2 && /unavailable/.test(rate2.label || ''),
+      `label="${rate2 && rate2.label}"`);
+
+  brain.step('speaking');   // restore the state the rest of this phase assumes
+  await sleep(400);
+
   // --- pointer hit-testing -------------------------------------------------
   // A genuine OS mousemove can land at ANY moment (the window forwards them),
   // and one did: the listener saw clientX=17 clientY=157 while the harness

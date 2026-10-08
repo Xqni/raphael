@@ -147,6 +147,30 @@ Wave 2 is MERGED; live gate was 3/5 — evidence + bug dossiers: `docs/BUGS-WAVE
       **interaction PASS 19/19** incl. `notice_reaches_renderer`,
       `notice_shown_as_banner`, `notice_never_changes_state`.
 
+## WAVE 5H AUDIT TASKS (packet `docs/audit-tasks/orb.md`)
+
+Verify-first: every finding quoted with `file:line`, reported CONFIRMED /
+NOT-APPLICABLE / ALREADY-DONE in `task_done`. QA-4: `wave_done` must link a
+green CI run.
+
+- [x] **ARCH-1 (P1) — Windows-native Electron: PLAN ONLY.**
+      `docs/orb/WINDOWS-NATIVE-PLAN.md` + `.opencode/research/windows-native-electron-orb.md`.
+      No code, no installs. Node on Windows already present (`v24.1.0`, right
+      line). Prototype BLOCKED on human approval — `coord user_attention` posted.
+      WSLg path untouched.
+- [x] **F-4 (P2) — usage/rate headroom rows in the right-click menu (no new frames)
+      + SEC-3 cloud-mic indicator.** CONFIRMED and shipped: `GET /status` on menu
+      open → `info-usage` / `info-rate` / `info-circuit` (stable ids, honest
+      `(unavailable)` degradation) from the router's `usage_status()` accessor;
+      `#micbadge` + `mic-cloud` menu row, fail-safe (warns unless Private Mode).
+      Interaction phase 19/19 → **30/30**.
+- [x] **F-3 (P2) — activity viewer: DESIGN ONLY (CO-SHARE, correctly blocked).**
+      Schema request `docs/requests/orb__to__pc-control__act-journal-schema.md`,
+      design `docs/orb/ACTIVITY-VIEWER.md`. **No orb code** until pc-control
+      exposes `reversible`/`undo`.
+- [ ] **Item 4 — state-distinctness green after every change** (all 104 pairs).
+      Re-verified on every commit in this wave.
+
 ### AMENDMENT 2 (user): BOOT STATE SEQUENCE REWIRE
 
 - [x] **User directive: "the starting state might need to be rewired — starting state →

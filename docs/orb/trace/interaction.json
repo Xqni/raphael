@@ -4,7 +4,7 @@
     {
       "name": "menu_provider_and_model",
       "ok": true,
-      "detail": "ids: info-provider, info-model",
+      "detail": "ids: info-provider, info-model, info-usage, info-rate, info-circuit",
       "pass": true
     },
     {
@@ -26,6 +26,72 @@
       "pass": true
     },
     {
+      "name": "menu_usage_and_rate_rows",
+      "ok": true,
+      "detail": "Usage 24h: 128 calls · 121 ok · 7 err | Rate headroom: 3% · zen_free 58/60 rpm",
+      "pass": true
+    },
+    {
+      "name": "menu_usage_totals_from_router",
+      "ok": true,
+      "detail": "label=\"Usage 24h: 128 calls · 121 ok · 7 err\"",
+      "pass": true
+    },
+    {
+      "name": "menu_rate_headroom_math",
+      "ok": true,
+      "detail": "label=\"Rate headroom: 3% · zen_free 58/60 rpm\"",
+      "pass": true
+    },
+    {
+      "name": "menu_circuit_row_when_open",
+      "ok": true,
+      "detail": "label=\"Circuit: zen_free open\"",
+      "pass": true
+    },
+    {
+      "name": "menu_status_sent_bearer_token",
+      "ok": true,
+      "detail": "Authorization header present on GET /status: true (value never stored)",
+      "pass": true
+    },
+    {
+      "name": "menu_mic_cloud_row",
+      "ok": true,
+      "detail": "label=\"Mic → cloud STT (when listening)\"",
+      "pass": true
+    },
+    {
+      "name": "mic_badge_on_while_listening",
+      "ok": true,
+      "detail": "on=true",
+      "pass": true
+    },
+    {
+      "name": "mic_badge_off_in_private_mode",
+      "ok": true,
+      "detail": "on=false",
+      "pass": true
+    },
+    {
+      "name": "menu_mic_cloud_says_local_in_private",
+      "ok": true,
+      "detail": "label=\"Mic: LOCAL only (Private Mode)\"",
+      "pass": true
+    },
+    {
+      "name": "menu_usage_degrades_honestly",
+      "ok": true,
+      "detail": "label=\"Usage 24h: (unavailable)\"",
+      "pass": true
+    },
+    {
+      "name": "menu_rate_row_survives_degradation",
+      "ok": true,
+      "detail": "label=\"Rate headroom: (unavailable)\"",
+      "pass": true
+    },
+    {
       "name": "hit_test_decision",
       "ok": true,
       "detail": "dist=0 hitR=112.0 viewport=280x280 inside=true typedOpen=false",
@@ -34,13 +100,13 @@
     {
       "name": "mousemove_listener_wired",
       "ok": true,
-      "detail": "listener saw clientX=138 clientY=0 dist=140.0 inside=false seen=2 (expect inside == dist<=112)",
+      "detail": "listener saw clientX=140 clientY=140 dist=0.0 inside=true seen=1 (expect inside == dist<=112)",
       "pass": true
     },
     {
       "name": "main_follows_renderer",
       "ok": true,
-      "detail": "renderer.pointerInside=false -> main.mouseThrough=true (must be the exact opposite)",
+      "detail": "renderer.pointerInside=true -> main.mouseThrough=false (must be the exact opposite)",
       "pass": true
     },
     {
@@ -125,6 +191,26 @@
     {
       "id": "info-model",
       "label": "Model: llama-3.3-70b-versatile",
+      "enabled": false
+    },
+    {
+      "id": "info-usage",
+      "label": "Usage 24h: 128 calls · 121 ok · 7 err",
+      "enabled": false
+    },
+    {
+      "id": "info-rate",
+      "label": "Rate headroom: 3% · zen_free 58/60 rpm",
+      "enabled": false
+    },
+    {
+      "id": "info-circuit",
+      "label": "Circuit: zen_free open",
+      "enabled": false
+    },
+    {
+      "id": "mic-cloud",
+      "label": "Mic → cloud STT (when listening)",
       "enabled": false
     },
     {
