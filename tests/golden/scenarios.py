@@ -112,3 +112,17 @@ SCENARIOS = {
     'confirm_deny': run_confirm_deny,
     'gui_act': run_gui_act,
 }
+
+
+# Intent oracle for the eval layer (QA-3): input command -> expected tool
+# behavior in the recorded transcript. Eval asserts the RECORDING matches —
+# tool-call accuracy against the committed fixture, no live model involved.
+SCENARIO_META = {
+    'echo': {'command': 'echo golden hello', 'tool': None,
+             'expect_confirm': False, 'expect_answer': True},
+    'confirm_deny': {'command': 'delete golden files now', 'tool': None,
+                     'expect_confirm': True, 'expect_answer': False},
+    'gui_act': {'command': 'take a screenshot', 'tool': 'screenshot',
+                'tool_args': {'max_px': 1280}, 'expect_confirm': False,
+                'expect_answer': True},
+}

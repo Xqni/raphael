@@ -9,6 +9,17 @@ Updated: 2026-10-07 (Wave 3 open; CI ownership fix done)
   file:line evidence in docs/lanes/qa-security.md; **QA-3 = PARTIAL**
   (golden transcripts landed, cron+evals left); control-plane re-audit NOT
   started — both honestly unchecked above.
+- **DONE 2026-10-08: QA-3 remainder (cron + evals)** —
+  `tests/golden/test_golden_evals.py` (12 evals: persona-format rules pulled
+  live from `config.yaml` voice_personality, tool-call accuracy vs intent
+  oracle `SCENARIO_META`, answer-frame shape incl. deny-path must NOT answer,
+  confirm-gate presence) + `tests-heavy.yml`: nightly cron `0 5 * * *`,
+  named golden-evals step, `record_golden` dispatch input re-records and
+  uploads `tests/golden/transcripts/` as an artifact (review before commit;
+  upload-artifact SHA-pinned). Boot-time Core Guard (brain/coreguard.py)
+  caught my un-repinned tests-heavy edit mid-run — REFUSING TO SERVE, then
+  re-pinned with packet approval (20 files OK). Suites: **384 passed,
+  2 skipped, 7 xfailed**.
 - **DONE 2026-10-08: Wave-3 golden job transcripts** —
   `tests/golden/{scenarios,replay}.py` + `tests/golden/test_golden_replay.py`
   (replay through a FRESH instance, multiset+job-chain compare, token/session/
