@@ -789,3 +789,37 @@ $ brain/.venv/bin/python -m pytest brain/tests -q
 P0 battery (shipped code): 10/10 >= 0.90 (scores_SHIPPED.json); samples
 assets/reference/samples/P0_DRIFT_{BEFORE,AFTER}_01..10.wav
 ```
+
+## Wave 5H — STT → reply latency (packet: "can we not make the STT real time")
+
+**Measured first** (verify-first) with `brain/voice/scripts/stt_reply_latency.py` —
+production-shaped in-process path, REAL Groq STT (5 runs, live `.env`), real wake gate,
+real `engine.submit` + fastpath → first `subtitle` frame; TTS stubbed (subtitle fires
+synchronously BEFORE any speak event). Raw: `~/.raphael/voice/eval/stt_reply_latency.json`.
+
+| stage | median | range |
+|---|---:|---:|
+| S1 body VAD hangover (speech end → `audio_end`) | **2 500 ms** | fixed (`SILENCE_CLOSE=25`×100 ms) |
+| S2 cloud STT (audio_end → transcript) | **576 ms** | 493–621 ms (rtf≈0.23 on 3.7 s clip) |
+| S3a wake gate | 0.1 ms | — |
+| S3b engine.submit | 2.5 ms | — |
+| S3c fastpath → subtitle | 0 ms | — |
+| **close → subtitle** | **578 ms** | 496–624 ms |
+| **perceived (stop speaking → subtitle)** | **≈3 078 ms** | — |
+
+S1 = **71 %** of perceived wait, S2 = 19 %, everything else ≤1 % — the
+brain-side handoff is already instant; there is nothing to cut there.
+
+**Proposed cut (ranked, no code landed yet — measurement mandate):**
+1. **Cut A (saves ~1.3 s):** `SILENCE_CLOSE 25 → 12` **with** utterance-continuation
+   merge — plain reduction to 1.5 s was PROVEN to split live commands; the fix is a
+   new body-side `reason='continuation'` on resume within a 1.5 s grace window and
+   brain-core appending instead of clearing. Requests filed (brain-core);
+   body half ready, lands ONLY together with theirs.
+2. **Cut B (saves ~0.2–0.3 s):** router targets the fastest Groq STT model for the
+   transcribe seam (baseline above) → request filed (router).
+3. **Rejected (with reasons in the doc):** speculative partial STT (truncation =
+   the same proven split class + 2× cloud cost), cutting S3 (measured 0.1/2.5/0 ms),
+   local STT (cloud_temp-forbidden + ~1 GB RAM).
+- Doc: `brain/voice/STT-REPLY-LATENCY.md` (stage table, ranked cuts, targets:
+  close→subtitle ≤400 ms, perceived ≤1.7 s, zero split regressions).
