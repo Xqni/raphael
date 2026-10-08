@@ -19,3 +19,4 @@ docs/voice/TTS-DECISION.md =voice  # 2026-10-08 Wave-5H packet F-5 assignment (d
 brain/coreguard.py =brain-core  # 2026-10-08 SEC-7 packet extra + my nudge: boot-time Core Guard verification (safe-mode detection)
 brain/latency.py =brain-core  # 2026-10-08 ARCH-6 packet assignment: uniform stage latency instrumentation
 brain/logjson.py =brain-core  # 2026-10-08 ARCH-6 packet assignment: structured log lines
+.opencode/research/windows-native-electron-orb.md =orb  # 2026-10-08 Wave-5H ARCH-1 packet deliverable (research backing docs/orb/WINDOWS-NATIVE-PLAN.md)
