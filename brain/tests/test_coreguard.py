@@ -113,31 +113,57 @@ def test_status_block_is_value_blind():
     assert isinstance(st['active'], bool)
 
 
-def test_boot_safe_mode_emits_visible_notice(token_path, monkeypatch, tmp_path):
-    """Drift at boot -> SAFE MODE + warn Notice flushed to the first ui/cli
-    session; /status carries the honest block."""
+def test_boot_drift_refuses_to_serve(token_path, monkeypatch, tmp_path):
+    """[56] FAIL-CLOSED BEFORE SERVING: manifest drift (or guard-tool failure)
+    aborts startup with a loud refusal — uvicorn/TestClient never come up."""
     coreguard.reset_for_tests()
     bad = tmp_path / 'drifted.json'
     bad.write_text(json.dumps({'brain/mode.py': '0' * 64}))
     monkeypatch.setattr(coreguard, 'DEFAULT_MANIFEST', bad)
     try:
-        with TestClient(app) as client:
-            # /status reflects safe mode
-            r = client.get('/status', headers={'X-Raphael-Token': TEST_TOKEN})
-            cg = r.json()['core_guard']
-            assert cg['active'] is True and cg['ok'] is False
-            assert cg['reason'] == 'hash_mismatch'
-            assert cg['mismatched'] == ['brain/mode.py']
-            # visible Notice to the first ui session
-            with client.websocket_connect('/ws') as ws:
-                ws.send_text(json.dumps({'type': 'auth', 'v': 1,
-                                         'token': TEST_TOKEN, 'role': 'ui',
-                                         'client': 't', 'client_v': '1'}))
-                assert _recv_json(ws, timeout=5)['type'] == 'auth_ok'
-                n = _recv_until(ws, lambda m: m.get('type') == 'notice'
-                                and m.get('level') == 'warn')
-                assert 'SAFE MODE' in n['text']
-                assert n['level'] == 'warn'
-        assert coreguard.SAFE_MODE['active'] is True
+        with pytest.raises(RuntimeError, match='REFUSING TO SERVE'):
+            with TestClient(app):
+                pass
+        # bookkeeping still records WHY (value-blind)
+        assert coreguard.SAFE_MODE.get('active') is True
     finally:
         coreguard.reset_for_tests()
+
+
+def test_guard_tool_failure_also_refuses(token_path, monkeypatch):
+    """If qa's guard tool itself cannot run -> not verified -> refuse."""
+    coreguard.reset_for_tests()
+    monkeypatch.setattr(coreguard, 'run_guard_tool',
+                        lambda timeout_s=60.0: {'ok': False, 'rc': None,
+                                                'detail': 'tool exploded'})
+    try:
+        with pytest.raises(RuntimeError, match='REFUSING TO SERVE'):
+            with TestClient(app):
+                pass
+    finally:
+        coreguard.reset_for_tests()
+
+
+def test_midrun_drift_flips_safe_mode_and_blocks_dispatch(token_path,
+                                                          monkeypatch):
+    """AUD-21 enforcement: a mid-run manifest flip (throttled reverify) marks
+    SAFE MODE — /status shows it and tool dispatch is blocked."""
+    coreguard.reset_for_tests()
+    with TestClient(app) as client:
+        # healthy at boot
+        cg = client.get('/status', headers={'X-Raphael-Token': TEST_TOKEN}
+                        ).json()['core_guard']
+        assert cg['active'] is False and cg['ok'] is True
+        # simulate drift discovered by the next reverify
+        monkeypatch.setattr(coreguard, 'verify',
+                            lambda manifest_path=None: {
+                                'ok': False, 'reason': 'hash_mismatch',
+                                'mismatched': ['brain/confirm.py'],
+                                'missing': [], 'manifest': 'x'})
+        monkeypatch.setattr(coreguard, '_VERIFY_INTERVAL_S', 0.0)
+        coreguard._last_verify = -1e9
+        cg = client.get('/status', headers={'X-Raphael-Token': TEST_TOKEN}
+                        ).json()['core_guard']
+        assert cg['active'] is True and cg['ok'] is False
+        assert coreguard.SAFE_MODE['active'] is True
+    coreguard.reset_for_tests()

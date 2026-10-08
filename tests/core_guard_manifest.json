@@ -3,7 +3,7 @@
   ".github/workflows/tests-heavy.yml": "cb8984ab38dbb75351d3dbd42963c2d7c287ac8a61fbab59cf40f6e6f602331b",
   "body/win/act_powershell.py": "cf3e850af55fa05cfe1fd4f973b0c0accf75b3e88d5186c49317f85a6d2b1697",
   "brain/auth.py": "0efc6d4a679a6a6b7b1c0f1df02042d4b0e67f3320426e964532c872f6dc355c",
-  "brain/confirm.py": "640104b2528a4338ce8951b73122cb28d7888dd844a87bc05c64bf81971a8b3d",
+  "brain/confirm.py": "1e98aff14c917288d59c340b932aaf31631b9234f68234a3d9239ede8336cb1c",
   "brain/control.py": "db9bcf042115a74e7e1c0a4dce8f20b45c4bb7baea235190444e34e3217ff569",
   "brain/evolution/**": "2fcd09f1bd61d696faf39c0d02c9f1c5334a44f89f18b5271e7b77c9a726e6cd",
   "brain/mode.py": "9137e5e8e34201f9ecbb7bb9fb7daddfc0db8793972fe2d18f501bcd6687d03c",
@@ -18,5 +18,5 @@
   "scripts/win/make-ref-voice.ps1": "60fb334719cab6f756cf1e538b350c13572fcec433a7de7688b17644dff667d1",
   "scripts/win/mute.ps1": "4afa81ae0537901e0533809d9ad32c2cc861a15e03a0677e14b2fd9581c9c1d3",
   "supervisor/**": "991cbce0d69fff7e10431fdff42b5955758c479065ec4e2476aa1fdd03ec9a3e",
-  "tools/conductor/**": "32695ce56851b6f753b280dba94d2cd56a71a3ad8e640020afaf1048b364db8c"
+  "tools/conductor/**": "46ad0fe2a0ac0acc9d484d6b488ef146225dc05a3aedbe6e10659d30d25dbe3a"
 }

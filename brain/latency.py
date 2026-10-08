@@ -6,12 +6,15 @@ anchor is OMITTED (honest — never a fabricated zero). Exposed via
 GET /status -> `latency`.
 """
 import time
+from collections import deque
 from typing import Any, Dict, Optional
 
 STAGES = ('stt', 'routing', 'llm_first_token', 'tool_start', 'tts_first_audio')
 _ANCHOR_CAP = 64
 
 _last: Dict[str, float] = {}
+_HIST_MAX = 120                     # AUD-29: bounded per-stage window
+_hist: Dict[str, "deque[float]"] = {}
 _anchors: Dict[int, Dict[str, float]] = {}     # rowid -> {submit, running}
 _marks: Dict[int, Dict[str, bool]] = {}        # rowid -> once-flags
 _job: Optional[str] = None                     # last running external id
@@ -27,6 +30,19 @@ def _stamp(stage: str, ms: float) -> None:
     global _updated_at
     _last[stage] = max(0.0, float(ms))
     _updated_at = int(time.time() * 1000)
+    h = _hist.get(stage)
+    if h is None:
+        h = _hist[stage] = deque(maxlen=_HIST_MAX)
+    h.append(_last[stage])
+
+
+def _pct(values, q: float) -> float:
+    """Nearest-rank percentile on a small bounded list (value-blind numbers)."""
+    ordered = sorted(values)
+    if not ordered:
+        return 0.0
+    idx = max(0, min(len(ordered) - 1, int(round(q * (len(ordered) - 1)))))
+    return round(ordered[idx], 1)
 
 
 def _prune() -> None:
@@ -39,6 +55,7 @@ def _prune() -> None:
 def reset_for_tests() -> None:
     global _job, _updated_at
     _last.clear(); _anchors.clear(); _marks.clear(); _speak_anchor.clear()
+    _hist.clear()
     _job = None; _updated_at = 0
 
 
@@ -98,6 +115,17 @@ def snapshot() -> Dict[str, Any]:
     no paths, no provider payloads)."""
     out: Dict[str, Any] = {'stages': {k: round(v, 1)
                                       for k, v in _last.items()}}
+    # AUD-29: bounded histograms (p50/p95/max/count) — distributions, not a
+    # single latest sample; value-blind (numbers only).
+    hist = {}
+    for stage, values in _hist.items():
+        if values:
+            hist[stage] = {'count': len(values),
+                           'p50': _pct(values, 0.50),
+                           'p95': _pct(values, 0.95),
+                           'max': round(max(values), 1)}
+    if hist:
+        out['hist'] = hist
     if _job:
         out['job'] = _job
     if _updated_at:

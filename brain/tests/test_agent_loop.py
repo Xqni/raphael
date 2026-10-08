@@ -694,10 +694,15 @@ def test_registry_risky_metadata_gates_dispatch(token_path, fake_chat):
 
 def test_tool_decision_helper_maps_risk():
     from brain import confirm as confirm_mod
+    # AUD-09 (P0): tool_decision is ALWAYS non-voice — mapped or unknown
     d = confirm_mod.tool_decision('powershell')
-    assert d.needs and d.action == 'system_command' and d.risk == 'low'
+    assert d.needs and d.action == 'system_command' and d.risk == 'high'
     d = confirm_mod.tool_decision('files_delete', 'delete the thing')
     assert d.needs and d.action == 'delete_files' and d.risk == 'high'
+    d = confirm_mod.tool_decision('some_future_mcp_tool')
+    assert d.needs and d.risk == 'high'      # unknown names: non-voice too
+    assert 'files_delete' not in d.question
+    d = confirm_mod.tool_decision('files_delete', 'delete the thing')
     assert 'files_delete' in d.question and 'delete the thing' in d.question
 
 
@@ -1066,3 +1071,238 @@ def test_ws_command_kind_parent_echo_and_validation(token_path, fake_chat):
                                    and m.get('status') == 'done'
                                    and m.get('job') == job2)
             assert 'kind' not in done2 and 'parent' not in done2
+
+
+# ---- AUD-21: SAFE MODE blocks tool dispatch --------------------------------
+def test_safe_mode_blocks_tool_dispatch(token_path, fake_chat):
+    from brain import coreguard, tools as reg
+    executed = []
+    reg.register('t_safe_probe', lambda q: executed.append(q) or 'ok',
+                 description='would run',
+                 schema={'type': 'object',
+                         'properties': {'q': {'type': 'string',
+                                              'description': 'q'}},
+                         'required': ['q'], 'additionalProperties': False})
+    coreguard.SAFE_MODE = {'active': True}
+    try:
+        calls = fake_chat([
+            {'text': '', 'tool_calls': [{
+                'id': 'c1', 'type': 'function',
+                'function': {'name': 't_safe_probe',
+                             'arguments': json.dumps({'q': 'x'})}}]},
+            {'text': 'Understood.'},
+        ])
+        with TestClient(app) as client:
+            with client.websocket_connect('/ws') as ws_cli:
+                assert _auth(ws_cli, 'cli')['type'] == 'auth_ok'
+                job = _command(ws_cli, 'probe under safe mode')
+                done, _ = _recv_until(
+                    ws_cli, lambda m: m.get('type') == 'job_event'
+                    and m.get('status') == 'done' and m.get('job') == job)
+                assert done['text'] == 'Understood.'
+        # the tool NEVER executed; the refusal was fed back to the model
+        assert executed == [], 'SAFE MODE must block tool execution'
+        tool_msg = [m for m in calls[1]['messages'] if m.get('role') == 'tool']
+        assert tool_msg and 'SAFE MODE' in tool_msg[0]['content']
+    finally:
+        coreguard.SAFE_MODE = {'active': False}
+        reg._registry.pop('t_safe_probe', None)
+        reg._META.pop('t_safe_probe', None)
+
+
+# ---- AUD-22: memory/skills injection + schedule re-arm ----------------------
+def test_memory_and_skills_injected_as_untrusted_context(token_path, fake_chat,
+                                                         monkeypatch):
+    import brain.memory as mempkg
+    import brain.memory.skills as skillsmod
+    monkeypatch.setattr(
+        mempkg, 'retrieve',
+        lambda q, k=None, owner=None: [
+            {'id': 1, 'text': 'user prefers dark mode', 'category': 'pref',
+             'pinned': True, 'ts': 0, 'source': 'test', 'score': 1.0}],
+        raising=False)
+    monkeypatch.setattr(
+        skillsmod, 'active_skills',
+        lambda min_confidence=None: [
+            {'id': 9, 'text': 'skill: summarize clips', 'category': 'skill',
+             'ts': 0, 'source': 'skills', 'score': 1.0}])
+    calls = fake_chat([{'text': 'Noted.'}])
+    with TestClient(app) as client:
+        with client.websocket_connect('/ws') as ws_cli:
+            assert _auth(ws_cli, 'cli')['type'] == 'auth_ok'
+            job = _command(ws_cli, 'remembers anything?')
+            done, _ = _recv_until(
+                ws_cli, lambda m: m.get('type') == 'job_event'
+                and m.get('status') == 'done' and m.get('job') == job)
+            assert done['text'] == 'Noted.'
+    msgs = calls[0]['messages']
+    # context sits BETWEEN history and the live question, untrusted-framed
+    ctx = [m for m in msgs if m.get('role') == 'user'
+           and 'UNTRUSTED' in m.get('content', '')]
+    assert ctx, [m.get('content', '')[:60] for m in msgs]
+    assert 'user prefers dark mode' in ctx[0]['content']
+    assert 'summarize clips' in ctx[0]['content']       # skills same turn
+    assert msgs[-1] == {'role': 'user', 'content': 'remembers anything?'}
+    # NEVER injected as a system instruction (AGENTS §9 framing)
+    assert all('UNTRUSTED' not in m.get('content', '')
+               for m in msgs if m.get('role') == 'system')
+
+
+def test_personal_memory_excluded_for_free_provider_chains(token_path,
+                                                           fake_chat,
+                                                           monkeypatch):
+    """providers.allow_free_models_for_personal_data=false (repo config):
+    personal categories never enter prompts (free providers are in chain)."""
+    import brain.memory as mempkg
+    monkeypatch.setattr(
+        mempkg, 'retrieve',
+        lambda q, k=None, owner=None: [
+            {'id': 1, 'text': 'user lives at 12 Main Stsecret Road',
+             'category': 'identity', 'pinned': True, 'ts': 0,
+             'source': 'test', 'score': 1.0},
+            {'id': 2, 'text': 'prefers metric units', 'category': 'pref',
+             'pinned': False, 'ts': 0, 'source': 'test', 'score': 0.9}],
+        raising=False)
+    calls = fake_chat([{'text': 'Understood.'}])
+    with TestClient(app) as client:
+        with client.websocket_connect('/ws') as ws_cli:
+            assert _auth(ws_cli, 'cli')['type'] == 'auth_ok'
+            job = _command(ws_cli, 'any personal context?')
+            done, _ = _recv_until(
+                ws_cli, lambda m: m.get('type') == 'job_event'
+                and m.get('status') == 'done' and m.get('job') == job)
+            assert done['text'] == 'Understood.'
+    blob = json.dumps(calls[0]['messages'])
+    assert '12 Main Stsecret Road' not in blob, 'personal row leaked to prompt'
+    assert 'prefers metric units' in blob           # non-personal still there
+
+
+def test_memory_failure_injects_nothing_and_turn_still_works(token_path,
+                                                             fake_chat,
+                                                             monkeypatch):
+    import brain.memory as mempkg
+
+    def _boom(q, k=None, owner=None):
+        raise RuntimeError('db locked')
+
+    monkeypatch.setattr(mempkg, 'retrieve', _boom, raising=False)
+    calls = fake_chat([{'text': 'Still fine.'}])
+    with TestClient(app) as client:
+        with client.websocket_connect('/ws') as ws_cli:
+            assert _auth(ws_cli, 'cli')['type'] == 'auth_ok'
+            job = _command(ws_cli, 'quick question')
+            done, _ = _recv_until(
+                ws_cli, lambda m: m.get('type') == 'job_event'
+                and m.get('status') == 'done' and m.get('job') == job)
+            assert done['text'] == 'Still fine.'
+    assert 'UNTRUSTED' not in json.dumps(calls[0]['messages'])
+
+
+def test_schedule_arm_all_called_at_startup(monkeypatch):
+    import brain.tools.schedule as sched
+    calls = []
+    monkeypatch.setattr(sched, 'arm_all',
+                        lambda loop=None: calls.append(True) or True)
+    with TestClient(app) as client:
+        r = client.get('/status', headers={'X-Raphael-Token': TEST_TOKEN})
+        assert r.status_code == 200
+    assert calls, 'arm_all must run once at startup (timers survive restart)'
+
+
+# ---- AUD-08: body session CANNOT claim a non-voice channel ------------------
+def test_body_cannot_claim_click_or_text_via(token_path, fake_chat):
+    """Channel derives ONLY from the authenticated role: a body session
+    sending via:'click'/'text' is still treated as VOICE — a high-risk yes
+    from it is rejected, never granted."""
+    fake_chat([{'text': 'never'}])
+    with TestClient(app) as client:
+        with client.websocket_connect('/ws') as ws_body:
+            assert _auth(ws_body, 'body')['type'] == 'auth_ok'
+            with client.websocket_connect('/ws') as ws_cli:
+                assert _auth(ws_cli, 'cli')['type'] == 'auth_ok'
+                job = _command(ws_cli, 'delete my downloads folder')
+                _recv_until(ws_cli, lambda m: m.get('type') == 'needs_confirm'
+                            and m.get('job') == job)
+                # attacker-style: body claims a trusted channel
+                ws_body.send_text(json.dumps({'type': 'confirm_resp', 'v': 1,
+                                              'job': job, 'answer': 'yes',
+                                              'via': 'click'}))
+                ack, _ = _recv_until(ws_body, lambda m: m.get('type') == 'ack'
+                                     and m.get('accepted') is False)
+                # role=body => voice => high-risk affirmative REJECTED
+                assert ack.get('accepted') is False, ack
+                from brain.jobs import store as job_store
+                assert job_store.get_job(job_store.parse_job_ref(job))[
+                    'status'] == 'awaiting_confirm'
+                # the trusted cli channel still works afterwards
+                ws_cli.send_text(json.dumps({'type': 'confirm_resp', 'v': 1,
+                                             'job': job, 'answer': 'yes'}))
+                ack2, _ = _recv_until(ws_cli, lambda m: m.get('type') == 'ack'
+                                      and m.get('accepted') is True)
+                assert ack2['job'] == job
+
+
+# ---- AUD-09: registry confirm category propagates (voice_ok = reviewed low)
+def test_registry_confirm_category_voice_ok_downgrades(token_path, fake_chat):
+    from brain import tools as reg
+    reg.register('t_reviewed_low', lambda q: 'ok',
+                 description='reviewed voice-ok tool', confirm='voice_ok',
+                 schema={'type': 'object',
+                         'properties': {'q': {'type': 'string',
+                                              'description': 'q'}},
+                         'required': ['q'], 'additionalProperties': False})
+    try:
+        calls = fake_chat([
+            {'text': '', 'tool_calls': [{
+                'id': 'c1', 'type': 'function',
+                'function': {'name': 't_reviewed_low',
+                             'arguments': json.dumps({'q': 'x'})}}]},
+            {'text': 'Done.'},
+        ])
+        with TestClient(app) as client:
+            with client.websocket_connect('/ws') as ws_cli:
+                assert _auth(ws_cli, 'cli')['type'] == 'auth_ok'
+                job = _command(ws_cli, 'use the reviewed tool')
+                conf, _ = _recv_until(ws_cli, lambda m: m.get('type') == 'needs_confirm'
+                                      and m.get('job') == job)
+                # explicit reviewed policy downgrades to LOW (voice-eligible)
+                assert conf['risk'] == 'low', conf
+                ws_cli.send_text(json.dumps({'type': 'confirm_resp', 'v': 1,
+                                             'job': job, 'answer': 'yes'}))
+                ack, _ = _recv_until(ws_cli, lambda m: m.get('type') == 'ack'
+                                     and m.get('accepted') is True)
+                assert ack['job'] == job
+                done, _ = _recv_until(ws_cli, lambda m: m.get('type') == 'job_event'
+                                      and m.get('status') == 'done'
+                                      and m.get('job') == job)
+                assert done['text'] == 'Done.'
+        # ...and an unreviewed category stays NON-voice (action overridden)
+        fake_chat([{'text': '', 'tool_calls': [{
+            'id': 'c9', 'type': 'function',
+            'function': {'name': 't_unreviewed',
+                         'arguments': json.dumps({'q': 'x'})}}]},
+            {'text': 'Done.'}])
+        reg.register('t_unreviewed', lambda q: 'ok',
+                     description='has a confirm category, not voice_ok',
+                     confirm='system_settings_change',
+                     schema={'type': 'object',
+                             'properties': {'q': {'type': 'string',
+                                                  'description': 'q'}},
+                             'required': ['q'], 'additionalProperties': False})
+        with TestClient(app) as client:
+            with client.websocket_connect('/ws') as ws_cli:
+                assert _auth(ws_cli, 'cli')['type'] == 'auth_ok'
+                job = _command(ws_cli, 'use the unreviewed tool')
+                conf, _ = _recv_until(ws_cli, lambda m: m.get('type') == 'needs_confirm'
+                                      and m.get('job') == job)
+                assert conf['risk'] == 'high'
+                assert conf['question']  # gated, non-voice
+                ws_cli.send_text(json.dumps({'type': 'cancel', 'v': 1,
+                                             'job': job, 'scope': 'full'}))
+                _recv_until(ws_cli, lambda m: m.get('type') == 'ack'
+                            and m.get('cancelled') is True)
+    finally:
+        reg._registry.pop('t_reviewed_low', None)
+        reg._META.pop('t_reviewed_low', None)
+        reg._registry.pop('t_unreviewed', None)
+        reg._META.pop('t_unreviewed', None)

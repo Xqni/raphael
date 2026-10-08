@@ -162,6 +162,51 @@ def _trim_history(max_messages: int, max_chars: int) -> None:
         _history.pop(0)
 
 
+def _external_context(user_text: str) -> str:
+    """AUD-22 (tools-memory request APPROVED): per-turn pinned+BM25 memory
+    and gated skills, framed as UNTRUSTED context (AGENTS §9). Fail-silent:
+    any memory/skills error injects nothing (a store issue never breaks a
+    turn). Personal categories are dropped from prompts while
+    `providers.allow_free_models_for_personal_data` is false (the chain
+    includes free providers — no personal data to free egress)."""
+    try:
+        # each name falls back independently (the package re-exports may land
+        # later; tests patch the package attribute — first branch wins)
+        try:
+            from brain.memory import retrieve
+        except ImportError:
+            from brain.memory.retrieval import retrieve
+        try:
+            from brain.memory import build_untrusted_block
+        except ImportError:
+            from brain.memory.block import build_untrusted_block
+        from brain.memory.skills import active_skills
+    except Exception:  # noqa: BLE001 — module absent -> no injection
+        return ''
+    try:
+        top_k = int(appcfg.cfg_get(appcfg.get_config(), 'memory.top_k', 4))
+        max_chars = int(appcfg.cfg_get(appcfg.get_config(),
+                                       'memory.max_context_chars', 4000))
+        include_personal = bool(appcfg.cfg_get(
+            appcfg.get_config(),
+            'providers.allow_free_models_for_personal_data', False))
+        rows = retrieve(user_text, k=top_k)
+        block = build_untrusted_block(rows, include_personal=include_personal,
+                                      max_chars=max_chars, source='memory')
+        try:
+            skills = active_skills()
+            if skills:
+                sblock = build_untrusted_block(skills, include_personal=False,
+                                               max_chars=max_chars,
+                                               source='skills')
+                block = f'{block}\n\n{sblock}'.strip() if block else sblock
+        except Exception:  # noqa: BLE001 — skills must not kill memory ctx
+            pass
+        return block or ''
+    except Exception:  # noqa: BLE001 — retrieval errors inject nothing
+        return ''
+
+
 def _build_messages(user_text: str,
                     specs: Optional[List[Dict[str, Any]]] = None
                     ) -> List[Dict[str, Any]]:
@@ -175,9 +220,15 @@ def _build_messages(user_text: str,
     block = llm.prompt_block(specs)
     if block:
         system = f'{system}\n\n{block}'
-    return ([{'role': 'system', 'content': system}]
-            + list(_history)
-            + [{'role': 'user', 'content': user_text}])
+    messages = ([{'role': 'system', 'content': system}]
+                + list(_history))
+    # AUD-22: memory/skills context rides as its own untrusted message,
+    # BETWEEN history and the live question (never a system instruction).
+    mem_block = _external_context(user_text)
+    if mem_block:
+        messages.append({'role': 'user', 'content': mem_block})
+    messages.append({'role': 'user', 'content': user_text})
+    return messages
 
 
 def _remember(user_text: str, assistant_text: str,
@@ -505,6 +556,13 @@ def build_runner(hub=None):
         async def _execute_tool(tool_name: str, tool_args: Dict[str, Any],
                                 lock_hint: bool = False) -> Tuple[bool, str]:
             """Run ONE tool (confirm -> lock -> act/local). Returns (ok, out)."""
+            # AUD-21: SAFE MODE blocks dangerous capabilities — a Core Guard
+            # mismatch (boot-time pass, mid-run reverify) disables ALL tool
+            # dispatch until the manifest verifies again.
+            from . import coreguard as _cg
+            if _cg.SAFE_MODE.get('active'):
+                return (False, 'Core Guard mismatch — tool dispatch blocked '
+                               '(SAFE MODE)')
             fn = tool_reg.get(tool_name)
             if fn is None:
                 return (False, f'unknown tool {tool_name}')
@@ -520,6 +578,18 @@ def build_runner(hub=None):
             decision = confirm_mod.classify(text, tool=tool_name)
             if not decision.needs and meta.get('risky'):
                 decision = confirm_mod.tool_decision(tool_name, text)
+            # AUD-09: ToolSpec confirmation categories propagate from
+            # registry meta — declaring `confirm=` GATES the tool (if not
+            # already gated); a category is non-voice unless it carries the
+            # explicit reviewed policy 'voice_ok'.
+            if meta.get('confirm'):
+                if not decision.needs:
+                    decision = confirm_mod.tool_decision(tool_name, text)
+                if meta['confirm'] == 'voice_ok':
+                    decision.risk = 'low'
+                else:
+                    decision.action = str(meta['confirm'])
+                    decision.risk = 'high'
             if decision.needs and decision.action not in confirmed_actions:
                 await _ask_confirm(decision)
             needs_lock = bool(lock_hint or meta.get('needs_lock'))

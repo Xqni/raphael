@@ -141,7 +141,8 @@ def _skip_module(fullname: str) -> bool:
 # ---- registration ----------------------------------------------------------
 def register(name: str, func: Callable, *, risky: bool = False,
              needs_lock: bool = False, description: str = '',
-             category: str = 'local', schema: Optional[Dict[str, Any]] = None):
+             category: str = 'local', schema: Optional[Dict[str, Any]] = None,
+             confirm: Optional[str] = None):
     # category='gui' -> loop.py routes the call to the BODY over act_req
     # (PROTOCOL §7) instead of executing locally in WSL.
     # Load-time REJECTION of non-conforming entries (INTERFACES §b, defense in
@@ -155,9 +156,12 @@ def register(name: str, func: Callable, *, risky: bool = False,
     if schema is not None:
         validate_schema(name, schema)
     _registry[name] = func
+    # confirm: a ToolSpec confirmation category (pc ToolSpec.confirm) or the
+    # explicit reviewed policy 'voice_ok' (AUD-09: everything else that is
+    # tool-gated defaults to NON-voice approval).
     _META[name] = {'risky': bool(risky), 'needs_lock': bool(needs_lock),
                    'description': description, 'category': category,
-                   'schema': schema}
+                   'schema': schema, 'confirm': confirm}
 
 
 def get(name: str) -> Callable:
@@ -321,27 +325,12 @@ def strict_discover() -> None:
         raise BadToolSpec(f'tool discovery failed: {errs}')
 
 
-# Built-in shell tool (synchronous; run via asyncio.to_thread by the loop)
-def shell_tool(command: str) -> str:
-    import subprocess
-    result = subprocess.run(command, shell=True, capture_output=True, text=True)
-    if result.returncode != 0:
-        raise RuntimeError(f'Command failed: {result.stderr}')
-    return result.stdout.strip()
-
-
-register(
-    'shell', shell_tool, risky=True, needs_lock=False,
-    description='run a shell command locally (confirm-gated)',
-    schema={
-        'type': 'object',
-        'properties': {
-            'command': {'type': 'string',
-                        'description': 'shell command line to execute'},
-        },
-        'required': ['command'],
-        'additionalProperties': False,
-    })
+# AUD-10 (P0): the wave-2 `shell_tool(shell=True)` placeholder is DELETED.
+# `brain/tools/shell` (fixed script allow-list, risky=True, confirm-gated) is
+# the ONLY source of the `shell` tool — it self-registers during discovery.
+# If that package fails to import/validate, `shell` is simply ABSENT: not
+# offered to the model, not dispatchable (fail closed, never an arbitrary
+# shell fallback). The startup path never re-creates it.
 
 
 # ---- gui-class tools (PROTOCOL §7): the fns below must NEVER run locally.

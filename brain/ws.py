@@ -62,6 +62,10 @@ AUTH_FAIL_WINDOW_S = 60.0
 AUTH_FAIL_MAX = 5
 AUTH_FAIL_BAN_S = 300.0
 MAX_STRIKES = 3                     # repeated malformed frames -> close
+AUDIO_QMAX = 4                      # AUD-17: bounded per-session STT queue
+AUDIO_MAX_BYTES = 10 * 1024 * 1024  # AUD-24: EXACT audio buffer cap
+MAX_SESSIONS = 32                   # AUD-24: global session bound
+_AUDIO_STOP = object()              # worker sentinel
 
 
 def _clear_yes_no(text: str) -> Optional[str]:
@@ -84,7 +88,8 @@ class Session:
     # synthetic mic-lane E2E).
     __slots__ = ('sid', 'ws', 'ip', 'role', 'client', 'client_v', 'authed',
                  'missed', 'rate', 'created', 'jobs', 'strikes', 'bin_rate',
-                 'audio_buf', 'audio_reason', 'audio_started')
+                 'audio_buf', 'audio_reason', 'audio_started',
+                 'audio_q', 'audio_task')
 
     def __init__(self, ws: WebSocket, ip: str):
         self.sid = uuid.uuid4().hex[:12]
@@ -106,6 +111,10 @@ class Session:
         # decision. audio_end alone never proves one.
         self.audio_reason = 'wake'
         self.audio_started = False
+        # AUD-17: STT runs on a bounded per-session worker (receive loop
+        # stays free for ping/pong + control frames; explicit FIFO order).
+        self.audio_q = None
+        self.audio_task = None
 
 
 class WsHub:
@@ -179,6 +188,15 @@ class WsHub:
                 return
         except Exception:  # noqa: BLE001
             return
+        # AUD-24: bound the global session count BEFORE registering —
+        # a connection flood cannot grow session state without limit.
+        if len(self._sessions) >= MAX_SESSIONS:
+            await ws.accept()
+            await self._send(s, {'type': 'auth_fail', 'v': 1,
+                                 'code': 'E_RATE_LIMIT',
+                                 'detail': 'too many sessions'})
+            await ws.close()
+            return
         self._sessions[s.sid] = s
         auth_deadline = asyncio.create_task(self._auth_timeout(s), name=f'auth-{s.sid}')
         try:
@@ -199,6 +217,8 @@ class WsHub:
             pass
         finally:
             auth_deadline.cancel()
+            if s.audio_task is not None and not s.audio_task.done():
+                s.audio_task.cancel()   # AUD-17: cancel in-flight STT work
             self._sessions.pop(s.sid, None)
             # PROTOCOL §1: on disconnect, cancel that session's tasks
             if self.engine is not None:
@@ -362,9 +382,20 @@ class WsHub:
             # mic PCM chunk -> accumulate for the STT lane. (Was a bare `pass`
             # stub — the buffer never filled and audio_end always saw it
             # empty, so nothing was ever transcribed; found by the synthetic
-            # mic-lane E2E.) 10 MB safety cap (~10 min of 16k mono s16le).
-            if len(s.audio_buf) < 10 * 1024 * 1024:
-                s.audio_buf += data[9:]
+            # mic-lane E2E.) AUD-24: EXACT byte cap — a frame can never push
+            # the buffer past AUDIO_MAX_BYTES (payload is truncated to fit).
+            payload = data[9:]
+            room = AUDIO_MAX_BYTES - len(s.audio_buf)
+            if room <= 0:
+                from .logjson import slog
+                slog('audio_overflow_drop', session=s.sid,
+                     bytes=len(payload))
+            else:
+                if len(payload) > room:
+                    from .logjson import slog
+                    slog('audio_overflow_truncated', session=s.sid,
+                         dropped=len(payload) - room)
+                s.audio_buf += payload[:room]
         elif kind == 2:
             pass  # TTS chunk (brain→body) — not produced yet
         else:
@@ -560,11 +591,10 @@ class WsHub:
             return
         rowid = store.parse_job_ref(msg.get('job'))
         answer = msg.get('answer') or ''
-        # Channel (Wave 2 task 3): explicit via wins; otherwise role-derived —
-        # body = voice (STT), ui = orb click, cli = typed.
-        via = msg.get('via')
-        if via not in ('voice', 'click', 'text'):
-            via = {'body': 'voice', 'ui': 'click', 'cli': 'text'}.get(s.role, 'text')
+        # AUD-08 (P0): the channel derives ONLY from the AUTHENTICATED session
+        # role — a client-supplied `via` is attacker-controlled and IGNORED
+        # (body = voice/STT, ui = orb click, cli = typed).
+        via = {'body': 'voice', 'ui': 'click', 'cli': 'text'}.get(s.role, 'text')
         result = self.engine.confirmer.resolve_ex(rowid, answer, via=via)
         if result == 'none':
             await self._send(s, {'type': 'error', 'v': 1, 'code': 'E_BAD_MSG',
@@ -734,6 +764,52 @@ class WsHub:
         buf = bytes(s.audio_buf)
         s.audio_buf = bytearray()
         reason = getattr(s, 'audio_reason', 'wake')
+        # AUD-17: hand the segment to the per-session worker — the receive
+        # loop (heartbeat, control frames) must never wait on STT. The worker
+        # owns the ack for this path.
+        q = self._ensure_audio_worker(s)
+        try:
+            q.put_nowait((buf, reason))
+        except asyncio.QueueFull:
+            from .logjson import slog
+            slog('audio_queue_full', dropped_bytes=len(buf))
+            await self._send(s, {'type': 'error', 'v': 1,
+                                 'code': 'E_RATE_LIMIT',
+                                 'detail': 'audio queue full'})
+
+    def _ensure_audio_worker(self, s: Session):
+        """AUD-17: one bounded FIFO worker per session (explicit ordering,
+        cancellation tied to the connection)."""
+        if s.audio_q is None:
+            s.audio_q = asyncio.Queue(maxsize=AUDIO_QMAX)
+        if s.audio_task is None or s.audio_task.done():
+            s.audio_task = asyncio.create_task(self._audio_worker(s),
+                                               name=f'audio-{s.sid}')
+        return s.audio_q
+
+    async def _audio_worker(self, s: Session):
+        try:
+            while True:
+                item = await s.audio_q.get()
+                if item is _AUDIO_STOP:
+                    return
+                buf, reason = item
+                try:
+                    await self._process_audio(s, buf, reason)
+                except asyncio.CancelledError:
+                    raise
+                except Exception as e:  # noqa: BLE001 — worker survives
+                    from .logjson import slog
+                    slog('audio_worker_error', session=s.sid,
+                         error=type(e).__name__)
+        finally:
+            try:
+                await self._send(s, {'type': 'ack', 'v': 1, 'audio': 'end'})
+            except Exception:  # noqa: BLE001
+                pass
+
+    async def _process_audio(self, s: Session, buf: bytes, reason: str):
+        from . import orbstate          # method-local (was handler scope)
         try:
             import numpy as _np
             _x = _np.frombuffer(buf, dtype='<i2')

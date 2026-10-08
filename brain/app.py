@@ -50,6 +50,10 @@ def _pidfile_targets():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # SEC-7 / [56] FAIL-CLOSED BEFORE SERVING: qa's guard tool + local verify
+    # must both pass, else RuntimeError aborts startup (refuse to serve).
+    from . import coreguard
+    coreguard.check_at_boot()
     engine = get_engine()
     hub.engine = engine
     # computer-use hook (ACCEPTED 2026-10-06): sync tools run via to_thread —
@@ -63,6 +67,31 @@ async def lifespan(app: FastAPI):
         pass                      # computer-use lane not present yet
     except Exception as _e:        # noqa: BLE001 — loud, never fatal
         print(f'[tools] bind_loop failed: {type(_e).__name__}: {_e}', flush=True)
+    # AUD-05 (P0): wire the PRODUCTION foreground hook into the router chat
+    # egress gate. Source = vision gateway's recorded foreground ring
+    # (record_foreground on every successful probe), freshness-bounded: stale
+    # or absent => None = UNKNOWN (the router-side unknown->refuse policy is
+    # requested to router; brain-side: never serve a stale name as current).
+    try:
+        import time as _ftime
+        from brain.router import set_foreground_check as _set_fg
+        from .vision import context as _fgctx
+
+        def _foreground_provider():
+            try:
+                hist = _fgctx.recent_history(1)
+                if not hist:
+                    return None
+                ts, ident = hist[-1]
+                if _ftime.time() - ts > 60.0:
+                    return None          # stale -> unknown, not 'as current'
+                return ident
+            except Exception:            # noqa: BLE001 — hook must never raise
+                return None
+
+        _set_fg(_foreground_provider)
+    except ImportError:
+        pass                             # router/vision not present yet
     from . import orbstate
     orbstate.attach(hub)
     # narration fanout: job_event → all roles; orb_state refresh on transitions
@@ -87,18 +116,20 @@ async def lifespan(app: FastAPI):
     # boot snapshot while the engine is not ready (INTERFACES §e `starting`)
     orbstate.emit('starting', hub=hub, engine=engine)
     start_loop(hub=hub)            # wires runner, starts workers, marks interrupted
+    # AUD-22 (tools-memory request APPROVED): re-arm persisted schedules so
+    # timers/reminders survive a restart (fire path = their engine.submit seam).
+    try:
+        from .tools.schedule import arm_all as _arm_all
+        _arm_all()
+    except ImportError:
+        pass                       # schedule package not present
+    except Exception as _ae:        # noqa: BLE001 — boot must proceed
+        from .logjson import slog
+        slog('schedule_arm_failed', error=type(_ae).__name__)
     await hub.start()
     get_mode()                     # load persisted mode flags
     orbstate.finish_boot()
     orbstate.refresh(hub=hub, engine=engine)
-    # SEC-7: Core Guard manifest check at boot -> SAFE MODE + visible warn
-    # Notice on drift (never crash-loops the brain; /status carries detail).
-    try:
-        from . import coreguard
-        coreguard.check_at_boot()
-    except Exception as _ge:  # noqa: BLE001 — boot must proceed
-        print(f'[core_guard] boot check failed: {type(_ge).__name__}: {_ge}',
-              flush=True)
     # Notice emitter 1 (PROTOCOL §3, approved 2026-10-07): restart recovery —
     # queued PENDING because ui/cli clients authenticate AFTER boot; the
     # first one drains it (ws._handle_auth -> notice.flush_pending).

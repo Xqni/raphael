@@ -143,6 +143,13 @@ def classify(text: str, tool: Optional[str] = None) -> RiskDecision:
     high = high_risk_actions()
     is_high = any(action in high for action, _ in hits)
     action, reason = next(((a, r) for a, r in hits if a in high), hits[0])
+    # AUD-09 (P0): a TOOL-sourced decision (dispatch-time `tool=` argument)
+    # defaults to NON-voice approval — mapped actions like system_command/
+    # git_write/network/computer_use/plugin names are NOT in the config list,
+    # and an open-mic "yes" must not authorize them. Explicit reviewed policy
+    # arrives via registry meta confirm='voice_ok' (loop layer).
+    if tool:
+        is_high = True
     snippet = ' '.join((text or '').split())[:80]
     question = f"About to {reason}: “{snippet}”. Confirm?" if snippet else \
         f"About to {reason}. Confirm?"
@@ -175,10 +182,14 @@ def tool_decision(tool: str, text: str = '') -> RiskDecision:
     """Dispatch-time gate for a tool whose REGISTRY metadata says `risky`
     (pc-control item 3) even when its name is not in RISKY_TOOLS and the
     user's text matched no pattern — e.g. a namespace registering a risky
-    action under a new name. Risk follows the same config-list authority."""
+    action under a new name.
+
+    AUD-09 (P0): ALWAYS non-voice (`risk='high'`) — risky/unknown tools
+    default to non-voice approval unless the registry carries the explicit
+    reviewed policy confirm='voice_ok' (loop layer may downgrade)."""
     name = str(tool or '').strip()
     action = TOOL_ACTION.get(name.lower(), name.lower() or 'tool')
-    risk = 'high' if action in high_risk_actions() else 'low'
+    risk = 'high'
     snippet = ' '.join((text or '').split())[:80]
     question = (f"About to run tool `{name}`: “{snippet}”. Confirm?"
                 if snippet else f"About to run tool `{name}`. Confirm?")
