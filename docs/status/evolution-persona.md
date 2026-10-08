@@ -3,6 +3,14 @@
 Updated: 2026-10-08 (Wave 5H + AUD-26)
 
 ## Done
+- **SEC-1/ARCH-4 personal-data scrub (2026-10-08): own paths CLEAN.** Before: 0 FAIL + 1 REVIEW
+  (`docs/requests/evolution-persona__to__voice__ciel-voice-reference-slot.md:16`, rule=voice-clip);
+  after rewording that line: **0 findings in my paths** (repo-wide 198 -> 197). Manual cross-check
+  for the placeholder classes `<wsl-user>`/`<win-user>`/`<gh-owner>`/`<win-user-path>`/
+  `<home-path>` across all my tracked files: 0 hits (value-blind — patterns never reproduced here).
+  Green CI id at report time: **37723653896** (ci.yml success, main, 2026-10-08T03:38:05Z);
+  tests-heavy **37720486202** (success). Note: the 3 most recent main ci.yml runs are RED
+  (integrator merges) — flagged for integrator.
 - **AUD-26 (2026-10-08): CONFIRMED → FIXED → TESTED.** Verify-first: path-escape quote
   `controller.py:91-93 (repo / rel).read_text(...)` + `:117-119 target = wt / rel … write_text`;
   false-promoted quote `:137 decision = "promoted" if can_promote else "proposal"` + `:199-201`
