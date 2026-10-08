@@ -1,6 +1,97 @@
 # router — status
 
-Updated: 2026-10-07 (Wave 5 Analysis routing complete — 154 router / 167 brain / 203 root green + 1 known pre-existing root failure, already filed)
+Updated: 2026-10-08 (Wave 5H audit packet complete — 172 router + 2 skipped / 194 brain / 214 root green; CI run 37711345817 green)
+
+## Wave 5H — audit packet (docs/audit-tasks/router.md, VERIFY-FIRST)
+
+Report format per packet: `ID: STATUS — file:line quote`. All tests mock-only,
+stack untouched (policy 2026-10-07: DOWN by default), one suite at a time (Rule 14).
+
+**SEC-8: CONFIRMED (4 gaps beyond the existing daily stop) → FIXED + tested**
+- Pre-fix quotes (verbatim from the audit-time read): `spend.py:101-106` —
+  `def _save(...)` … `tmp.write_text(...)` / `tmp.replace(self.path)` (**rewrite, not
+  append-only**) and `except OSError: pass` (**write failure silently swallowed = the
+  ledger-write-failure gap the packet asked about**); no `total_cap` anywhere
+  (`grep total_cap brain/router/*.py` → only `global` keywords); `E_BUDGET` absent
+  (`grep E_BUDGET brain/router docs/PROTOCOL.md` → empty).
+- Now enforced **in code**:
+  - append-only ledger: `brain/router/spend.py:184` `def _append(...)` →
+    `spend.py:189` `self.path.parent.mkdir(parents=True, exist_ok=True)` + one JSONL
+    line per event (`call|alert|import`) at `<repo>/run/vision_paid_ledger.jsonl`;
+    file is the source of truth, survives restarts, malformed line charged at floor;
+  - legacy live state carried forward: `/home/dami/raphael/run/vision_paid_daily.json`
+    (113 B, 2026-10-07 07:14) is imported once then renamed `*.imported`
+    (`spend.py::_import_legacy`);
+  - daily + **all-time** ceilings: `config.py:200` `vision_paid_total_cap_usd: float = 10.00`
+    with `config.d/router.yaml:58` `vision_paid_total_cap_usd: 10.00`; checked by
+    `spend.py:237 def exhausted` / `spend.py:246 def total_exhausted`;
+  - hard refusal **E_BUDGET**: `core.py:884 def _budget_refusal` →
+    `core.py:905 RouterError(detail, code="E_BUDGET", reason=reason, …)`; fatal +
+    spoken in `errors.py` (in FATAL_CODES, NOT in RETRYABLE_CODES, `_SPOKEN_DETAIL`
+    line 88); catalog request filed (`router__to__integrator__e-budget-code.md`);
+  - conservative counting: `core.py:817 floor_usd=spend.floor_usd` →
+    `estimate_cost_usd(..., floor_usd=0.005)` returns the floor when neither cost nor
+    tokens parse (config `vision_paid_unknown_call_floor_usd`);
+  - fail-closed write gap: `core.py:820 except SpendLedgerError:` → E_BUDGET /
+    `ledger_unwritable`, and `spend.exhausted` reads True while broken → later calls
+    refused **pre-flight**;
+  - race-proof admission: `core.py:282 self._vision_paid_lock = asyncio.Lock()` wraps
+    check→send→charge per paid call.
+- Tests (`brain/router/tests/test_budget_ledger.py`, 8): restart mid-day
+  (:65), 5-way concurrent race → exactly 1 paid request + 4×E_BUDGET (:93),
+  clock rollover keeps all-time ceiling (:123), malformed usage → floor (:154),
+  write failure fail-closed (:189), plus E_BUDGET shape + status exposure.
+- Note for integrator: `config.yaml:49` comment still says "refuses E_OFFLINE" →
+  now E_BUDGET (cosmetic, your file).
+
+**ARCH-5: CONTRIBUTED (design-note content) + presets REQUESTED (fragment route blocked)**
+- Reality quoted: `config.yaml:42` `chain: [go, zen_free, groq]` (user directive
+  2026-10-07) — my earlier `[groq, zen_free]` presets were already stale, now aligned.
+- Blocker (correctly enforced by another lane's Core-Guard):
+  `brain/config.py:129` `AUTHORITY_KEYS = ('safety', 'privacy', 'providers')` +
+  wholesale `profiles` strip → my fragment was stripped LOUDLY at load
+  (`AUTHORITY VIOLATION in config.d/router.yaml: stripped ['profiles']`). My fragment
+  is authority-clean now (`config.d/router.yaml:62` comment + test
+  `test_my_fragment_respects_authority_keys`: top keys ⊆ `{router}`).
+- Contribution delivered in `docs/requests/router__to__integrator__arch5-router-contribution.md`:
+  preset table + **exact YAML** for `profiles.cloud` / `profiles.hybrid` (integrator
+  must paste — tests un-skip automatically: 2 `skipif` in `test_profiles.py`,
+  currently 10 passed + 2 skipped), role-hint/tier policy, usage-accounting summary,
+  and the **per-provider data-handling table** (what leaves the machine per provider,
+  every retention cell marked **UNVERIFIED — verify with provider**).
+
+**F-4: DONE (router side) + orb REQUESTED**
+- `core.py:1055` `out["headroom"] = self.rate_headroom()` inside `usage_status()` and
+  `core.py:1060 def rate_headroom(self)` (module facade `core.py:1350 def rate_headroom()`,
+  exported as `brain.router.rate_headroom()`): per-provider
+  `rpm_headroom / tpm_headroom / cooldown_s / circuit` + `vision_paid`
+  (today/day-cap/total/total-cap/exhausted/ledger_broken) — in-memory, no I/O.
+- Rides the already-wired endpoint: `brain/app.py:266` `'sessions': …, 'router': router_block`.
+- Orb coordinates via `docs/requests/router__to__orb__headroom-in-menu.md` (exact JSON +
+  suggested menu lines). Tests: `test_status.py:173 test_rate_headroom_shape_and_facade`
+  (+ no-paid-slot variant).
+
+**SEC-5 (user-audit addendum): DONE — one reader + two leak tripwires**
+- Single reader: `privacy.py:151 def secret(name)` (env wins over `.env`, presence-
+  checked value-blind); source scan proves no other file touches `.env` or
+  `os.environ.get(<SECRET>)` — `test_key_handling.py:35`;
+  every `Bearer ` builder must call `privacy.secret()` — `test_key_handling.py::test_every_bearer_header_comes_from_secret`.
+- Log tripwire: `test_key_handling.py:73 test_no_key_material_in_logs` — caplog DEBUG
+  across success/500/health with a sentinel key: no sentinel, no `gsk_/sk-/Bearer`-shaped
+  token, no Authorization text in any record.
+- Exception tripwire: provider echoing the key in a 401 body → `str(exc)` shows
+  `[REDACTED]`, never the key (`test_key_handling.py::test_exception_text_scrubs_key_echoed_by_provider`).
+
+**Private Mode tripwire (user-audit addendum): RE-VERIFIED + extended**
+- Pre-existing: `test_privacy.py:55 assert srv.requests == [] # zero egress in Private Mode`
+  and `:74 # health must not egress either`.
+- New stream/legacy coverage: `test_privacy.py:258 test_private_mode_blocks_stream_with_zero_egress`
+  — stream refuses before the first delta (`events == []`), `srv.requests == []`,
+  and legacy `complete()` degrades to `E_OFFLINE`.
+
+**Commits:** `ae498c7` (SEC-8 + F-4 code) · `491c7b0` (tests) · `f26e8f8` (3 requests).
+**QA-4 CI links:** heavy run **37711345817** (`tests-heavy`, dispatch, **success**, 3m10s,
+2026-10-08T01:07:44Z) · latest `ci.yml` green **37711974330** (success, 01:15:05Z).
 
 ## Wave 5 (current_wave: 5 — gate-open after wave-4; my position: 1)
 
@@ -242,6 +333,14 @@ Commits on `agent/router` (Wave 2 merged in `main` at `1a8c2f6`; paid slot pendi
   Private Mode + blocklist + `router.vision_max_bytes` and never logs the image.
 
 ## Test output (real runs only)
+**Wave 5H verification, 2026-10-08** (sequential, Rule 14):
+```
+brain/router/tests : 172 passed, 2 skipped in 41.73s   (skips = ARCH-5 presets pending integrator)
+brain/tests        : 194 passed, 1 warning in 15.19s    (fastapi deprecation)
+tests/ (root)      : 214 passed, 7 xfailed              (shadow-row failure fixed on main; xfails = qa tripwires)
+CI (cloud)         : tests-heavy 37711345817 SUCCESS · ci 37711974330 SUCCESS
+```
+
 **Wave 5 verification, 2026-10-07** (sequential, AGENT_RULES §14):
 ```
 brain/router/tests : 154 passed in 36.00s   (+10 tier-routing)
