@@ -789,3 +789,79 @@ $ brain/.venv/bin/python -m pytest brain/tests -q
 P0 battery (shipped code): 10/10 >= 0.90 (scores_SHIPPED.json); samples
 assets/reference/samples/P0_DRIFT_{BEFORE,AFTER}_01..10.wav
 ```
+
+## Wave 5H — STT → reply latency (packet: "can we not make the STT real time")
+
+**Measured first** (verify-first) with `brain/voice/scripts/stt_reply_latency.py` —
+production-shaped in-process path, REAL Groq STT (5 runs, live `.env`), real wake gate,
+real `engine.submit` + fastpath → first `subtitle` frame; TTS stubbed (subtitle fires
+synchronously BEFORE any speak event). Raw: `~/.raphael/voice/eval/stt_reply_latency.json`.
+
+| stage | median | range |
+|---|---:|---:|
+| S1 body VAD hangover (speech end → `audio_end`) | **2 500 ms** | fixed (`SILENCE_CLOSE=25`×100 ms) |
+| S2 cloud STT (audio_end → transcript) | **576 ms** | 493–621 ms (rtf≈0.23 on 3.7 s clip) |
+| S3a wake gate | 0.1 ms | — |
+| S3b engine.submit | 2.5 ms | — |
+| S3c fastpath → subtitle | 0 ms | — |
+| **close → subtitle** | **578 ms** | 496–624 ms |
+| **perceived (stop speaking → subtitle)** | **≈3 078 ms** | — |
+
+S1 = **71 %** of perceived wait, S2 = 19 %, everything else ≤1 % — the
+brain-side handoff is already instant; there is nothing to cut there.
+
+**Proposed cut (ranked, no code landed yet — measurement mandate):**
+1. **Cut A (saves ~1.3 s):** `SILENCE_CLOSE 25 → 12` **with** utterance-continuation
+   merge — plain reduction to 1.5 s was PROVEN to split live commands; the fix is a
+   new body-side `reason='continuation'` on resume within a 1.5 s grace window and
+   brain-core appending instead of clearing. Requests filed (brain-core);
+   body half ready, lands ONLY together with theirs.
+2. **Cut B (saves ~0.2–0.3 s):** router targets the fastest Groq STT model for the
+   transcribe seam (baseline above) → request filed (router).
+3. **Rejected (with reasons in the doc):** speculative partial STT (truncation =
+   the same proven split class + 2× cloud cost), cutting S3 (measured 0.1/2.5/0 ms),
+   local STT (cloud_temp-forbidden + ~1 GB RAM).
+- Doc: `brain/voice/STT-REPLY-LATENCY.md` (stage table, ranked cuts, targets:
+  close→subtitle ≤400 ms, perceived ≤1.7 s, zero split regressions).
+
+## Wave 5H — Cut A + Cut B landing (halves merged by partners, 2026-10-08)
+
+**Verify-first quotes (both halves in my tree after rebase):**
+- Cut B (router): `brain/router/roles.py:35` `"stt": ["turbo", "whisper", "distil-whisper", "speech-to-text"]` + `config.d/router.yaml:12`
+  `stt: [turbo, whisper, distil-whisper, speech-to-text]   # Cut B: fastest Groq STT slot`
+- Cut A (brain-core): `brain/ws.py:765-766` `if raw_reason == 'continuation':` +
+  their contract test `brain/tests/test_sec3_cloud_stt_gate.py:247-271`
+  (`start(wake) → part1 → start(continuation) → part2 → end` ⇒ **ONE** merged
+  transcribe with part1's `wake` decision; fresh starts still split; no-start fails closed).
+
+**Probe re-run (turbo live) — `stt_reply_latency.py`:**
+- usage-log A/B on the same box/day: **turbo median 643 ms (n=14, 396–1321)** vs
+  **plain v3 median 604 ms (n=6, 436–1289)** ⇒ turbo landed but is **neutral on this link**
+  (provider RTT variance dominates; better floor, similar median).
+- close→subtitle: **median 554 ms** (n=10; range 477–793) vs pre-turbo 578 ms ⇒ **≤400 ms target NOT met
+  at median**; observed physical floor ≈ 396–477 ms (Groq RTT + ASR for a 3.7 s clip).
+  Honest options for the ≤400 median: accept the floor, move STT closer/faster than Groq,
+  or revisit the rejected speculative-partial path — **the decision is the conductor's**;
+  brain-side handoff remains ≤3 ms (nothing to cut there).
+
+**My parked body half LANDED (per instruction):**
+- `body/win/audio_in.py`: `SILENCE_CLOSE 25 → 12` + **`CONTINUATION_GRACE = 13`** +
+  pure `EndGrace` state machine: VAD `end` now HOLDS the `audio_end` for 1.3 s; a resume
+  inside the window sends `reason='continuation'` (brain appends — matches their contract
+  test); grace expiry fires `audio_end`. **close(12)+grace(13) = 25 = the OLD 2.5 s slot ⇒
+  zero split regressions by construction** (worst-case end latency unchanged; resumes inside
+  the window now MERGE instead of keeping the segment open).
+- Tests: `test_activation.py` +5 (fires exactly on the 13th tick, resume→continuation with
+  hold cancelled, no-hold = plain wake, constants pin 12+13==25, source wiring incl. single
+  `on_end` reachable only via the grace tick).
+
+### Test output (one suite at a time — Rule 14)
+```
+$ brain/.venv/bin/python -m pytest brain/voice/tests -q
+153 passed, 2 skipped in 6.40s
+$ brain/.venv/bin/python -m pytest brain/tests -q
+242 passed in 56.43s
+$ brain/.venv/bin/python -m pytest brain/tests/test_sec3_cloud_stt_gate.py -q
+10 passed in 36.13s        (brain-core's SEC-3 + continuation contract)
+orphans: zero
+```

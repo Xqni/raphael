@@ -61,6 +61,47 @@ def _enqueue_bounded(queue, chunk, stats: dict) -> None:
     except Exception:  # noqa: BLE001 — full again under a race
         stats["dropped"] = stats.get("dropped", 0) + 1
 
+
+class EndGrace:
+    """Deferred audio_end + continuation decision (Cut A 2026-10-08).
+
+    Pure state machine (unit-tested, no device): the VAD's `end` event is a
+    CANDIDATE close — `audio_end` is held for `grace_chunks` so a resume
+    inside the window becomes reason='continuation' (brain appends: ONE
+    transcription of part1+part2, brain tests/test_sec3_cloud_stt_gate.py
+    contract) instead of splitting the command. Grace expiry fires the end.
+
+      vad_end()            -> hold begins (VAD closed after SILENCE_CLOSE)
+      vad_start() -> True  -> resume inside window: hold cancelled, caller
+                              sends the continuation start
+      tick() -> True       -> hold expired: caller sends audio_end
+    """
+
+    def __init__(self, grace_chunks: int):
+        self.grace = int(grace_chunks)
+        self.held = False
+        self.left = 0
+
+    def vad_end(self) -> None:
+        self.held = True
+        self.left = self.grace
+
+    def vad_start(self) -> bool:
+        if self.held:
+            self.held = False
+            self.left = 0
+            return True                    # -> continuation
+        return False
+
+    def tick(self) -> bool:
+        if not self.held:
+            return False
+        self.left -= 1
+        if self.left <= 0:
+            self.held = False
+            return True                    # -> fire audio_end
+        return False
+
 class MicStreamer:
     def __init__(self, 
                  on_frame: Callable[[bytes], Awaitable[None]], 
@@ -143,9 +184,16 @@ class VadSegmenter:
     """
 
     SPEECH_MIN = 2      # >=200ms above threshold to open a segment
-    SILENCE_CLOSE = 25  # >=2.5s silent -> close (CONVERSATIONAL: natural
-                        # thinking pauses must not split an utterance;
-                        # adds ~2.5s latency before transcription)
+    SILENCE_CLOSE = 12  # >=1.2s silent -> CANDIDATE close (Cut A 2026-10-08;
+                        # brain-core utt-continuation-merge MERGED): audio_end
+                        # is then HELD for CONTINUATION_GRACE so a resume
+                        # inside the window APPENDS on the brain side instead
+                        # of splitting. close(12)+grace(13)=25 chunks = the OLD
+                        # 2.5s worst-case end latency and the old no-split
+                        # coverage -> ZERO split regressions (accepted target).
+    CONTINUATION_GRACE = 13  # chunks (x100ms = 1.3s) held before audio_end
+                        # fires; a 'start' inside the window cancels the held
+                        # end and sends reason='continuation' instead.
     MIN_LEN = 3         # discard segments <300ms (clicks/blips)
     MAX_LEN = 600       # force-close at 60s (long REQUESTS allowed; was 20s = hard mid-sentence chop)
     NOISE_EMA = 0.93    # quiet-level tracker (only updates when quiet)
@@ -300,14 +348,26 @@ class WakeStream:
                 "type": "audio_start", "v": 1,
                 "sample_rate": self.sample_rate, "channels": 1,
                 "encoding": "pcm_s16le", "reason": "wake"}
+            self._cont_dict = dict(self._start_dict, reason="continuation")
+            grace = EndGrace(self.CONTINUATION_GRACE)
             while not self._stop:
                 chunk = await self._queue.get()
                 self.vad.echo_guard = self._playback_active()
-                for kind, data in self.vad.feed(chunk):
+                events = self.vad.feed(chunk)
+                start_seen = False
+                for kind, data in events:
                     if kind == 'start':
-                        self.log("[audio_in] wake segment OPEN "
-                                 f"(noise floor {self.vad.noise:.0f})")
-                        await self.on_start(dict(self._start_dict))
+                        start_seen = True
+                        if grace.vad_start():
+                            # Cut A: resume inside the grace window -> the
+                            # brain APPENDS to the open utterance (no split)
+                            self.log("[audio_in] resume within grace -> "
+                                     "continuation (append)")
+                            await self.on_start(dict(self._cont_dict))
+                        else:
+                            self.log("[audio_in] wake segment OPEN "
+                                     f"(noise floor {self.vad.noise:.0f})")
+                            await self.on_start(dict(self._start_dict))
                     elif kind == 'speech':
                         if data is not None:
                             await self.on_frame(
@@ -316,10 +376,16 @@ class WakeStream:
                                 + data)
                             self.frames_sent += 1
                     elif kind == 'end':
-                        self.log(f"[audio_in] wake segment CLOSE "
+                        # candidate close: HOLD the audio_end for the grace
+                        # window (resume -> continuation; expiry -> end)
+                        grace.vad_end()
+                        self.log(f"[audio_in] wake segment CLOSE(held) "
                                  f"(#{self.vad.seen_segments}, "
-                                 f"{self.vad._len} chunks in segment)")
-                        await self.on_end()
+                                 f"{self.vad._len} chunks, grace="
+                                 f"{grace.left})")
+                if not start_seen and grace.tick():
+                    self.log("[audio_in] grace expired -> audio_end")
+                    await self.on_end()
         finally:
             try:
                 stream.stop()
