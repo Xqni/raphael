@@ -17,11 +17,12 @@ from __future__ import annotations
 import argparse
 import difflib
 import json
+import re
 import subprocess
 import sys
 import tempfile
 import time
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any, Dict, List
 
 from brain.evolution import baseline as B
@@ -49,6 +50,29 @@ def _unified(rel: str, before: str, after: str) -> str:
     return "".join(difflib.unified_diff(
         before.splitlines(keepends=True), after.splitlines(keepends=True),
         fromfile=f"a/{rel}", tofile=f"b/{rel}"))
+
+
+def safe_rel(base: Path, rel: str) -> str:
+    """AUD-26: validated repo-relative path — rejects absolute paths,
+    drive letters, home expansion, `..` traversal and symlink escapes
+    BEFORE any file access. Returns the normalized relative path or raises
+    ValueError (callers turn that into a fail-closed `refused` trace)."""
+    if not isinstance(rel, str) or not rel.strip():
+        raise ValueError("empty path")
+    if rel.startswith("/") or rel.startswith("~") or re.match(r"^[A-Za-z]:[\\/]", rel):
+        raise ValueError(f"absolute path rejected: {rel!r}")
+    p = PurePosixPath(rel)
+    if not p.parts:
+        raise ValueError(f"empty path rejected: {rel!r}")
+    if ".." in p.parts:
+        raise ValueError(f"traversal rejected: {rel!r}")
+    base_r = base.resolve()
+    # resolve() follows existing symlinks in the prefix even when the leaf
+    # does not exist yet — containment must hold on the RESOLVED path.
+    resolved = (base / rel).resolve()
+    if resolved != base_r and base_r not in resolved.parents:
+        raise ValueError(f"path escapes base via symlink: {rel!r} -> {resolved}")
+    return str(p)
 
 
 def _git(repo: Path, *args: str) -> str:
@@ -79,6 +103,19 @@ def run_cycle(mode: str, changes: Dict[str, str],
 
     def step(name: str, **kw: Any) -> None:
         trace["steps"].append({"step": name, **kw})
+
+    # 0. AUD-26 path-escape guard — validate EVERY path BEFORE any file access
+    # (no reads, no guard subprocess, no worktree until this passes).
+    safe_changes: Dict[str, str] = {}
+    for rel, new in changes.items():
+        try:
+            safe_changes[safe_rel(repo, rel)] = new
+        except ValueError as exc:
+            step("path_guard", ok=False, path=rel, error=str(exc))
+            trace.update(status="refused", reason=f"unsafe path: {exc}")
+            return trace
+    changes = safe_changes
+    step("path_guard", ok=True, paths=sorted(changes))
 
     # 1. Core Guard gate (fail-closed)
     guard_ok, guard_msg = R.verify_core_guard(repo, python)
@@ -115,6 +152,14 @@ def run_cycle(mode: str, changes: Dict[str, str],
         created = True
         step("worktree", branch=branch, path=str(wt))
         for rel, new in changes.items():
+            try:
+                safe_rel(wt, rel)          # re-validated against the worktree
+            except ValueError as exc:
+                step("path_guard", ok=False, phase="worktree", path=rel,
+                     error=str(exc))
+                trace.update(status="refused",
+                             reason=f"unsafe path (worktree): {exc}")
+                return trace
             target = wt / rel
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_text(new, encoding="utf-8")
@@ -131,14 +176,33 @@ def run_cycle(mode: str, changes: Dict[str, str],
              output_tail=(post.get("output") or "")[-600:])
         step("compare", ok=verdict["ok"], deltas=verdict["deltas"])
 
-        # 6. decision — propose NEVER merges; auto_safe needs mutable+green
-        can_promote = (action == "promote" and verdict["ok"]
-                       and zone is Z.Zone.MUTABLE)
-        decision = "promoted" if can_promote else "proposal"
+        # 6. decision — propose NEVER merges; auto_safe promotion = a REAL
+        #    fast-forward merge through the approved gate (AUD-26: a commit
+        #    that gets deleted with its temp worktree was never promoted).
+        #    Any refusal fails CLOSED to proposal — caller's dirty tree is
+        #    left untouched (git refuses the merge; we never force).
+        wants_promote = (action == "promote" and verdict["ok"]
+                         and zone is Z.Zone.MUTABLE)
+        promoted = False
+        if wants_promote:
+            try:
+                _git(repo, "merge", "--ff-only", patch_commit)
+                R.tag_last_known_good(repo, patch_commit, slug)
+                promoted = True
+                promote_reason = ("fast-forwarded into the current branch; "
+                                  "last-known-good tagged at the patch")
+            except RuntimeError as exc:
+                promote_reason = (f"merge refused — fail closed to proposal, "
+                                  f"caller tree preserved: {exc}")
+        elif action == "promote":
+            promote_reason = "gates not green / not mutable — fail closed to proposal"
+        else:
+            promote_reason = "propose mode never merges"
+        decision = "promoted" if promoted else "proposal"
         entry = J.make_entry(
             finding=slug, zone=zone.value, mode=mode, decision=decision,
             paths=sorted(changes),
-            reason=f"first-run style cycle: {zone.value} target, mode={mode}",
+            reason=f"cycle: {zone.value} target, mode={mode}; {promote_reason}",
             tests=(f"shadow: {'green' if post.get('ok') else 'RED'} "
                    f"(rc={post.get('rc')}); compare ok={verdict['ok']} "
                    f"deltas={verdict['deltas']}"),
@@ -146,8 +210,8 @@ def run_cycle(mode: str, changes: Dict[str, str],
             baseline_compare=f"ok={verdict['ok']} deltas={verdict['deltas']}",
             budget={"targets": targets})
         step("decision", decision=decision,
-             promoted=bool(can_promote),
-             note="propose mode NEVER merges" if mode == "propose" else "")
+             merged=promoted,
+             reason=promote_reason)
 
         # 7. proposal file (or journal-only for a promote)
         proposal_path = None
@@ -191,6 +255,7 @@ def run_cycle(mode: str, changes: Dict[str, str],
 
         trace.update(status="proposal_written" if decision == "proposal"
                      else "promoted",
+                     merged=promoted,
                      proposal=str(proposal_path) if proposal_path else None,
                      branch=branch, patch_commit=patch_commit)
         return trace
