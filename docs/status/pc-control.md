@@ -81,7 +81,7 @@ $ tests/.venv/bin/python -m pytest -q tests
 $ tests/.venv/bin/python -m pytest -q body/win/tests brain/tools/pc/tests
 88 passed in 0.67s                      # 78 body + 10 tool-spec tests
 
-$ /home/dami/raphael/brain/.venv/bin/python -m pytest -q brain
+$ /home/<wsl-user>/raphael/brain/.venv/bin/python -m pytest -q brain
 70 passed, 3 warnings in 18.98s         # baseline 60 + 10 new pc spec tests
 
 $ python3 body/win/e2e_control.py
