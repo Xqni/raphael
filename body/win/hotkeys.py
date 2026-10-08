@@ -128,12 +128,11 @@ if __name__ == '__main__':
     # Manual debugging: python hotkeys.py  (prints frames; Ctrl+C to stop)
     import pathlib
     try:
-        import yaml
+        from . import depfail
     except ImportError:
-        import subprocess
-        subprocess.check_call([sys.executable, '-m', 'pip', 'install',
-                               '--quiet', 'PyYAML==6.0.3'])
-        import yaml
+        import depfail
+    depfail.require('PyYAML', 'yaml')   # pre-installed env only (SEC-9)
+    import yaml
     cfg_path = pathlib.Path(__file__).resolve().parents[2] / 'config.yaml'
     cfg = yaml.safe_load(cfg_path.read_text()) if cfg_path.is_file() else {}
     asyncio.run(_selftest(cfg))

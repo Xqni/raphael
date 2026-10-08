@@ -19,12 +19,13 @@ import time
 from typing import Any
 
 try:
-    from . import instance, actions
+    from . import instance, actions, depfail
 except ImportError:
     # Script mode (supervisor runs `python body/win/main.py`) has no package
     # context — fall back to absolute imports via sys.path[0] (body/win).
     import instance
     import actions
+    import depfail
 
 _current_ws = None
 
@@ -43,14 +44,10 @@ def _import_late(name: str):
 
 
 def _websockets():
-    """websockets with the original pinned pip fallback (live runs only)."""
-    try:
-        import websockets
-    except ImportError:
-        import subprocess
-        subprocess.check_call([sys.executable, '-m', 'pip', 'install',
-                               '--quiet', 'websockets==16.1.1'])
-        import websockets
+    """websockets from the PRE-INSTALLED hash-pinned env only — SEC-9: no
+    runtime pip fallback; missing dep fails loud with the requirements hint."""
+    depfail.require('websockets')
+    import websockets
     return websockets
 
 

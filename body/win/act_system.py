@@ -11,12 +11,12 @@ import asyncio
 from typing import Any, Dict
 
 try:
-    from .actions import (opt_enum, reject_extra, register_action, req_int,
-                          req_str)
+    from .actions import (ActionError, opt_enum, reject_extra, journal,
+                          register_action, req_int, req_str)
     from .winlayer import MEDIA_KEYS
 except ImportError:  # script mode
-    from actions import (opt_enum, reject_extra, register_action, req_int,
-                         req_str)
+    from actions import (ActionError, opt_enum, reject_extra, journal,
+                         register_action, req_int, req_str)
     from winlayer import MEDIA_KEYS
 
 _MAX_CLIPBOARD = 100000
@@ -63,13 +63,28 @@ def _validate_level(args: Dict[str, Any]) -> Dict[str, Any]:
 
 
 async def _run_volume(args: Dict[str, Any], backend) -> Dict[str, Any]:
-    await asyncio.to_thread(backend.set_volume, args['level'])
-    return {'level': args['level']}
+    level = args['level']
+    prev = await asyncio.to_thread(backend.get_volume)      # F-3 inverse: before
+    ok = await asyncio.to_thread(backend.set_volume, level)
+    if not ok:
+        raise ActionError('E_INTERNAL', 'volume set failed')  # truthful act_res
+    if prev is not None and int(prev) != level:
+        journal.record('volume', 'volume', 'volume %d -> %d' % (prev, level),
+                       {'level': int(prev)})
+    return {'level': level}
 
 
 async def _run_brightness(args: Dict[str, Any], backend) -> Dict[str, Any]:
-    await asyncio.to_thread(backend.set_brightness, args['level'])
-    return {'level': args['level']}
+    level = args['level']
+    prev = await asyncio.to_thread(backend.get_brightness)  # F-3 inverse: before
+    ok = await asyncio.to_thread(backend.set_brightness, level)
+    if not ok:
+        raise ActionError('E_INTERNAL', 'brightness set failed')
+    if prev is not None and int(prev) != level:
+        journal.record('brightness', 'brightness',
+                       'brightness %d -> %d' % (prev, level),
+                       {'level': int(prev)})
+    return {'level': level}
 
 
 # ------------------------------------------------------------------ notify

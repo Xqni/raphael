@@ -32,10 +32,11 @@ from dataclasses import dataclass
 from typing import Any, Awaitable, Callable, Dict, Optional
 
 try:
-    from . import automation, instance, winlayer
+    from . import automation, instance, journal, winlayer
 except ImportError:  # script mode (python body/win/ws_client.py)
     import automation
     import instance
+    import journal
     import winlayer
 
 # ---------------------------------------------------------------------------
@@ -50,8 +51,9 @@ LOG_MAX_BYTES = 5 * 1024 * 1024  # rotate the action log (1 backup)
 # 2026-10-06: list_windows / foreground_info / list_running_apps landed via
 # protocol-act-req-enum.md (pending set emptied).
 # 2026-10-07: `report` landed via protocol-report-act.md (APPROVED AS
-# PROPOSED, integrator edited §7 by hand) — pending set empty again.
-PENDING_PROTO_ADDITIONS = ()
+# PROPOSED, integrator edited §7 by hand).
+# 2026-10-07 F-3: `activity` pending via protocol-activity-act.md.
+PENDING_PROTO_ADDITIONS = ('activity',)
 
 
 class ActionError(Exception):
@@ -77,7 +79,8 @@ class Action:
 
 ACTIONS: Dict[str, Action] = {}
 _GROUPS = ('act_launch', 'act_powershell', 'act_capture', 'act_uia',
-           'act_input', 'act_window', 'act_system', 'act_report')
+           'act_input', 'act_window', 'act_system', 'act_report',
+           'act_activity')
 _groups_loaded = False
 
 
@@ -352,6 +355,9 @@ async def dispatch(action: str, args: Any, *, lock: bool = False,
             # PROTOCOL §7: fail fast; Brain queues at job level.
             return {"ok": False, "error": "E_LOCK_BUSY", "queued": True}
 
+    # F-3: tag every execution with its job so journal records (made inside
+    # handlers) carry provenance for the orb/CLI activity viewer.
+    journal.set_job(job)
     try:
         be = backend if backend is not None else winlayer.get_backend()
         try:
@@ -389,6 +395,7 @@ async def dispatch(action: str, args: Any, *, lock: bool = False,
     finally:
         if held:
             automation.release_input_lock()
+        journal.set_job(None)
 
     _log(job, action, norm, res, t0, held)
     return res

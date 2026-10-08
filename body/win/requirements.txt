@@ -1,0 +1,62 @@
+# body/win Python requirements — HASH-PINNED (SEC-9, audit 2026-10-07).
+#
+# The Body NEVER pip-installs at runtime: this is the single pre-installed
+# environment; a missing dependency fails loud with a pointer to this file
+# (body/win/depfail.py). Install on the Windows host:
+#     pip install --require-hashes -r body/win/requirements.txt
+#
+# Covers win_amd64 CPython 3.10-3.14 (setup.ps1 allows "Python 3.10+");
+# each requirement lists the sha256 of every supported wheel. Notes:
+#   * sounddevice + numpy are the audio_in (voice-lane) pins — included so
+#     ONE env covers the whole body process; audio_* code itself stays
+#     voice-owned (docs/requests/pc-control__to__voice__sec9-audio-pip-helpers).
+#   * numpy 2.2.6 has NO cp314 wheel — on py3.14 use a numpy that ships
+#     cp314 and re-pin both here and in audio_in (voice decision).
+#   * python-xlib (pywinauto Linux extra) excluded: Body = Windows only.
+# Regenerate after a bump:
+#   pip download --no-deps --only-binary=:all: --platform win_amd64 \
+#       --python-version <310..314> --dest wheels "<pkg>==<ver>"   # per pv
+#   pip hash wheels/<pkg>-*.whl
+#
+--require-hashes
+pywinauto==0.6.9 \
+    --hash=sha256:5924b3072864a1d730c5546bbeb17cf4063ba518b618dbc5e43c18276c7c9356
+pillow==12.3.0 \
+    --hash=sha256:1cca606cd25738df4ed873d5ad46bbdb3d83b5cbca291f6b4ff13a4df6b0bbe8 \
+    --hash=sha256:300557495eb45ebb8aec96c2da9c4be642fbf7cd937278b4013ba894ea8eb0eb \
+    --hash=sha256:8e95e1385e4998ae9694eeaa4730ba5457ff61185b3a55e2e7bea0880aef452a \
+    --hash=sha256:a2b55dd6b2a4c4b7d87ffa56bdb33fdc5fdb9a462173861a7bc097f17d91cb09 \
+    --hash=sha256:fdafc9cce40277e0f7a0feabce0ee50dd2fa1800f3b38015e51296b5e814048d
+pywin32==312 \
+    --hash=sha256:5dbc35d2b5320dc07f25fa31269cfb767471002b17de5eb067d03da68c7cb2db \
+    --hash=sha256:a4dd3a848290ef724347b19f301045831d8e802fa4464f491b98b1e0a081432e \
+    --hash=sha256:b457f6d628a47e8a7346ce22acb7e1a46a4a78b52e1d17e1af56871bd19a93bc \
+    --hash=sha256:c53e878d15a1c44788082bfe712a905433473aa38f86375b7cf8b45e3acbaaf9 \
+    --hash=sha256:d11417d84412f859b722fad0841b3614459ed0047f7542d8362e77884f6b6e8a
+mss==10.2.0 \
+    --hash=sha256:e79f428899280e7e64e38365b5bfed683851ebea807eeaeadaf06eb8e0d67197
+comtypes==1.4.17 \
+    --hash=sha256:4e0a221dde2c589b82977bed802efd71cd5eb67a380347b732e02735e597f586
+keyboard==0.13.5 \
+    --hash=sha256:8e9c2422f1217e0bd84489b9ecd361027cc78415828f4fe4f88dd4acd587947b
+websockets==16.1.1 \
+    --hash=sha256:4e8d01cc3bcae7bbf8167f944aeafefed590fae5693552bba9794a9df68371cc \
+    --hash=sha256:7421fad442de870a8cbf2287d1cad7e706ece0dbfeba5e911df132cbdc1cb56a \
+    --hash=sha256:b436f6ec4fc3a6b4237c84d3f83170ed2b40bb584222f0ac47a0c8a5921980c7 \
+    --hash=sha256:d57685547e0060cc6fd90ee6a28405d6bd395e525545f13c8d7cd99c78afd79f \
+    --hash=sha256:d9531d9cbeac99af6f038fb1bc351403531f7d634a2c2e10e2f7c854c6ed5b68
+pyyaml==6.0.3 \
+    --hash=sha256:4a2e8cebe2ff6ab7d1050ecd59c25d4c8bd7e6f400f5f82b96557ac0abafd0ac \
+    --hash=sha256:5fcd34e47f6e0b794d17de1b4ff496c00986e1c83f7ab2fb8fcfe9616ff7477b \
+    --hash=sha256:79005a0d97d5ddabfeeea4cf676af11e647e41d81c9a7722a193022accdb6b7c \
+    --hash=sha256:9f3bfb4965eb874431221a3ff3fdcddc7e74e3b07799e0e84ca4a0f867d449bf \
+    --hash=sha256:bdb2c67c6c1390b63c6ff89f210c8fd09d9a1217a465701eac7316313c915e4c
+six==1.17.0 \
+    --hash=sha256:4721f391ed90541fddacab5acf947aa0d3dc7d27b2e1e8eda2be8970586c3274
+sounddevice==0.5.1 \
+    --hash=sha256:4313b63f2076552b23ac3e0abd3bcfc0c1c6a696fc356759a13bd113c9df90f1
+numpy==2.2.6 \
+    --hash=sha256:b0544343a702fa80c95ad5d3d608ea3599dd54d4632df855e4c8d24eb6ecfa1c \
+    --hash=sha256:c1f9540be57940698ed329904db803cf7a402f3fc200bfe599334c9bd84a40b2 \
+    --hash=sha256:e8213002e427c69c45a52bbd94163084025f533a55a59d6f9c5b820774ef3303 \
+    --hash=sha256:f0fd6321b839904e15c46e0d257fdd101dd7f530fe03fd6359c1ea63738703f3

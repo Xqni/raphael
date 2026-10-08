@@ -40,6 +40,7 @@ INVALID_ARGS = {
     'notify': {'text': ''},
     'list_running_apps': {'bogus': 1},
     'report': {'op': 'save', 'title': 't', 'body': 'not json', 'format': 'json'},
+    'activity': {'op': 'teleport'},
 }
 
 # action -> (FakeWin method that raises BackendError, happy args)
@@ -63,12 +64,14 @@ CRASH_CASES = {
     'list_running_apps': ('list_processes', {}),
     'report': ('reports_dir', {'op': 'save', 'title': 'Crash',
                                'body': 'crash body'}),
+    'activity': ('set_volume', {'op': 'undo'}),
 }
 
 
 def crash_args(action: str, tmp_path=None):
     """Args for the crash case (open_path needs a REAL existing path —
-    existence is validated before the backend call)."""
+    existence is validated before the backend call; activity needs a
+    JOURNALED entry so its undo path actually reaches the backend)."""
     method, args = CRASH_CASES[action]
     if action == 'open_path':
         target = (tmp_path / 'crash.txt') if tmp_path is not None else None
@@ -77,4 +80,8 @@ def crash_args(action: str, tmp_path=None):
         if not target.exists():
             target.write_text('crash')
         return method, {'path': str(target)}
+    if action == 'activity':
+        from body.win import journal
+        journal.record('volume', 'volume', 'crash-drill seed',
+                       {'level': 40})
     return method, dict(args)

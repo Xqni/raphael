@@ -62,8 +62,9 @@ class FakeWin:
              'path': 'Microsoft.WindowsCalculator_8wekyb3d8bbwe!App'},
         ])
         self.clipboard_value: str = overrides.pop('clipboard', '')
-        self.volume: Optional[int] = None
-        self.brightness: Optional[int] = None
+        self.volume = overrides.pop('volume', 50)      # F-3: seeded so undo
+        self.brightness = overrides.pop('brightness', 70)  # has a 'previous'
+        self.placements: Dict[int, Dict[str, Any]] = {}
         self.cursor: Tuple[int, int] = overrides.pop('cursor', (100, 100))
         self.powershell_result: Dict[str, Any] = overrides.pop(
             'powershell_result', {'rc': 0, 'out': '[]', 'err': ''})
@@ -156,16 +157,53 @@ class FakeWin:
 
     def show_window(self, hwnd: int, mode: str) -> None:
         self._rec('show_window', hwnd, mode)
+        pl = self._placement(hwnd)
+        pl['minimized'] = mode == 'minimize'
+        pl['maximized'] = mode == 'maximize'
 
     def window_rect(self, hwnd: int) -> Dict[str, int]:
         self._rec('window_rect', hwnd)
-        return {'left': 0, 'top': 0, 'right': 100, 'bottom': 100,
-                'width': 100, 'height': 100}
+        return dict(self._placement(hwnd)['rect'])
+
+    def window_placement(self, hwnd: int) -> Dict[str, Any]:
+        self._rec('window_placement', hwnd)
+        return {k: (dict(v) if isinstance(v, dict) else v)
+                for k, v in self._placement(hwnd).items()}
+
+    def set_placement(self, hwnd: int, placement: Dict[str, Any]) -> None:
+        self._rec('set_placement', hwnd, dict(placement))
+        cur = self._placement(hwnd)
+        if placement.get('rect'):
+            cur['rect'] = dict(placement['rect'])
+        cur['minimized'] = bool(placement.get('minimized'))
+        cur['maximized'] = bool(placement.get('maximized'))
+
+    def _placement(self, hwnd: int) -> Dict[str, Any]:
+        if hwnd not in self.placements:
+            src = next((w for w in self.windows if w.get('hwnd') == hwnd), None)
+            rect = dict(src['rect']) if src and src.get('rect') else {
+                'left': 0, 'top': 0, 'right': 800, 'bottom': 600,
+                'width': 800, 'height': 600}
+            self.placements[hwnd] = {'rect': rect, 'minimized': False,
+                                     'maximized': False}
+        return self.placements[hwnd]
 
     def snap_window(self, hwnd: int, zone: str) -> Dict[str, int]:
         self._rec('snap_window', hwnd, zone)
-        return {'left': 0, 'top': 0, 'right': 960, 'bottom': 1080,
-                'width': 960, 'height': 1080}
+        pl = self._placement(hwnd)
+        pl['minimized'] = pl['maximized'] = False
+        rects = {
+            'left':   {'left': 0, 'top': 0, 'right': 480, 'bottom': 600},
+            'right':  {'left': 480, 'top': 0, 'right': 960, 'bottom': 600},
+            'top':    {'left': 0, 'top': 0, 'right': 960, 'bottom': 300},
+            'bottom': {'left': 0, 'top': 300, 'right': 960, 'bottom': 600},
+            'max':    {'left': 0, 'top': 0, 'right': 960, 'bottom': 600},
+        }
+        rect = dict(rects[zone])
+        rect['width'] = rect['right'] - rect['left']
+        rect['height'] = rect['bottom'] - rect['top']
+        pl['rect'] = rect
+        return dict(rect)
 
     # -- apps / processes -------------------------------------------------
     def start_menu_shortcuts(self) -> List[Dict[str, str]]:
@@ -213,13 +251,25 @@ class FakeWin:
         self._rec('clipboard_set', text)
         self.clipboard_value = text
 
-    def set_volume(self, level: int) -> None:
+    def set_volume(self, level: int) -> bool:
         self._rec('set_volume', level)
         self.volume = level
+        return True
 
-    def set_brightness(self, level: int) -> None:
+    def get_volume(self):
+        """Current master volume 0-100 (F-3 inverse ops)."""
+        self._rec('get_volume')
+        return self.volume
+
+    def set_brightness(self, level: int) -> bool:
         self._rec('set_brightness', level)
         self.brightness = level
+        return True
+
+    def get_brightness(self):
+        """Current brightness 0-100 (F-3 inverse ops)."""
+        self._rec('get_brightness')
+        return self.brightness
 
     def media_key(self, op: str) -> None:
         self._rec('media_key', op)
