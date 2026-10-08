@@ -8,7 +8,7 @@
   "brain/evolution/**": "2fcd09f1bd61d696faf39c0d02c9f1c5334a44f89f18b5271e7b77c9a726e6cd",
   "brain/mode.py": "9137e5e8e34201f9ecbb7bb9fb7daddfc0db8793972fe2d18f501bcd6687d03c",
   "brain/raphael-brain.service": "5e8930ec15d96fb2eadc7442ffd004229309c71f12b9172c1ef058c8f8da4a9b",
-  "docs/OWNERSHIP.md": "bd8710db7ee7a8ef5300412500a7ceba2a45e973e7c084db66d2f1a9033ea6bb",
+  "docs/OWNERSHIP.md": "b6380b855c68dd1928477e7395aac60a498b835ebe0da1b09a01de32c03a05a3",
   "scripts/install-brain-unit.sh": "56d8b3cacc47c5cf5a283fa147834e14fa7bdc4691d7521c545f9c694c6789de",
   "scripts/setup.ps1": "86246033646b4441ea7bbddd932802ddf3cf3298622803a561ec0cdbd5f03e5d",
   "scripts/setup.sh": "4b30e3e82013486e0fa15a035b9fc6e9ba5f7769f1c9b0dc60917996f58ca9ef",
@@ -18,5 +18,5 @@
   "scripts/win/make-ref-voice.ps1": "60fb334719cab6f756cf1e538b350c13572fcec433a7de7688b17644dff667d1",
   "scripts/win/mute.ps1": "4afa81ae0537901e0533809d9ad32c2cc861a15e03a0677e14b2fd9581c9c1d3",
   "supervisor/**": "cf7a366e0bd659434e3a3629fb33886623ea131094bb87803a172cc3465c3aab",
-  "tools/conductor/**": "e3ff21467be23c02be7fe5d0faffb4b0c7026b275b718e5298c1074b85ea83ff"
+  "tools/conductor/**": "2e68c6731fc1167c9ffb9ca33b42501ece53537084afa0d9fb1a4d19f2f5bd8f"
 }

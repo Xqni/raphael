@@ -25,7 +25,7 @@
 | **computer-use** | `brain/vision/**`, `brain/tools/computer_use/**` | cloud-vision gate lives here (blocklist/redaction before `router.vision`) |
 | **infra** | `supervisor/**`, `scripts/**`, `brain/raphael-brain.service`, `brain/run.py`, the `raphael` CLI (bash + cmd + thin client) | never touches Task Scheduler/`.wslconfig` without telling the user |
 | **qa-security** | `tests/**` (root, incl. `.venv`), `.github/workflows/**`, `docs/reviews/**` | mock harness, contract tests, security regressions |
-| **tools-memory** | `brain/memory/**`, `brain/tools/{web,files,shell,github,schedule,mcp}/**`, `skills/**`, `plugins/**` | Wave 3 bulk; folders pre-assigned |
+| **tools-memory** | `brain/memory/**`, `brain/tools/{web,files,shell,github,schedule,mcp}/**`, `skills/**`, `plugins/**`, `docs/security/pat-scope.md`, `docs/skills/ACQUISPTION.md` (packet-assigned SEC-4/F-2, integrator grant 2026-10-08) | Wave 3 bulk; folders pre-assigned |
 | **evolution-persona** | `brain/evolution/**`, `brain/persona/**`, `docs/evolution/**` | Wave 4/5 bulk; folders pre-assigned |
 
 Every lane additionally owns `docs/lanes/<lane>.md` (its task list) and `docs/status/<lane>.md` (its status log).
