@@ -249,3 +249,35 @@ async def test_bad_image_type_is_e_bad_msg(tmp_path, make_server) -> None:
         await router.vision(12345, "q")             # type: ignore[arg-type]
     assert exc.value.code == "E_BAD_MSG"
     assert srv.requests == []
+
+
+# --------------------------------------------------------------------------- #
+# Private Mode tripwire (Wave 5H re-verify): STREAM path is covered too
+# --------------------------------------------------------------------------- #
+@pytest.mark.asyncio
+async def test_private_mode_blocks_stream_with_zero_egress(tmp_path,
+                                                           make_server) -> None:
+    import os
+    os.environ["GROQ_API_KEY"] = SENTINEL
+    srv = make_server(free_suffix=False)
+    try:
+        cfg = make_config(tmp_path, ["groq"], groq_url=srv.url)
+        router.reset_router()
+        rt = router.init_router(cfg)
+        set_private_mode(True)
+        events = []
+        with pytest.raises(RouterError) as exc:
+            async for ev in rt.chat([{"role": "user", "content": "hi"}],
+                                    stream=True):
+                events.append(ev)
+        assert exc.value.code == "E_OFFLINE"
+        assert exc.value.reason == "private_mode"
+        assert events == []                         # refused before any delta
+        assert srv.requests == []                   # zero egress, streamed or not
+        # and the legacy seam degrades instead of raising
+        res = await rt.complete("groq", "some-model", prompt="hi")
+        assert res.ok is False and res.error_code == "E_OFFLINE"
+        assert srv.requests == []
+    finally:
+        os.environ.pop("GROQ_API_KEY", None)
+        set_private_mode(False)

@@ -6,6 +6,8 @@ and the local code paths stay alive and tested the whole time.
 """
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 import brain.router as router
@@ -170,3 +172,68 @@ async def test_cloud_stt_engine_ignores_local_seam(tmp_path) -> None:
     router.set_local_transcriber(fake_local)
     out = await router.transcribe(b"RIFF" + b"\x00" * 8)
     assert out["text"].startswith("Mock transcript")   # cloud path (mock provider)
+
+
+# --------------------------------------------------------------------------- #
+# ARCH-5 (AUDIT-2026-10-07): cloud-primary chain presets + fragment authority
+# --------------------------------------------------------------------------- #
+def _shipped_profiles() -> dict:
+    import yaml
+    root = Path(__file__).resolve().parents[3]
+    data = yaml.safe_load((root / "config.yaml").read_text(encoding="utf-8"))
+    return (data or {}).get("profiles") or {}
+
+
+def test_my_fragment_respects_authority_keys() -> None:
+    """Core-Guard (brain/config.py AUTHORITY_KEYS): my lane fragment may only
+    touch `router:` — safety/privacy/providers/profiles are integrator-only."""
+    import yaml
+    root = Path(__file__).resolve().parents[3]
+    frag = yaml.safe_load((root / "config.d" / "router.yaml").read_text(
+        encoding="utf-8")) or {}
+    assert set(frag) <= {"router"}, sorted(frag)   # nothing else, ever
+
+
+_HAS_CLOUD_PRESET = "cloud" in _shipped_profiles()
+_PRESET_REASON = ("profiles.cloud/hybrid pending integrator — fragment route "
+                  "blocked by Core-Guard; YAML in "
+                  "docs/requests/router__to__integrator__arch5-router-contribution.md")
+
+
+@pytest.mark.skipif(not _HAS_CLOUD_PRESET, reason=_PRESET_REASON)
+def test_profile_cloud_preset_is_the_promoted_base(monkeypatch) -> None:
+    """`cloud` = today's real chain under a real name (promoted cloud_temp):
+    go-first paid-fast, groq STT-only tail, cloud vision, local OFF."""
+    monkeypatch.setenv("RAPHAEL_PROFILE", "cloud")
+    cfg = load_config()
+    assert cfg.profile == "cloud"
+    assert cfg.providers.chain == ["go", "zen_free", "groq"]
+    assert cfg.providers.allow_go_runtime is True
+    assert cfg.providers.allow_paid_runtime is True
+    assert cfg.vision.provider == "cloud"
+    assert cfg.voice.stt_engine == "groq"
+    assert cfg.local_model.enabled is False
+
+
+@pytest.mark.skipif(not _HAS_CLOUD_PRESET, reason=_PRESET_REASON)
+def test_profile_hybrid_preset_is_cloud_first_with_local_fallback(
+        monkeypatch) -> None:
+    monkeypatch.setenv("RAPHAEL_PROFILE", "hybrid")
+    cfg = load_config()
+    assert cfg.profile == "hybrid"
+    assert cfg.providers.chain == ["go", "zen_free", "groq", "ollama"]
+    assert cfg.local_model.enabled is True
+    assert cfg.vision.provider == "local"           # most sensitive payload
+    assert cfg.voice.stt_engine == "groq"
+    assert cfg.providers.allow_paid_runtime is True
+
+
+def test_cloud_presets_keep_integrator_profiles_intact(monkeypatch) -> None:
+    """cloud_temp/local (integrator's) must keep working regardless."""
+    monkeypatch.setenv("RAPHAEL_PROFILE", "local")
+    cfg = load_config()
+    assert cfg.providers.chain == ["zen_free", "go", "ollama"]
+    assert cfg.voice.stt_engine == "local"
+    monkeypatch.setenv("RAPHAEL_PROFILE", "cloud_temp")
+    cfg = load_config()
+    assert cfg.providers.chain == ["go", "zen_free", "groq"]

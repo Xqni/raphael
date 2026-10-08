@@ -49,8 +49,19 @@ def attention(monkeypatch):
 
 
 def _spend_state(tmp_path) -> dict:
-    path = tmp_path / "run" / "vision_paid_daily.json"
-    return json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+    """Aggregate the append-only ledger (SEC-8): call entries only."""
+    path = tmp_path / "run" / "vision_paid_ledger.jsonl"
+    if not path.exists():
+        return {}
+    events = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if line.strip():
+            events.append(json.loads(line))
+    calls = [e for e in events if e.get("kind") == "call"]
+    return {"usd": round(sum(float(e.get("usd") or 0.0) for e in calls), 6),
+            "calls": len(calls),
+            "models": [e.get("model") for e in calls],
+            "events": events}
 
 
 # --------------------------------------------------------------------------- #
@@ -160,7 +171,7 @@ async def test_paid_model_choice_follows_live_discovery(tmp_path, make_server,
 # 3. daily cap: hard stop + coord attention
 # --------------------------------------------------------------------------- #
 @pytest.mark.asyncio
-async def test_cap_exhausted_refuses_paid_slot_with_e_offline(
+async def test_cap_exhausted_refuses_paid_slot_with_e_budget(
         tmp_path, make_server, keys, attention) -> None:
     free = make_server(models=[{"id": "allam-2-7b"}], free_suffix=False)
     paid = make_server(models=[{"id": PAID_VISION_ID}], free_suffix=False)
@@ -169,7 +180,9 @@ async def test_cap_exhausted_refuses_paid_slot_with_e_offline(
     rt = router.init_router(cfg)
     with pytest.raises(RouterError) as exc:
         await rt.vision(_image(), "q")
-    assert exc.value.code == "E_OFFLINE"              # spec: E_OFFLINE on cap
+    # SEC-8: hard refusal with the budget code (was E_OFFLINE pre-audit)
+    assert exc.value.code == "E_BUDGET"
+    assert exc.value.retryable is False               # fatal until the reset
     assert exc.value.reason == "vision_paid_cap"
     assert isinstance(exc.value.spoken, str)          # spoken-friendly detail
     assert "cap" in (exc.value.spoken or "").lower()
@@ -194,7 +207,7 @@ async def test_cap_crossing_charges_then_stops_further_spend(
 
     with pytest.raises(RouterError) as exc:
         await rt.vision(_image(), "q again")
-    assert exc.value.code == "E_OFFLINE"
+    assert exc.value.code == "E_BUDGET"
     assert exc.value.reason == "vision_paid_cap"
     assert len(paid.chat_requests) == 1               # second call never went out
     assert len(attention) == 1                        # alerted ONCE per day

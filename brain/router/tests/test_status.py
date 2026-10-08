@@ -164,3 +164,40 @@ async def test_module_facade_usage_status(tmp_path) -> None:
     out = await router.usage_status()            # what brain-core will import
     assert set(out) >= {"window_hours", "calls", "tokens", "by_provider",
                         "by_purpose", "errors", "providers"}
+
+
+# --------------------------------------------------------------------------- #
+# F-4 (AUDIT-2026-10-07): compact headroom accessor for the orb menu
+# --------------------------------------------------------------------------- #
+@pytest.mark.asyncio
+async def test_rate_headroom_shape_and_facade(tmp_path) -> None:
+    cfg = make_config(tmp_path, ["mock"], allow_vision_paid=True,
+                      vision_paid_daily_cap_usd=1.0, vision_paid_total_cap_usd=10.0)
+    router.reset_router()
+    rt = router.init_router(cfg)
+    await rt.chat([{"role": "user", "content": "hi"}])   # consumes 1 RPM slot
+
+    headroom = router.rate_headroom()               # module facade (sync, no I/O)
+    mock_block = headroom["providers"]["mock"]
+    assert set(mock_block) == {"rpm_headroom", "tpm_headroom", "cooldown_s",
+                               "circuit"}
+    assert mock_block["rpm_headroom"] == 999        # cap 1000 - 1 used
+    assert mock_block["tpm_headroom"] > 0
+    assert mock_block["circuit"] == "closed"
+    paid_block = headroom["vision_paid"]
+    assert paid_block == {"today_usd": 0.0, "day_cap_usd": 1.0, "total_usd": 0.0,
+                          "total_cap_usd": 10.0, "exhausted": False,
+                          "total_exhausted": False, "ledger_broken": False}
+    # /status rides the same accessor (brain-core already wires usage_status)
+    status = await rt.usage_status()
+    assert status["headroom"] == headroom
+
+
+@pytest.mark.asyncio
+async def test_rate_headroom_without_paid_slot(tmp_path) -> None:
+    cfg = make_config(tmp_path, ["mock"], allow_vision_paid=False)
+    router.reset_router()
+    rt = router.init_router(cfg)
+    headroom = rt.rate_headroom()
+    assert "vision_paid" not in headroom            # slot disabled → no block
+    assert "mock" in headroom["providers"]
