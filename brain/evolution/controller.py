@@ -76,8 +76,13 @@ def safe_rel(base: Path, rel: str) -> str:
 
 
 def _git(repo: Path, *args: str) -> str:
-    out = subprocess.run(["git", *args], cwd=str(repo), capture_output=True,
-                         text=True, timeout=120)
+    # Explicit identity: throwaway worktrees/commits must work on CI runners
+    # where no user.name/user.email is configured (found by branch CI run
+    # 37777566560 — "Author identity unknown"). Same identity as rollback._git.
+    out = subprocess.run(
+        ["git", "-c", "user.name=raphael-evolution", "-c",
+         "user.email=raphael@localhost", *args],
+        cwd=str(repo), capture_output=True, text=True, timeout=120)
     if out.returncode != 0:
         raise RuntimeError(f"git {' '.join(args)}: {out.stderr.strip()}")
     return out.stdout.strip()
