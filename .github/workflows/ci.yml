@@ -170,9 +170,9 @@ jobs:
           python -m pip install -q bandit
           bandit -r brain supervisor scripts tests body \
             -c tests/security/bandit.yaml -ll || true
-      - name: npm audit (body/orb — critical gate; 2 documented highs in SCANNERS.md)
+      - name: "npm audit (body/orb — HIGH gate restored, electron 44.5.1, 0 vulns 2026-10-08)"
         working-directory: body/orb
-        run: npm audit --audit-level=critical
+        run: npm audit --audit-level=high
 
   body-unit-windows:
     name: Windows — Body unit tests (no GUI)

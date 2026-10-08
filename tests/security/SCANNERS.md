@@ -53,18 +53,14 @@
 # Status 2026-10-08: no known vulnerabilities. No suppressions.
 #
 # ## npm audit
-#
-# Scope: body/orb (package-lock.json). Status 2026-10-08: 6 vulns
-# (4 moderate, 2 HIGH) — the highs are `electron 30.5.1` (ASAR integrity
-# bypass) and its transitive `extract-zip`; the fix is a MAJOR Electron
-# upgrade (>= 41.10.6 / 42.3.4) in the ORB LANE's package.json — breaking
-# change not qa-security's to make. Suppression: CI gates at
-# `--audit-level=critical` (fails on new criticals; the 2 highs are
-# documented here + request `qa-security__to__orb__electron-audit-highs.md`)
-# plus a non-gating full audit for visibility. When orb bumps Electron,
-# tighten the step back to `--audit-level=high` (delete this note then).
-#
-# ## Dependabot
+
+Scope: body/orb (package-lock.json). Status 2026-10-08: **0 vulnerabilities**
+— orb bumped electron 30.5.1 -> 44.5.1 (ASAR bypass + extract-zip chain
+resolved; request qa-security__to__orb__electron-audit-highs ANSWERED).
+CI gate RESTORED to `--audit-level=high` (the temporary --critical
+allow-list and its rationale are retired with this note).
+
+## Dependabot
 #
 # .github/dependabot.yml — pip (/tests), npm (/body/orb), github-actions (/),
 # weekly, auto-merge left OFF (lanes review via the coord bus).
