@@ -14,8 +14,16 @@ permissions:
 
 on:
   workflow_dispatch:          # manual: gh workflow run tests-heavy.yml
+    inputs:
+      record_golden:
+        type: boolean
+        default: false
+        description: >-
+          Re-record tests/golden/transcripts (GOLDEN_RECORD=1) and upload them
+          as an artifact for review before committing (QA-3 capture path).
   schedule:
     - cron: '0 6 * * 1'       # weekly Monday full sweep (cloud minutes, not laptop)
+    - cron: '0 5 * * *'       # QA-3 nightly: full mock battery + golden evals
 
 jobs:
   full-battery:
@@ -42,8 +50,24 @@ jobs:
       - name: conformance + contract (explicit, both directions)
         env: { RAPHAEL_INSTANCE: qa-security }
         run: python -m pytest -q tests/conformance tests/contract tests/regression tests/resilience
+      - name: golden-transcript evals (persona format + tool-call accuracy)
+        env: { RAPHAEL_INSTANCE: qa-security }
+        run: python -m pytest -q tests/golden
       - name: core guard
         run: python tests/core_guard.py
+      - name: capture goldens for review (dispatch input only)
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.record_golden }}
+        env: { RAPHAEL_INSTANCE: qa-security }
+        run: |
+          GOLDEN_RECORD=1 python -m pytest -q tests/golden
+          git -C . diff --stat -- tests/golden || true
+      - name: upload captured transcripts (review before commit)
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.record_golden }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: golden-transcripts
+          path: tests/golden/transcripts/
+          if-no-files-found: error
 
   orb-gates:
     name: Orb npm gates (node only)

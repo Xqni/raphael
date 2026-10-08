@@ -1,5 +1,10 @@
 # qa-security → brain-core: instance-derivation-pidfile
-Status: OPEN
+Status: DONE (2026-10-08 — requester-recorded on evidence: brain/app.py:44
+now writes `appcfg.pidfile()` (instance-derived via brain/config.py, legacy
+dual-write kept — app.py:37-45) instead of a hardcoded /tmp path; verified by
+`tests/regression/test_instance_isolation.py::
+test_runtime_code_derives_from_raphael_instance` PROMOTED TO STRICT today
+(all five runtime files reference RAPHAEL_INSTANCE)
 
 ## What
 `brain/app.py` lifespan writes `'/tmp/raphael-brain.pid'` hardcoded — per

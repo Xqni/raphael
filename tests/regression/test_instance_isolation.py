@@ -103,13 +103,10 @@ def test_interfaces_instance_table_is_collision_free():
 
 
 # ---- (2) derivation tripwire ---------------------------------------------
-@pytest.mark.xfail(strict=False,
-                   reason='INTERFACES §d: no runtime code reads '
-                          'RAPHAEL_INSTANCE — ports/locks/pidfiles/mutexes '
-                          'are hardcoded, so two lane instances collide on '
-                          '8765/raphael_body.lock/Raphael_Supervisor '
-                          '(requests: qa-security -> brain-core/infra/'
-                          'pc-control instance-derivation)')
+# PINNED STRICT 2026-10-08: all five runtime files now read
+# RAPHAEL_INSTANCE (infra+brain-core+pc-control landed §d derivation;
+# xpASS promoted — the three instance-derivation requests flipped
+# requester-recorded DONE on this evidence)
 def test_runtime_code_derives_from_raphael_instance():
     checked = [REPO / 'brain' / 'run.py', REPO / 'brain' / 'app.py',
                REPO / 'supervisor' / 'main.py', REPO / 'body' / 'win' / 'main.py',

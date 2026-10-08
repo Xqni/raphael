@@ -56,6 +56,17 @@ def test_ci_least_privilege_aud20():
         assert st.get('with', {}).get('persist-credentials') is False, st
 
 
+def test_ownership_step_uses_merge_base_for_branches():
+    """CI improvement [40]: branch/PR runs must diff against the merge-base
+    with origin/main (lane's OWN diff), not event.before — ff-merging main
+    used to drag other lanes' commits into the range (orb's false-violation
+    diagnosis, integrator-confirmed)."""
+    src = Path('.github/workflows/ci.yml').read_text(encoding='utf-8')
+    assert 'git merge-base HEAD origin/main' in src, \
+        'ownership step lost the merge-base base derivation'
+    assert 'if [ "$REF" != "main" ]' in src
+
+
 def test_gitleaks_config_and_baseline_parse():
     cfg = tomllib.loads((REPO / '.gitleaks.toml').read_text(encoding='utf-8'))
     rule_ids = {r['id'] for r in cfg['rules']}

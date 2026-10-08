@@ -1,0 +1,370 @@
+{
+  "scenario": "confirm_deny",
+  "sessions": {
+    "0:ui": {
+      "sent": [
+        {
+          "type": "auth",
+          "v": 1,
+          "token": "<token>",
+          "role": "ui",
+          "client": "orb-mock",
+          "client_v": "1.0"
+        }
+      ],
+      "recv": [
+        {
+          "type": "orb_state",
+          "v": 1,
+          "state": "idle",
+          "jobs_active": 0,
+          "mode": "normal",
+          "shape_hint": "circle",
+          "task_kind": "none"
+        },
+        {
+          "type": "orb_state",
+          "v": 1,
+          "state": "idle",
+          "jobs_active": 0,
+          "mode": "normal",
+          "shape_hint": "circle",
+          "task_kind": "none"
+        },
+        {
+          "type": "job_event",
+          "v": 1,
+          "job": "j_1",
+          "seq": 1,
+          "status": "queued",
+          "stage": "routing",
+          "text": "delete golden files now",
+          "progress": 0.0,
+          "priority": "normal"
+        },
+        {
+          "type": "orb_state",
+          "v": 1,
+          "state": "idle",
+          "jobs_active": 0,
+          "mode": "normal",
+          "shape_hint": "circle",
+          "task_kind": "none"
+        },
+        {
+          "type": "job_event",
+          "v": 1,
+          "job": "j_1",
+          "seq": 2,
+          "status": "running",
+          "stage": "routing",
+          "text": "Working on it",
+          "progress": 0.05,
+          "priority": "normal"
+        },
+        {
+          "type": "orb_state",
+          "v": 1,
+          "state": "thinking",
+          "jobs_active": 1,
+          "mode": "normal",
+          "shape_hint": "circle",
+          "task_kind": "none"
+        },
+        {
+          "type": "orb_state",
+          "v": 1,
+          "state": "confirm",
+          "jobs_active": 1,
+          "mode": "normal",
+          "shape_hint": "circle",
+          "task_kind": "none"
+        },
+        {
+          "type": "job_event",
+          "v": 1,
+          "job": "j_1",
+          "seq": 3,
+          "status": "awaiting_confirm",
+          "stage": "routing",
+          "text": "About to delete files or data: “delete golden files now”. Confirm?",
+          "progress": 0.1,
+          "priority": "normal"
+        },
+        {
+          "type": "orb_state",
+          "v": 1,
+          "state": "confirm",
+          "jobs_active": 1,
+          "mode": "normal",
+          "shape_hint": "circle",
+          "task_kind": "none"
+        },
+        {
+          "type": "subtitle",
+          "v": 1,
+          "job": "j_1",
+          "text": "About to delete files or data: “delete golden files now”. Confirm?",
+          "fade_ms": 4000
+        },
+        {
+          "type": "needs_confirm",
+          "v": 1,
+          "job": "j_1",
+          "question": "About to delete files or data: “delete golden files now”. Confirm?",
+          "actions": [
+            "yes",
+            "no"
+          ],
+          "risk": "high"
+        },
+        {
+          "type": "orb_state",
+          "v": 1,
+          "state": "confirm",
+          "jobs_active": 1,
+          "mode": "normal",
+          "shape_hint": "circle",
+          "task_kind": "none"
+        },
+        {
+          "type": "speak",
+          "v": 1,
+          "job": "j_1",
+          "seq": 0,
+          "event": "start",
+          "sample_rate": 24000,
+          "text": "About to delete files or data: “delete golden files now”. Confirm?",
+          "cached": false,
+          "engine": "mock"
+        },
+        {
+          "type": "speak",
+          "v": 1,
+          "job": "j_1",
+          "seq": 1,
+          "event": "chunk",
+          "sample_rate": 24000,
+          "amplitude": 0.0,
+          "cached": false,
+          "engine": "mock"
+        },
+        {
+          "type": "speak",
+          "v": 1,
+          "job": "j_1",
+          "seq": 2,
+          "event": "end",
+          "sample_rate": 24000,
+          "cached": false,
+          "engine": "mock"
+        },
+        {
+          "type": "orb_state",
+          "v": 1,
+          "state": "confirm",
+          "jobs_active": 1,
+          "mode": "normal",
+          "shape_hint": "circle",
+          "task_kind": "none"
+        },
+        {
+          "type": "orb_state",
+          "v": 1,
+          "state": "confirm",
+          "jobs_active": 1,
+          "mode": "normal",
+          "shape_hint": "circle",
+          "task_kind": "none"
+        },
+        {
+          "type": "job_event",
+          "v": 1,
+          "job": "j_1",
+          "seq": 4,
+          "status": "cancelled",
+          "stage": "done",
+          "text": "Aborted.",
+          "progress": 1.0,
+          "priority": "normal",
+          "error_code": "E_CANCELLED"
+        },
+        {
+          "type": "orb_state",
+          "v": 1,
+          "state": "idle",
+          "jobs_active": 0,
+          "mode": "normal",
+          "shape_hint": "circle",
+          "task_kind": "none"
+        },
+        {
+          "type": "subtitle",
+          "v": 1,
+          "job": "j_1",
+          "text": "Aborted.",
+          "fade_ms": 4000
+        },
+        {
+          "type": "orb_state",
+          "v": 1,
+          "state": "speaking",
+          "jobs_active": 0,
+          "mode": "normal",
+          "shape_hint": "circle",
+          "task_kind": "none"
+        },
+        {
+          "type": "speak",
+          "v": 1,
+          "job": "j_1",
+          "seq": 0,
+          "event": "start",
+          "sample_rate": 24000,
+          "text": "Aborted.",
+          "cached": false,
+          "engine": "mock"
+        },
+        {
+          "type": "speak",
+          "v": 1,
+          "job": "j_1",
+          "seq": 1,
+          "event": "chunk",
+          "sample_rate": 24000,
+          "amplitude": 0.0,
+          "cached": false,
+          "engine": "mock"
+        },
+        {
+          "type": "speak",
+          "v": 1,
+          "job": "j_1",
+          "seq": 2,
+          "event": "end",
+          "sample_rate": 24000,
+          "cached": false,
+          "engine": "mock"
+        },
+        {
+          "type": "orb_state",
+          "v": 1,
+          "state": "idle",
+          "jobs_active": 0,
+          "mode": "normal",
+          "shape_hint": "circle",
+          "task_kind": "none"
+        }
+      ]
+    },
+    "1:cli": {
+      "sent": [
+        {
+          "type": "auth",
+          "v": 1,
+          "token": "<token>",
+          "role": "cli",
+          "client": "qa-test",
+          "client_v": "1.0"
+        },
+        {
+          "type": "command",
+          "v": 1,
+          "text": "delete golden files now",
+          "source": "text"
+        },
+        {
+          "type": "confirm_resp",
+          "v": 1,
+          "job": "j_1",
+          "answer": "no"
+        }
+      ],
+      "recv": [
+        {
+          "type": "ack",
+          "v": 1,
+          "job": "j_1",
+          "text_id": null
+        },
+        {
+          "type": "job_event",
+          "v": 1,
+          "job": "j_1",
+          "seq": 1,
+          "status": "queued",
+          "stage": "routing",
+          "text": "delete golden files now",
+          "progress": 0.0,
+          "priority": "normal"
+        },
+        {
+          "type": "job_event",
+          "v": 1,
+          "job": "j_1",
+          "seq": 2,
+          "status": "running",
+          "stage": "routing",
+          "text": "Working on it",
+          "progress": 0.05,
+          "priority": "normal"
+        },
+        {
+          "type": "job_event",
+          "v": 1,
+          "job": "j_1",
+          "seq": 3,
+          "status": "awaiting_confirm",
+          "stage": "routing",
+          "text": "About to delete files or data: “delete golden files now”. Confirm?",
+          "progress": 0.1,
+          "priority": "normal"
+        },
+        {
+          "type": "subtitle",
+          "v": 1,
+          "job": "j_1",
+          "text": "About to delete files or data: “delete golden files now”. Confirm?",
+          "fade_ms": 4000
+        },
+        {
+          "type": "needs_confirm",
+          "v": 1,
+          "job": "j_1",
+          "question": "About to delete files or data: “delete golden files now”. Confirm?",
+          "actions": [
+            "yes",
+            "no"
+          ],
+          "risk": "high"
+        },
+        {
+          "type": "ack",
+          "v": 1,
+          "job": "j_1",
+          "answer": "no",
+          "accepted": true
+        },
+        {
+          "type": "job_event",
+          "v": 1,
+          "job": "j_1",
+          "seq": 4,
+          "status": "cancelled",
+          "stage": "done",
+          "text": "Aborted.",
+          "progress": 1.0,
+          "priority": "normal",
+          "error_code": "E_CANCELLED"
+        },
+        {
+          "type": "subtitle",
+          "v": 1,
+          "job": "j_1",
+          "text": "Aborted.",
+          "fade_ms": 4000
+        }
+      ]
+    }
+  }
+}

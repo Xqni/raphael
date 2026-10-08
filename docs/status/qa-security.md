@@ -4,6 +4,53 @@ Updated: 2026-10-07 (Wave 3 open; CI ownership fix done)
 
 ## Wave 5H — audit hardening sprint (packet: docs/audit-tasks/qa-security.md)
 
+- **2026-10-08 later: batch MERGED (08622fe) + wave_done accepted (37775644704).**
+- **Packet reconcile (per inbox [36]):** QA-1/QA-2/QA-4/SEC-7-CI = DONE with
+  file:line evidence in docs/lanes/qa-security.md; **QA-3 = PARTIAL**
+  (golden transcripts landed, cron+evals left); control-plane re-audit NOT
+  started — both honestly unchecked above.
+- **DONE 2026-10-08: control-plane re-audit (last packet item)** —
+  `docs/reviews/2026-10-08-wave5h.md`: AUD-12/SEC-7 claims verified-first
+  (write-side event fencing ALREADY-DONE in coord.py; OPENCODE_BIN cron
+  resolver ALREADY-DONE + live keepalive log proof; REPO_ROOT scrub clean
+  post-rebase — my earlier 'stale literals' reading was the pre-rebase
+  branch). CONFIRMED x2: consumer prompts lack untrusted-data framing
+  (request) + dry-run handler vetoes a lane's own status/lane docs (request
+  + xfail). New gate suite `tests/test_dryrun_ownership_consistency.py`
+  (parser lane-set + 13 owner samples strict vs my checker).
+- **DONE 2026-10-08: Wave-5 evolution gate tests** —
+  `tests/evolution_gate/` (9 tests, 0.5s): Core Guard tamper drill (CLI
+  exit≠0 + restore), boot refusal + SAFE_MODE armed-and-disarmed (the
+  disarm matters: SAFE_MODE is process-global and blocked the act pipeline
+  for 9 later tests until the cleanup — root-caused and fixed),
+  rollback delegation fail-closed + generate-never-execute (tmp git repo),
+  baseline `compare()` fail-closed ×5 (no baseline/guard flip/poisoned
+  baseline/shadow fail/transcript drift; commit-move alone allowed),
+  zones×manifest cross-source consistency (every manifest key → Zone.CORE),
+  zones fail-closed + authority-content re-guard, probation triggers
+  (unlock-only window, fatal sticky, expiry=fail, demotion floor),
+  probation state path outside the git tree.
+- **DONE 2026-10-08: QA-3 remainder (cron + evals)** —
+  `tests/golden/test_golden_evals.py` (12 evals: persona-format rules pulled
+  live from `config.yaml` voice_personality, tool-call accuracy vs intent
+  oracle `SCENARIO_META`, answer-frame shape incl. deny-path must NOT answer,
+  confirm-gate presence) + `tests-heavy.yml`: nightly cron `0 5 * * *`,
+  named golden-evals step, `record_golden` dispatch input re-records and
+  uploads `tests/golden/transcripts/` as an artifact (review before commit;
+  upload-artifact SHA-pinned). Boot-time Core Guard (brain/coreguard.py)
+  caught my un-repinned tests-heavy edit mid-run — REFUSING TO SERVE, then
+  re-pinned with packet approval (20 files OK). Suites: **384 passed,
+  2 skipped, 7 xfailed**.
+- **DONE 2026-10-08: Wave-3 golden job transcripts** —
+  `tests/golden/{scenarios,replay}.py` + `tests/golden/test_golden_replay.py`
+  (replay through a FRESH instance, multiset+job-chain compare, token/session/
+  job-id normalization) + 3 recorded transcripts in `tests/golden/transcripts/`
+  (echo, confirm_deny, gui_act). Record tool: `GOLDEN_RECORD=1 pytest
+  tests/golden`. Verified: record → 2× verify runs green (cross-process
+  determinism), 0 scan_personal findings, `<token>` never stored.
+  Suites: **372 passed, 2 skipped, 7 xfailed**.
+
+
 - **QA-1 DONE 2026-10-08 (P0 scanners):**
   - `.gitleaks.toml` — default secret rules + 3 custom personal-data rules
     (local usernames / drive-home paths / private+pod IPs); CI-scoped with
