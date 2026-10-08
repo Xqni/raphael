@@ -262,7 +262,7 @@ $ brain/.venv/bin/python -m pytest brain/tests -q
 $ brain/.venv/bin/python -m pytest brain/router/tests -q
 92 passed in 27.57s
 $ brain/.venv/bin/python brain/voice/scripts/prove_reference.py
-configured reference : /home/dami/raphael-wt/voice/assets/raphael_reference_jp.wav
+configured reference : /home/<wsl-user>/raphael-wt/voice/assets/raphael_reference_jp.wav
 exists               : True (751686 bytes)
 fingerprint          : f64bd512ea1e
 reference_required   : True

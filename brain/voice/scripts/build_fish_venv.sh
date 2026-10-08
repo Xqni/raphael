@@ -5,7 +5,7 @@
 # pyaudio is EXCLUDED: only tools/api_client.py imports it (not tools.api_server)
 # and it needs portaudio dev headers (no sudo in this environment).
 set -euo pipefail
-cd /home/dami/raphael
+cd $HOME/raphael
 VENV=brain/voice/.venv-fish
 PY=$VENV/bin/python
 echo "== [1/4] creating venv =="

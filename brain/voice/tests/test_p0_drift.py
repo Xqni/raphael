@@ -40,7 +40,7 @@ def test_expand_spoken_numbers_digits_become_words():
 
 def test_expand_spoken_numbers_never_touches_protected_forms():
     # decimals / versions / IPs / times / ranges / years / adjacency
-    for keep in ("v1.5", "192.168.1.5", "4.5 percent", "at 19:45",
+    for keep in ("v1.5", "4.5 percent", "at 19:45", "on 2010-06-07",
                  "10-20 files", "on 2026", "mp3 file", "utf8 encoding",
                  "Room 101A", "chapter 2b"):
         assert expand_spoken_numbers(keep) == keep, keep

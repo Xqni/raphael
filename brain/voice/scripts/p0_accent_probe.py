@@ -37,7 +37,7 @@ from brain.voice.tts import (FishSpeechServer, TTSEngine,  # noqa: E402
                              wav_bytes_to_s16le_pcm)
 from brain.voice.wake import normalize_text  # noqa: E402
 
-MAIN = Path("/home/dami/raphael")
+MAIN = Path.home() / "raphael"
 JP_NS = "f64bd512ea1e"
 REFS = {
     "jp_file": _REPO / "assets" / "raphael_reference_jp.wav",
