@@ -33,3 +33,8 @@ Earlier failure (37710067102) confirmation: the stale contract test causing the 
 Conclusions:
 - The two prior failures (37710212877, 37710210183) failed ONLY on ModuleNotFoundError: No module named 'soundfile' in the Ubuntu full-brain step (18 occurrences each), affecting brain/voice tests; protocol conformance and Windows Body unit tests passed in both cases.
 - Adding `soundfile` to tests/requirements.txt resolves the voice audio dependency. Both current runs (37710680159 and 37710680919) completed successfully with the Ubuntu full-brain step passing; voice tests are green/satisfied in the full brain battery.
+
+## Post-AUD-integration
+- run id: 37715207093
+- jobs: ["Protocol conformance (ubuntu-latest)": success, "Windows — Body unit tests (no GUI)": success, "Protocol conformance (windows-latest)": success, "Ubuntu — brain + mock suites": success]
+- conclusions: all green (status: completed, conclusion: success)

@@ -31,8 +31,7 @@ Priority order after Phase 3 completes. Do not let these silently vanish.
 
 ## 3b. USER ACTION (when awake — non-blocking, relay already works around it)
 - Hyper-V firewall blocks WSL's built-in localhost relay on this machine. The supervisor's user-space relay (paths.brain_relay) covers everything meanwhile.
-- Optional one-liner (elevated PowerShell), then set `paths.brain_relay: false` in config.yaml and restart the Raphael task:
-  Set-NetFirewallHyperVVMSetting -Name '{40E0AC32-46A5-438A-A0B2-2B479E8F2E90}' -DefaultInboundAction Allow
+- Optional (elevated once): `scripts/win/allow-brain-localhost.ps1` — narrow inbound rule, TCP 8765 from the WSL/Hyper-V creator only (or `networkingMode=mirrored`); then `paths.brain_relay: false` + restart the Raphael task. **Rejected:** the blanket `DefaultInboundAction Allow` variant — opens ALL inbound to the VM (SEC-6; `scripts/NETWORK-SECURITY.md`).
 
 ## 3c. Supervisor: _ExternalBody staleness — FIXED 2026-10-05
 - Was: poll() hardcoded None → a crashed external body was never relaunched (observed live: old body died on binary TTS, stayed dead until a task restart).

@@ -337,7 +337,15 @@ def _normalize(cfg, parsed):
     sup = cfg.setdefault("supervisor", {})
     alt = parsed.get("supervisor") if isinstance(parsed.get("supervisor"),
                                                  dict) else {}
-    for key in ("distro", "wsl_user", "brain_unit", "ollama_unit",
+    # ARCH-4 precedence bugfix (integrator glue, 2026-10-08): the DEFAULT dict
+    # seeds wsl_user from the WINDOWS USERNAME (non-empty on every Windows run),
+    # so the old `only-if-empty` merge could never let config.yaml's explicit
+    # wsl_user apply -> supervisor restarted brain with `-u jxesu` (WSL user
+    # not found). Per the documented contract: config.yaml is authoritative for
+    # the identity keys; RAPHAEL_WSL_USER still overrides both below.
+    if alt.get("wsl_user") not in (None, ""):
+        paths["wsl_user"] = alt["wsl_user"]
+    for key in ("distro", "brain_unit", "ollama_unit",
                 "body_cmd", "body_venv", "orb_dir", "token_win",
                 "wsl_sudo", "wsl_keepalive"):
         if paths.get(key) in (None, "") and alt.get(key) not in (None, ""):

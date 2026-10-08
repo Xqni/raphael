@@ -8,11 +8,13 @@ This guide covers common failure modes for the Raphael stack, based on Wave 2 in
 **Symptoms:** Orb shows `reconnecting` or `offline`; Supervisor logs "brain healthy" check fails.
 - **The Hyper-V Firewall Trap:** By default, Windows often blocks the built-in WSL localhost relay. If `127.0.0.1:8765` is refused but the WSL IP (e.g., `172.x.x.x:8765`) connects, this is the cause.
 - **Workaround:** The Supervisor implements a user-space relay (`paths.brain_relay: true` in `config.yaml`). This splices traffic from Windows `127.0.0.1:8765` $\rightarrow$ WSL `0.0.0.0:8766` $\rightarrow$ Brain `127.0.0.1:8765`.
-- **Permanent Fix:** Run the following in an **elevated PowerShell** window:
-  ```powershell
-  Set-NetFirewallHyperVVMSetting -Name '{40E0AC32-46A5-438A-A0B2-2B479E8F2E90}' -DefaultInboundAction Allow
-  ```
-  After running this, you can set `paths.brain_relay: false` in `config.yaml`.
+- **Permanent Fix (narrow, SEC-6):** run `scripts/win/allow-brain-localhost.ps1`
+  (elevated once) — creates a scoped inbound rule for TCP 8765 from the WSL/Hyper-V
+  creator only — OR switch `networkingMode=mirrored` in .wslconfig and restart WSL.
+  Then set `paths.brain_relay: false` in `config.yaml`.
+  **Rejected:** `Set-NetFirewallHyperVVMSetting … -DefaultInboundAction Allow` — it
+  opens ALL inbound traffic to the VM (blanket Allow). Kept here only as the explicit
+  non-recommendation (see `scripts/NETWORK-SECURITY.md`).
 
 ## 🖥️ Process & Windowing
 

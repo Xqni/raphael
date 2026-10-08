@@ -29,3 +29,12 @@ Summary: Both jobs failed - one due to a behavioral/test expectation mismatch in
   - Full battery (all suites, one runner): success
   - Orb npm gates (node only): success
 - Failure details: none (both jobs passed). Root causes from Round 1 fixed (deterministic missing-seam vision test + tracked package-lock.json).
+## Dispatch-chain optimization run
+run_id: 37716474814
+conclusion: success
+status: completed
+jobs:
+- Full battery (all suites, one runner): success
+- Orb npm gates (node only): success
+duration_polls: 2 rounds (90s)
+timestamp: 2026-10-07T21:12:52-05:00

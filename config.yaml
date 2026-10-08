@@ -23,7 +23,7 @@ server:
 
 supervisor:
   distro: Ubuntu-26.04
-  wsl_user: dami
+  wsl_user: dami                          # env RAPHAEL_WSL_USER overrides; keep explicit (Windows host cannot derive the Linux user) — ARCH-4
   brain_unit: raphael-brain
   health_interval_s: 5
   ws_url: ws://127.0.0.1:8765/ws

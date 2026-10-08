@@ -84,3 +84,11 @@ Idle lanes need no message at all once adopted: the conductor **pings** their se
 ## Merge order (integrator only)
 
 `router → brain-core → pc-control → voice → computer-use → orb → infra → qa-security → tools-memory → evolution-persona` (see `docs/WAVES.md`).
+
+## Env separation (SEC-5, Wave 5H)
+
+Lane worktrees read `.env.dev`
+(`scripts/install-env-dev.sh`, valueless, mode 600) — the real `.env`
+(600, owner-only) is read ONLY by the live-stack process. Worktree
+creation must create `.env.dev`, never symlink `.env`. `raphael
+doctor` verifies both.

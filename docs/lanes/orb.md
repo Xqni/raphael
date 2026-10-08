@@ -171,6 +171,26 @@ green CI run.
 - [ ] **Item 4 — state-distinctness green after every change** (all 104 pairs).
       Re-verified on every commit in this wave.
 
+### AMENDMENT 3 (user, 2026-10-08): NO ON-SCREEN TEXT — SPEECH ONLY
+
+**User verbatim:** "there are text displays that show up under her and a whole box of
+the answer she is giving, i dont want any of those. and when she is listening there is a
+red pill with text 'mic -> cloud' which i dont want. there shouldnt be any text that
+shows up with her please. just speech."
+
+- [ ] REMOVE from the default orb view (do-first, above other work):
+  1. the **subtitle line** (fading status text under the orb) — stop rendering;
+  2. the **answer/report banner cards** (wave-5 "wrapped cards") — stop rendering;
+  3. the **red "mic -> cloud" pill** (SEC-3 indicator, b0ed6ce) — stop rendering;
+  4. ANY other persistent/auto text near the orb (notice text, task labels — same rule).
+- KEEP: cage, colors/theme per state, speaking pulse, job DOTS (not labels), the
+  right-click menu + tray (on-demand UI is fine — nothing AUTO-SHOWS with text).
+- Speech stays the channel: long-form answers still exist as `report`/`answer` frames
+  (jobs/CLI/api can read them) — the ORB simply never displays text. Note this in gates:
+  matrix/distinctness must prove states via COLOR+SHAPE only; remove text assertions.
+- Config shortcut: a single `orb.show_text: false` default acceptable if it keeps the
+  machinery for future (your call — default must be NO TEXT).
+
 ### AMENDMENT 2 (user): BOOT STATE SEQUENCE REWIRE
 
 - [x] **User directive: "the starting state might need to be rewired — starting state →
