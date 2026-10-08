@@ -184,9 +184,10 @@ def test_persona_streamed_reply_and_multi_turn_history(token_path, fake_chat):
     # prompt_block fallback (pc-control item 2) rides in the system prompt
     assert 'Tool calling:' in sys_msg['content']
     assert '- shell:' in sys_msg['content']
-    # streamed + tools offered natively, tool-capable turns tagged purpose=tool
+    # streamed + tools offered natively; purpose labels: INTENT turn = chat
+    # (tools merely offered), tool-EXECUTION turns = tool (router request)
     assert calls[0]['stream'] is True
-    assert calls[0]['purpose'] == 'tool'
+    assert calls[0]['purpose'] == 'chat'
     tool_names = {t['function']['name'] for t in (calls[0]['tools'] or [])}
     assert 'shell' in tool_names
     assert calls[0]['messages'][-1] == {'role': 'user',
@@ -232,6 +233,7 @@ def test_tool_loop_executes_and_feeds_back_untrusted(token_path, fake_chat):
         assert spec['t_agent_echo']['function']['parameters'][
             'additionalProperties'] is False
         # turn 2: assistant tool_calls + UNTRUSTED tool result (§9)
+        assert calls[1]['purpose'] == 'tool'   # actual tool execution step
         msgs = calls[1]['messages']
         tool_msgs = [m for m in msgs if m.get('role') == 'tool']
         assert len(tool_msgs) == 1

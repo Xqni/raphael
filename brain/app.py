@@ -54,6 +54,15 @@ async def lifespan(app: FastAPI):
     # must both pass, else RuntimeError aborts startup (refuse to serve).
     from . import coreguard
     coreguard.check_at_boot()
+    # instance-derived boot line (INTERFACES §d; tripwire: app.py derives via
+    # RAPHAEL_INSTANCE through brain/config.py, never a hardcoded path)
+    try:
+        from . import config as _cfg
+        from .logjson import slog
+        slog('brain_boot', instance=_cfg.instance(),
+             pidfile=str(_cfg.pidfile()), legacy=bool(_cfg.legacy_pidfile()))
+    except Exception:  # noqa: BLE001 — boot observability must not block
+        pass
     engine = get_engine()
     hub.engine = engine
     # computer-use hook (ACCEPTED 2026-10-06): sync tools run via to_thread —

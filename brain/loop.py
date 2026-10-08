@@ -692,11 +692,14 @@ def build_runner(hub=None):
                 orbstate.set_task('llm')
                 orbstate.refresh(hub=hub, engine=engine)
 
-                # native tools preferred (decision 2026-10-06); purpose='tool'
-                # tags tool-capable turns per INTERFACES §a
+                # router chat-purpose-label (ACCEPTED 2026-10-08): label
+                # purpose='tool' ONLY when a tool is actually invoked this
+                # turn (tool feedback present in messages); specs merely
+                # OFFERED label 'chat' so trivial turns stay on the fast tier.
+                used_tool = any(m.get('role') == 'tool' for m in messages)
                 stream = await llm.chat(messages, tools=specs or None,
                                         stream=True,
-                                        purpose='tool' if specs else 'chat')
+                                        purpose='tool' if used_tool else 'chat')
                 buffer = ''
                 full_text = ''
                 first_token = False
