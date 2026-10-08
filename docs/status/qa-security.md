@@ -12,7 +12,7 @@ Updated: 2026-10-07 (Wave 3 open; CI ownership fix done)
   - `tests/security/gitleaks-baseline.json` — documented allow-list for the
     117 pre-existing findings (53 files); MUST be unredacted (redacted
     baselines suppress nothing — verified live); negative test proven
-    (new `/home/dami/...` → exit 1).
+    (a NEW personal home path → exit 1).
   - pip-audit `-r tests/requirements.txt` → **0 vulns** (no suppressions).
   - bandit → `tests/security/bandit.yaml`: HIGH gate green; B602/B324
     skipped with written reasons (shell-behind-Confirm-Guard is the model;
