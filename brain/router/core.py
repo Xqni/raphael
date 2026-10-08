@@ -801,20 +801,25 @@ class Router:
         raise self._exhausted(errors)
 
     def _role_for(self, purpose: str, tools: list[dict[str, Any]] | None) -> str:
-        """purpose → model tier (INTERFACES §a `purpose` + Wave-5 tier policy).
+        """purpose → model tier (INTERFACES §a + Wave-5 tier policy).
 
-        A purpose mapped to the DEEP tier (analysis/simulation) wins over the
-        tools→strong rule — depth is the whole point of Analysis/Simulation.
-        Everything else keeps Rule-15 behavior: tools → strong, otherwise the
-        purpose's own mapping, defaulting to fast.
+        Tier follows the PURPOSE, never the mere PRESENCE of tools in the
+        payload (latency lever #2, dispatch 2026-10-08): `purpose='chat'`
+        with tools merely AVAILABLE resolves FAST — fast models are
+        tool-capable, and depth escalation is driven by intent (loop labels
+        `tool`/`plan` → strong, `analysis`/`simulation` → deep), not by
+        payload shape. Unknown purpose + attached tools stays conservative
+        (strong). Deep still outranks everything for its purposes.
         """
         roles = self.config.providers.purpose_roles
         mapped = roles.get(purpose)
         if mapped == "deep":
             return mapped
+        if mapped:
+            return mapped                      # chat/ack→fast · tool/plan→strong
         if tools:
-            return roles.get("tool", "strong")
-        return mapped or roles.get("chat", "fast")
+            return roles.get("tool", "strong") # unknown purpose: conservative
+        return roles.get("chat", "fast")
 
     # ------------------------------------------------------------------ #
     # FACADE — vision (INTERFACES §a, PROTOCOL §7 gates)

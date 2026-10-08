@@ -50,10 +50,18 @@ def test_role_for_prefers_depth_over_the_tools_rule(tmp_path) -> None:
     assert rt._role_for("analysis", tools) == "deep"     # depth beats tools→strong
     assert rt._role_for("analysis", None) == "deep"
     assert rt._role_for("simulation", tools) == "deep"
-    assert rt._role_for("chat", tools) == "strong"       # unchanged
-    assert rt._role_for("chat", None) == "fast"          # unchanged
-    assert rt._role_for("ack", None) == "fast"           # unchanged
-    assert rt._role_for("never-heard-of", None) == "fast"  # unknown → fast
+    # latency lever #2 (dispatch 2026-10-08): tools merely AVAILABLE in a
+    # chat turn must NOT escalate — purpose owns the tier
+    assert rt._role_for("chat", tools) == "fast"         # was "strong" (bug)
+    assert rt._role_for("chat", None) == "fast"
+    assert rt._role_for("ack", tools) == "fast"
+    # strong path intact for its purposes (no regressions)
+    assert rt._role_for("tool", tools) == "strong"
+    assert rt._role_for("tool", None) == "strong"
+    assert rt._role_for("plan", tools) == "strong"
+    # unknown purpose + attached tools stays conservative
+    assert rt._role_for("never-heard-of", tools) == "strong"
+    assert rt._role_for("never-heard-of", None) == "fast"
 
 
 # --------------------------------------------------------------------------- #
@@ -118,11 +126,19 @@ async def test_normal_turns_stay_fast(tmp_path) -> None:
     assert chat["model"] == "mock-instant"
     ack = await rt.chat([{"role": "user", "content": "ok"}], purpose="ack")
     assert ack["model"] == "mock-instant"
+    # chat purpose + tools OFFERED → fast tier now (dispatch 2026-10-08)
     with_tools = await rt.chat(
         [{"role": "user", "content": "run this"}],
         tools=[{"type": "function", "function": {
             "name": "shell", "parameters": {"type": "object"}}}])
-    assert with_tools["model"] == "mock-large"  # strong slot, as before
+    assert with_tools["model"] == "mock-instant"        # tools available ≠ invoked
+    # …while an explicit tool-purpose turn keeps the strong slot
+    tool_turn = await rt.chat(
+        [{"role": "user", "content": "run this for real"}],
+        tools=[{"type": "function", "function": {
+            "name": "shell", "parameters": {"type": "object"}}}],
+        purpose="tool")
+    assert tool_turn["model"] == "mock-large"           # strong, as before
 
 
 # --------------------------------------------------------------------------- #

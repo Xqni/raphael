@@ -57,7 +57,10 @@ class MockProvider(Provider):
     # ------------------------------------------------------------------ #
     async def _fetch_models(self) -> list[ModelInfo]:
         return [
-            ModelInfo("mock-instant", self.name, capabilities=frozenset({"chat"})),
+            # tool-capable FAST model (mirrors mimo-v2.6-flash: latency lever
+            # #2 depends on fast models serving tools-attached chat turns)
+            ModelInfo("mock-instant", self.name,
+                      capabilities=frozenset({"chat", "tools"})),
             ModelInfo("mock-large", self.name, capabilities=frozenset({"chat", "tools"})),
             ModelInfo("mock-vision", self.name, capabilities=frozenset({"chat", "vision"})),
             ModelInfo("mock-whisper", self.name, capabilities=frozenset({"audio"})),
