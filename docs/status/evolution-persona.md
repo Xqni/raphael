@@ -108,12 +108,11 @@ Updated: 2026-10-08 (Wave 5H + AUD-26)
 - —
 
 ## Blocked
-- **origin/main Core Guard drift (P0 incident, reported 2026-10-08):** clean checkout of main
-  fails `tests/core_guard.py` (manifest `tools/conductor/**` = `2e68c67…` was pinned from the
-  integrator's DIRTY worktree; committed tree hashes `e3ff214…`). My branch inherited it after
-  rebase → core-guard-gated runs (shadow, baseline) fail-closed until integrator commits or
-  reverts their dirty `tools/conductor/coord.py` and re-pins. Evidence + fix options posted as a
-  coord `error` event; their files, their call — not touching them.
+- ~~origin/main Core Guard drift~~ — **RESOLVED 2026-10-08**: integrator's `aa8503e`
+  ("SEC-1 scrub of coord.py … + guard rehashed") made the committed tree self-consistent; after
+  rebase my worktree verifies `Core Guard OK (20 files byte-stable)` (exit 0) and suites are
+  green again (evolution 93, persona 77). Reported earlier as coord `error`; fix was theirs and
+  they made it — no action left on this lane.
 - ~~shadow instance row~~ — **LANDED 577f09c**; shadow verification built + green (see Done).
 - Full controller (`controller/worktree/promote`) still waits on: infra rollback-hook seam,
   qa-security golden-harness seam + CORE_GUARD_FILES extension, router weights ownership
