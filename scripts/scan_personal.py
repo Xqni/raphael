@@ -16,6 +16,24 @@ Usage:
   scripts/scan_personal.py --staged      # only git-staged files (pre-commit)
   scripts/scan_personal.sh [args]        # thin wrapper
 """
+# ALLOWLIST POLICY (coordinator decision, coord ts 1791462190):
+# exact paths ONLY — never a wildcard over tests/** or docs/**. Every entry
+# carries a written reason; entries DIE when their reason does:
+#   * scripts/{scan_personal.*, GIT-SCRUB-PLAN.md, SECRETS.md,
+#     env.dev.template, install-env-dev.sh} — detection signatures /
+#     scrub-plan / privacy docs CONTAIN the patterns by construction;
+#   * supervisor/tests/test_audit_tooling.py — test fixtures plant the
+#     patterns on purpose;
+#   * tests/security/gitleaks-baseline.json — QA-1 transitional gitleaks
+#     suppression LEDGER: its content is the already-known personal-data set
+#     (locations are what a ledger is FOR; gitleaks compares real Match
+#     values, so the ledger cannot be scrubbed to placeholders — verified
+#     2026-10-08). It dies naturally at exit-criterion-4, when the
+#     repo-wide scrub completes and BOTH scanners run empty; then this
+#     line goes.
+# The summary reports allowlist-skipped file counts so the human-facing
+# exit-criteria count stays honest (scrub tracks the NON-ledger FAILs).
+
 from __future__ import annotations
 
 import re
@@ -86,7 +104,10 @@ ALLOWLIST = re.compile(
     r"|^scripts/SECRETS\.md$|^scripts/env\.dev\.template$"
     r"|^scripts/install-env-dev\.sh$"
     # test files whose FIXTURES are deliberately the pattern strings
-    r"|^supervisor/tests/test_audit_tooling\.py$")
+    r"|^supervisor/tests/test_audit_tooling\.py$"
+    # QA-1 gitleaks baseline LEDGER (transitional; dies at exit-criterion-4
+    # — see ALLOWLIST POLICY in the module header)
+    r"|^tests/security/gitleaks-baseline\.json$")
 
 
 def tracked_files(staged_only: bool) -> list[str] | None:
@@ -149,13 +170,15 @@ def main(argv=None) -> int:
     total = sum(len(v) for v in findings.values())
     fail_total = sum(1 for v in findings.values()
                      for rid, _ in v if sev_of[rid] == "FAIL")
+    allow_skipped = sum(1 for rel in files if ALLOWLIST.search(rel))
     for rel in sorted(findings):
         for rid, lineno in findings[rel]:
             print("[scan_personal] %-8s %s:%d  rule=%s (%s)"
                   % (sev_of[rid], rel, lineno, rid, label_of[rid]))
     scope = "staged" if staged else "tracked"
-    print("[scan_personal] scanned %d %s files, %d finding(s) "
-          "(FAIL-severity: %d)" % (len(files), scope, total, fail_total))
+    print("[scan_personal] scanned %d %s files (%d allowlist-skipped), "
+          "%d finding(s) (FAIL-severity: %d, non-ledger)"
+          % (len(files), scope, allow_skipped, total, fail_total))
     if strict and total:
         print("[scan_personal] STRICT: findings present — scrub or "
               "coordinate (docs/scrub plan: scripts/GIT-SCRUB-PLAN.md)")
