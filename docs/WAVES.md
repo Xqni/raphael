@@ -122,6 +122,33 @@ findings are never applied.** Packets: `docs/audit-tasks/<lane>.md`.
 - Human-only items live in ATTENTION (repo visibility, PAT scope, history-rewrite
   approval, branch protection, cloud-vs-RAM decision, Node-on-Windows).
 
+### WAVE-5H GATE PASSED 2026-10-08 — tag `wave-5h-gate`
+
+All five exit criteria verified by the integrator (evidence in PROGRESS.md + `.local/share/opencode/research/wave5h-gate-tip-ci.md`):
+
+1. **P0/HIGH/CRIT fixed-or-accepted**: docs/AUDIT-2026-10-07.md Status column updated from
+   merged + live-verified evidence (19 rows; AUD-05 live-proven with `require_foreground=true`,
+   body hook=True, chat PASS on go/mimo); human residuals (repo visibility, PAT rotation,
+   history rewrite, AUD-06 consent-vs-PTT, Node/ARCH-1, cloud-vs-RAM) explicitly parked in
+   ATTENTION per the wave's human-only list.
+2. **CI green on both OSes incl. scanners**: run 37795171680 (5/5: Ubuntu brain+mock,
+   Windows body, conformance x2, security scanners) — GATE_TIP_GREEN; prior 37792241017 +
+   37792097782 also success.
+3. **SEC-3 + SEC-8 tripwires green in CI**: brain/voice/tests/test_sec3_gate.py (5) and
+   brain/router/tests/test_budget_ledger.py (8) run in the CI brain/router suites, green.
+4. **Zero personal data in tracked files**: scripts/scan_personal.py = 0 FAIL outside the
+   allowlisted gitleaks ledger (final scrub: ARCHITECTURE + BUGS-WAVE2); functional-value
+   KEY_OK allowlist + ip-public version-FP fix landed (infra policy packet).
+5. **Cloud mock sweep**: tests-heavy 37791936216 SUCCESS (`pytest brain` = 1127 passed).
+
+Process fixes made during the gate: keepalive cron PATH (OPENCODE_BIN), ownership
+merge-base CI derivation (qa), import-order test hardening (test_aud_harden), gitleaks
+baseline regens under SCANNERS.md conscious-acceptance policy (legacy history — permanent
+removal rides the HUMAN-approved history rewrite in ATTENTION).
+
+**Wave 6 stays HUMAN-GATED** (see ATTENTION: repo visibility, PAT scope, history rewrite,
+branch protection, cloud-vs-RAM, Node-on-Windows). current_wave stays 5 until the user opens it.
+
 ## Wave 6 — NOT NOW
 
 **WAVE-5 GATE PASSED 2026-10-07 — tag `wave-5-gate`:** all 10 lanes merged; mock sweep
