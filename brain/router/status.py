@@ -22,21 +22,43 @@ from typing import Any, Iterable
 # keep /status cheap: only the tail of the log is ever read
 TAIL_LINES = 2000
 WINDOW_HOURS = 24
+# AUD-27: hard BYTE bound — usage.jsonl grows forever, so /status must never
+# load it whole; 512 KiB ≈ thousands of events, constant memory per poll.
+TAIL_BYTES = 512 * 1024
 
 
 def read_usage_events(path: Path,
                       since: datetime | None = None,
-                      tail: int = TAIL_LINES) -> list[dict[str, Any]]:
-    """Parse the usage log tail, keeping events at/after `since` (UTC).
+                      tail: int = TAIL_LINES,
+                      max_bytes: int = TAIL_BYTES) -> list[dict[str, Any]]:
+    """Parse the usage log TAIL, keeping events at/after `since` (UTC).
 
-    Never raises: a missing or corrupt file is simply an empty window.
+    BOUNDED (AUD-27): reads at most the last `max_bytes` of the file — when
+    the file is larger the window starts mid-file, so the (torn) first line
+    of the window is dropped before parsing. Never raises: a missing or
+    corrupt file is simply an empty window.
     """
     try:
-        raw = path.read_text(encoding="utf-8", errors="replace")
+        size = path.stat().st_size
     except OSError:
         return []
-    if not raw.strip():
+    if size <= 0:
         return []
+    try:
+        with path.open("rb") as fh:
+            if size > max_bytes:
+                fh.seek(size - max_bytes)
+                chunk = fh.read(max_bytes)
+                newline = chunk.find(b"\n")
+                # we started mid-line → drop the torn fragment
+                chunk = chunk[newline + 1:] if newline >= 0 else b""
+            else:
+                chunk = fh.read(max_bytes)
+    except OSError:
+        return []
+    if not chunk.strip():
+        return []
+    raw = chunk.decode("utf-8", errors="replace")
     lines = raw.splitlines()[-tail:]
     cutoff = since or (datetime.now(timezone.utc)
                        - timedelta(hours=WINDOW_HOURS))
