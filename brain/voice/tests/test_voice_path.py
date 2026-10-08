@@ -34,6 +34,7 @@ from brain.voice.stt import Transcriber, reset_stt  # noqa: E402
 from body.win import audio_in  # noqa: E402
 
 SR = 16000
+JP_REF = _REPO / "assets" / "raphael_reference_jp.wav"   # reference-like audio
 CHUNK_MS = 100
 
 
@@ -130,6 +131,11 @@ class FakeFish:
 
     async def synthesize(self, text):
         self.sints += 1
+        # reference-like audio so the P0 timbre gate ALLOWS caching (these
+        # pipeline tests assert cache behaviour; wrong-voice audio being
+        # refused is covered in test_p0_fixes.py)
+        if JP_REF.exists():
+            return JP_REF.read_bytes()
         return _wav_pcm(ms=300 + 100 * (self.sints % 3))
 
     def stop(self):

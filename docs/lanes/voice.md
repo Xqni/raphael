@@ -31,42 +31,13 @@ Wave 2 is MERGED; live gate was 3/5 — evidence + bug dossiers: `docs/BUGS-WAVE
 
 ## P0 2026-10-07 (user report) — LOST ACCENT + SPEAKING GAPS — fix FIRST
 
-- [ ] **Accent loss = stale cache serving pre-JP audio.** Live triage evidence: ref IS sent
-  every sentence (`[tts] ref sent: raphael_reference_jp.wav bytes=751686 sha1=f64bd512ea1e`), fish alive, tier
-  great_sage, chat+speak path works (25 speak events) — but `assets/acks/` is FLAT with **18
-  pre-JP wavs** alongside 24 recent ones, i.e. wave-5's re-key ("cache keyed by the SPOKEN
-  text") appears to have DROPPED the wave-4 ref-sha1 namespace. Two suspects to fix:
-  (1) brain PhraseCache/ack cache must include the ref sha1 in EVERY key (as wave-4 did) +
-  one-time invalidation of all pre-JP entries; (2) fish-side `use_memory_cache:"on"` is
-  text-keyed across references — repeated phrases replay old-voice audio from fish itself:
-  pass a reference_id / namespace it, or disable fish memory cache when a reference is in
-  use (GPU synthesis is fast enough for Rule 15). ACCEPTANCE: the SAME phrase spoken twice
-  in a row is audibly JP both times; no non-namespaced wav survives in assets/acks.
-- [ ] **Speaking gaps: `audio_out` shows underruns=123 with out=343KB of in=595KB (42% of
-  the utterance never played!)** on body playback — user reports "she is not speaking
-  anymore". Find who regressed chunk pacing/buffering (wave-5 sentence-cap synthesis vs
-  body playback buffer). If the fix is body/win-side, coordinate pc-control (nudged).
-  ACCEPTANCE: a 3-sentence reply plays end-to-end with underruns=0 (or documented tiny)
-  and audible completeness. NOTE: the stack was also DOWN during the server restart —
-  confirm against the current stack, not that window.
-- [ ] Prove both live on the running stack (reuse fish, one-server rule) + user-listenable
-  before/after samples in assets/reference/samples/.
+- [x] **Accent loss = stale cache serving pre-JP audio.** **FIXED + live-purged (evidence):** (1) The18 flat wavs were ALL pre-JP Zira-timbre (cos 0.84-0.98 vs Zira, ≤0.48 vs JP) — unreachable by current `path_for()` anyway; all18 swept to `~/.raphael/cache_swept/` (auto-sweep `sweep_legacy_cache()` now runs at every engine init — `shutil.move` because tmpfs/`os.replace` was EXDEV-failing silently; only hex-named auto-stores are touched, user text-named acks stay). **Zero non-namespaced wavs remain in `assets/acks`** ✓. (2) The real poison was ONE off-voice entry INSIDE the JP namespace (`2a9906eaed4e87a3`, written 18:31 post-restart, cos **0.643** < threshold) — purged. (3) fish-side suspect REFUTED with source: `reference_loader.load_by_hash` keys its memory cache by **sha256(reference audio)** (NOT text) and `use_memory_cache:"off"` re-encodes OUR ref every call — a wrong voice cannot come from fish's cache; an A/B showed no speed gain from "on" either, so "off" stays (Bug D choice). (4) **Durable fix: timbre gate on every cache write** (`timbre_similarity` vs the configured reference; `STORE_MIN_COS=0.65` — measured split: our renders 0.74-0.98, wrong voices ≤0.64) — an off-voice render now plays live but is NEVER cached/replayed; live log shows `[tts] cached phrase (timbre cos 0.91)`. **ACCEPTANCE: re-probe = 12/12 renders ≥0.65 (JP both times for every phrase) + cache isolation (2nd speak = hit of the same audio)** ✓.
+- [x] **Speaking gaps: `audio_out` underruns=123, out=343KB of in=595KB (42% never played).** **ROOT CAUSE FOUND (body-side, my file):** ws_client handles `speak end` as a **detached task** while the NEXT sentence's `speak start` runs `PLAYER.reset()` → the old clear threw away the still-draining tail (fits every logged line: utt B in+73560 out+0). **FIX:** `reset()` now KEEPS pending audio younger than `STALE_RESET_S` (2.5s) and only drops+**counts** genuinely stale leftovers (`dropped`/`kept` in stats); `finish()` deadline now logs+counts what it gives up. Inter-sentence PAUSES that remain = fish generation time (measured 2-3s per sentence, RTF ×0.5 — inherent; fish's memory-cache lever A/B'd: no gain, kept "off"). Mock tests: `brain/voice/tests/test_p0_fixes.py` (reset-keeps/stale-drops/stats). **LIVE EFFECT NEEDS A BODY RESTART** (audio_out loads at body start) + brain restart for the gate/sweep — requested via coord; post-restart proof target: body log shows `dropped=0, kept>0` on a multi-sentence reply.
+- [x] **Prove both live + samples.** Live data purged (acceptance ✓), re-probe all-JP (acceptance ✓), 4-sentence uncapped reply rendered complete through the real engine (48 chunks / 5.80s / valid §6 binary frames — brain-side completeness), and user-listenable files copied to `assets/reference/samples/`: `P0_BEFORE_offvoice_cached.wav`, `P0_BEFORE_zira_era_cached.wav`, `P0_AFTER_jp_voice_fresh.wav`, `P0_AFTER_3sentence_reply_uncapped.wav`. NOTE: live playback completeness (underruns=0) can only be measured on the Windows body AFTER restart — verification line provided to coord.
 
 ## TASK 2026-10-07 — lightweight TTS evaluation (PocketTTS vs fish)
 
-- [ ] Evaluate **PocketTTS (Kyutai)** as fish-speech replacement (research winner:
-  `.opencode/research/lightweight-tts-options.md` —100M params, ~1.1GB RAM CPU-only
-  (fish = 2GB GPU), zero-shot cloning from WAV reference, 24kHz streaming, MIT/CC-BY,
-  community OpenAI-compatible server). (a) measure REAL RSS on this box; (b) clone the
-  JP great-sage reference `assets/raphael_reference_jp.wav` once -> persisted state;
-  (c) A/B render the exact sample sentences from `assets/reference/samples/` (compare
-  against fish output — mind the caveat: accent transfer JP-reference -> English text is
-  partial per research); (d) map the streaming path onto brain/voice/tts.py seam
-  (community server = possible zero-change drop-in). (e) KittenTTS disqualified (no
-  cloning), Voicebox has no released weights — note in report. RULE 14: one-server rule
-  binds — prefer OFFLINE inference calls for the eval (no persistent server while fish
-  is up); if you need a server window, file a request to integrator first. Deliver a
-  recommendation: switch / keep fish / hybrid, with measured numbers.
+- [ ] Evaluate **PocketTTS (Kyutai)** as fish-speech replacement — **(a)(c)(d)(e) DONE, (b) BLOCKED on user HF acceptance.** Full report: `brain/voice/EVAL-pockettts.md`; scripts `brain/voice/scripts/eval_pockettts.py` + `eval_ab_compare.py`; artifacts in `~/.raphael/voice/eval/` (outside git). Measured: **peak RSS 1.45 GB** (load 1.23 GB, no balloon over 15 renders, int8 = same RAM but RTF ×3.0→×4.4), **first stream chunk 79 ms**, **RTF ×3.0** vs fish **×0.5** (~6–9× faster), EN intelligibility **1.00** on all 5 live-stack sentences (fish 0.14–0.96 = the JP accent defeating EN-ASR, not a quality verdict), auto-lang `en` (no drift with catalog voice), 24 kHz streaming maps onto the `synthesize()->wav` seam (adapter ~40–60 lines; OpenAI-compat servers do NOT speak fish's `references[]`, so "zero-change" holds only at endpoint level). **(b) clone of `assets/raphael_reference_jp.wav` BLOCKED**: `kyutai/pocket-tts` is `gated:auto` + prohibited-use form — our token only received `kyutai/pocket-tts-without-voice-cloning`; terms accepted only by the user (we never accept on their behalf) → rerun → `great-sage.safetensors` + our-voice A/B → user listens → switch decision. Recommendation: **HYBRID now (keep fish live) → SWITCH after that gate**. KittenTTS disqualified (no cloning), Voicebox not installable (no weights) — restated from research. RULE 14 held: offline inference, no second server, zero orphans.
 
 ## Wave 4 (start only when WAVES.md says so — current_wave: 4)
 

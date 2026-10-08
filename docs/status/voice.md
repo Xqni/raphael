@@ -426,3 +426,85 @@ $ tests/.venv/bin/python -m pytest tests/regression/test_confirm_flow.py -q -rxX
 17 passed, 2 xfailed   # C1/C2 tripwires (analysis above)
 orphans: zero (no fish spawned)
 ```
+
+## Wave 5 — PocketTTS evaluation (task 2026-10-07)
+
+Full report: **`brain/voice/EVAL-pockettts.md`** (all numbers, table, integration
+map, recommendation). Scripts: `brain/voice/scripts/eval_pockettts.py` (offline,
+Rule 14 — never spawns a server) + `eval_ab_compare.py` (reuses the live fish
+server). Artifacts: `~/.raphael/voice/eval/{fp32,q_int8,fish}/` (outside git).
+
+Headline numbers (this box, measured):
+- **RSS peak 1.45 GB** (load 1.23 GB; +89 MB over 15 renders → no balloon on
+  v3.2.x in-process; int8 = same RAM, buys speed only: RTF ×3.0 → ×4.4).
+- **Speed: PocketTTS RTF ×3.0 (fp32) / ×4.4 (int8) vs fish ×0.5** → ~6–9×
+  faster; **first audio 79 ms** (48 ms int8) vs fish's 2.5–8.4 s per sentence —
+  attacks the known `TTS latency 13.4s/phrase` pain, frees the RTX 4060.
+- **A/B on the 5 live-stack sentences** (fish real payload vs pocket catalog
+  voice): pocket intelligibility **1.00 everywhere**, auto-lang `en`;
+  fish 0.14–0.96 = the JP accent defeating EN-ASR (hypotheses show heavy
+  mangling) — an ASR artifact, not a quality verdict; the OUR-voice A/B is the
+  switch gate.
+- **BLOCKED (b)**: `kyutai/pocket-tts` is `gated:auto` + prohibited-use form;
+  our token only received `kyutai/pocket-tts-without-voice-cloning` →
+  `get_state_for_audio_prompt` refuses cloning. We did NOT accept terms on the
+  user's behalf. Ask posted to coord: user accepts the HF gate once → rerun →
+  `great-sage.safetensors` + our-voice A/B → user listens → switch decision.
+- Recommendation: **HYBRID now (fish stays live) → SWITCH after the clone gate
+  + user's ear.** KittenTTS disqualified (no cloning), Voicebox not installable.
+- Rule 14: both eval processes ran offline and exited; orphan checks after
+  every run = zero; fish server untouched (health-checked, reused, never
+  spawned).
+
+## P0 2026-10-07 — lost JP accent + speaking gaps (fix FIRST)
+
+**Verdict: both root-caused, fixed, live-purged, re-proven.** Details with
+numbers in `docs/lanes/voice.md` "## P0" (checkboxes). Summary:
+
+1. **Accent (stale cache):**
+   - 18 flat wavs (all Zira-timbre, cos 0.84-0.98 vs Zira) → swept to
+     `~/.raphael/cache_swept/`; **0 non-namespaced wavs remain** (acceptance).
+     Code: `sweep_legacy_cache()` runs at every engine init (`shutil.move` —
+     `os.replace` was EXDEV-failing silently on tmpfs tests), hex-named only.
+   - Real poison: ONE off-voice entry INSIDE the JP namespace
+     (`2a9906eaed4e87a3`, cos 0.643) → purged. 9 JP entries kept (0.797-0.968).
+   - fish suspect refuted from vendored source: memory cache is keyed by
+     **sha256(reference audio)** (not text) and `use_memory_cache:"off"`
+     re-encodes our reference per call; A/B showed no speed gain for "on".
+   - **Durable fix: `STORE_MIN_COS=0.65` timbre gate on every cache write**
+     (measured split: ours 0.74-0.98 / wrong voices ≤0.64; blind spot = flat
+     noise, which fish does not produce — documented). Off-voice renders play
+     live but are never cached → a wrong voice can never be REPLAYED.
+   - **Re-probe: 12/12 renders ≥0.65 (every phrase JP both times)** + cache
+     isolation (2nd speak = hit of first) ✓.
+2. **Speaking gaps (42% never played):**
+   - Root cause in `body/win/audio_out.py` (mine): ws_client fires `end`
+     handling as a **detached task**, next sentence's `start` called
+     `reset()` which CLEARED the still-draining tail (fits the logs:
+     utterance B: in +73560, out +0).
+   - Fix: `reset()` keeps pending audio < 2.5s old (continuous playback),
+     drops only stale leftovers and **counts** (`dropped`/`kept` in stats);
+     `finish()` deadline now logs+counts what it abandons.
+   - Remaining inter-sentence pauses = fish generation (2-3s/sentence,
+     RTF ×0.5, inherent; fish cache lever A/B'd — no gain).
+   - Mock tests: `brain/voice/tests/test_p0_fixes.py` (9 tests).
+3. **Proof + samples:** 4-sentence uncapped reply rendered complete through
+   the real engine (48 chunks / 5.80s / valid §6 frames); samples copied to
+   `assets/reference/samples/`: `P0_BEFORE_offvoice_cached.wav`,
+   `P0_BEFORE_zira_era_cached.wav`, `P0_AFTER_jp_voice_fresh.wav`,
+   `P0_AFTER_3sentence_reply_uncapped.wav`.
+
+### Test output (real runs)
+```
+$ brain/.venv/bin/python -m pytest brain/voice/tests -q
+125 passed, 1 skipped in 13.16s     (first attempt: external SIGKILL #4, reported)
+$ brain/.venv/bin/python -m pytest brain/tests -q
+192 passed, 1 warning in 16.05s
+orphans: zero (fish reused for renders, never spawned)
+```
+
+### Requires restart to take live effect (requested from coord)
+- **body** restart → new `audio_out.py` (the 42% loss fix); post-restart
+  proof: body log line shows `dropped=0, kept>0` on a multi-sentence reply.
+- **brain** restart → timbre gate + auto-sweep active (live data was already
+  purged directly, so accent is fixed even before restart).

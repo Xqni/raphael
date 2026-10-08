@@ -59,6 +59,10 @@ class _FakeFish:
 
     async def synthesize(self, text):
         self.synth_calls += 1
+        if JP_REF.exists():
+            # reference-like audio so the P0 timbre gate ALLOWS caching
+            # (test_cache_is_keyed_by_what_was_actually_spoken asserts it)
+            return JP_REF.read_bytes()
         pytest.importorskip("soundfile")
         import io
 
@@ -120,6 +124,29 @@ def test_tier_env_override_fails_closed(monkeypatch, tmp_path):
     assert load_voice_config(_REPO / "config.yaml").persona_tier == "ciel"
     monkeypatch.setenv("RAPHAEL_PERSONA_TIER", "self_promoted_tier")
     assert load_voice_config(_REPO / "config.yaml").persona_tier == "great_sage"
+
+
+def test_config_d_lane_fragments_are_consumed(tmp_path, monkeypatch):
+    """evolution-persona ships voice.tts_voice_ciel + persona.tier + a
+    voice_personality overlay in THEIR config.d fragment (request
+    evolution-persona__to__voice__ciel-voice-reference-slot); the voice loader
+    must merge lane fragments per INTERFACES §c (sorted, later wins)."""
+    (tmp_path / "config.d").mkdir()
+    (tmp_path / "config.yaml").write_text(
+        "profile: cloud_temp\nvoice:\n  tts_voice: assets/raphael_reference_jp.wav\n"
+        "voice_personality:\n  spoken_reply_max_sentences: 2\n",
+        encoding="utf-8")
+    (tmp_path / "config.d" / "00a_evolution-persona.yaml").write_text(
+        "persona:\n  tier: ciel\n"
+        "voice:\n  tts_voice_ciel: my/custom-ciel.wav\n"
+        "voice_personality:\n  spoken_reply_max_sentences: 5\n",
+        encoding="utf-8")
+    monkeypatch.setattr("brain.voice.config.REPO_ROOT", tmp_path)
+    cfg = load_voice_config(tmp_path / "config.yaml")
+    assert cfg.tts_voice_ciel == "my/custom-ciel.wav"   # their key, merged
+    assert cfg.tts_voice == "assets/raphael_reference_jp.wav"
+    assert cfg.persona_tier == "ciel"
+    assert cfg.spoken_max_sentences == 5                # voice_personality too
 
 
 def test_tier_flip_renamespaces_the_cache_live(tmp_path):
