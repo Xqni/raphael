@@ -30,6 +30,10 @@ Wave 4 is MERGED + **GATE PASSED** (tag `wave-4-gate`, 10/10 lanes, mock 308 gre
 
 - [x] Analysis-mode context gathering (screen + foreground + window history for deep-dive requests), redaction discipline extended to Simulation/Analysis payloads. — **`gather_context` tool** (self-registered, strict SPECS, offered via tool_specs): foreground (`foreground_info`, 1 probe) + open windows (`list_windows`, top-10, **blocklist entries filtered — sensitive titles never reach a model**) + in-process window-history ring (32-row memory, 12 emitted, dedup; fed by every production `BodyGateway.foreground_window()` probe; nothing persisted) + optional gated screen pass (blocklist/profile/debug_capture/image gates, vision). Private Mode = ZERO probes; fg probe failure = honest unreachable; ALL output through `gate.redact` + bounded 3000 chars + blocklist-generic wording (app names withheld from cloud payloads; see_screen's spoken naming stays user-facing). Simulation/Analysis payload discipline = same redact path (`brain/vision/context.py::gather_context`).
 
+## Wave 5H — audit hardening sprint (inside wave 5; gate `wave-5h-gate`)
+
+- [ ] Read `docs/audit-tasks/computer-use.md` → your IDs: **SEC-3 egress co, SEC-3 context, QA-2 fixtures, ARCH-6 vision report** — VERIFY-FIRST (file:line → CONFIRMED/NOT-APPLICABLE/ALREADY-DONE), QA-4: link green CI run with wave_done. Register/dedupe: `docs/AUDIT-2026-10-07.md`.
+
 ## Later waves
 - Per docs/WAVES.md — do not start early (AGENT_RULES §11).
   (Wave 3: watch mode, help-with-error, summarize-page, window-aware context.
