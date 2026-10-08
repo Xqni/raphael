@@ -11,8 +11,8 @@ from brain.router.config import load_config
 def test_load_config_parses_repo_config_yaml():
     cfg = load_config()
     assert 'zen_free' in cfg.providers.chain
-    assert cfg.providers.allow_go_runtime is False
-    assert cfg.providers.allow_paid_runtime is False
+    assert cfg.providers.allow_go_runtime is True  # USER 2026-10-07 (PAID_USAGE)
+    assert cfg.providers.allow_paid_runtime is True  # USER 2026-10-07 (PAID_USAGE)
     assert cfg.local_model.ollama_url.startswith('http')
 
 
