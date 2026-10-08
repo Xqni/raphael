@@ -52,20 +52,6 @@ class BackendError(RuntimeError):
     """A backend call failed or is unavailable on this host."""
 
 
-def _ensure_pkg(pkg: str, import_name: str = None, pin: str = ''):
-    """Import-or-install, PINNED (security: unpinned runtime pip = supply
-    chain). Only ever reached from inside a WindowsBackend method."""
-    try:
-        __import__(import_name or pkg)
-    except ImportError:
-        import subprocess
-        import sys
-        subprocess.check_call([sys.executable, '-m', 'pip', 'install',
-                               '--quiet',
-                               ('%s==%s' % (pkg, pin)) if pin else pkg])
-        __import__(import_name or pkg)
-
-
 def _sibling(name: str):
     """Import a body/win sibling module in package AND script mode."""
     import importlib
@@ -296,6 +282,29 @@ class WindowsBackend:
                 'width': int(r.right - r.left),
                 'height': int(r.bottom - r.top)}
 
+    def window_placement(self, hwnd: int) -> Dict[str, Any]:
+        """Full window state (F-3 inverse ops): rect + min/max flags."""
+        import ctypes
+        user32 = ctypes.windll.user32
+        return {'rect': self.window_rect(hwnd),
+                'minimized': bool(user32.IsIconic(hwnd)),
+                'maximized': bool(user32.IsZoomed(hwnd))}
+
+    def set_placement(self, hwnd: int, placement: Dict[str, Any]) -> None:
+        """Restore a previously captured placement (undo of snap/min/max)."""
+        import ctypes
+        user32 = ctypes.windll.user32
+        user32.ShowWindow(hwnd, 9)            # SW_RESTORE — normalize first
+        r = placement.get('rect') or {}
+        if {'left', 'top', 'right', 'bottom'} <= set(r):
+            user32.SetWindowPos(hwnd, 0, int(r['left']), int(r['top']),
+                                int(r['right']) - int(r['left']),
+                                int(r['bottom']) - int(r['top']), 0)
+        if placement.get('maximized'):
+            user32.ShowWindow(hwnd, 3)        # SW_MAXIMIZE
+        elif placement.get('minimized'):
+            user32.ShowWindow(hwnd, 6)        # SW_MINIMIZE
+
     def _work_area(self) -> Dict[str, int]:
         import ctypes
         from ctypes import wintypes
@@ -353,7 +362,7 @@ class WindowsBackend:
         try:
             import win32com.client  # type: ignore
         except ImportError:
-            _ensure_pkg('pywin32', 'win32api', '312')
+            _sibling('depfail').require('pywin32', 'win32api')  # SEC-9: no pip
             import win32com.client  # type: ignore
         try:
             shell = win32com.client.Dispatch('WScript.Shell')
@@ -481,11 +490,19 @@ class WindowsBackend:
     def clipboard_set(self, text: str) -> None:
         _sibling('clipboard').set_clipboard_text(text)
 
-    def set_volume(self, level: int) -> None:
-        _sibling('system').set_volume(int(level))  # lazy: comtypes
+    def set_volume(self, level: int) -> bool:
+        return _sibling('system').set_volume(int(level))  # lazy: comtypes
 
-    def set_brightness(self, level: int) -> None:
-        _sibling('system').set_brightness(int(level))
+    def get_volume(self):
+        """Current master volume 0-100 (F-3 inverse ops), or None."""
+        return _sibling('system').get_volume()
+
+    def set_brightness(self, level: int) -> bool:
+        return _sibling('system').set_brightness(int(level))
+
+    def get_brightness(self):
+        """Current brightness 0-100 (F-3 inverse ops), or None."""
+        return _sibling('system').get_brightness()
 
     def media_key(self, op: str) -> None:
         """Synthesized media keystroke (see MEDIA_KEYS). Input injection —
@@ -521,8 +538,7 @@ class WindowsBackend:
         try:
             from pywinauto import Desktop  # type: ignore
         except ImportError:
-            automation = _sibling('automation')
-            automation._ensure_pkg('pywinauto', pin='0.6.9')
+            _sibling('depfail').require('pywinauto')  # SEC-9: no pip
             from pywinauto import Desktop  # type: ignore
         return Desktop(backend='uia')
 

@@ -4,26 +4,21 @@
   Captures the primary monitor, resizes so the longer side <= max_px,
   encodes as JPEG with the given quality, and returns raw bytes.
 
-Dependencies: mss, Pillow. The function will attempt to import them and install
-if missing.
+Dependencies: mss, Pillow — from the PRE-INSTALLED hash-pinned environment
+only (body/win/requirements.txt); a missing dep fails loud at import (SEC-9,
+no runtime pip).
 """
 import io
 import pathlib
 import sys
 
-def _ensure_pkg(pkg: str, import_name: str = None, pin: str = ''):
-    """Import-or-install, PINNED (security: unpinned runtime pip = supply chain)."""
-    try:
-        __import__(import_name or pkg)
-    except ImportError:
-        import subprocess, sys
-        subprocess.check_call([sys.executable, '-m', 'pip', 'install', '--quiet',
-                               ('%s==%s' % (pkg, pin)) if pin else pkg])
-        __import__(import_name or pkg)
+try:
+    from . import depfail
+except ImportError:          # script mode (body/win on sys.path)
+    import depfail
 
-# Ensure required third‑party packages.
-_ensure_pkg('mss', pin='10.2.0')
-_ensure_pkg('Pillow', 'PIL', '12.3.0')
+depfail.require('mss')
+depfail.require('Pillow', 'PIL')
 
 import mss
 from PIL import Image

@@ -131,6 +131,18 @@ def action_log_path() -> pathlib.Path:
     return repo_root / "logs" / name
 
 
+def activity_log_path() -> pathlib.Path:
+    """F-3 undoable-act journal: logs/activity.jsonl (main) /
+    logs/activity_<instance>.jsonl (isolated instances).
+    RAPHAEL_ACTIVITY_LOG overrides (tests)."""
+    env = os.environ.get("RAPHAEL_ACTIVITY_LOG", "").strip()
+    if env:
+        return pathlib.Path(env)
+    repo_root = pathlib.Path(__file__).resolve().parents[2]
+    name = "activity.jsonl" if is_main() else "activity_%s.jsonl" % instance_name()
+    return repo_root / "logs" / name
+
+
 def supervisor_mutex() -> str:
     """Named mutex for the supervisor (INTERFACES §d table). The supervisor
     lane owns the actual CreateMutex call; this is the shared derivation."""

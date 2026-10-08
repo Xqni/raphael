@@ -12,11 +12,11 @@ import asyncio
 from typing import Any, Dict, Optional
 
 try:
-    from .actions import (ActionError, opt_enum, reject_extra, req_str,
-                          register_action)
+    from .actions import (ActionError, journal, opt_enum, reject_extra,
+                          req_str, register_action)
 except ImportError:  # script mode
-    from actions import (ActionError, opt_enum, reject_extra, req_str,
-                         register_action)
+    from actions import (ActionError, journal, opt_enum, reject_extra,
+                         req_str, register_action)
 
 _OPS = {'list', 'focus', 'minimize', 'maximize', 'restore', 'snap'}
 _ZONES = {'left', 'right', 'top', 'bottom', 'max'}
@@ -94,13 +94,22 @@ async def _run_window(args: Dict[str, Any], backend) -> Any:
     if op == 'focus':
         await asyncio.to_thread(backend.focus_window, hwnd)
         return {'focused': hwnd, 'title': target.get('title') or ''}
+    # F-3: capture the placement BEFORE mutating (inverse op); focus is not
+    # journaled (foreground races make its inverse unreliable).
+    before = await asyncio.to_thread(backend.window_placement, hwnd)
     if op == 'snap':
         rect = await asyncio.to_thread(backend.snap_window, hwnd, args['zone'])
-        return {'snapped': hwnd, 'zone': args['zone'], 'rect': rect}
-    mode = {'minimize': 'minimize', 'maximize': 'maximize',
-            'restore': 'restore'}[op]
-    await asyncio.to_thread(backend.show_window, hwnd, mode)
-    return {'window': hwnd, 'op': op, 'title': target.get('title') or ''}
+        summary = 'window snapped %s (hwnd %d)' % (args['zone'], hwnd)
+        result = {'snapped': hwnd, 'zone': args['zone'], 'rect': rect}
+    else:
+        mode = {'minimize': 'minimize', 'maximize': 'maximize',
+                'restore': 'restore'}[op]
+        await asyncio.to_thread(backend.show_window, hwnd, mode)
+        summary = 'window %s (hwnd %d)' % (op, hwnd)
+        result = {'window': hwnd, 'op': op, 'title': target.get('title') or ''}
+    journal.record('window', 'window', summary,
+                   {'hwnd': hwnd, 'placement': before})
+    return result
 
 
 async def _run_list(backend) -> Dict[str, Any]:

@@ -30,6 +30,7 @@ from __future__ import annotations
 from typing import Any, Dict, List, Optional
 
 from ._spec import SpecError, ToolSpec
+from .activity import SPECS as _ACTIVITY
 from .automation import SPECS as _AUTOMATION
 from .launch import SPECS as _LAUNCH
 from .powershell import SPECS as _POWERSHELL
@@ -44,6 +45,7 @@ _GROUPS = {
     'automation': _AUTOMATION,
     'powershell': _POWERSHELL,
     'report': _REPORT,
+    'activity': _ACTIVITY,
 }
 
 SPECS: Dict[str, ToolSpec] = {}

@@ -236,3 +236,71 @@ instance table has EXACTLY 11 rows; the table now has 12 (the APPROVED
 shadow-instance row, port 8911). Verified identical failure on a clean
 `origin/main` worktree (3996d31) → qa/integrator drift, NOT pc-control;
 worktree removed after the check. Reported to the bus with the exact cause.
+
+---
+
+# Wave 5H log (audit packet: SEC-9 + F-3)
+
+## 2026-10-07 — SEC-9: CONFIRMED + FIXED
+
+**Verification (verbatim pre-fix quotes):**
+- `body/win/capture.py:25-26`: `_ensure_pkg('mss', pin='10.2.0')` /
+  `_ensure_pkg('Pillow', 'PIL', '12.3.0')` — module-level runtime pip on import.
+- `body/win/clipboard.py:19`: `_ensure_pkg('pywin32', 'win32api', '312')`.
+- `body/win/system.py:21`: `subprocess.check_call([sys.executable, '-m', 'pip', 'install', '--quiet', name])`.
+- `body/win/automation.py:28` and `body/win/winlayer.py:63`: `subprocess.check_call([sys.executable, '-m', 'pip', 'install', ...])`.
+- `body/win/ws_client.py:51`: `subprocess.check_call([sys.executable, '-m', 'pip', 'install', '--quiet', 'websockets==16.1.1'])`.
+- `body/win/hotkeys.py:134`: `subprocess.check_call([sys.executable, '-m', 'pip', 'install', '--quiet', 'PyYAML==6.0.3'])`.
+- `brain/tools/pc/**`: none (clean).
+
+**Fix:** `body/win/depfail.py` (find_spec-only probe, fail-loud RuntimeError
+pointing at the env — no subprocess/network in the module, asserted by test);
+all 7 call sites refactored; `body/win/requirements.txt` = `--require-hashes`
+win_amd64 CPython 3.10-314 (11 pins incl. voice's sounddevice/numpy, sha256 of
+every supported wheel). **Validation (real):** `pip install --dry-run
+--require-hashes -r requirements.txt --platform win_amd64 --python-version
+{310,312,313} …` → rc=0 each (hashes verified against live wheels); cp314
+documented (numpy 2.2.6 has no cp314 wheel — flagged to voice). Voice
+coordination: `docs/requests/pc-control__to__voice__sec9-audio-pip-helpers.md`.
+
+## 2026-10-07 — F-3: CONFIRMED + FIXED (co-share with orb)
+
+**Verification (verbatim pre-fix quotes):**
+- `body/win/act_system.py:66`: `await asyncio.to_thread(backend.set_volume, args['level'])`
+  — wrote state without ever reading it → no inverse op possible.
+- `body/win/actions.py:276`: `path = instance.action_log_path()` — append-only
+  audit log; repo-wide grep for `undo|previous_level|restore_state` in
+  body/win found ZERO undo machinery (only the read-only
+  `recycle_bin_status` script and window op name `restore`).
+
+**Fix:** `body/win/journal.py` — append-only JSONL at
+`instance.activity_log_path()` (`logs/activity[_<instance>].jsonl`,
+`RAPHAEL_ACTIVITY_LOG` override), schema {seq, ts, kind, act, job, summary,
+inverse, undone[, undo_seq]}; truthfulness guarantees (inverse captured
+before mutation; record only after success; undo applies inverse first,
+marks undone only on success; journal I/O never fails the act).
+Inverse ops wired: **volume/brightness** (new `get_volume`/`get_brightness`
+backend reads; set now returns bool → truthful E_INTERNAL on failure) and
+**window** (new `window_placement`/`set_placement`; snap/min/max/restore
+journaled, focus deliberately not — foreground races). New act
+`activity{op: list|undo}` + 19th tool (`brain/tools/pc/activity.py`);
+`PENDING_PROTO_ADDITIONS=('activity',)`; requests: integrator (§7),
+brain-core (`GET /activity`, `POST /activity/undo` relay for orb/CLI),
+orb (viewer schema + render rules). `recycle_move` reserved in the schema
+(no producer act exists — would need §7 + confirm `delete_files`).
+Confirmations stay enforced in code: journaling adds no bypass; tools keep
+their risky/confirm metadata (AGENT_RULES §8).
+
+**Tests (real, one suite at a time):**
+```
+$ pytest body/win/tests/test_sec9_dep_hygiene.py            5 passed
+$ pytest body/win/tests/test_pc_journal.py                 12 passed
+$ pytest body/win/tests                                  170 passed
+$ pytest brain/tools/pc/tests                             11 passed
+$ python3 body/win/e2e_control.py              136 PASS / 0 FAIL
+$ pytest tests                           214 passed, 7 xfailed
+$ pytest brain                                902 passed, 5 skipped
+```
+Note: the previously-reported root `test_instance_isolation` failure is
+GREEN again on this branch (fixed upstream). No repo `logs/` created by any
+run (both logs redirected to tmp).

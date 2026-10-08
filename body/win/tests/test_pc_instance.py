@@ -19,6 +19,8 @@ def test_main_defaults(main_instance):
     assert instance.body_lock_path() == pathlib.Path(tmp) / 'raphael_body.lock'
     assert instance.supervisor_mutex() == 'Raphael_Supervisor'
     assert instance.data_dir() == pathlib.Path.home() / '.raphael'
+    assert instance.action_log_path().name == 'actions.log'
+    assert instance.activity_log_path().name == 'activity.jsonl'   # F-3
 
 
 def test_main_token_candidates_use_main_paths(main_instance, monkeypatch):
@@ -41,6 +43,7 @@ def test_lane_derivation(lane_instance):
     assert instance.supervisor_mutex() == 'Raphael_Supervisor_pc-control'
     assert instance.data_dir() == pathlib.Path.home() / '.raphael' / 'pc-control'
     assert instance.action_log_path().name == 'actions_pc-control.log'
+    assert instance.activity_log_path().name == 'activity_pc-control.jsonl'  # F-3
     # Lane lock/log never collide with main's.
     assert instance.action_log_path().name != 'actions.log'
 

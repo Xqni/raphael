@@ -33,9 +33,13 @@ def fake():
 
 @pytest.fixture
 def actlog(tmp_path, monkeypatch):
-    """Redirect the §7 action log into the test's tmp dir."""
+    """Redirect the §7 action log AND the F-3 activity journal into the
+    test's tmp dir (never writes repo logs/); fresh journal per test."""
     path = tmp_path / 'actions.log'
     monkeypatch.setenv('RAPHAEL_ACTION_LOG', str(path))
+    monkeypatch.setenv('RAPHAEL_ACTIVITY_LOG', str(tmp_path / 'activity.jsonl'))
+    from body.win import journal
+    journal.reset()
     return path
 
 

@@ -89,11 +89,14 @@ POSITIVE_MATRIX = [
     ('media', {'op': 'play_pause'}, True, True),
     ('media', {'op': 'next'}, True, True),
     ('volume', {'level': 35}, False, True),
+    # F-3: the volume change above journaled its inverse — undo restores 50
+    ('activity', {'op': 'undo'}, False, True),
     ('brightness', {'level': 70}, False, True),
     ('notify', {'text': 'e2e notify'}, False, True),
     ('list_windows', {}, False, True),
     ('foreground_info', {}, False, True),
     ('list_running_apps', {}, False, True),
+    ('activity', {'op': 'list'}, False, True),
     ('report', {'op': 'save', 'title': 'E2E Wave 5 Report',
                 'body': '# Findings\n- none\nconfidence: high'}, False, True),
     ('report', {'op': 'save', 'title': 'Second', 'body': '{"ok": true}',
@@ -126,11 +129,17 @@ async def _act(ws: FakeWS, action, args, lock, job, timeout_ms=None):
 
 
 async def mock_suite() -> int:
-    # Isolate the action log into a temp file (never touch repo logs/).
+    # Isolate the action log + F-3 activity journal into temp files
+    # (never touch repo logs/).
     import tempfile
     fd, log_path = tempfile.mkstemp(prefix='raphael-e2e-actions-', suffix='.jsonl')
     os.close(fd)
+    fd, act_path = tempfile.mkstemp(prefix='raphael-e2e-activity-', suffix='.jsonl')
+    os.close(fd)
     os.environ['RAPHAEL_ACTION_LOG'] = log_path
+    os.environ['RAPHAEL_ACTIVITY_LOG'] = act_path
+    from body.win import journal
+    journal.reset()
     # NOTE: no RAPHAEL_INSTANCE defaulting needed — the log override and the
     # fake backend already make mock mode side-effect free on any host.
 
@@ -268,6 +277,10 @@ async def mock_suite() -> int:
         winlayer.reset_backend()
         try:
             os.unlink(log_path)
+        except OSError:
+            pass
+        try:
+            os.unlink(act_path)
         except OSError:
             pass
         shutil.rmtree(report_dir, ignore_errors=True)

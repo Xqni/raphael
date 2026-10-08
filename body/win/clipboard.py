@@ -1,22 +1,17 @@
 """Clipboard helper for the Windows Body.
 
-Simple get/set using the `win32clipboard` module (pywin32). The functions are
-tiny wrappers; if pywin32 is unavailable they are installed automatically.
+Simple get/set using the `win32clipboard` module (pywin32). Dependencies
+come from the PRE-INSTALLED hash-pinned environment only
+(body/win/requirements.txt); missing dep fails loud (SEC-9, no runtime pip).
 """
 import sys
-import subprocess
 
-def _ensure_pkg(pkg: str, import_name: str = None, pin: str = ''):
-    """Import-or-install, PINNED (security: unpinned runtime pip = supply chain)."""
-    try:
-        __import__(import_name or pkg)
-    except ImportError:
-        import subprocess, sys
-        subprocess.check_call([sys.executable, '-m', 'pip', 'install', '--quiet',
-                               ('%s==%s' % (pkg, pin)) if pin else pkg])
-        __import__(import_name or pkg)
+try:
+    from . import depfail
+except ImportError:          # script mode (body/win on sys.path)
+    import depfail
 
-_ensure_pkg('pywin32', 'win32api', '312')
+depfail.require('pywin32', 'win32api')
 import win32clipboard as wc
 
 def set_clipboard_text(text: str):

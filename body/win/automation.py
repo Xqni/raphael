@@ -15,24 +15,19 @@ import asyncio
 import threading
 from typing import Any, Dict
 
+try:
+    from . import depfail
+except ImportError:          # script mode (body/win on sys.path)
+    import depfail
+
 # Global lock – only one coroutine may hold it at a time.
 _input_lock = threading.Lock()
 
 
-def _ensure_pkg(pkg: str, import_name: str = None, pin: str = ''):
-    """Import-or-install, PINNED (security: unpinned runtime pip = supply chain)."""
-    try:
-        __import__(import_name or pkg)
-    except ImportError:
-        import subprocess, sys
-        subprocess.check_call([sys.executable, '-m', 'pip', 'install', '--quiet',
-                               ('%s==%s' % (pkg, pin)) if pin else pkg])
-        __import__(import_name or pkg)
-
-
 def _pywinauto():
-    """Lazy pywinauto import for the legacy helpers (Windows-only)."""
-    _ensure_pkg('pywinauto', pin='0.6.9')
+    """Lazy pywinauto import for the legacy helpers (Windows-only).
+    Missing dependency fails loud — SEC-9: no runtime pip, ever."""
+    depfail.require('pywinauto')
     from pywinauto import Application, mouse, keyboard  # noqa: F401
     return Application, mouse, keyboard
 
