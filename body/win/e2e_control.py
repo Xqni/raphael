@@ -97,6 +97,8 @@ POSITIVE_MATRIX = [
     ('foreground_info', {}, False, True),
     ('list_running_apps', {}, False, True),
     ('activity', {'op': 'list'}, False, True),
+    ('activity', {'op': 'log'}, False, True),
+    ('activity', {'op': 'undo'}, False, True),   # undo newest (media/volume)
     ('report', {'op': 'save', 'title': 'E2E Wave 5 Report',
                 'body': '# Findings\n- none\nconfidence: high'}, False, True),
     ('report', {'op': 'save', 'title': 'Second', 'body': '{"ok": true}',

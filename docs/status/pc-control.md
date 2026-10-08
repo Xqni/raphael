@@ -351,3 +351,41 @@ $ python3 body/win/e2e_control.py              142 PASS / 0 FAIL (fg:connect/ded
 $ pytest tests                     213 passed, 1 failed (qa's uia-confirm test = their P0 in flight)
 $ pytest brain                               1046 passed, 6 skipped
 ```
+
+## 2026-10-08 — F-3 orb co-share: journal-schema agreement + my half — DONE
+
+**Agreement** written into `docs/requests/orb__to__pc-control__act-journal-schema.md`
+(Status DONE): entry shape ACCEPTED as orb proposed; 3 corrections —
+(1) `window` **snap** is reversible (rect captured pre-change), (2) `media`
+toggles accepted per their default rule (play_pause/mute only), clipboard
+"partial" deferred to false-for-now, (3) `undo` wire payload =
+`activity{op:undo, seq}` (universal executor; placements can't replay as raw
+`window{op}`); transport = REST accepted (matches my brain-core endpoint
+request, updated to `op:"log"` + id-based undo + error-code map).
+
+**Implemented (my half):**
+- `actions.py::next_entry_id()` — stable `a_<ms>_<hex>` id generated ONCE
+  per dispatch, stored in BOTH the §7 action log (`id` field) and the F-3
+  journal record → restart-stable join key for the viewer.
+- `journal.py` — records gain `id` + `undo{action,args}` payload; undo
+  markers now carry `ok:true|false` → `undo_ok` (in-memory + rehydrated),
+  failed undo appends marker AND flips `undo_ok:false` while `undone` stays
+  false (button stays offered, honestly); `resolve_id()`; **`log_entries()`**
+  = the joined per-act orb view (all acts, exact 12-field shape, id-null
+  rows = reversible:false); `media` inverse registered.
+- `act_activity.py` — ops `list | log | undo`; undo targets `seq` XOR `id`.
+- `act_system.py` — play_pause/mute journaled (inverse = same op);
+  next/prev/stop/vol_* deliberately not.
+- Spec updated (`activity` tool: op enum + `id` prop + log description);
+  requests updated (integrator §7 line now `{op, limit, seq, id}` +
+  op list|log|undo; brain-core endpoint relays `op:"log"` / `op:"undo", id`).
+
+**Tests (real, sequential):**
+```
+$ pytest body/win/tests/test_pc_activity_log.py          7 passed
+$ pytest body/win/tests                               190 passed
+$ pytest brain/tools/pc/tests                          11 passed
+$ python3 body/win/e2e_control.py              144 PASS / 0 FAIL
+$ pytest tests                         241 passed, 7 xfailed (0 failed)
+$ pytest brain                               1046 passed, 6 skipped
+```

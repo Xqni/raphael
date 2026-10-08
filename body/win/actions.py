@@ -273,8 +273,9 @@ def _brief(v: Any, depth: int) -> Any:
 
 
 def _log(job, action: str, args: Any, res: Dict[str, Any], t0: float,
-         held: bool) -> None:
-    """PROTOCOL §7 action log. Best-effort: logging never breaks a dispatch."""
+         held: bool, eid: Optional[str] = None) -> None:
+    """PROTOCOL §7 action log. Best-effort: logging never breaks a dispatch.
+    `id` is the stable orb-viewer key (same value the F-3 journal embeds)."""
     try:
         path = instance.action_log_path()
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -283,6 +284,7 @@ def _log(job, action: str, args: Any, res: Dict[str, Any], t0: float,
         line = {
             'ts': int(time.time() * 1000),
             'instance': instance.instance_name(),
+            'id': eid,
             'job': job,
             'action': action,
             'ok': bool(res.get('ok')),
@@ -362,6 +364,18 @@ async def offload(fn, *args, **kwargs):
 
 
 # -------------------------------------------------------------- dispatch ----
+_entry_seq = 0
+
+
+def next_entry_id() -> str:
+    """Stable per-dispatch id `a_<ms>_<seq>` — stored (never recomputed) in
+    BOTH the §7 action log and the F-3 journal, so the orb viewer keeps
+    resolving it across restarts (orb schema agreement)."""
+    global _entry_seq
+    _entry_seq = (_entry_seq + 1) & 0xFFFFFFFF
+    return 'a_%d_%08x' % (int(time.time() * 1000), _entry_seq)
+
+
 async def dispatch(action: str, args: Any, *, lock: bool = False,
                    job: Any = None, timeout_ms: Any = None,
                    backend: Any = None) -> Dict[str, Any]:
@@ -369,25 +383,27 @@ async def dispatch(action: str, args: Any, *, lock: bool = False,
     global _release_pending
     load_groups()
     t0 = time.monotonic()
+    eid = next_entry_id()
     held = False
     spec = ACTIONS.get(action)
 
     if spec is None:
         res = {"ok": False,
                "error": "E_UNSUPPORTED: unknown action '%s'" % str(action)[:80]}
-        _log(job, str(action)[:80], args if isinstance(args, dict) else {}, res, t0, False)
+        _log(job, str(action)[:80], args if isinstance(args, dict) else {}, res,
+             t0, False, eid)
         return res
 
     if not isinstance(args, dict):
         res = {"ok": False, "error": "E_BAD_MSG: args must be a JSON object"}
-        _log(job, action, {}, res, t0, False)
+        _log(job, action, {}, res, t0, False, eid)
         return res
 
     try:
         norm = spec.validate(dict(args))
     except (ValueError, TypeError, KeyError) as e:
         res = {"ok": False, "error": "E_BAD_MSG: %s" % (str(e)[:200] or 'invalid args')}
-        _log(job, action, args, res, t0, False)
+        _log(job, action, args, res, t0, False, eid)
         return res
 
     # Input-lock etiquette: the sender's `lock` flag OR the action's own
@@ -399,9 +415,10 @@ async def dispatch(action: str, args: Any, *, lock: bool = False,
             # PROTOCOL §7: fail fast; Brain queues at job level.
             return {"ok": False, "error": "E_LOCK_BUSY", "queued": True}
 
-    # F-3: tag every execution with its job so journal records (made inside
-    # handlers) carry provenance for the orb/CLI activity viewer.
-    journal.set_job(job)
+    # F-3: tag every execution with its job + stable entry id so journal
+    # records (made inside handlers) and the §7 action log carry the same
+    # key for the orb/CLI activity viewer (orb schema agreement).
+    journal.set_context(job, eid)
     try:
         be = backend if backend is not None else winlayer.get_backend()
         try:
@@ -425,7 +442,7 @@ async def dispatch(action: str, args: Any, *, lock: bool = False,
             _log(job, action, norm,
                  {"ok": False,
                   "error": "E_CANCELLED: action interrupted (disconnect/kill)"},
-                 t0, held)
+                 t0, held, eid)
             raise
         except winlayer.BackendError as e:
             res = {"ok": False, "error": "E_INTERNAL: %s" % str(e)[:200]}
@@ -444,7 +461,7 @@ async def dispatch(action: str, args: Any, *, lock: bool = False,
                 _release_pending = True
             else:
                 automation.release_input_lock()
-        journal.set_job(None)
+        journal.set_context(None, None)
 
-    _log(job, action, norm, res, t0, held)
+    _log(job, action, norm, res, t0, held, eid)
     return res

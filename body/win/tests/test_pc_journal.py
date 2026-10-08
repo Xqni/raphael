@@ -18,7 +18,7 @@ def _schema_ok(entry: dict):
     assert not missing, missing
     assert isinstance(entry['seq'], int) and entry['seq'] >= 1
     assert isinstance(entry['ts'], int) and entry['ts'] > 0
-    assert entry['kind'] in ('volume', 'brightness', 'window',
+    assert entry['kind'] in ('volume', 'brightness', 'window', 'media',
                              'recycle_move')
     assert isinstance(entry['summary'], str) and entry['summary']
     assert isinstance(entry['inverse'], dict) and entry['inverse']
