@@ -92,6 +92,20 @@ def test_verify_detects_mismatch_missing_and_bad_manifest(tmp_path):
     assert res['ok'] is False and 'unreadable' in res['reason']
 
 
+def test_glob_keys_hash_like_the_writer(tmp_path):
+    """Manifest glob entries ('dir/**') use qa's aggregate algorithm —
+    runtime verification must agree with tests/core_guard.py (format
+    coordination: see brain-core__to__evolution-persona request)."""
+    good = coreguard._digest('brain/jobs/**')
+    assert good and len(good) == 64           # aggregate computes
+    m = tmp_path / 'glob.json'
+    m.write_text(json.dumps({'brain/jobs/**': good}))
+    assert coreguard.verify(m)['ok'] is True
+    m.write_text(json.dumps({'brain/jobs/**': '0' * 64}))
+    res = coreguard.verify(m)
+    assert res['ok'] is False and res['mismatched'] == ['brain/jobs/**']
+
+
 def test_status_block_is_value_blind():
     st = coreguard.status()
     assert set(st.keys()) <= {'active', 'ok', 'manifest', 'reason',
