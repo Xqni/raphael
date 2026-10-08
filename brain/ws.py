@@ -44,6 +44,7 @@ CAN_SEND_CONFIRM_RESP = {'ui', 'body', 'cli'}
 CAN_SEND_CONTROL = {'ui', 'body', 'cli'}
 CAN_SEND_ACT_RES = {'body'}
 CAN_SEND_ORB_INPUT = {'ui'}
+CAN_SEND_FOREGROUND = {'body'}      # AUD-05 push (grant: pc dispatch 2026-10-08)
 CAN_SEND_STATE_REQ = {'ui', 'cli'}
 CAN_SEND_JOB_QUERY = {'ui', 'body', 'cli'}
 CAN_SEND_CANCEL = {'ui', 'body', 'cli'}
@@ -51,6 +52,7 @@ CAN_SEND_CANCEL = {'ui', 'body', 'cli'}
 KNOWN_CLIENT_TYPES = {
     'command', 'audio_start', 'audio_end', 'confirm_resp', 'control', 'act_res',
     'orb_input', 'state_req', 'job_list', 'job_get', 'cancel', 'pong', 'auth',
+    'foreground',
 }
 
 MAX_MSG = 8 * 1024 * 1024          # §1: 8 MiB
@@ -430,6 +432,7 @@ class WsHub:
             'control': CAN_SEND_CONTROL,
             'act_res': CAN_SEND_ACT_RES,
             'orb_input': CAN_SEND_ORB_INPUT,
+            'foreground': CAN_SEND_FOREGROUND,
             'state_req': CAN_SEND_STATE_REQ,
             'job_list': CAN_SEND_JOB_QUERY,
             'job_get': CAN_SEND_JOB_QUERY,
@@ -680,6 +683,43 @@ class WsHub:
         # plain interaction — acknowledged; deeper menu wiring is orb-dev's side
         await self._send(s, {'type': 'ack', 'v': 1, 'kind': kind})
 
+    async def _on_foreground(self, s: Session, msg: Dict[str, Any]):
+        """AUD-05 foreground frame consumer (pc-control contract, request
+        pc-control__to__brain-core__foreground-frame-consumer.md).
+
+        - role=body only (capability table);
+        - `window: null` = UNVERIFIABLE → record nothing (ring never carries
+          an empty identity; router stays fail-closed);
+        - else record the exact gateway.py:134 identity shape
+          `"title | process"` into the vision ring (probe shape, dedupe+ts
+          live) AND the fast <5s push-cache (brain/foreground.py);
+        - Private Mode: do not record (mirrors probes, which stop).
+        Value-blind: window names are stored, never logged."""
+        from . import foreground as _fg
+        window = msg.get('window')
+        name = None
+        if isinstance(window, dict):
+            ident = (f"{window.get('title', '')} | "
+                     f"{window.get('process', '')}").strip(' |')
+            name = ident or None
+        if name is None:
+            # alternative shapes: value/name fields (defensive tolerance)
+            name = msg.get('value') or msg.get('name')
+            if isinstance(name, dict):
+                name = name.get('title') or name.get('name')
+        cached_ok = False
+        if name and isinstance(name, str):
+            try:
+                from .mode import get_mode
+                if not get_mode().private:       # mirrors probes under private
+                    from .vision import context as _ctx
+                    _ctx.record_foreground(name)
+                    cached_ok = _fg.set_foreground(name)
+            except Exception:  # noqa: BLE001 — never break the session
+                cached_ok = False
+        await self._send(s, {'type': 'ack', 'v': 1, 'kind': 'foreground',
+                             'cached': cached_ok})
+
     async def _on_act_res(self, s: Session, msg: Dict[str, Any]):
         """Body -> Brain: act_req result (PROTOCOL §7).
 
@@ -721,18 +761,27 @@ class WsHub:
 
     async def _on_audio_start(self, s: Session, msg: Dict[str, Any]):
         # mic lane (voice-dev): binary frames follow
-        reason = msg.get('reason') if msg.get('reason') in ('ptt', 'wake') else 'wake'
-        s.audio_reason = reason
-        
+        raw_reason = msg.get('reason')
+        if raw_reason == 'continuation':
+            # utterance-continuation merge (voice request ACCEPTED 2026-10-08):
+            # a resume inside the grace window APPENDS to the open utterance —
+            # never clear the buffer, never mint a new local decision (part 1's
+            # audio_start IS the SEC-3 decision; if it never happened, the
+            # audio_end guard still fails closed).
+            if not hasattr(s, 'audio_buf') or s.audio_buf is None:
+                s.audio_buf = bytearray()      # defensive: lost part 1
+        else:
+            reason = raw_reason if raw_reason in ('ptt', 'wake') else 'wake'
+            s.audio_reason = reason
+            # Fresh segment: clear buffer, mark the LOCAL decision (SEC-3)
+            s.audio_buf = bytearray()
+            s.audio_started = True
+
         # Barge-in check: if Raphael is speaking, interrupt immediately
         from brain.voice import get_voice
         voice = get_voice()
         if voice.interrupts.any_active():
             voice.interrupts.interrupt()
-            
-        # Clear buffer for new utterance; mark the LOCAL decision (SEC-3)
-        s.audio_buf = bytearray()
-        s.audio_started = True
 
         # INTERFACES §e: audio_start(reason wake|ptt) -> orb `listening`.
         # Bug E hold (merged 41bab93): orbstate.emit() guards this — while a

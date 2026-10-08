@@ -54,6 +54,15 @@ async def lifespan(app: FastAPI):
     # must both pass, else RuntimeError aborts startup (refuse to serve).
     from . import coreguard
     coreguard.check_at_boot()
+    # instance-derived boot line (INTERFACES §d; tripwire: app.py derives via
+    # RAPHAEL_INSTANCE through brain/config.py, never a hardcoded path)
+    try:
+        from . import config as _cfg
+        from .logjson import slog
+        slog('brain_boot', instance=_cfg.instance(),
+             pidfile=str(_cfg.pidfile()), legacy=bool(_cfg.legacy_pidfile()))
+    except Exception:  # noqa: BLE001 — boot observability must not block
+        pass
     engine = get_engine()
     hub.engine = engine
     # computer-use hook (ACCEPTED 2026-10-06): sync tools run via to_thread —
@@ -67,31 +76,16 @@ async def lifespan(app: FastAPI):
         pass                      # computer-use lane not present yet
     except Exception as _e:        # noqa: BLE001 — loud, never fatal
         print(f'[tools] bind_loop failed: {type(_e).__name__}: {_e}', flush=True)
-    # AUD-05 (P0): wire the PRODUCTION foreground hook into the router chat
-    # egress gate. Source = vision gateway's recorded foreground ring
-    # (record_foreground on every successful probe), freshness-bounded: stale
-    # or absent => None = UNKNOWN (the router-side unknown->refuse policy is
-    # requested to router; brain-side: never serve a stale name as current).
+    # AUD-05 (P0 + dispatch 2026-10-08): wire the PRODUCTION foreground hook
+    # into the router chat egress gate — push-cache first (fresh <5s), vision
+    # ring second, else UNKNOWN (router fails closed). The push comes from
+    # pc-control/body via the ws `foreground` frame (brain/foreground.py).
     try:
-        import time as _ftime
         from brain.router import set_foreground_check as _set_fg
-        from .vision import context as _fgctx
-
-        def _foreground_provider():
-            try:
-                hist = _fgctx.recent_history(1)
-                if not hist:
-                    return None
-                ts, ident = hist[-1]
-                if _ftime.time() - ts > 60.0:
-                    return None          # stale -> unknown, not 'as current'
-                return ident
-            except Exception:            # noqa: BLE001 — hook must never raise
-                return None
-
-        _set_fg(_foreground_provider)
+        from . import foreground as _fg
+        _set_fg(_fg.provider)
     except ImportError:
-        pass                             # router/vision not present yet
+        pass                             # router not present yet
     from . import orbstate
     orbstate.attach(hub)
     # narration fanout: job_event → all roles; orb_state refresh on transitions

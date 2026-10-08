@@ -35,7 +35,7 @@ Every JSON frame: `{"type": str, "v": 1, ...fields}`. Optional correlation: `"jo
 |---|---|---|---|
 | `auth` | all | §2 | handshake |
 | `command` | cli, ui | `text`, `source: text\|voice\|orb`, `job_id?` (pre-allocated ack) | new user request → becomes a Job |
-| `audio_start` | body | `sample_rate: 16000`, `channels: 1`, `encoding: pcm_s16le`, `reason: ptt\|wake` | mic utterance begins (binary frames follow) |
+| `audio_start` | body | `sample_rate: 16000`, `channels: 1`, `encoding: pcm_s16le`, `reason: ptt\|wake\|continuation` | mic utterance begins (binary frames follow); `continuation` = resume inside the voice grace window → APPEND to the open utterance (additive, granted 2026-10-08) |
 | `audio_end` | body | — | utterance ends → Brain runs VAD-final + STT |
 | `confirm_resp` | ui, cli, body | `job`, `answer: yes\|no\|free_text` | answer to a `needs_confirm` (from speech STT or text) |
 | `job_list` / `job_get` | all | `job?` | request job snapshot(s) |

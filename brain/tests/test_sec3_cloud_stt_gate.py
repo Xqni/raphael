@@ -227,3 +227,90 @@ def test_max_sessions_refused_loudly(token_path, monkeypatch):
                 first = _recv_json(ws2, timeout=5)
                 assert first['type'] == 'auth_fail'
                 assert first['code'] == 'E_RATE_LIMIT'
+
+
+# ---- utterance continuation merge (voice request ACCEPTED 2026-10-08) --------
+def _record_transcribe(monkeypatch):
+    """Capture (bytes, reason) of every transcribe_result call."""
+    from brain.voice import get_voice
+    seen = []
+
+    def fake(buf, sample_rate=None, reason=None):
+        seen.append((len(buf), reason))
+        from types import SimpleNamespace
+        return SimpleNamespace(text='Raphael, hello there', lang='en', rtf=0.1)
+
+    monkeypatch.setattr(get_voice(), 'transcribe_result', fake)
+    return seen
+
+
+def test_continuation_appends_into_open_utterance(token_path, monkeypatch):
+    """reason='continuation' resumes INSIDE the grace window: part-1 + part-2
+    buffers merge into ONE transcription (no split)."""
+    import struct
+    seen = _record_transcribe(monkeypatch)
+    part1 = struct.pack('<h', 2500) * 4000       # 0.25 s
+    part2 = struct.pack('<h', 2500) * 4000
+    with TestClient(app) as client:
+        with client.websocket_connect('/ws') as ws_body:
+            assert _auth(ws_body, 'body')['type'] == 'auth_ok'
+            ws_body.send_text(json.dumps({'type': 'audio_start', 'v': 1,
+                                          'reason': 'wake'}))
+            _recv_json(ws_body, timeout=5)
+            ws_body.send_bytes(b'RAPH' + struct.pack('>BI', 1, 1) + part1)
+            # resume inside the grace window: APPEND
+            ws_body.send_text(json.dumps({'type': 'audio_start', 'v': 1,
+                                          'reason': 'continuation'}))
+            _recv_json(ws_body, timeout=5)
+            ws_body.send_bytes(b'RAPH' + struct.pack('>BI', 1, 1) + part2)
+            ws_body.send_text(json.dumps({'type': 'audio_end', 'v': 1}))
+            _recv_until(ws_body, lambda m: m.get('type') == 'ack'
+                        and m.get('audio') == 'end')
+    assert len(seen) == 1, f'continuation must transcribe ONCE, got {seen}'
+    assert seen[0][0] == len(part1) + len(part2), seen
+    assert seen[0][1] == 'wake'      # part 1's local decision carries over
+
+
+def test_fresh_audio_start_still_splits_segments(token_path, monkeypatch):
+    """Regression guard: a NORMAL (non-continuation) start still clears —
+    the proven mid-command split behavior stays (only continuation appends)."""
+    import struct
+    seen = _record_transcribe(monkeypatch)
+    part1 = struct.pack('<h', 2500) * 4000
+    part2 = struct.pack('<h', 2500) * 4000
+    with TestClient(app) as client:
+        with client.websocket_connect('/ws') as ws_body:
+            assert _auth(ws_body, 'body')['type'] == 'auth_ok'
+            ws_body.send_text(json.dumps({'type': 'audio_start', 'v': 1,
+                                          'reason': 'wake'}))
+            _recv_json(ws_body, timeout=5)
+            ws_body.send_bytes(b'RAPH' + struct.pack('>BI', 1, 1) + part1)
+            ws_body.send_text(json.dumps({'type': 'audio_start', 'v': 1,
+                                          'reason': 'wake'}))     # FRESH
+            _recv_json(ws_body, timeout=5)
+            ws_body.send_bytes(b'RAPH' + struct.pack('>BI', 1, 1) + part2)
+            ws_body.send_text(json.dumps({'type': 'audio_end', 'v': 1}))
+            _recv_until(ws_body, lambda m: m.get('type') == 'ack'
+                        and m.get('audio') == 'end')
+    assert len(seen) == 1
+    assert seen[0][0] == len(part2), 'fresh start must clear part 1'
+
+
+def test_continuation_without_prior_start_fails_closed(token_path,
+                                                       monkeypatch):
+    """SEC-3 interplay: a continuation with NO preceding audio_start has no
+    local decision — zero cloud transcribe."""
+    import struct
+    seen = _record_transcribe(monkeypatch)
+    with TestClient(app) as client:
+        with client.websocket_connect('/ws') as ws_body:
+            assert _auth(ws_body, 'body')['type'] == 'auth_ok'
+            ws_body.send_text(json.dumps({'type': 'audio_start', 'v': 1,
+                                          'reason': 'continuation'}))
+            _recv_json(ws_body, timeout=5)
+            ws_body.send_bytes(b'RAPH' + struct.pack('>BI', 1, 1)
+                               + struct.pack('<h', 2500) * 4000)
+            ws_body.send_text(json.dumps({'type': 'audio_end', 'v': 1}))
+            _recv_until(ws_body, lambda m: m.get('type') == 'ack'
+                        and m.get('audio') == 'end')
+    assert seen == [], 'no local decision -> no upload'
