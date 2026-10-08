@@ -23,5 +23,5 @@ class GroqProvider(OpenAICompatProvider):
             key_env=config.providers.groq_key_env,
             # capability slots: chat/tools/vision on the chat side,
             # "stt" = Whisper (matched live via router.role_hints.stt)
-            caps=frozenset({"chat", "tools", "vision", "stt"}),
+            caps=frozenset({'stt'})  # USER 2026-10-07: groq serves STT (whisper) ONLY — chat/tools/plan/analysis never route here (opencode models own the LLM chain),
         )

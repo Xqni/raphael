@@ -129,7 +129,7 @@ def _merge_fragments(base: dict[str, Any], config_d: Path) -> dict[str, Any]:
 from .roles import DEFAULT_DENY_HINTS, DEFAULT_PURPOSE_ROLES, DEFAULT_ROLE_HINTS  # noqa: E402
 from .spend import DEFAULT_PRICE_PER_MTOK  # noqa: E402
 
-DEFAULT_CHAIN = ["groq", "zen_free"]
+DEFAULT_CHAIN = ["go", "zen_free", "groq"]  # USER 2026-10-07: opencode models own LLM chain; groq = STT-only tail
 
 DEFAULT_RPM: dict[str, int] = {
     "groq": 30,

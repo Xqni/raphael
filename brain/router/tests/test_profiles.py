@@ -41,7 +41,7 @@ def test_load_order_base_then_fragment_then_profile(tmp_path, monkeypatch) -> No
     monkeypatch.delenv("RAPHAEL_PROFILE", raising=False)
     cfg = load_config(tmp_path / "config.yaml")
     assert cfg.profile == "cloud_temp"
-    assert cfg.providers.chain == ["groq", "zen_free"]
+    assert cfg.providers.chain == ["groq", "zen_free"]  # SYNTHETIC fixture chain (explicit in this test; repo directive chain is asserted in test_repo_config_is_cloud_temp_chain)
     assert cfg.providers.rpm["groq"] == 22          # fragment wins over base
     assert cfg.providers.max_retries == 7
     assert cfg.providers.groq_base_url == "http://base-a"   # untouched by fragment
@@ -65,8 +65,8 @@ def test_repo_config_is_cloud_temp_chain() -> None:
         if saved is not None:
             os.environ["RAPHAEL_PROFILE"] = saved
     assert cfg.profile == "cloud_temp"
-    assert cfg.providers.chain == ["groq", "zen_free"]
-    assert cfg.providers.allow_go_runtime is False
+    assert cfg.providers.chain == ["go", "zen_free", "groq"]
+    assert cfg.providers.allow_go_runtime is True  # USER 2026-10-07 opencode chat
     assert cfg.providers.allow_paid_runtime is False
     assert cfg.voice.stt_engine == "groq"
     assert cfg.vision.provider == "cloud"
@@ -75,7 +75,7 @@ def test_repo_config_is_cloud_temp_chain() -> None:
     # come straight from the integrator-owned config.yaml
     assert cfg.providers.allow_vision_paid is True
     assert cfg.providers.vision_paid_daily_cap_usd == 1.00
-    assert cfg.providers.allow_go_runtime is False
+    assert cfg.providers.allow_go_runtime is True  # USER 2026-10-07 opencode chat
     assert cfg.providers.allow_paid_runtime is False
     assert cfg.providers.vision_paid_price_per_mtok["input"] > 0
 

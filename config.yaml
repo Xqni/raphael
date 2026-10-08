@@ -11,9 +11,9 @@
 profile: cloud_temp
 
 providers:
-  chain: [groq, zen_free]                # cloud_temp ordered failover (Go/ollama OFF here); profile local -> [zen_free, go, ollama]
+  chain: [go, zen_free, groq]            # USER 2026-10-07: opencode models FIRST for Raphael LLMs (go = opencode-go paid fast per Rule 15; zen_free = opencode free; groq LAST — kept in chain ONLY as STT/whisper home + rare failover, never preferred for chat)
   groq_base_url: https://api.groq.com/openai/v1   # OpenAI-compatible; GROQ_API_KEY from .env — never logged
-  allow_go_runtime: false                # user directive: off by default (bills Zen balance past Go limits)
+  allow_go_runtime: true                 # USER 2026-10-07: opencode-go models for chat/tools (broad paid approval docs/PAID_USAGE.md; Rule 15 speed)
   allow_paid_runtime: false              # paid Zen models never used by Raphael's runtime unless enabled
   allow_vision_paid: true                # USER APPROVAL 2026-10-06 ("use the opencode go paid models for vision for now")
                                         #   -> VISION PURPOSE ONLY; chat/tools/STT remain free-chain. Owner: router lane.
@@ -151,7 +151,7 @@ profiles:
   cloud_temp: {}
   local:
     profile: local
-    providers: { chain: [zen_free, go, ollama] }
+    providers: { chain: [zen_free, go, ollama], allow_go_runtime: false }  # local profile keeps Go gated (test intent; base is user-approved true for cloud_temp)
     local_model: { enabled: true }
     voice: { stt_engine: local }
     vision: { provider: local }
