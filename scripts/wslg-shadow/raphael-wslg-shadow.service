@@ -1,10 +1,17 @@
 [Unit]
-Description=Raphael: install weston shadow-kill wrapper (WSLg) + respawn weston
+Description=Raphael: verified weston shadow-kill wrapper install (WSLg) + respawn weston
 After=multi-user.target
 
 [Service]
 Type=oneshot
-ExecStart=/home/dami/scripts/raphael-wslg-shadow.sh
+# SEC-2 trust chain (step 1 of 3): this unit file is root-owned
+# (/etc/systemd/system/raphael-wslg-shadow.service). Before executing
+# ANYTHING it pins the SHA-256 of the root-owned boot payload; the payload
+# then re-verifies its inputs (step 2) and the WSLg system distro
+# re-verifies them again from a tar pipe (step 3 — root there never reads
+# a user-writable filesystem). Rendered by scripts/wslg-shadow/
+# install-rooted.sh, which substitutes @BOOT_SHA@ and @LIB@.
+ExecStart=/bin/sh -c 'echo "@BOOT_SHA@  @LIB@/wslg-boot.sh" | sha256sum -c - >/dev/null && exec @LIB@/wslg-boot.sh'
 RemainAfterExit=yes
 TimeoutStartSec=120
 
