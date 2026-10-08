@@ -18,6 +18,7 @@ import os
 from typing import Any, Callable, Dict, List, Optional
 
 from .. import confirm as confirm_mod
+from .. import latency
 from . import store
 from .lock import InputLock
 
@@ -241,6 +242,7 @@ class JobEngine:
             priority = 'background'
         snap = store.create_job(text=text, priority=priority, source=source,
                                 input_lock=input_lock, session=session, task=task)
+        latency.note_submit(snap['id'])   # ARCH-6 routing anchor
         if kind:
             self.set_kind(snap['id'], kind)
         if parent:
@@ -304,6 +306,9 @@ class JobEngine:
             return
         store.transition(rowid, 'running', stage='routing', progress=0.05)
         job = store.get_job(rowid)
+        # ARCH-6: routing stage timestamp (queued -> running)
+        if job is not None:
+            latency.note_running(rowid, job.get('job') or '')
         # Wave-5 metadata rides the runner's snapshot (in-memory; no schema).
         # MUST come after the re-fetch above — the refetched dict would
         # otherwise discard it.

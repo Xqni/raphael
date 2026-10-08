@@ -40,6 +40,20 @@ async def _fake_warmup(self):
 
 
 @pytest.fixture(autouse=True)
+def _orb_transient_state():
+    """Cross-test isolation: the orb error-linger window / listening /
+    speaking counters are module globals — clear them around every test so a
+    failure window can't leak 'error' into an unrelated state assertion."""
+    try:
+        from brain import orbstate
+        orbstate.reset_transient_for_tests()
+        yield
+        orbstate.reset_transient_for_tests()
+    except Exception:  # noqa: BLE001 — never block a test on this
+        yield
+
+
+@pytest.fixture(autouse=True)
 def _hermetic_tts(monkeypatch, request):
     """Patch VoiceStack.speak/warmup PER TEST, only for tests under brain/tests.
 

@@ -34,7 +34,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from . import confirm as confirm_mod
 from . import config as appcfg
 from . import analysis as analysis_mod
-from . import fastpath, formats, llm, orbstate, tools as tool_reg
+from . import fastpath, formats, latency, llm, logjson, orbstate, tools as tool_reg
 from . import simulation as simulation_mod
 from .jobs import store
 from .jobs.engine import JobEngine, get_engine
@@ -328,6 +328,7 @@ class _SentenceSpeaker:
                 if not self._spoke:
                     self._spoke = True
                     orbstate.speak_start()
+                    latency.note_speak_start(self.job_id)   # ARCH-6 tts anchor
                     if self.hub is not None:
                         orbstate.refresh(hub=self.hub)
                 try:
@@ -335,8 +336,8 @@ class _SentenceSpeaker:
                         self.hub, self.voice, self.job_id,
                         ' '.join(batch), self.cancel)
                 except Exception as e:  # noqa: BLE001 — speech != job failure
-                    print(f'[speak] batch failed for {self.job_id}: {e}',
-                          flush=True)
+                    logjson.slog('speak_batch_failed', job=self.job_id,
+                                 error=type(e).__name__)
             if stream_done:
                 return
 
@@ -362,6 +363,9 @@ async def _speak_and_broadcast(hub, voice, job_id: str, text: str, cancel) -> No
     """One sentence/phrase through TTS + fanout (shared by narrate and the
     streaming speaker). Orb speaking-state is the caller's job."""
     async for ev in voice.speak(text, job=job_id, cancel=cancel):
+        if ev.get('event') == 'chunk' and ev.get('payload'):
+            # ARCH-6: first real audio after speak start
+            latency.note_tts_first_audio(job_id)
         if hub is None:
             continue
         # PROTOCOL §4 as AMENDED 2026-10-05: speak JSON -> body AND ui;
@@ -388,6 +392,7 @@ async def _narrate_voice(hub, job_id: str, t: str, state: Optional[str] = None,
             if not spoke and ev.get('event') in ('start', 'chunk'):
                 spoke = True
                 orbstate.speak_start()                  # §e -> `speaking`
+                latency.note_speak_start(job_id)        # ARCH-6 tts anchor
                 orbstate.refresh(hub=hub, engine=engine)
             if hub is None:
                 continue
@@ -401,7 +406,8 @@ async def _narrate_voice(hub, job_id: str, t: str, state: Optional[str] = None,
                                'text': ev['notice'], 'fade_ms': 6000},
                               roles={'ui', 'cli'})
     except Exception as e:  # noqa: BLE001
-        print(f"Narration error for {job_id}: {e}")
+        logjson.slog('narration_error', job=job_id,
+                     error=type(e).__name__)
     finally:
         voice.interrupts.done(job_id)
         if spoke:
@@ -623,6 +629,7 @@ def build_runner(hub=None):
                                         purpose='tool' if specs else 'chat')
                 buffer = ''
                 full_text = ''
+                first_token = False
                 final: Optional[Dict[str, Any]] = None
 
                 async with _SentenceSpeaker(hub, jid, voice,
@@ -633,6 +640,10 @@ def build_runner(hub=None):
                             continue
                         delta = frame.get('delta')
                         if delta:
+                            if not first_token:
+                                first_token = True
+                                # ARCH-6: LLM first-token timestamp
+                                latency.note_llm_first_token(rowid)
                             buffer += str(delta)
                             full_text += str(delta)
                             complete, buffer = take_complete_sentences(buffer)
@@ -744,6 +755,7 @@ def build_runner(hub=None):
                         continue
                     emit('running', stage='tool', progress=0.7,
                          t=f'Running {t_name}', tool=t_name)
+                    latency.note_tool_start(rowid)   # ARCH-6 (first wins)
                     ok, out = await _execute_tool(t_name, t_args)
                     if kind == 'analysis':
                         # point 2 (prompted output) + lock:false belt

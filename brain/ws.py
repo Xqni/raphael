@@ -84,7 +84,7 @@ class Session:
     # synthetic mic-lane E2E).
     __slots__ = ('sid', 'ws', 'ip', 'role', 'client', 'client_v', 'authed',
                  'missed', 'rate', 'created', 'jobs', 'strikes', 'bin_rate',
-                 'audio_buf', 'audio_reason')
+                 'audio_buf', 'audio_reason', 'audio_started')
 
     def __init__(self, ws: WebSocket, ip: str):
         self.sid = uuid.uuid4().hex[:12]
@@ -101,7 +101,11 @@ class Session:
         self.jobs: Set[int] = set()
         self.strikes = 0
         self.audio_buf = bytearray()
+        # SEC-3 (fail-closed): a segment may only reach cloud STT when the
+        # body opened it with audio_start — THAT is the local wake/PTT
+        # decision. audio_end alone never proves one.
         self.audio_reason = 'wake'
+        self.audio_started = False
 
 
 class WsHub:
@@ -696,8 +700,9 @@ class WsHub:
         if voice.interrupts.any_active():
             voice.interrupts.interrupt()
             
-        # Clear buffer for new utterance
+        # Clear buffer for new utterance; mark the LOCAL decision (SEC-3)
         s.audio_buf = bytearray()
+        s.audio_started = True
 
         # INTERFACES §e: audio_start(reason wake|ptt) -> orb `listening`.
         # Bug E hold (merged 41bab93): orbstate.emit() guards this — while a
@@ -714,6 +719,13 @@ class WsHub:
         # thinking once a transcript submits a job — refresh happens below).
         from . import orbstate
         orbstate.listening_off()
+        # SEC-3 FAIL-CLOSED: audio_end without a preceding audio_start has NO
+        # local wake/PTT decision -> the buffer never reaches cloud STT.
+        if not getattr(s, 'audio_started', False):
+            self.refresh_orb_state()
+            await self._send(s, {'type': 'ack', 'v': 1, 'audio': 'end'})
+            return
+        s.audio_started = False          # one decision per start/end pair
         if not hasattr(s, 'audio_buf') or not s.audio_buf:
             self.refresh_orb_state()
             await self._send(s, {'type': 'ack', 'v': 1, 'audio': 'end'})
@@ -726,10 +738,12 @@ class WsHub:
             import numpy as _np
             _x = _np.frombuffer(buf, dtype='<i2')
             _rms = float(_np.sqrt(_np.mean(_x.astype(_np.float64) ** 2))) if _x.size else 0.0
-            print(f"[ws] audio_end: {len(buf)}B ({len(buf)/32000:.2f}s) "
-                  f"rms={_rms:.0f} reason={reason}", flush=True)
+            from .logjson import slog
+            slog('audio_end', bytes=len(buf), seconds=round(len(buf) / 32000, 2),
+                 rms=round(_rms), reason=reason)
         except Exception:  # noqa: BLE001
-            print(f"[ws] audio_end: {len(buf)}B reason={reason}", flush=True)
+            from .logjson import slog
+            slog('audio_end', bytes=len(buf), reason=reason)
         
         from brain.voice import (get_voice, stt_final_frame, error_frame,
                                  stt_outage_subtitle, VoiceSTTError)
@@ -743,9 +757,26 @@ class WsHub:
             # audio-end-pass-reason.md, APPROVED): feeds the pre-STT cloud gate
             # (activation.py) — wake/ptt/silence decisions; fail-open default
             # kept in transcribe_result for other callers.
+            # SEC-3: ask the LOCAL wake/PTT gate for VISIBILITY. The upload
+            # itself is fail-closed in layers: (1) audio_started guard above
+            # (no local decision -> never called), (2) transcribe_result's own
+            # internal gate (silence/ptt-only never reach a provider — voice
+            # layer, brain/voice/activation.py). We do NOT skip the call here:
+            # the gate's verdict drives the "sent to cloud" notice, and the
+            # internal gate is the single source of truth for the upload.
+            decision = voice.should_transcribe(buf, reason=reason)
+            if decision.ok:
+                # visibility (SEC-3): indicator whenever mic audio will be
+                # sent to the cloud (ui+cli notice, presence-only text)
+                from . import notice as _notice
+                _notice.emit('Voice input sent to cloud STT.', level='info')
+            from . import latency as _latency   # brain.ws -> brain.latency
+            _t0 = time.monotonic()
             res = await asyncio.wait_for(
                 asyncio.to_thread(voice.transcribe_result, buf, reason=reason),
                 timeout=120)
+            # ARCH-6: STT stage timestamp (local gate -> transcript)
+            _latency.note_stt((time.monotonic() - _t0) * 1000.0)
             
             # 1. Broadcast transcript to Body and UI
             self.broadcast(stt_final_frame(res.text, res.lang, res.rtf), roles={'body', 'ui'})
