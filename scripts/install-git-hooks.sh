@@ -37,7 +37,10 @@ cat > "$HOOK" <<'EOF'
 # SEC-1 advisory: personal-data scan over staged files (locations only).
 # Never blocks (exit 0) — strictness lives in CI (qa-security).
 repo_root="$(git rev-parse --show-toplevel)"
-python3 "$repo_root/scripts/scan_personal.py" --staged || true
+# graceful for checkouts where the script is not merged yet (pre-merge lanes)
+if [ -f "$repo_root/scripts/scan_personal.py" ]; then
+    python3 "$repo_root/scripts/scan_personal.py" --staged || true
+fi
 exit 0
 EOF
 chmod +x "$HOOK"
