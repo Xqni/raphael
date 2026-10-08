@@ -93,9 +93,14 @@ DEFAULT_CONFIG = {
         # supervisor contract requires from config.yaml; everything has a default.
         "body_cmd": "python body/win/main.py",
         "body_venv": "",            # optional override of the pinned Body venv
+        # ARCH-4: no baked-in identity — env USER/USERNAME first (the Linux
+        # wsl_user can only be confirmed from config/env on a Windows host),
+        # config.yaml supervisor.wsl_user stays authoritative, and
+        # RAPHAEL_WSL_USER overrides both (see _normalize).
+        "wsl_user": (os.environ.get("USER") or os.environ.get("USERNAME")
+                     or "dami"),
         "orb_dir": "body/orb",
         "distro": "Ubuntu-26.04",
-        "wsl_user": "dami",
         "brain_unit": "raphael-brain",
         "ollama_unit": "ollama",
         "token_win": "",            # default: %APPDATA%\Raphael\token
@@ -342,6 +347,11 @@ def _normalize(cfg, parsed):
             sup["health_interval"] = float(alt["health_interval_s"])
         except (TypeError, ValueError):
             pass
+    # ARCH-4: RAPHAEL_WSL_USER env overrides config (identity is never
+    # baked in; config.yaml supervisor.wsl_user remains the default source)
+    env_user = os.environ.get("RAPHAEL_WSL_USER", "").strip()
+    if env_user:
+        paths["wsl_user"] = env_user
     # /health URL: PROTOCOL says Windows probes 127.0.0.1 even though the
     # server binds 0.0.0.0 — derive it only when no explicit health_url.
     parsed_sup = parsed.get("supervisor")
