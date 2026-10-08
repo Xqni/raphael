@@ -2,6 +2,7 @@
 
 Git operations are exercised only against throwaway tmp repos — the real repo
 is touched READ-ONLY (verify_core_guard runs qa-security's tool, no writes).
+The `tmp_repo` fixture lives in this package's conftest.py.
 """
 import subprocess
 
@@ -14,15 +15,6 @@ def _git(repo, *args):
     subprocess.run(
         ["git", "-c", "user.name=t", "-c", "user.email=t@t", *args],
         cwd=str(repo), check=True, capture_output=True, text=True)
-
-
-@pytest.fixture
-def tmp_repo(tmp_path):
-    _git(tmp_path, "init", "-q")
-    (tmp_path / "f.txt").write_text("one\n", encoding="utf-8")
-    _git(tmp_path, "add", ".")
-    _git(tmp_path, "commit", "-q", "-m", "first")
-    return tmp_path
 
 
 def test_verify_core_guard_on_real_repo():
