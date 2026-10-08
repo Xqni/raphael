@@ -14,11 +14,18 @@ def test_core_exact_paths_are_guarded(path):
 @pytest.mark.parametrize("path", [
     "supervisor/raphael-supervisor.py",
     "scripts/setup.sh",
+    "scripts/win/allow-brain-localhost.ps1",     # SEC-7
+    "tools/conductor/conductor.py",              # SEC-7
+    "tools/conductor/prompts/integrator_event.md",
+    "body/win/act_powershell.py",                # SEC-7 PS registry
+    "brain/raphael-brain.service",               # SEC-7 boot unit
+    "docs/OWNERSHIP.md",
     "brain/evolution/controller.py",
     "brain/evolution/tests/test_zones.py",
     "tests/core_guard.py",
     "tests/core_guard_manifest.json",
-    ".github/workflows/ci.yml",
+    ".github/workflows/ci.yml",                  # SEC-7
+    ".github/workflows/tests-heavy.yml",
 ])
 def test_core_globs_are_guarded(path):
     assert zone(path) is Zone.CORE
