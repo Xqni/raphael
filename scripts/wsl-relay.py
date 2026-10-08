@@ -32,21 +32,70 @@ Stdlib only; runs on the system python3; spawned by supervisor/main.py
 Usage: wsl-relay.py [listen_port=8766] [dial_port=8765]
 Exit codes: 0 ok, 1 no NAT address (refuses wildcard bind).
 """
+import os
+import select
 import socket
 import sys
 import threading
+import time
 
 LISTEN_PORT = int(sys.argv[1]) if len(sys.argv) > 1 else 8766
 DIAL_PORT = int(sys.argv[2]) if len(sys.argv) > 2 else 8765
 
+# SEC-6: idle cap >= 3x the PROTOCOL 10 s WS ping (default 90 s) — a
+# pinging peer never reaches it; a silently-dead peer is reaped.
+# Override: RAPHAEL_RELAY_IDLE_CAP (seconds; tests use small values).
+try:
+    IDLE_CAP = float(os.environ.get("RAPHAEL_RELAY_IDLE_CAP", "90"))
+except ValueError:
+    IDLE_CAP = 90.0
 
-def pipe(src, dst):
+
+def set_keepalive(sock):
+    """SEC-6: TCP keepalive (OS-level dead-peer detection ~30s+3x1s).
+    Never raises."""
+    try:
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
+    except OSError:
+        return
+    for opt_name, value in (("TCP_KEEPIDLE", 30), ("TCP_KEEPINTVL", 3),
+                            ("TCP_KEEPCNT", 3)):
+        opt = getattr(socket, opt_name, None)
+        if opt is None:
+            continue
+        try:
+            sock.setsockopt(socket.IPPROTO_TCP, opt, value)
+        except OSError:
+            pass
+
+
+def pipe(src, dst, idle_cap=None):
+    """Splice with an idle cap (SEC-6): forward until EOF; close a leg
+    silent for longer than `idle_cap`. select() keeps healthy streams
+    blocking-forever semantics between checks (a short recv timeout would
+    tear down legitimate WS silence — see the header note) while the
+    deadline still fires. Connection cap stays with the accept loop."""
+    cap = IDLE_CAP if idle_cap is None else float(idle_cap)
+    last = time.monotonic()
     try:
         while True:
+            remaining = cap - (time.monotonic() - last)
+            if remaining <= 0:
+                print("[wsl-relay] idle cap %.0fs reached — reaping silent "
+                      "peer" % cap, flush=True)
+                break
+            try:
+                readable, _, _ = select.select([src], [], [],
+                                               min(remaining, 1.0))
+            except (OSError, ValueError):
+                break
+            if not readable:
+                continue
             data = src.recv(65536)
             if not data:
                 break
             dst.sendall(data)
+            last = time.monotonic()
     except OSError:
         pass
     finally:
@@ -57,13 +106,16 @@ def pipe(src, dst):
 
 
 def handle(client):
+    set_keepalive(client)                       # SEC-6
     try:
         backend = socket.create_connection(("127.0.0.1", DIAL_PORT), timeout=5)
         # CRITICAL: the connect timeout PERSISTS as the socket's recv timeout
         # — a relayed WS stream is silent for ~10s between server pings, so
         # recv() would time out and tear the connection down ("no close frame
-        # received or sent" drops at ~5-9s). Reset to blocking after connect.
+        # received or sent" drops at ~5-9s). Reset to blocking after connect;
+        # the SEC-6 select()-based idle cap below owns staleness instead.
         backend.settimeout(None)
+        set_keepalive(backend)                  # SEC-6
     except OSError:
         try:
             client.close()

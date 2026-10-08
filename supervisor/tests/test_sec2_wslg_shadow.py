@@ -61,7 +61,19 @@ def test_install_rooted_dry_run_runs_unprivileged():
     out = r.stdout
     assert "/usr/local/lib/raphael" in out          # root-owned target
     assert "SHA256SUMS" in out and "@BOOT_SHA@" in out
-    assert "idempotent" in out or "daemon-reload" in out
+    assert "daemon-reload" in out
+    # coordinator policy: DISABLED by default, enable needs approval
+    assert "enable: NO" in out and "--enable" in out
+
+
+def test_install_rooted_fails_loud_on_user_writable_exec():
+    src = (SHADOW / "install-rooted.sh").read_text()
+    # the fail-loud audits exist and check both forbidden classes
+    assert "REFUSING to install" in src
+    assert "user-writable content — REFUSING (SEC-2)" in src
+    assert "/home/" in src and "/mnt/" in src        # the greps' patterns
+    # default is disabled (policy: never re-enable without fresh approval)
+    assert "systemctl disable raphael-wslg-shadow" in src
 
 
 def test_uninstall_rooted_dry_run_rollback():
