@@ -54,6 +54,45 @@ def test_scanner_empty_staged_is_clean():
     assert r.returncode == 0                           # advisory, never blocks
 
 
+def test_gitleaks_ledger_allowlisted_but_real_leak_still_fails(tmp_path,
+                                                               monkeypatch):
+    """qa request scan-personal-baseline-allowlist: the EXACT ledger path is
+    suppressed, while an identical real leak ANYWHERE else still fails —
+    and the allowlist carries no tests/** wildcard."""
+    mod = _load_scanner()
+    monkeypatch.setattr(mod, "ROOT", tmp_path)
+    (tmp_path / "tests" / "security").mkdir(parents=True)
+    (tmp_path / "tests" / "security" / "gitleaks-baseline.json").write_text(
+        '{"findings": [{"match": "jxesu", "file": "/home/dami/x"}]}',
+        encoding="utf-8")
+    (tmp_path / "docs").mkdir()
+    (tmp_path / "docs" / "leak.md").write_text("host: jxesu at /home/dami\n",
+                                               encoding="utf-8")
+    # LEDGER: suppressed (allowlisted)
+    assert mod.scan_file("tests/security/gitleaks-baseline.json") == []
+    # REAL leak OUTSIDE the ledger: still detected
+    hits = mod.scan_file("docs/leak.md")
+    assert hits, "a real leak outside the ledger must still fail"
+    ids = {rid for rid, _ in hits}
+    assert "user-windows" in ids and "path-home" in ids
+    # exact-path policy: the ONLY ^tests/ entry is the exact ledger path —
+    # no wildcard over tests/**
+    assert r"^tests/security/gitleaks-baseline\.json$" in mod.ALLOWLIST.pattern
+    assert mod.ALLOWLIST.pattern.count("^tests/") == 1
+    assert "tests/.*" not in mod.ALLOWLIST.pattern
+    assert "tests/**" not in mod.ALLOWLIST.pattern
+
+
+def test_summary_reports_allowlist_skips(capsys):
+    r = subprocess.run(
+        ["python3", str(SCRIPTS / "scan_personal.py")],
+        capture_output=True, text=True, cwd=_ROOT)
+    out = r.stdout
+    assert "allowlist-skipped" in out
+    assert "non-ledger" in out
+    assert "finding(s)" in out
+
+
 def test_precommit_hook_installer_idempotent(tmp_path):
     # static: hook content is advisory (never blocks)
     src = (SCRIPTS / "install-git-hooks.sh").read_text()
