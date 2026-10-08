@@ -122,10 +122,54 @@ def test_body_pushes_foreground_and_it_feeds_the_router(token_path):
                                                      'process': 'bank.exe'}}))
             ack2 = _recv_until(ws_body, lambda m: m.get('type') == 'ack'
                                and m.get('cached') is True)
-            assert foreground.provider() == 'Banking App'
+            # exact gateway.py:134 identity shape: "title | process"
+            assert foreground.provider() == 'Banking App | bank.exe'
+            # ...and it warmed the vision ring too (probe shape)
+            from brain.vision import context as ring
+            assert ring.recent_history(1)[0][1] == 'Banking App | bank.exe'
         # after disconnect the value ages out of the 5s window eventually
         foreground._ts = time.monotonic() - 99.0
         assert foreground.cached() is None
+
+
+def test_null_window_records_nothing(token_path):
+    """window:null = unverifiable → nothing recorded (ring stays clean)."""
+    from brain.vision import context as ring
+    ring.reset_history()
+    with TestClient(app) as client:
+        with client.websocket_connect('/ws') as ws_body:
+            assert _auth(ws_body, 'body')['type'] == 'auth_ok'
+            ws_body.send_text(json.dumps({'type': 'foreground', 'v': 1,
+                                          'window': None}))
+            ack = _recv_until(ws_body, lambda m: m.get('type') == 'ack'
+                              and m.get('kind') == 'foreground')
+            assert ack['cached'] is False
+    assert foreground.cached() is None
+    assert ring.recent_history(1) == []
+    ring.reset_history()
+
+
+def test_private_mode_does_not_record(token_path):
+    """Private Mode: pushes are not recorded (mirrors probes, which stop)."""
+    from brain.mode import get_mode
+    from brain.vision import context as ring
+    ring.reset_history()
+    get_mode().set('private_on', persist=False)
+    try:
+        with TestClient(app) as client:
+            with client.websocket_connect('/ws') as ws_body:
+                assert _auth(ws_body, 'body')['type'] == 'auth_ok'
+                ws_body.send_text(json.dumps({'type': 'foreground', 'v': 1,
+                                              'window': {'title': 'Secret',
+                                                         'process': 's.exe'}}))
+                ack = _recv_until(ws_body, lambda m: m.get('type') == 'ack'
+                                  and m.get('kind') == 'foreground')
+                assert ack['cached'] is False
+    finally:
+        get_mode().set('private_off', persist=False)
+    assert foreground.cached() is None
+    assert ring.recent_history(1) == []
+    ring.reset_history()
 
 
 def test_foreground_push_restricted_to_body(token_path):

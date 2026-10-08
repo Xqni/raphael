@@ -684,18 +684,41 @@ class WsHub:
         await self._send(s, {'type': 'ack', 'v': 1, 'kind': kind})
 
     async def _on_foreground(self, s: Session, msg: Dict[str, Any]):
-        """AUD-05 push: pc-control/body sends the focused window; cached
-        fresh (<5s) for the router chat gate (value-blind: no logging)."""
+        """AUD-05 foreground frame consumer (pc-control contract, request
+        pc-control__to__brain-core__foreground-frame-consumer.md).
+
+        - role=body only (capability table);
+        - `window: null` = UNVERIFIABLE → record nothing (ring never carries
+          an empty identity; router stays fail-closed);
+        - else record the exact gateway.py:134 identity shape
+          `"title | process"` into the vision ring (probe shape, dedupe+ts
+          live) AND the fast <5s push-cache (brain/foreground.py);
+        - Private Mode: do not record (mirrors probes, which stop).
+        Value-blind: window names are stored, never logged."""
         from . import foreground as _fg
-        name = msg.get('value') or msg.get('name')
-        if isinstance(name, dict):          # tolerate {window:{title:...}}
-            name = (name.get('window') or {}).get('title') or name.get('title')
         window = msg.get('window')
-        if not name and isinstance(window, dict):
-            name = window.get('title') or window.get('process')
-        ok = _fg.set_foreground(name if isinstance(name, str) else None)
+        name = None
+        if isinstance(window, dict):
+            ident = (f"{window.get('title', '')} | "
+                     f"{window.get('process', '')}").strip(' |')
+            name = ident or None
+        if name is None and window is not None:
+            # legacy/alternative shapes: value/name fields
+            name = msg.get('value') or msg.get('name')
+            if isinstance(name, dict):
+                name = name.get('title') or name.get('name')
+        cached_ok = False
+        if name and isinstance(name, str):
+            try:
+                from .mode import get_mode
+                if not get_mode().private:       # mirrors probes under private
+                    from .vision import context as _ctx
+                    _ctx.record_foreground(name)
+                    cached_ok = _fg.set_foreground(name)
+            except Exception:  # noqa: BLE001 — never break the session
+                cached_ok = False
         await self._send(s, {'type': 'ack', 'v': 1, 'kind': 'foreground',
-                             'cached': ok})
+                             'cached': cached_ok})
 
     async def _on_act_res(self, s: Session, msg: Dict[str, Any]):
         """Body -> Brain: act_req result (PROTOCOL §7).
