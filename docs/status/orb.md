@@ -1695,3 +1695,108 @@ halo lost its hard disc — still 1.7% of pixels changed (≥ the 0.7% floor) an
 `docs/orb/trace/wave5.json` records `spokes=6` for that state, i.e. beads have
 spokes deliberately attached (PROTOCOL §5). A bead *with* a spoke reads elongated
 by design. Not a defect from this change.
+
+---
+
+# DEPENDABOT EVAL — electron 30.5.1 → 44.5.1 (PR #10, coord [44])
+
+**VERDICT: MERGE-RECOMMENDED.** Evaluated in an isolated worktree
+(`/tmp/opencode/orb-e44` @ `a02d305`) so my own branch was never dirtied; PR
+touches only `body/orb/package.json` + `body/orb/package-lock.json`.
+
+## Gates on the bumped build — all green
+
+| gate | result on **44.5.1** |
+|---|---|
+| `npm run test:unit` | **7/7 suites** (incl. boot-sequence **13/13**) |
+| `orb:trace` | **EXIT 0** — boot **5/5**, cage **4/4**, startup 7/7 (peak 2.020), transparency **borderA0/rgb0**, BugC **6/6**, wave5 **9/9**, interaction **34/34**, shape directive `["circle"]` |
+| distinctness | **pass=true**, weakest `idle vs private` = **0.73** (104 pairs) |
+| `orb:size` | PASS — worst drift **5.1%** of 12%, edge gap 3px |
+| `orb:diff` | **noise floor 0.000 → threshold 0.300, PASS** |
+
+Deps resolved as electron **44.5.1**, three 0.170.0, ws 8.22.0 — no other
+version moved.
+
+## Security — this is the point of the bump
+
+| build | `npm audit --registry=https://registry.npmjs.org` |
+|---|---|
+| **30.5.1** (before) | **6 vulnerabilities (4 moderate, 2 high)**, exit 1 |
+| **44.5.1** (after) | **0 vulnerabilities**, exit 0 |
+
+`tests/security/SCANNERS.md:56-64` documents exactly those highs: *"6 vulns
+(4 moderate, 2 HIGH) — the highs are `electron 30.5.1` (ASAR integrity bypass)
+and its transitive `extract-zip`; the fix is a MAJOR Electron upgrade
+(>= 41.10.6 / 42.3.4) in the ORB LANE's package.json — **breaking change not
+qa-security's to make**."* **The bump closes the original audit finding** that
+produced `qa-security__to__orb__electron-audit-highs.md`.
+
+Note: `npm audit` without `--registry` still 400s against the configured
+`pkgs.safetycli.com` mirror — that is an endpoint problem, not a lockfile one,
+and is unrelated to this PR (the separate lockfile redirect is commit `ee8823c`).
+
+## API / breaking-change review (30 → 44)
+
+Orb surface: `Menu.buildFromTemplate`, `app.{exit,getPath,on,quit,relaunch,
+requestSingleInstanceLock,setPath,whenReady}`, `contextBridge.exposeInMainWorld`,
+`ipcMain.{handle,on}`, `ipcRenderer.{invoke,on,send}`, `nativeImage.{createEmpty,
+createFromPath}`, `screen.{getAllDisplays,getPrimaryDisplay,on}`, `shell.openPath`,
+`webContents.{on,send}`, plus one `BrowserWindow` block
+(`main.js:309-332`: frame/transparent/alwaysOnTop/skipTaskbar/resizable/movable/
+focusable + webPreferences preload/contextIsolation/nodeIntegration/sandbox/
+backgroundThrottling).
+
+Checked against the official breaking-changes list 44→35:
+
+- **44.0 `clipboard` removed from renderer / rearchitected** → our single grep
+  hit is `win32clipboard` in `scripts/install-body-venv.ps1` — a **Python**
+  import for the Windows Body. **Not Electron. Not affected.**
+- **44.0 `net.request` Sec-Fetch-Dest** → we use plain `node:http` in
+  `main.js refreshStatus()`, never `net`. **N/A.**
+- **44.0 macOS-12 / Windows-ia32 removals** → we ship linux-x64 + win-x64. **N/A.**
+- **42.0 `ELECTRON_SKIP_BINARY_DOWNLOAD` removed** → **0 references** in repo.
+- **42.0 postinstall → on-demand binary download** → our install ran and
+  `electron --version` reported `v44.5.1`. **Works.**
+- **39.0 `window.open` popups always resizable** → **0** `window.open` /
+  `setWindowOpenHandler`. **N/A.**
+- **36.0 `app.commandLine` lowercasing** → **0 references**.
+- No `remote`, no `nodeIntegration:true`, no `webviewTag`, no renderer clipboard.
+
+**Verdict: no API break touches this codebase.**
+
+## Risks checked and cleared
+
+- **Ozone/Wayland (Electron 38 change):** this box has `WAYLAND_DISPLAY=wayland-0`
+  set (`XDG_SESSION_TYPE` unset), so native-Wayland-by-default was the top
+  suspicion for an overlay that depends on always-on-top + transparency +
+  click-through. **Did not materialise:** transparency `borderA0/rgb0` and the
+  full interaction suite (hit-testing, `setIgnoreMouseEvents` forwarding) passed
+  identically. `ozone`/`OZONE` have 0 references in our launch paths.
+- **ANGLE now statically linked (44.0)** — we render through ANGLE/D3D12 on the
+  Intel iGPU; startup, cage and distinctness all unchanged.
+- **preload-in-subframes (44.0)** — preload targets the main frame only;
+  `interaction 34/34` proves IPC/`contextBridge` still work end-to-end.
+
+## Notes for the merger (not blockers)
+
+1. **Spec conflict:** `docs/ORB_REBUILD_TASK.md:116` pins *"electron 30.5.1,
+   three 0.170.0, ws 8.22.0 — no version drift"* — merging **requires updating
+   that base-spec line** (plus the `npm audit endpoint broken` clause can be
+   reworded once SCANNERS.md's documented-highs note is retired).
+2. **This is a VERSION BUMP only** — it is *not* the Windows-native migration.
+   ARCH-1 stays plan-only and human-gated; do not conflate the two.
+3. `sandbox: false` is unchanged and still honoured on 44 — restoring it stays
+   as ARCH-1 item **H4**, deliberately sequenced with the migration.
+4. `tests/security/SCANNERS.md` documented-highs note and
+   `qa-security__to__orb__electron-audit-highs.md` should be retired by
+   **qa-security** after merge (their files, not mine to edit).
+5. Residual: gates run on **WSL/Linux only** — no Windows runtime was exercised.
+   Windows conformance in CI covers docs parsing, not the Electron window, so a
+   post-merge Windows smoke (overlay shows, click-through, topmost) is worth a
+   human eyeball.
+
+## Interlock
+
+`ee8823c` (safetycli lockfile redirect, 1 entry → npmjs, integrity
+byte-verified) is what lets dependabot resolve this PR cleanly — landed on my
+branch, CI **5/5 green**.
