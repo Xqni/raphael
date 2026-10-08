@@ -21,7 +21,7 @@ from datetime import datetime
 from typing import Any, Deque, Dict, List, Optional, Tuple
 
 from .config import VisionConfig
-from .gate import CloudVisionGate
+from .gate import PASSWORD_FOCUS_REASON, CloudVisionGate
 from .seams import maybe_await_offloop
 
 _MAX_HISTORY = 32                 # stored entries (ring)
@@ -95,6 +95,9 @@ async def gather_context(
             CloudVisionGate.err_hint(e)).reason
     if fg:
         record_foreground(fg)
+    # Wave 5H item 2: focused password field -> no context at all.
+    if getattr(gateway, "password_focus", False):
+        return "Context withheld: " + PASSWORD_FOCUS_REASON
     if fg is None:
         sections.append("Foreground: unknown (could not be verified)")
     elif _blocked(gate, fg):

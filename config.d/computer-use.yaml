@@ -1,0 +1,29 @@
+# computer-use lane config (AGENT_RULES §3 — config.d/<lane>.yaml only).
+# Wave 5H audit item 2: sensitive contexts BEYOND the static privacy
+# blocklist. Matched case-insensitively (regex when valid, literal otherwise)
+# against the composite foreground identity "title | process" by
+# brain/vision/gate.py::matched_sensitive_pattern; refused with a short
+# spoken reason BEFORE any capture. UAC/credential defaults live in
+# gate.DEFAULT_SENSITIVE_PATTERNS (union — this file ADDS, never removes).
+#
+# NOTE: this key is deliberately NOT under privacy/ (authority-guarded —
+# brain/vision/config.py::AUTHORITY_KEYS strips privacy from fragments).
+computer_use:
+  sensitive_title_patterns:
+    # browser/tab titles for financial + 2FA contexts (audit wording)
+    - "bank"
+    - "wallet"
+    - "2fa"
+    - "two-factor"
+    - "authenticator"
+    - "one-time code"
+    - "otp code"
+    - "\\bmetamask\\b"
+    - "\\blederger\\b"
+    # password-manager tabs/dialogs that are NOT covered by blocklist_apps
+    - "keepassxc?"
+    - "bitwarden"
+    # elevation / secure-desktop surfaces (belt on top of the defaults)
+    - "user account control"
+    - "consent\\.exe"
+    - "credentialui"

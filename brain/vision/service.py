@@ -19,7 +19,7 @@ from functools import lru_cache
 from typing import Any, Callable, Optional
 
 from .config import VisionConfig, load_config
-from .gate import CloudVisionGate, Decision
+from .gate import PASSWORD_FOCUS_REASON, E_SENSITIVE, CloudVisionGate, Decision
 from .seams import maybe_await_offloop
 
 _MAX_ANSWER_CHARS = 700
@@ -68,6 +68,10 @@ async def capture_screen(gateway: Any, gate: CloudVisionGate,
         title = await gateway.foreground_window()
     except Exception as e:       # noqa: BLE001 — unreachable != unverifiable
         raise GateRefused(gate.unreachable(CloudVisionGate.err_hint(e))) from None
+    # Wave 5H item 2: focused password field (UIA IsPassword additive flag)
+    # -> refuse capture with a short spoken reason.
+    if getattr(gateway, "password_focus", False):
+        raise GateRefused(Decision.deny(E_SENSITIVE, PASSWORD_FOCUS_REASON))
     decision = gate.check_foreground(title)
     if not decision.ok:
         raise GateRefused(decision)

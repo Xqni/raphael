@@ -116,6 +116,9 @@ class VisionConfig:
     debug_capture: bool = False            # privacy.debug_capture (MUST stay false)
     watch_mode: bool = False               # privacy.watch_mode (off by default)
     gui_steps_cap: int = 25                # jobs.gui_steps_cap
+    # computer_use.sensitive_title_patterns (config.d/<lane>.yaml — lane
+    # namespace; merged with gate DEFAULT_SENSITIVE_PATTERNS at match time)
+    sensitive_patterns: Tuple[str, ...] = ()
 
     @property
     def cloud_allowed(self) -> bool:
@@ -146,6 +149,7 @@ def load_config(path: Optional[Path] = None) -> VisionConfig:
         cap = int(jobs.get("gui_steps_cap", 25))
     except (TypeError, ValueError):
         cap = 25
+    cu = raw.get("computer_use") or {}
     return VisionConfig(
         profile=str(raw.get("_profile") or DEFAULT_PROFILE),
         provider=str(vision.get("provider", "cloud")),
@@ -156,4 +160,5 @@ def load_config(path: Optional[Path] = None) -> VisionConfig:
         debug_capture=bool(privacy.get("debug_capture", False)),
         watch_mode=bool(privacy.get("watch_mode", False)),
         gui_steps_cap=max(1, cap),
+        sensitive_patterns=_as_tuple(cu.get("sensitive_title_patterns")),
     )

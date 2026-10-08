@@ -32,7 +32,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from brain import confirm as confirm_mod
 
 from brain.vision.config import VisionConfig
-from brain.vision.gate import CloudVisionGate
+from brain.vision.gate import PASSWORD_FOCUS_REASON, CloudVisionGate
 from brain.vision.redact import redact_text
 from brain.vision.seams import maybe_await_offloop
 
@@ -546,7 +546,10 @@ async def _observe(d: Deps, cfg: VisionConfig, gate: CloudVisionGate,
         return Observation.refused(
             "", gate.unreachable(CloudVisionGate.err_hint(e)).reason)
     fg_str = str(fg) if fg is not None else ""
-    decision = gate.check_foreground(fg)   # None -> closed; blocklist -> refused
+    # Wave 5H item 2: focused password field seen by the fg probe -> refuse.
+    if getattr(gateway, "password_focus", False):
+        return Observation.refused(fg_str, PASSWORD_FOCUS_REASON)
+    decision = gate.check_foreground(fg)   # None -> closed; blocklist/sensitive -> refused
     if not decision.ok:
         return Observation.refused(fg_str, decision.reason)
 
@@ -555,6 +558,11 @@ async def _observe(d: Deps, cfg: VisionConfig, gate: CloudVisionGate,
         tree = (await gateway.uia_tree()).strip()
     except Exception:            # noqa: BLE001 — no tree -> vision fallback
         tree = ""
+    # Wave 5H item 2: the TREE probe may be what saw the focused password
+    # field — re-check before accepting the observation or falling back to
+    # pixels (both readings of the flag are refused the same way).
+    if getattr(gateway, "password_focus", False):
+        return Observation.refused(fg_str, PASSWORD_FOCUS_REASON)
 
     if len(tree) >= MIN_UIA_CHARS:
         text = gate.redact(tree)[:MAX_OBS_CHARS]

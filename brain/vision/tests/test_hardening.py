@@ -106,9 +106,10 @@ def test_process_field_bypass_closed():
 
 
 def test_blocklist_entries_are_literal_not_regex():
-    g = CloudVisionGate(cfg(blocklist_apps=("Bank*ing",)))
-    assert g.check_foreground("My BankXing App").ok        # '*' is literal
-    assert g.check_foreground("Bank*ing").code == E_BLOCKED
+    g = CloudVisionGate(cfg(blocklist_apps=("Bnk*ing",)))
+    assert g.check_foreground("My BnkXing App").ok        # '*' is literal
+    assert g.check_foreground("Bnk*ing").code == E_BLOCKED
+    # (identities here avoid DEFAULT_SENSITIVE_PATTERNS words like 'bank')
 
 
 def test_empty_blocklist_entry_cannot_match_everything():

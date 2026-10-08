@@ -12,6 +12,7 @@ ignored (config may grow entries faster than patterns land). Applied to:
 from __future__ import annotations
 
 import re
+import unicodedata
 from typing import Iterable, List, Sequence, Tuple
 
 # (kind, compiled pattern, replacement) — order matters: specific before generic.
@@ -40,9 +41,14 @@ _RULES: Tuple[Tuple[str, "re.Pattern[str]", str], ...] = (
 
 def redact_text(text: str, kinds: Sequence[str]) -> str:
     """Scrub every configured kind from `text`. Returns `text` unchanged when
-    there is nothing to do (or kinds is empty). Never raises on odd input."""
-    if not text or not kinds:
-        return text or ""
+    there is nothing to do (or kinds is empty). Never raises on odd input.
+    ALSO strips invisible/control characters (Wave 5H item 3: hidden-text
+    injection fixtures must neutralize at the earliest chokepoint)."""
+    if not text:
+        return ""
+    text = strip_invisible(text)
+    if not kinds:
+        return text
     wanted: List[str] = [str(k).strip().lower() for k in kinds if str(k).strip()]
     if not wanted:
         return text
@@ -51,6 +57,24 @@ def redact_text(text: str, kinds: Sequence[str]) -> str:
         if kind in wanted:
             out = pat.sub(repl, out)
     return out
+
+
+def strip_invisible(text: str) -> str:
+    """Remove zero-width/format characters and control chars that hide text
+    (U+200B..200D, U+FEFF, U+2060, C0/C1 controls) while KEEPING \\n/\\t
+    (layout). Hidden payload = 'invisible instructions' has nowhere to hide."""
+    if not text:
+        return text or ""
+    out = []
+    for ch in text:
+        if ch in "\n\t":
+            out.append(ch)
+            continue
+        cat = unicodedata.category(ch)
+        if cat in ("Cc", "Cf"):
+            continue            # control / format (zero-width, bidi, etc.)
+        out.append(ch)
+    return "".join(out)
 
 
 def available_kinds() -> Iterable[str]:

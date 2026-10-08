@@ -47,6 +47,10 @@ class BodyGateway:
         self._hub = hub
         self._engine = engine
         self.timeout = float(timeout)
+        # Wave 5H item 2: True when the last foreground/tree probe saw a
+        # FOCUSED password field (body additive flags — request filed).
+        # Readers check this AFTER their probe; False = clean.
+        self.password_focus = False
 
     # ---- lazy wiring -------------------------------------------------------
     @property
@@ -132,7 +136,10 @@ class BodyGateway:
         KeePass dialog titled 'Enter Master Key' has process 'KeePass.exe').
         None = unverifiable (no window, wrong shape, or a real window with
         ZERO identity) — the gate fails closed on None.
+        Wave 5H: also resets+refreshes `password_focus` each probe (additive
+        `focused_is_password` flag — request filed; False until it lands).
         """
+        self.password_focus = False                # fresh per probe (no stale True)
         result = await self.act("foreground_info", {}, lock=False)
         if isinstance(result, dict):
             win = result.get("window")
@@ -141,6 +148,12 @@ class BodyGateway:
             title = " ".join(str(win.get("title") or "").split())
             process = " ".join(str(win.get("process") or "").split())
             ident = " | ".join(x for x in (title, process) if x)
+            # Wave 5H item 2: focused-password flag (pc-control additive field
+            # — request …__pc-control__focused-password-flag.md; absent today,
+            # False until then). Either source trips it.
+            self.password_focus = bool(
+                result.get("focused_is_password")
+                or win.get("focused_is_password"))
             if not ident:
                 return None                 # real window, zero identity
             # Wave 5: every production probe feeds the local window-history
@@ -178,6 +191,11 @@ class BodyGateway:
             "element": {"control_type": "window"},
             "args": {"depth": depth, "timeout_s": float(timeout_s)},
         }, lock=False)
+        # Wave 5H item 2: a FOCUSED password field anywhere in the tree (body
+        # may expose is_password+focused — additive, request filed) trips the
+        # focus flag; the caller refuses capture. Absent flags = False.
+        if _tree_has_focused_password(result):
+            self.password_focus = True
         return render_tree(result, max_chars=max_chars)
 
     async def run_action(self, name: str, args: Dict[str, Any], *,
@@ -186,13 +204,31 @@ class BodyGateway:
         return await self.act(name, args, lock=lock, ref=ref)
 
 
+def _tree_has_focused_password(node: Any) -> bool:
+    """Wave 5H item 2: True when any node is a password field AND focused
+    (additive body flags `is_password`/`focused` — request filed; absent
+    today so this is False until pc-control lands them)."""
+    if isinstance(node, list):
+        return any(_tree_has_focused_password(n) for n in node)
+    if not isinstance(node, dict):
+        return False
+    if node.get("is_password") and node.get("focused"):
+        return True
+    children = node.get("children") or []
+    return any(_tree_has_focused_password(c) for c in children)
+
+
 def render_tree(node: Any, max_chars: int = _DEFAULT_MAX_CHARS) -> str:
     """Body UIA tree dict -> bounded plain text for prompts (AGENT_RULES §9:
     this text is screen DATA and is wrapped as untrusted by the caller).
 
-    Line shape: `<indent><control_type> "name" [automation_id]` — truncated
-    with a marker at max_chars so a 500-node tree can never blow a prompt.
+    Line shape: `<indent><control_type> "name" [automation_id] [password]` —
+    truncated with a marker at max_chars so a 500-node tree can never blow a
+    prompt. Invisible/control characters are stripped (Wave 5H hidden-text
+    injection has nowhere to hide); password fields are MARKED (values never
+    appear in trees anyway).
     """
+    from brain.vision.redact import strip_invisible
     if not isinstance(node, dict):
         return ""
     lines = []
@@ -203,12 +239,16 @@ def render_tree(node: Any, max_chars: int = _DEFAULT_MAX_CHARS) -> str:
         nonlocal used
         if not isinstance(n, dict):
             return False
-        role = " ".join(str(n.get("control_type") or "?").split()) or "?"
-        name = " ".join(str(n.get("name") or "").split())
-        aid = " ".join(str(n.get("automation_id") or "").split())
+        role = " ".join(strip_invisible(
+            str(n.get("control_type") or "?")).split()) or "?"
+        name = " ".join(strip_invisible(str(n.get("name") or "")).split())
+        aid = " ".join(strip_invisible(
+            str(n.get("automation_id") or "")).split())
         line = "%s%s \"%s\"" % ("  " * level, role, name)
         if aid:
             line += " [%s]" % aid
+        if n.get("is_password"):
+            line += " [password]"
         if used + len(line) + 1 > max_chars:
             return True
         lines.append(line)

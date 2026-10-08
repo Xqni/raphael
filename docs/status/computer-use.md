@@ -1,6 +1,21 @@
 # computer-use — status
 
-Updated: 2026-10-07 (Wave 5: Analysis context + 2 brain-core requests closed — handoff below)
+Updated: 2026-10-08 (Wave 5H audit packet done — handoff below)
+
+## Wave 5H — audit packet (2026-10-08) — verify-first results
+
+| # | Finding (packet) | Classification | Evidence (file:line) → action |
+|---|---|---|---|
+| 1 | Egress tripwire (disk/log/send × blocklist/private/no-policy, composite id) | **PARTIAL → FIXED** | Existed: `brain/vision/tests/test_service.py:63` `deny_file_writes()`, `:104` private, `:121` blocklist; `test_runner.py:375`. Missing: LOG-sink watch, composite-in-one-place, unknown-provider case — and `gate.py::check_profile` had `if cfg.provider != "cloud": return allow` (unknown provider slipped). Added: `brain/vision/tests/test_egress_tripwire.py` (marker bytes after EOI; disk guard = builtins.open/io.open/os.open/Path writers; capsys marker+b64; vision spy; happy-path control) + `tests/test_tripwire_runner.py` twin + `check_profile` now denies unknown providers (`brain/vision/gate.py` — "No cloud-vision policy…"). |
+| 2 | Sensitive contexts beyond blocklist (IsPassword, UAC, bank/wallet/2FA) | **CONFIRMED → FIXED (+request)** | Was title-only static list: `brain/vision/gate.py:81-86` (`matched_blocklist_app` over `privacy.blocklist_apps` only); body exposes no password/focus fields (`body/win/winlayer.py::_describe` = name/control_type/automation_id/class_name/rect; `_describe_window` = hwnd/title/pid/process/rect/visible). Added: `E_SENSITIVE` + `PASSWORD_FOCUS_REASON` + `matched_sensitive_pattern` (regex, literal fallback, defaults ∪ config) in `gate.py`; configurable patterns in `config.d/computer-use.yaml` (`computer_use.sensitive_title_patterns` — lane namespace, NOT authority-guarded); `password_focus` consumed in `gateway.foreground_window`/`uia_tree` (parses `focused_is_password` / `is_password`+`focused`, fresh-per-probe), enforced in `service.capture_screen`, `runner._observe` (fg AND tree), `context.gather_context`; body-side additive fields requested: `docs/requests/computer-use__to__pc-control__focused-password-flag.md` (consumption landed + tested, stays False until body ships flags). |
+| 3 | Untrusted wrapping + injection fixtures | **ALREADY-DONE → EXTENDED** | Wrapping existed: `runner.py` `wrap_observation` (`<untrusted_screen>` envelope + system-prompt rule 2) and brain-core's `brain/loop.py:699` `tool_reg.as_untrusted(...)` for every tool output (covers see_screen/gather_context/computer_use results); injection test existed: `test_runner.py:123` (INJECT_TREE). Added: hidden-text defense `strip_invisible` (Cc/Cf scrub, `\n\t` kept) applied in `redact_text` + `render_tree` (`brain/vision/redact.py`, `gateway.py`); new `test_injection_fixtures.py` — 3 fixtures (zero-width hidden text, fake "SYSTEM SECURITY" dialog, ignore-previous banner) × wrapped/stripped/never-dispatched + compromised-model case (powershell rejected by allow-list). |
+| 4 | Vision latency + cost per call | **NEW → REPORTED** | Source: `brain/router/usage.jsonl` (`router/core.py:808` cost hook, `spend.estimate_cost_usd` price 0.66/1.98 per Mtok). **Observed (live, read-only): 14 vision calls — 2 success: 1544 ms / 223+10 tok / $0.000167 and 3187 ms / 623+150 tok / $0.000708 (total $0.000875); 12 failed: 1400–2111 ms, E_OFFLINE+E_INTERNAL (outage window, 0 tokens = $0).** Budget takeaway for router: a gated see_screen call ≈ 1.5–3.2 s and ≈ $0.0002–0.0007 per call at typical payload sizes. Reported via coord `test_result`. |
+
+**Wave 5H tests (Rule 14, one suite at a time, RAPHAEL_INSTANCE=computer-use):**
+lane **146 passed, 3 skipped** (was 120 → +26 audit tests) · `brain/tests` **194 passed** ·
+`tests/regression` **54 passed, 4 xfailed** (prior instance-table failure fixed by qa) ·
+CI collect `pytest -q brain --collect-only` **933 collected, 0 errors** · no orphan
+processes of mine (the long-test pids observed belong to the infra lane's SEC-6 proof).
 
 ## Wave 5 (2026-10-07)
 
