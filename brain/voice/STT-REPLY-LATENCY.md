@@ -73,3 +73,35 @@ already effectively instant — there is nothing meaningful to cut there.
   ws.py append logic (brain-core), STT model choice (router). Re-run this
   probe + a live utterance split-test to verify: target
   close→subtitle ≤ 400 ms, perceived ≤ 1.7 s, zero split regressions.
+
+---
+
+## DECIDED (conductor, 2026-10-08) + final measured numbers
+
+**Decision: ACCEPT THE FLOOR.** close→subtitle ~550 ms median (floor 396–477 ms =
+Groq RTT + ASR for a 3.7 s clip; brain handoff ≤3 ms). ≤400 ms median is
+unreachable on this link without a **closer STT provider** (standing option,
+needs a human key) or the **speculative-partial path (stays rejected)**.
+Cut A body half landed (SILENCE_CLOSE 12 + CONTINUATION_GRACE 13 = the old 25 →
+zero split regressions proven by construction); Cut B landed neutral
+(turbo median 643 ms vs v3 604 ms, usage-log A/B).
+
+### Metric precision (so the numbers cannot be misread later)
+| metric | value | definition |
+|---|---|---|
+| audio_end → subtitle | **554 ms median** (477–793; floor 396) | probe S2+S3 — the decided floor |
+| VAD-close → subtitle | **≈1.85 s** | 1.2 s close + 1.3 s grace + 0.55 s STT |
+| stop-speaking → subtitle | **≈3.05 s** (was 3.08 s) | close fires1.2 s after last speech, audio_end fires at close+grace (2.5 s — unchanged worst case, by design) |
+
+**Arithmetic tension flagged (conductor's "~1.8 s perceived, ~45% better"):**
+1.2 + 0.55 ≈ 1.8 assumes `audio_end` fires AT the 1.2 s close; the grace hold
+(13 chunks) defers it to 2.5 s — which is exactly what keeps the merge
+contract (`brain/tests/test_sec3_cloud_stt_gate.py`: no end between parts)
+and the zero-split-regression proof intact. **Reaching stop→subtitle ≈1.8 s
+WITH zero splits** requires the end-at-close variant where the brain's
+AUD-17 audio worker transcribes immediately at close but HOLDS the result for
+the merge window (discard the partial if a continuation arrives, else submit) —
+that is brain-core's file; offered here as an optional follow-up (their call,
+not started). With the accepted floor and the landed grace design, the honest
+end-to-end numbers are: **audio_end→subtitle 0.55 s (floor accepted), stop→
+subtitle ≈3.05 s (split-safe by construction)**.
