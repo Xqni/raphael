@@ -12,5 +12,5 @@ httpx>=0.27                   # starlette TestClient transport
 uvicorn>=0.30                 # two-instance isolation subprocesses
 numpy>=1.26                   # brain.voice (mocked TTS still imports it)
 PyYAML>=6.0                   # brain.voice config loader
-keyboard>=0.13                # body/win unit tests (Linux + Windows)
+keyboard>=0.13.5                # body/win unit tests (Linux + Windows)
 soundfile
