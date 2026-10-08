@@ -42,7 +42,9 @@ def _validate(text: Any, source: Any, category: Any) -> str:
 def remember(text: Any, *, source: str = 'observed', category: str = 'fact',
              pinned: bool = False, owner: Optional[str] = None) -> int:
     """Store one memory. Returns the new row id. Raises ValueError on
-    empty text / unknown source / category."""
+    empty text / unknown source / category. AUD-15 retention: oldest
+    UNPINNED rows beyond `memory.max_rows` are dropped in the same
+    transaction (pinned rows are never trimmed)."""
     from . import get_conn
     text = _validate(text, source, category)
     conn = get_conn()
@@ -52,10 +54,32 @@ def remember(text: Any, *, source: str = 'observed', category: str = 'fact',
             'VALUES (?, ?, ?, ?, ?)',
             (text, source, category, 1 if pinned else 0,
              owner or default_owner()))
+        _trim(conn, owner or default_owner())
         conn.commit()
         return int(cur.lastrowid)
     finally:
         conn.close()
+
+
+def _trim(conn, owner: str) -> None:
+    """AUD-15 retention cap — fail-silent (a cap hiccup must not fail the
+    insert; the row itself is already written)."""
+    try:
+        from .. import config as appcfg
+        cap = int(appcfg.cfg_get(appcfg.get_config(),
+                                 'memory.max_rows', 5000) or 5000)
+    except Exception:  # noqa: BLE001
+        cap = 5000
+    if cap <= 0:
+        return
+    try:
+        conn.execute(
+            'DELETE FROM memories WHERE owner = ? AND pinned = 0 '
+            'AND id NOT IN (SELECT id FROM memories WHERE owner = ? '
+            'AND pinned = 0 ORDER BY id DESC LIMIT ?)',
+            (owner, owner, cap))
+    except Exception:  # noqa: BLE001
+        pass
 
 
 def forget(mem_id: int, *, owner: Optional[str] = None) -> bool:

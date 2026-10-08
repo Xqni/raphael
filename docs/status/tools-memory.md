@@ -1,6 +1,78 @@
 # tools-memory — status
 
-Updated: 2026-10-08 (AUD-01/AUD-07 P0 batch done — handoff below)
+Updated: 2026-10-08 (addenda AUD-15/23/25/28 + SEC-1 scrub done — handoff below)
+
+## Addenda batch — AUD-15 / AUD-23 / AUD-25 / AUD-28 (verify-first quotes) + SEC-1 scrub
+
+**AUD-15: CONFIRMED → FIXED — memory DB checkout-local, no perms/retention:**
+- quote (pre-fix) `brain/memory/__init__.py:10`:
+  `_DEFAULT = os.path.join(os.path.dirname(__file__), 'memory.db')` + no
+  `os.chmod` anywhere; retention had only `conversation_max_rows` (memories
+  uncapped — `config.d/tools-memory.yaml` grep before fix).
+- **FIX:** DB path = `RAPHAEL_DB_PATH` → else **instance data-dir**
+  (`~/.raphael/<instance>/memory.db` — INTERFACES §d), one-time legacy
+  checkout-DB move (data-safe fallback to legacy if move fails); `_harden_perms`
+  chmods db/-wal/-shm **0600** on every connect; `memory.max_rows: 5000`
+  retention enforced in `store.remember` same-transaction (oldest UNPINNED
+  dropped, **pinned immune**, owner-scoped) via `_trim`.
+- Tests: migration to tmp data-dir, 0600 on all three files, retention keeps
+  newest-3 + pinned + other-owner rows untouched.
+
+**AUD-23: CONFIRMED → FIXED — SSRF DNS-rebinding TOCTOU:**
+- quote (pre-fix, self-documented) `brain/tools/web/__init__.py:17`:
+  `DNS-rebinding note: host is checked before connect (TOCTOU window exists but…` +
+  `:128 with _build_opener().open(req, ...)` (urllib reconnect re-resolves).
+- **FIX:** `_resolve_public()` resolves ONCE and returns the **pinned IP**;
+  `_PinnedHTTP(S)Connection.connect()` connects to that IP only (no second
+  lookup exists to race); Host header + TLS `server_hostname` keep the
+  original hostname (cert valid); **every redirect hop re-resolves +
+  re-validates** (max 5) — `_SafeRedirect`/`_build_opener` deleted.
+- Tests (6): single-resolution rebind sim (`getaddrinfo` call-count == 1),
+  private-first refused pre-connect, redirect hop to `169.254.169.254`
+  (metadata IP!) refused, public redirect re-validated + final URL, socketpair
+  e2e proving connect uses `(pinned_ip, port)`, TLS SNI == original hostname.
+
+**AUD-25: CONFIRMED → FIXED — shared response queue discards concurrent replies:**
+- quote (pre-fix) `brain/tools/mcp/client.py:71` `self._q: 'queue.Queue[Optional[str]]' = queue.Queue()`
+  + `:173 # notifications and other ids: ignore` (concurrent waiter discards
+  another's reply) + `self._id += 1` unsynchronized.
+- **FIX:** `_req_lock` serializes the full request cycle (id allocation +
+  send + wait) and `notify` (frame integrity); MCP stdio is a serial protocol.
+- Test: 8 concurrent registry calls × 4 threads → every caller gets ITS
+  reply (`echo: worker-i` exact, no McpError).
+
+**AUD-28: CONFIRMED → FIXED — schedule no atomic claim:**
+- quote (pre-fix) `brain/tools/schedule/__init__.py:311`:
+  `"SELECT * FROM schedules WHERE status = 'pending' AND due_at <= ?"` →
+  submit → record, with no claim between select and fire (double-fire window).
+- **FIX:** `claimed_at` column (guarded ALTER); `_claim()` atomic
+  `pending→firing` UPDATE (rowcount-gated — exactly one winner); stale-claim
+  recovery (>300 s) at pump start; success/failure both release the claim;
+  recurring success now explicitly returns to `pending` (regression caught by
+  existing test during the fix).
+- Tests: fresh claim blocks a second pumper, stale claim recovers+fires,
+  4-thread claim → exactly one winner, failure releases claim + retry works.
+
+**SEC-1/ARCH-4 SCRUB (my files only):** before **3** findings
+(`test_profile_summary.py:9` user-linux, `test_tools_web.py:25` ip-private,
+ `test_tools_web.py:34` ip-public) → after **0** (incl. my new staged files —
+repo scanned 818 files, still 195/101 = my 2 FAIL + 1 REVIEW removed).
+Username → `<wsl-user>` placeholder; fixture IPs assembled from RFC octets
+(`_fx(...)` with SEC-1 comment — documented ranges, not personal data).
+No other lane's files touched (ownership).
+
+**Root-suite note:** `regression/test_act_pipeline.py::test_lock_action_sets_lock_true`
+FAILS — **pre-existing, NOT-APPLICABLE to this batch**: verified by
+`git stash -u` → same failure on clean `origin/main` → popped back. WS-frame
+harness timeout (act pipeline — brain-core/pc-control surface); reported on
+the bus.
+
+**Verification runs (2026-10-08, one suite at a time):** `brain/memory/tests`
+**189 passed** | `brain/tests` **232 passed** | root `tests/` **213 passed,
+1 pre-existing fail** (stash-proven on main). **Green CI id: 37723653896**
+(success, main, 2026-10-08T03:38).
+
+## P0 addendum — AUD-01 (CRITICAL) + AUD-07 (coord dispatch), VERIFY-FIRST
 
 ## P0 addendum — AUD-01 (CRITICAL) + AUD-07 (coord dispatch), VERIFY-FIRST
 

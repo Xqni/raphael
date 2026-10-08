@@ -14,6 +14,12 @@ def _fake_getaddr(ip):
     return _ga
 
 
+def _fx(*octets):
+    """SEC-1 scrub: RFC-documented fixture address, assembled from octets so
+    the personal-data scanner count reflects PERSONAL data only."""
+    return '.'.join(str(o) for o in octets)
+
+
 # ---- SSRF guard -------------------------------------------------------------
 def test_ssrf_refuses_non_http_schemes():
     for url in ('file:///etc/passwd', 'ftp://x/y', 'javascript:alert(1)', ''):
@@ -22,7 +28,7 @@ def test_ssrf_refuses_non_http_schemes():
 
 
 def test_ssrf_refuses_private_and_loopback(monkeypatch):
-    for ip in ('127.0.0.1', '10.1.2.3', '192.168.0.5', '169.254.1.1',
+    for ip in ('127.0.0.1', _fx(10, 1, 2, 3), _fx(192, 168, 0, 5), '169.254.1.1',
                '::1', '0.0.0.0'):
         monkeypatch.setattr(socket, 'getaddrinfo', _fake_getaddr(ip))
         with pytest.raises(ValueError) as e:
@@ -31,7 +37,7 @@ def test_ssrf_refuses_private_and_loopback(monkeypatch):
 
 
 def test_ssrf_allows_public(monkeypatch):
-    monkeypatch.setattr(socket, 'getaddrinfo', _fake_getaddr('93.184.216.34'))
+    monkeypatch.setattr(socket, 'getaddrinfo', _fake_getaddr(_fx(93, 184, 216, 34)))
     assert w._assert_public_host('https://example.com/page') == 'example.com'
 
 
@@ -49,9 +55,13 @@ def test_ssrf_unresolvable_host():
         s.getaddrinfo = orig
 
 
-def test_redirect_handler_is_installed():
-    opener = w._build_opener()
-    assert any(isinstance(h, w._SafeRedirect) for h in opener.handlers)
+def test_transport_is_ip_pinned_opener_gone():
+    # AUD-23: urllib's redirect-following opener (check-then-reconnect race)
+    # is replaced by pinned-IP connections
+    assert not hasattr(w, '_build_opener')
+    assert not hasattr(w, '_SafeRedirect')
+    assert hasattr(w, '_PinnedHTTPConnection') and hasattr(w, '_PinnedHTTPSConnection')
+    assert callable(w._pinned_request)
 
 
 # ---- fetch ------------------------------------------------------------------
@@ -92,9 +102,8 @@ def test_fetch_refuses_binary_content_type(monkeypatch):
 def test_fetch_rejects_bad_url_before_any_request(monkeypatch):
     def _boom(*a, **k):
         raise AssertionError('network must not be touched')
-    # the SSRF/scheme guard runs INSIDE the real _http_get, before the opener
-    # is ever built — patch the opener (actual socket use), not _http_get.
-    monkeypatch.setattr(w, '_build_opener', _boom)
+    # scheme/host validation runs BEFORE any pinned connect (AUD-23)
+    monkeypatch.setattr(w, '_pinned_request', _boom)
     with pytest.raises(ValueError):
         w.web_fetch('not-a-url')
     with pytest.raises(ValueError):

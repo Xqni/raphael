@@ -69,6 +69,7 @@ class StdioClient:
         self.timeout = float(timeout)
         self._id = 0
         self._q: 'queue.Queue[Optional[str]]' = queue.Queue()
+        self._req_lock = threading.Lock()   # AUD-25: serialize request cycles
         self._stderr_tail: List[str] = []
         try:
             self._proc = subprocess.Popen(
@@ -120,12 +121,24 @@ class StdioClient:
             raise McpError(f'write failed: {e} (rc={self._proc.returncode})')
 
     def notify(self, method: str, params: Optional[Dict[str, Any]] = None) -> None:
-        self._send({'jsonrpc': '2.0', 'method': method, 'params': params or {}})
+        with self._req_lock:                 # never interleave a frame mid-request
+            self._send({'jsonrpc': '2.0', 'method': method, 'params': params or {}})
 
     def request(self, method: str, params: Optional[Dict[str, Any]] = None,
                 timeout: Optional[float] = None) -> Dict[str, Any]:
         """Send a request, wait for ITS response. Returns the `result`
-        object; raises McpError on server error / timeout / death."""
+        object; raises McpError on server error / timeout / death.
+
+        AUD-25: request cycles are SERIALIZED on `_req_lock` — the single
+        shared stdout queue can only be matched by ONE waiter at a time
+        (concurrent waiters would discard each other's replies at line
+        `# notifications and other ids: ignore`). MCP stdio is a serial
+        protocol anyway; id allocation is serialized with the send."""
+        with self._req_lock:
+            return self._request_locked(method, params, timeout)
+
+    def _request_locked(self, method: str, params: Optional[Dict[str, Any]] = None,
+                        timeout: Optional[float] = None) -> Dict[str, Any]:
         self._id += 1
         rid = self._id
         self._send({'jsonrpc': '2.0', 'id': rid, 'method': method,

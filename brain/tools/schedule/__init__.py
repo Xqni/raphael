@@ -307,12 +307,20 @@ def pump_once(submit_fn: Optional[Callable[[str], Any]] = None) -> int:
     now = _now()
     conn = _conn()
     try:
+        # AUD-28: recover stale claims first (crash between claim and record)
+        conn.execute(
+            "UPDATE schedules SET status = 'pending', claimed_at = NULL "
+            "WHERE status = 'firing' AND (claimed_at IS NULL OR claimed_at < ?)",
+            (now - 300,))
+        conn.commit()
         rows = [dict(r) for r in conn.execute(
             "SELECT * FROM schedules WHERE status = 'pending' AND due_at <= ? "
             'ORDER BY due_at LIMIT 50', (now,)).fetchall()]
     finally:
         conn.close()
     for row in rows:
+        if not _claim(row['id'], now):   # AUD-28: atomic — only ONE winner
+            continue
         try:
             fn(_fire_text(row['kind'], row))
             accepted += 1
@@ -323,18 +331,35 @@ def pump_once(submit_fn: Optional[Callable[[str], Any]] = None) -> int:
     return accepted
 
 
+def _claim(row_id: Any, now: int) -> bool:
+    """AUD-28: atomic `pending -> firing` claim (single UPDATE guard). A
+    concurrent pump that selects the same row loses the claim (rowcount 0)
+    and skips — no double submission, ever."""
+    conn = _conn()
+    try:
+        cur = conn.execute(
+            "UPDATE schedules SET status = 'firing', claimed_at = ? "
+            "WHERE id = ? AND status = 'pending'",
+            (int(now), int(row_id)))
+        conn.commit()
+        return bool(cur.rowcount)
+    finally:
+        conn.close()
+
+
 def _record_success(row: Dict[str, Any]) -> None:
     conn = _conn()
     try:
         if row['kind'] == 'recurring':
             nxt = _next_recurring(row['pattern'], after=_now())
             conn.execute(
-                'UPDATE schedules SET due_at = ?, attempts = 0, last_error = NULL '
+                'UPDATE schedules SET status = \'pending\', due_at = ?, '
+                'attempts = 0, last_error = NULL, claimed_at = NULL '
                 'WHERE id = ?', (nxt, row['id']))
         else:
             conn.execute(
                 "UPDATE schedules SET status = 'fired', fired_at = ?, "
-                'attempts = attempts + 1 WHERE id = ?',
+                'attempts = attempts + 1, claimed_at = NULL WHERE id = ?',
                 (_now(), row['id']))
         conn.commit()
     finally:
@@ -347,8 +372,9 @@ def _record_failure(row: Dict[str, Any], error: str) -> None:
         attempts = int(row.get('attempts') or 0) + 1
         status = 'error' if attempts >= _MAX_ATTEMPTS else 'pending'
         conn.execute(
-            'UPDATE schedules SET attempts = ?, last_error = ?, status = ? '
-            'WHERE id = ?', (attempts, error, status, row['id']))
+            'UPDATE schedules SET attempts = ?, last_error = ?, status = ?, '
+            'claimed_at = NULL WHERE id = ?',
+            (attempts, error, status, row['id']))
         conn.commit()
     finally:
         conn.close()

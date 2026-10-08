@@ -6,6 +6,8 @@
 memory:
   top_k: 5                       # BM25 rows injected per turn on top of pinned
   max_context_chars: 4000        # hard cap for the untrusted memory/skill block
+  max_rows: 5000                 # AUD-15 retention: oldest unpinned dropped on
+                                 # insert (pinned never trimmed; 0 = unlimited)
   kind_budgets:                  # wave-5 per-kind budgets (override built-ins)
     analysis: {k: 10, max_chars: 8000}
     simulation: {k: 4, max_chars: 3000}
