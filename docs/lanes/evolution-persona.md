@@ -73,7 +73,21 @@ Wave 4 is MERGED + **GATE PASSED** (tag `wave-4-gate`, 10/10 lanes, mock 308 gre
 
 ## Wave 5H — audit hardening sprint (inside wave 5; gate `wave-5h-gate`)
 
-- [ ] Read `docs/audit-tasks/evolution-persona.md` → your IDs: **SEC-7, F-1, F-6** — VERIFY-FIRST (verbatim file:line, then CONFIRMED / NOT-APPLICABLE / ALREADY-DONE), QA-4: link a green CI run with your wave_done. Source register + dedupe: `docs/AUDIT-2026-10-07.md`. Rules: stack down (spawn only for your test), one suite at a time, heavy suites in cloud (`gh workflow run tests-heavy.yml`), Rule 15 speed, cost not a factor.
+- [x] Packet `docs/audit-tasks/evolution-persona.md` — **SEC-7, F-1, F-6 + TASK-3 all DONE & verified**
+  (verify-first quotes inline in each coord task_done; see docs/status/evolution-persona.md):
+  SEC-7 request APPROVED + APPLIED (manifest 4→20), F-1 propose-loop (FIRST-RUN.md, proposal-only),
+  F-6 CIEL-PROMOTION.md (not promoted), TASK-3 rollback drill green.
+- [x] **AUD-26: CONFIRMED → FIXED → TESTED (2026-10-07).** Path escape: `safe_rel()`
+  (`brain/evolution/controller.py:55`) rejects absolute/drive/`~`/`..`/RESOLVED-symlink escapes;
+  `path_guard` runs BEFORE any access (`:114-118`) + re-validates at the worktree write (`:158`);
+  fail-closed `refused`. Truthful promotion: `git merge --ff-only` through the approved gate
+  (`:189`) — LKG tagged + status `promoted` only on a REAL merge (`decision` derived from the
+  merged flag, `:201`); any refusal fails closed to proposal with the dirty caller tree preserved.
+  19 controller tests (guard-never-touched, symlink escape, real merge, dirty fail-closed).
+  Suites: evolution **93**, persona **77**, Core Guard OK (20); post-fix real recheck cycle green
+  (`docs/evolution/proposals/2026-10-07-aud26-recheck.md`).
+- [x] QA-4 green CI id linked with wave_done: **37716631721** (ci.yml, completed success,
+  main, 2026-10-08T02:11:16Z) + tests-heavy **37717108187** (success). wave_done = merge position 10.
 
 ## Later waves
 - Per docs/WAVES.md — do not start early (AGENT_RULES §11).

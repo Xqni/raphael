@@ -1,8 +1,19 @@
 # evolution-persona — status
 
-Updated: 2026-10-07 (Wave 5H audit sprint)
+Updated: 2026-10-08 (Wave 5H + AUD-26)
 
 ## Done
+- **AUD-26 (2026-10-08): CONFIRMED → FIXED → TESTED.** Verify-first: path-escape quote
+  `controller.py:91-93 (repo / rel).read_text(...)` + `:117-119 target = wt / rel … write_text`;
+  false-promoted quote `:137 decision = "promoted" if can_promote else "proposal"` + `:199-201`
+  `git worktree remove --force` / `git branch -D`. Fixes: `safe_rel()` (`:55`) + `path_guard`
+  before ANY access (`:114-118`) + worktree re-validation (`:158`); truthful promotion via
+  `git merge --ff-only` (`:189`) with LKG tagged only on real merge, fail-closed to proposal
+  otherwise (`:201`), dirty caller tree preserved. 19 controller tests; suites evolution 93 /
+  persona 77 / guard OK (20); post-fix REAL recheck cycle green (path_guard → shadow rc=0 →
+  compare ok → proposal_written merged=false). Bonus bug caught by the new tests: safe_changes
+  values overwritten with path strings — corrected. Green CI ids (QA-4): **37716631721**
+  (ci.yml success, main, 2026-10-08T02:11:16Z), tests-heavy **37717108187**.
 - **Wave 5H audit packet (2026-10-07) — all four items reported via coord:**
   - **SEC-7 (P0): CONFIRMED → APPROVED → APPLIED.** Verify-first quote: `tests/core_guard.py:19-24`
     `CORE_GUARD_FILES = [brain/confirm.py, brain/auth.py, brain/control.py, brain/mode.py]` (4 files).
@@ -103,12 +114,12 @@ Updated: 2026-10-07 (Wave 5H audit sprint)
   router weights) from 01 §7.
 
 ## Test output (real runs only — never claim unrun tests)
-- 2026-10-07 (5H): `pytest brain/evolution/tests -q` → **83 passed in 0.99s** (+ F-1 live cycle:
-  shadow verify `160 passed in 1.23s` rc=0 on the patched worktree)
-- 2026-10-07 (5H): `pytest brain/persona/tests -q` → **77 passed in 0.17s**
-- 2026-10-07 (5H): `python3 tests/core_guard.py` → `Core Guard OK (20 files byte-stable)` (exit 0)
-- 2026-10-07 (5H): `ownership_check --lane evolution-persona --worktree` → OK except the sanctioned
-  `tests/core_guard_manifest.json` rehash (exception request pending — see Done)
+- 2026-10-08 (AUD-26): `pytest brain/evolution/tests -q` → **93 passed in 1.38s** (19 controller tests)
+- 2026-10-08 (AUD-26): `pytest brain/persona/tests -q` → **77 passed in 0.17s**
+- 2026-10-08 (AUD-26): real post-fix propose cycle → `status: proposal_written, merged: false`,
+  `path_guard ok` → `shadow rc=0` → `compare ok` (trace `/tmp/opencode/evo-first-run/aud26-recheck.json`)
+- 2026-10-08 (AUD-26): `python3 tests/core_guard.py` → `Core Guard OK (20 files byte-stable)` (exit 0)
+- 2026-10-07 (5H): `pytest brain/evolution/tests -q` → **83 passed**; F-1 live cycle shadow `160 passed` rc=0
 - 2026-10-07 (wave 5): `tests/.venv/bin/python -m pytest brain/evolution/tests -q` → **63 passed in 0.80s**
 - 2026-10-07 (wave 5): `python3 tests/core_guard.py` → `Core Guard OK (4 files byte-stable)` (exit 0)
 - 2026-10-07 (wave 5): `tests/ownership_check.py --lane evolution-persona --worktree` → `ownership OK (10 checked)`
