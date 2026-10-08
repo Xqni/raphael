@@ -49,3 +49,14 @@ Rules: paid Zen models + Go models beyond the Go limits both draw on the same **
 Scope: ALL model usage (session, conductor runs, lanes, router tiers) — free-tier
 scarcity no longer applies for this window. Cost hygiene rules (caps, no local
 GPU, spend logging) stay in force.
+
+## 2026-10-07 — vision SUBAGENT → cloud (user, verbatim)
+> "please please pin the vision subagent to a cloud model so we dont have to keep
+> using GPU for vision again and again. this is temp only since i dont have more
+> RAM to work with. other than that kill ollama as well since we wont be needing
+> it anymore"
+
+Scope: agent-tooling vision (screenshot/image analysis by the integrator's vision
+subagent) → `opencode-go/deepseek-v4-flash-vision-exp` (same model as Raphael's
+product vision slot; $0.15/1M in). TEMPORARY until the RAM upgrade. Ollama to be
+disabled (service disable needs sudo — one-liner handed to user).
