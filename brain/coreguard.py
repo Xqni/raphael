@@ -11,6 +11,8 @@ logs (paths + counts only, no file contents).
 import hashlib
 import json
 import subprocess
+import sys
+import time
 from pathlib import Path
 from typing import Any, Dict, Optional
 
@@ -106,30 +108,80 @@ def verify(manifest_path: Optional[Path] = None) -> Dict[str, Any]:
                 'mismatched': [], 'missing': [], 'manifest': rel}
 
 
+_last_verify = 0.0
+_VERIFY_INTERVAL_S = 30.0
+
+
+def run_guard_tool(timeout_s: float = 60.0) -> Dict[str, Any]:
+    """Execute qa's `python tests/core_guard.py` (the writer/verifier single
+    source of truth — evolution/SEC-7 coordination). {ok, rc, detail}."""
+    try:
+        proc = subprocess.run(
+            [sys.executable, str(REPO_ROOT / 'tests' / 'core_guard.py')],
+            cwd=REPO_ROOT, capture_output=True, text=True, timeout=timeout_s)
+        return {'ok': proc.returncode == 0, 'rc': proc.returncode,
+                'detail': ((proc.stderr or '') + (proc.stdout or ''))[-400:]}
+    except Exception as e:  # noqa: BLE001 — infra failure = not verified
+        return {'ok': False, 'rc': None,
+                'detail': f'{type(e).__name__}: {e}'}
+
+
 def check_at_boot() -> Dict[str, Any]:
-    """Run once at startup: SAFE MODE + visible warn Notice on failure."""
-    global _boot_result, SAFE_MODE
+    """[56] Fail-closed BEFORE serving: run qa's guard tool; drift or tool
+    failure RAISES so uvicorn/TestClient never comes up (refuse to serve).
+    Detailed verify() still feeds /status + SAFE_MODE bookkeeping."""
+    global _boot_result, SAFE_MODE, _last_verify
+    tool = run_guard_tool()
     res = verify()
     _boot_result = res
+    _last_verify = time.monotonic()
     if not res.get('ok'):
+        SAFE_MODE = {'active': True, **res}
+    if not tool['ok'] or not res.get('ok'):
+        try:
+            from . import logjson
+            logjson.slog('core_guard_refuse', tool_rc=tool.get('rc'),
+                         reason=(res.get('reason') or tool.get('reason')
+                                 or 'mismatch'),
+                         mismatched=len(res.get('mismatched') or []),
+                         missing=len(res.get('missing') or []))
+        except Exception:  # noqa: BLE001
+            pass
+        raise RuntimeError(
+            'Core Guard verification failed — REFUSING TO SERVE '
+            f'(tool_rc={tool.get("rc")}, reason={res.get("reason") or tool.get("detail")})')
+    return res
+
+
+def reverify_if_stale() -> Dict[str, Any]:
+    """AUD-21 belt: periodic re-check (throttled) so a mid-run drift flips
+    SAFE_MODE and blocks dispatch (status() refreshes it)."""
+    global _boot_result, SAFE_MODE, _last_verify
+    now = time.monotonic()
+    if now - _last_verify < _VERIFY_INTERVAL_S and _boot_result is not None:
+        return _boot_result or {}
+    _last_verify = now
+    res = verify()
+    _boot_result = res
+    if res.get('ok'):
+        SAFE_MODE = {'active': False}
+    elif not SAFE_MODE.get('active'):
         SAFE_MODE = {'active': True, **res}
         try:
             from . import logjson
-            logjson.slog('core_guard_safe_mode', reason=res.get('reason'),
-                         mismatched=len(res.get('mismatched') or []),
-                         missing=len(res.get('missing') or []))
-            from . import notice
-            notice.emit(
-                f'Core Guard manifest mismatch — running in SAFE MODE '
-                f'({len(res.get("mismatched") or []) + len(res.get("missing") or [])} '
-                f'file(s) drifted).', level='warn', pending=True)
-        except Exception:  # noqa: BLE001 — visibility must not crash boot
+            logjson.slog('core_guard_safe_mode', reason=res.get('reason'))
+        except Exception:  # noqa: BLE001
             pass
     return res
 
 
 def status() -> Dict[str, Any]:
-    """Value-blind /status block (paths + counts only)."""
+    """Value-blind /status block (paths + counts only); refreshes the
+    throttled re-verification (AUD-21) as a side effect."""
+    try:
+        reverify_if_stale()
+    except Exception:  # noqa: BLE001
+        pass
     res = _boot_result if _boot_result is not None else {'ok': None}
     out = {'active': bool(SAFE_MODE.get('active')), 'ok': res.get('ok'),
            'manifest': res.get('manifest')}
@@ -143,6 +195,7 @@ def status() -> Dict[str, Any]:
 
 
 def reset_for_tests() -> None:
-    global _boot_result, SAFE_MODE
+    global _boot_result, SAFE_MODE, _last_verify
     _boot_result = None
     SAFE_MODE = {'active': False}
+    _last_verify = 0.0

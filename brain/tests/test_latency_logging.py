@@ -154,3 +154,42 @@ def test_slog_never_raises_and_drops_value_if_redactor_unavailable(monkeypatch,
     # value-blind default: the value is DROPPED, never printed raw
     assert obj['detail'] == '<redacted-unavailable>'
     assert 'super secret value' not in json.dumps(obj)
+
+
+# ---- AUD-05: production foreground hook wired in lifespan --------------------
+def test_foreground_hook_wired_and_freshness_bounded(token_path):
+    from brain.router import privacy as rpriv
+    from brain.vision import context as fgctx
+    fgctx.reset_history()
+    with TestClient(app) as client:
+        # wired at boot: hook is callable now
+        assert rpriv.foreground_window() is None          # nothing recorded yet
+        fgctx.record_foreground('KeePass - Password Safe')
+        assert rpriv.foreground_window() == 'KeePass - Password Safe'
+        # stale observation => UNKNOWN (never served as 'current')
+        import brain.app as app_mod
+        hist = fgctx.recent_history(1)
+        fgctx._history[-1] = (hist[-1][0] - 120.0, hist[-1][1])
+        assert rpriv.foreground_window() is None
+        # a broken hook source degrades to None (never raises)
+        fgctx.reset_history()
+        assert rpriv.foreground_window() is None
+    fgctx.reset_history()
+
+
+# ---- AUD-29: bounded histograms (distributions, not latest-sample) ---------
+def test_histograms_bounded_with_percentiles():
+    for v in range(150):                 # window keeps the LAST 120
+        latency.note_stt(float(v))
+    snap = latency.snapshot()
+    h = snap['hist']['stt']
+    assert h['count'] == 120, h          # bounded
+    assert h['max'] == 149.0
+    assert 80.0 <= h['p50'] <= 100.0, h
+    assert h['p95'] >= h['p50'] and h['p95'] <= h['max']
+    # value-blind: histogram values are numbers only
+    for k, v in h.items():
+        assert isinstance(v, (int, float)), (k, v)
+    # hist absent when nothing recorded
+    latency.reset_for_tests()
+    assert 'hist' not in latency.snapshot()

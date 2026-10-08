@@ -347,3 +347,69 @@ def test_lifespan_binds_main_loop_for_computer_use(monkeypatch):
         pass
     assert called.get('loop') is not None
     assert not called['loop'].is_closed() or True   # loop ran during lifespan
+
+
+# ---- AUD-10 (P0): shell placeholder gone + discovery failure fails closed ---
+def test_shell_placeholder_deleted():
+    import pathlib
+    src = (pathlib.Path(brain_tools_path()) / '__init__.py').read_text()
+    # the wave-2 arbitrary shell CODE must not exist (comments may name it)
+    assert 'def shell_tool' not in src
+    assert "subprocess.run(command, shell=True" not in src
+    assert 'command line to execute' not in src
+    # the fixed allow-list package IS the only shell source
+    assert 'brain/tools/shell' in src
+
+
+def brain_tools_path():
+    import brain.tools
+    return str(brain.tools.__path__[0])
+
+
+def test_discovery_failure_fails_closed_shell_absent(monkeypatch):
+    """If the FIXED shell package fails to import, `shell` must be ABSENT —
+    not offered to the model, not callable (no arbitrary fallback returns)."""
+    import importlib
+    import sys
+    import brain.tools as reg
+
+    real_import = importlib.import_module
+    import builtins
+    real_bimport = builtins.__import__
+
+    def _is_shell(name):
+        return str(name).startswith('brain.tools.shell')
+
+    def _boom(name, *args, **kwargs):
+        if _is_shell(name):
+            raise ImportError('simulated fixed-registry failure')
+        return real_import(name, *args, **kwargs)
+
+    def _bboom(name, *args, **kwargs):
+        # pkgutil's package walk uses builtins.__import__ directly — block it
+        # there too, or the poisoned package re-executes and re-registers.
+        if _is_shell(name):
+            raise ImportError('simulated fixed-registry failure')
+        return real_bimport(name, *args, **kwargs)
+
+    saved = sys.modules.pop('brain.tools.shell', None)
+    reg._discovered.discard('brain.tools.shell')
+    reg._registry.pop('shell', None)
+    reg._META.pop('shell', None)
+    monkeypatch.setattr(importlib, 'import_module', _boom)
+    monkeypatch.setattr(builtins, '__import__', _bboom)
+    try:
+        errs = reg.discover(force=True)
+        assert any('brain.tools.shell' in k for k in errs), errs
+        # FAIL CLOSED: no shell tool offered or callable
+        assert reg.get('shell') is None
+        assert 'shell' not in {s['function']['name']
+                               for s in reg.tool_specs()}
+    finally:
+        # force a FRESH execution: the cached module object never re-runs its
+        # module-level register(), so drop it and re-import for real
+        sys.modules.pop('brain.tools.shell', None)
+        reg._discovered.discard('brain.tools.shell')
+        reg._load_errors.clear()
+        real_import('brain.tools.shell')   # fresh exec -> register() runs
+        assert reg.get('shell') is not None, 'shell must be restored'

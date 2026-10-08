@@ -151,3 +151,79 @@ def test_unknown_reason_with_local_decision_is_wake_semantics(token_path,
             _recv_until(ws_body, lambda m: m.get('type') == 'ack'
                         and m.get('audio') == 'end')
     assert len(cloud_counter) == 1, 'audio_start present = local decision'
+
+
+# ---- AUD-17: slow STT must not block the receive loop -----------------------
+def test_slow_stt_heartbeat_and_cancellation(token_path, monkeypatch):
+    """>30s mocked STT: pings keep arriving while the segment is in flight
+    (receive loop free), and disconnecting cancels the in-flight work without
+    hanging the session teardown."""
+    import threading
+    import time as _time
+    from brain.voice import get_voice
+
+    gate = threading.Event()
+
+    def slow_transcribe(buf, sample_rate=None, reason=None):
+        gate.wait(35)               # >30s mocked STT (released at test end)
+        from types import SimpleNamespace
+        return SimpleNamespace(text='Raphael, hello', lang='en', rtf=0.1)
+
+    monkeypatch.setattr(get_voice(), 'transcribe_result', slow_transcribe)
+    old_ping = os.environ.get('RAPHAEL_WS_PING_INTERVAL_S')
+    os.environ['RAPHAEL_WS_PING_INTERVAL_S'] = '0.3'
+    try:
+        with TestClient(app) as client:
+            with client.websocket_connect('/ws') as ws_body:
+                assert _auth(ws_body, 'body')['type'] == 'auth_ok'
+                kick = _recv_json(ws, timeout=5) if False else _recv_json(ws_body, timeout=5)
+                assert kick['type'] == 'ping'      # post-auth kickoff ping
+                _send_audio(ws_body, silent=False) # audio_end -> queued work
+                # heartbeat continues WHILE STT is pending: next frame is a
+                # server ping (not blocked behind a 35s transcribe)
+                t0 = _time.monotonic()
+                nxt = _recv_json(ws_body, timeout=2.5)
+                elapsed = _time.monotonic() - t0
+                assert nxt['type'] == 'ping', nxt
+                assert elapsed < 2.5, 'receive loop was blocked by STT'
+                # no audio ack yet — the worker is still in flight
+                # (disconnect now: cancellation must not hang teardown)
+            # leaving the context disconnects mid-STT -> worker cancelled
+    finally:
+        gate.set()                    # release the blocked thread promptly
+        if old_ping is None:
+            os.environ.pop('RAPHAEL_WS_PING_INTERVAL_S', None)
+        else:
+            os.environ['RAPHAEL_WS_PING_INTERVAL_S'] = old_ping
+
+
+# ---- AUD-24: exact audio byte cap + global session bound --------------------
+def test_audio_buffer_never_exceeds_exact_cap(token_path, monkeypatch):
+    import struct
+    import brain.ws as ws_mod
+    from brain.ws import get_hub
+    monkeypatch.setattr(ws_mod, 'AUDIO_MAX_BYTES', 1000)   # small cap
+    with TestClient(app) as client:
+        with client.websocket_connect('/ws') as ws_body:
+            assert _auth(ws_body, 'body')['type'] == 'auth_ok'
+            _send_audio(ws_body, silent=False)             # 8000 B tone
+            _recv_until(ws_body, lambda m: m.get('type') == 'ack'
+                        and m.get('audio') == 'end')
+            body = next(s for s in get_hub()._sessions.values()
+                        if s.role == 'body')
+            assert len(body.audio_buf) <= 1000, len(body.audio_buf)
+
+
+def test_max_sessions_refused_loudly(token_path, monkeypatch):
+    import brain.ws as ws_mod
+    monkeypatch.setattr(ws_mod, 'MAX_SESSIONS', 1)
+    with TestClient(app) as client:
+        with client.websocket_connect('/ws') as ws1:
+            assert _auth(ws1, 'ui')['type'] == 'auth_ok'
+            with client.websocket_connect('/ws') as ws2:
+                ws2.send_text(json.dumps({'type': 'auth', 'v': 1,
+                                          'token': TEST_TOKEN, 'role': 'ui',
+                                          'client': 't', 'client_v': '1'}))
+                first = _recv_json(ws2, timeout=5)
+                assert first['type'] == 'auth_fail'
+                assert first['code'] == 'E_RATE_LIMIT'

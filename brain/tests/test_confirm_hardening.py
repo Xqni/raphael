@@ -52,8 +52,10 @@ def test_classify_benign_needs_nothing():
 def test_classify_tool_risk_uses_action_mapping():
     d = confirm_mod.classify('do a thing', tool='files_delete')
     assert d.needs and d.action == 'delete_files' and d.risk == 'high'
+    # AUD-09 (P0): TOOL-sourced decisions are NON-voice by default — shell
+    # is not on the config list, but an open-mic 'yes' may not authorize it
     d = confirm_mod.classify('do a thing', tool='shell')
-    assert d.needs and d.risk == 'low'      # shell not on the config list
+    assert d.needs and d.risk == 'high'
 
 
 # ---- confirmer channel hardening -------------------------------------------
