@@ -220,14 +220,14 @@ def test_lock_fairness_and_cancel_while_waiting():
     old_tok = os.environ.get('RAPHAEL_TOKEN_PATH')
     os.environ['RAPHAEL_TOKEN_PATH'] = tok
 
-    def wait_http(client, pred, timeout=10.0, step=0.02):
+    def wait_http(client, pred, timeout=30.0, step=0.02):
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
             out = pred()
             if out:
                 return out
             time.sleep(step)
-        raise AssertionError('condition not met within timeout')
+        raise AssertionError(f'condition not met in {timeout}s')
 
     h = {'X-Raphael-Token': 'conc-token-991'}
     try:

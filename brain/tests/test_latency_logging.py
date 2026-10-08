@@ -121,6 +121,33 @@ def test_status_exposes_latency_after_job(token_path):
             os.environ['RAPHAEL_DISABLE_ROUTER'] = old_env
 
 
+# ---- morning latency lever: idle -> first subtitle on the fast path ---------
+def test_idle_to_first_subtitle_under_1s_on_fastpath(token_path):
+    from brain.tests.test_foreground import _recv_json   # shared ws helpers
+    """Rule 15 / router request: a fastpath-covered intent from IDLE reaches
+    the first subtitle in <1s (no LLM roundtrip, foreground gate irrelevant)."""
+    import time as _time
+    with TestClient(app) as client:
+        with client.websocket_connect('/ws') as ws:
+            ws.send_text(json.dumps({'type': 'auth', 'v': 1,
+                                     'token': TEST_TOKEN, 'role': 'cli',
+                                     'client': 't', 'client_v': '1'}))
+            assert _recv_json(ws, timeout=5)['type'] == 'auth_ok'
+            t0 = _time.monotonic()
+            ws.send_text(json.dumps({'type': 'command', 'v': 1,
+                                     'text': 'echo ping', 'source': 'text'}))
+            first = None
+            for _ in range(30):
+                m = _recv_json(ws, timeout=5)
+                if m.get('type') == 'subtitle':
+                    first = _time.monotonic() - t0
+                    break
+                if m.get('type') == 'ping':
+                    continue
+            assert first is not None, 'no subtitle on a fastpath intent'
+            assert first < 1.0, f'first subtitle took {first:.3f}s (target <1s)'
+
+
 # ---- structured logging: value-blind with redaction -------------------------
 def test_slog_is_json_and_redacts_secret_values(capsys):
     logjson.slog('sec_probe',

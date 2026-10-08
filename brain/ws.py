@@ -44,6 +44,7 @@ CAN_SEND_CONFIRM_RESP = {'ui', 'body', 'cli'}
 CAN_SEND_CONTROL = {'ui', 'body', 'cli'}
 CAN_SEND_ACT_RES = {'body'}
 CAN_SEND_ORB_INPUT = {'ui'}
+CAN_SEND_FOREGROUND = {'body'}      # AUD-05 push (grant: pc dispatch 2026-10-08)
 CAN_SEND_STATE_REQ = {'ui', 'cli'}
 CAN_SEND_JOB_QUERY = {'ui', 'body', 'cli'}
 CAN_SEND_CANCEL = {'ui', 'body', 'cli'}
@@ -51,6 +52,7 @@ CAN_SEND_CANCEL = {'ui', 'body', 'cli'}
 KNOWN_CLIENT_TYPES = {
     'command', 'audio_start', 'audio_end', 'confirm_resp', 'control', 'act_res',
     'orb_input', 'state_req', 'job_list', 'job_get', 'cancel', 'pong', 'auth',
+    'foreground',
 }
 
 MAX_MSG = 8 * 1024 * 1024          # §1: 8 MiB
@@ -430,6 +432,7 @@ class WsHub:
             'control': CAN_SEND_CONTROL,
             'act_res': CAN_SEND_ACT_RES,
             'orb_input': CAN_SEND_ORB_INPUT,
+            'foreground': CAN_SEND_FOREGROUND,
             'state_req': CAN_SEND_STATE_REQ,
             'job_list': CAN_SEND_JOB_QUERY,
             'job_get': CAN_SEND_JOB_QUERY,
@@ -679,6 +682,20 @@ class WsHub:
                     return
         # plain interaction — acknowledged; deeper menu wiring is orb-dev's side
         await self._send(s, {'type': 'ack', 'v': 1, 'kind': kind})
+
+    async def _on_foreground(self, s: Session, msg: Dict[str, Any]):
+        """AUD-05 push: pc-control/body sends the focused window; cached
+        fresh (<5s) for the router chat gate (value-blind: no logging)."""
+        from . import foreground as _fg
+        name = msg.get('value') or msg.get('name')
+        if isinstance(name, dict):          # tolerate {window:{title:...}}
+            name = (name.get('window') or {}).get('title') or name.get('title')
+        window = msg.get('window')
+        if not name and isinstance(window, dict):
+            name = window.get('title') or window.get('process')
+        ok = _fg.set_foreground(name if isinstance(name, str) else None)
+        await self._send(s, {'type': 'ack', 'v': 1, 'kind': 'foreground',
+                             'cached': ok})
 
     async def _on_act_res(self, s: Session, msg: Dict[str, Any]):
         """Body -> Brain: act_req result (PROTOCOL §7).
