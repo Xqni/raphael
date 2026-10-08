@@ -46,12 +46,12 @@ router:
   # AUD-05 fail-closed: unknown/unwired foreground hook → chat+vision REFUSE
   # (reason=foreground_unknown). Flip false ONLY as a documented interim
   # escape (integrator, config.d or config.yaml router: block).
-  # INTERIM FLIP (integrator 2026-10-08): false — the hook's only data
-  # source (vision/CU probe ring, <60s fresh) starves while the stack is
-  # idle, so fail-closed = chat permanently dead at night (E_OFFLINE
-  # "Provider unavailable"). Revert to true when body foreground push +
-  # brain cache land (requests/body-win + brain-core foreground_push).
-  require_foreground: false
+  # RESTORED TO FULL STRENGTH (integrator 2026-10-08): pc-control's
+  # foreground push (SetWinEventHook, <100ms, merged position 3) + brain-core's
+  # consumer (cache <5s -> vision ring -> None, fail-closed on null) are BOTH
+  # on main — interim false flip over: unknown foreground refuses cloud egress
+  # again (AUD-05), allow-path verified live before this commit.
+  require_foreground: true
   # defensive byte cap on cloud vision payloads (caller pre-downscales to
   # vision.max_px / quality — PROTOCOL §7)
   vision_max_bytes: 4000000
