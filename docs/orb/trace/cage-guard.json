@@ -1,0 +1,75 @@
+{
+  "pass": true,
+  "checks": [
+    {
+      "name": "cage_established_at_boot",
+      "ok": true,
+      "detail": "shape=circle morphActive=false lattice.maxErr=0.0000 cage.maxErr=0.0000 points=60",
+      "pass": true
+    },
+    {
+      "name": "mid_task_hint_reaches_renderer",
+      "ok": true,
+      "detail": "orb_state frames carrying a shape_hint: octagram (the brain-side value we must IGNORE)",
+      "pass": true
+    },
+    {
+      "name": "cage_preserved_mid_task",
+      "ok": true,
+      "detail": "applied=circle effective=circle morphActive=false lattice.maxErr=0.0000 cage.maxErr=0.0000",
+      "pass": true
+    },
+    {
+      "name": "state_applied_while_shape_stays_circle",
+      "ok": true,
+      "detail": "state=thinking shapeHint=circle (expect thinking / circle)",
+      "pass": true
+    }
+  ],
+  "boot": {
+    "shape": "circle",
+    "shapeHintField": "circle",
+    "morphActive": false,
+    "targetLengths": [
+      180,
+      180,
+      180,
+      180,
+      180,
+      180
+    ],
+    "lattice": {
+      "lengthMismatch": false,
+      "maxErr": 0,
+      "points": 60
+    },
+    "cage": {
+      "maxErr": 0,
+      "active": false,
+      "shape": "circle"
+    }
+  },
+  "mid": {
+    "shape": "circle",
+    "shapeHintField": "circle",
+    "morphActive": false,
+    "targetLengths": [
+      180,
+      180,
+      180,
+      180,
+      180,
+      180
+    ],
+    "lattice": {
+      "lengthMismatch": false,
+      "maxErr": 0,
+      "points": 60
+    },
+    "cage": {
+      "maxErr": 0,
+      "active": false,
+      "shape": "circle"
+    }
+  }
+}

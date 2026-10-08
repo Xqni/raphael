@@ -525,6 +525,65 @@ async function runWave5(cdp, brain, rec) {
   return out;
 }
 
+/**
+ * AMENDMENT (user, 2026-10-07): "the orb is now in a weird shape, its not a
+ * cage we had earlier — preserve that."
+ *
+ * Two failure modes to prove cannot happen:
+ *  1. BOOT — the revert collapsed every morph through ONE applyLatticeShape()
+ *     call site; if the lattice were only established on the first STATE event
+ *     it would sit at build-time default. Assert the geometry is already the
+ *     cage before anything drives a state.
+ *  2. MID-TASK — brain/orbstate.py still emits per-task `shape_hint`
+ *     (llm -> octagram via config orb.shape_map). The renderer must ignore it
+ *     (SHAPE_MORPHS_ENABLED=false), so the check deliberately REQUIRES that a
+ *     non-circle hint actually arrives and is still not applied.
+ */
+async function runCageGuard(cdp, brain, rec) {
+  const checks = [];
+  const add = (name, ok, detail) => checks.push({ name, ok, detail, pass: !!ok });
+  const md = () => cdp.evaluateJson('window.__orbMorphDiff()');
+  const okShape = (m) => m && m.shape === 'circle' && m.morphActive === false &&
+    m.lattice && m.lattice.maxErr < 0.01 && m.cage && m.cage.maxErr < 0.01;
+
+  // (1) BOOT
+  const boot = await md();
+  add('cage_established_at_boot', okShape(boot),
+    boot ? `shape=${boot.shape} morphActive=${boot.morphActive} ` +
+          `lattice.maxErr=${boot.lattice && boot.lattice.maxErr.toFixed(4)} ` +
+          `cage.maxErr=${boot.cage && boot.cage.maxErr.toFixed(4)} points=${boot.lattice && boot.lattice.points}`
+         : 'probe missing');
+
+  // (2) MID-TASK — mock's thinking frame carries shape_hint=octagram, task_kind=llm
+  brain.step('thinking');
+  await sleep(1400);
+  const rx = await cdp.evaluateJson('JSON.stringify(window.__orbTrace())');
+  const hinted = (rx.rx || []).filter((r) => r.kind === 'orb_state' && r.data && r.data.shapeHint);
+  const octa = hinted.some((r) => r.data.shapeHint === 'octagram');
+  add('mid_task_hint_reaches_renderer', octa,
+    `orb_state frames carrying a shape_hint: ${hinted.map((r) => r.data.shapeHint).join(',') || 'none'} ` +
+    '(the brain-side value we must IGNORE)');
+
+  const mid = await md();
+  add('cage_preserved_mid_task', okShape(mid),
+    mid ? `applied=${mid.shapeHintField} effective=${mid.shape} morphActive=${mid.morphActive} ` +
+          `lattice.maxErr=${mid.lattice && mid.lattice.maxErr.toFixed(4)} ` +
+          `cage.maxErr=${mid.cage && mid.cage.maxErr.toFixed(4)}`
+        : 'probe missing');
+  add('state_applied_while_shape_stays_circle',
+    rx.applied && rx.applied.state === 'thinking' && rx.applied.shapeHint === 'circle',
+    rx.applied ? `state=${rx.applied.state} shapeHint=${rx.applied.shapeHint} (expect thinking / circle)` : 'no applied record');
+
+  brain.step('idle');
+  await sleep(600);
+  const out = { pass: checks.every((c) => c.ok), checks, boot, mid };
+  rec('cage_guard', out);
+  fs.writeFileSync(path.join(OUT, 'cage-guard.json'), JSON.stringify(out, null, 2) + '\n');
+  log(`cage guard: ${out.pass ? 'PASS' : 'FAIL'} (${checks.filter((c) => c.ok).length}/${checks.length})`);
+  for (const c of checks) log(`  ${c.ok ? 'ok  ' : 'FAIL'} ${c.name}: ${c.detail}`);
+  return out;
+}
+
 async function runStartupPhase(cdp, brain, rec) {
   // §1 evidence: drive a FULL starting -> idle sequence and sample omega,
   // angle, core brightness and layer weights every 50 ms through it, plus a
@@ -685,6 +744,15 @@ async function main() {
     // ^ NB: the stale-PNG cleanup at the top of main() must NOT run for a
     // partial phase — it would delete the per-state screenshots this phase
     // does not regenerate. That already happened once.
+
+    // --- AMENDMENT: preserve the cage (rest AND mid-task) --------------------
+    let cageGuard = null;
+    try {
+      cageGuard = await runCageGuard(cdp, brain, rec);
+    } catch (e) {
+      log('cage guard FAILED:', e && e.message);
+      rec('cage_guard_error', { message: String(e && e.message) });
+    }
 
     // --- §1 startup spin-down evidence --------------------------------------
     let startupReport = null;
@@ -879,6 +947,10 @@ async function main() {
     }
     if (transparency && !transparency.pass) {
       console.error('[orb-trace] FAIL: transparency check — a box/fringe is visible at the window edge');
+      failed = true;
+    }
+    if (cageGuard && !cageGuard.pass) {
+      console.error('[orb-trace] FAIL: the cage is not preserved at rest/mid-task (AMENDMENT)');
       failed = true;
     }
     if (wave5 && !wave5.pass) {

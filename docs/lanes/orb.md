@@ -149,7 +149,17 @@ Wave 2 is MERGED; live gate was 3/5 — evidence + bug dossiers: `docs/BUGS-WAVE
 
 ### AMENDMENT (user, 2026-10-07 evening): PRESERVE THE CAGE + kill the box
 
-- [ ] **"the orb is now in a weird shape, its not a cage we had earlier — preserve that."
+- [x] **"the orb is now in a weird shape, its not a cage we had earlier — preserve that."**
+      DONE + gated — **the code was already correct; the live orb was stale**
+      (process start 18:30:26 vs revert commit 18:44:09 — Electron does not
+      hot-reload, so the fix had never reached the screen; the deployed checkout
+      *does* contain the flag). **Restart = integrator's call, not mine.**
+      New `cage guard` **PASS 4/4**: cage geometry established **at boot**
+      (`maxErr=0.0000` both lattice and cage), and mid-task a real `octagram`
+      hint **arrives and is ignored** (`applied=circle effective=circle
+      morphActive=false`). Vision on the regenerated matrix: outer cage is a
+      **rounded ball in all four** images (rest 8/10,7/10 · mid-task 5/10,4/10).
+      ORIGINAL TEXT: *"the orb is now in a weird shape, its not a cage we had earlier — preserve that."
   RESTORE THE CAGE as the always-on look.** Research findings: (1) the revert was
   renderer-side only — brain/orbstate.py:187 still emits per-task `shape_hint` from
   orb.shape_map (llm->octagram etc.), so during any task the lattice morphs away from the
