@@ -4,7 +4,7 @@
     {
       "name": "cage_established_at_boot",
       "ok": true,
-      "detail": "shape=circle morphActive=false lattice.maxErr=0.0000 cage.maxErr=0.0000 points=60",
+      "detail": "shape=circle morphActive=false lattice.maxErr=0.0000 cage.maxErr=0.0000 cageRadius=1.150..1.150 (SPHERE if spread<0.02) points=60",
       "pass": true
     },
     {
@@ -16,7 +16,7 @@
     {
       "name": "cage_preserved_mid_task",
       "ok": true,
-      "detail": "applied=circle effective=circle morphActive=false lattice.maxErr=0.0000 cage.maxErr=0.0000",
+      "detail": "applied=circle effective=circle morphActive=false lattice.maxErr=0.0000 cage.maxErr=0.0000 cageRadiusSpread=0.0000",
       "pass": true
     },
     {
@@ -46,7 +46,10 @@
     "cage": {
       "maxErr": 0,
       "active": false,
-      "shape": "circle"
+      "shape": "circle",
+      "radiusMin": 1.14999995906139,
+      "radiusMax": 1.1500000306110496,
+      "radiusSpread": 7.154965953048986e-8
     }
   },
   "mid": {
@@ -69,7 +72,10 @@
     "cage": {
       "maxErr": 0,
       "active": false,
-      "shape": "circle"
+      "shape": "circle",
+      "radiusMin": 1.14999995906139,
+      "radiusMax": 1.1500000306110496,
+      "radiusSpread": 7.154965953048986e-8
     }
   }
 }

@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { vertexShader, sphereVert } from './shaders/vertex.glsl.js';
 import { fragmentShader, glowShader } from './shaders/fragment.glsl.js';
 import { blurVert, blurFrag } from './shaders/blur.glsl.js';
-import { initSageCore, updateSageCore, lockSageCore, projectShape, applySagePalette } from './sagecore.js';
+import { initSageCore, initCageShape, updateSageCore, lockSageCore, projectShape, applySagePalette } from './sagecore.js';
 import { initAnswerMode, updateAnswerMode, lockAnswerMode, applyAnswerPalette } from './answermode.js';
 import { initDataRings, updateDataRings, lockDataRings } from './datarings.js';
 import { initJobDots, updateJobDots, lockJobDots, applyJobPalette } from './jobdots.js';
@@ -166,6 +166,11 @@ function modeTarget(state, mode) {
 // Bonus: with morphs off the lattice/cage can never wedge again — this closes
 // the "cages stuck in weird shape" complaint for good.
 // ---------------------------------------------------------------------------
+// USER (2026-10-07): the CAGES are built as 3D wireframe SPHERES (sagecore);
+// the lattice's constant morph key is the circle — the sphere's silhouette —
+// so nothing on screen morphs. Constant either way: no per-state morph, no
+// task-kind morph, no kind accents. "the only change in state would be the
+// color."
 const BASE_SHAPE = 'circle';
 const SHAPE_MORPHS_ENABLED = false;
 const KIND_ACCENTS_ENABLED = false;
@@ -485,7 +490,8 @@ if (backingDiscAlpha > 0) {
   }
 
   const latGeo = new THREE.BufferGeometry();
-  latGeo.setAttribute('position', new THREE.BufferAttribute(makeMorphTarget('circle'), 3));
+  // built at the constant base shape so the lattice is correct from frame 0
+  latGeo.setAttribute('position', new THREE.BufferAttribute(makeMorphTarget(BASE_SHAPE), 3));
   const latMat = new THREE.MeshBasicMaterial({ color: 0x58c4f2, wireframe: true, transparent: true, opacity: 0.35 });
   lattice = new THREE.Mesh(latGeo, latMat);
   group.add(lattice);
@@ -510,6 +516,11 @@ if (backingDiscAlpha > 0) {
   scene.add(starsMesh);
 
   sage = initSageCore(THREE, group, scene, PAL); // Sage Core layers (spec §2.1)
+  // Both the OUTER cage (L.poly) and the INNER cage (L.cage) share polyGeo, so
+  // projecting it once makes them the same octagram by construction — and doing
+  // it at BUILD time means the cage is correct from the first frame with no
+  // boot morph (AMENDMENT item 2: "verify the renderer INIT path").
+  initCageShape(sage, effectiveShape());
   AM = initAnswerMode(THREE, group, PAL);        // Answer Mode gold look (spec §2.2)
   DR = initDataRings(THREE, group);              // Data Rings thinking overlay (spec §2.3)
   JD = initJobDots(THREE, group, PAL);           // jobs_active dots (PROTOCOL §8)
@@ -573,7 +584,7 @@ function updateMorph(now) {
 // so the IPC path and the per-frame path can both call it safely, and a
 // mid-ramp restart stays continuous because startMorphTo captures the CURRENT
 // positions as its `from`.
-let lastMorphShape = null;
+let lastMorphShape = BASE_SHAPE;   // matches the initial geometry -> no boot morph
 function snapLatticeTo(shape) {
   if (!lattice) return;
   const posAttr = lattice.geometry.getAttribute('position');
@@ -1122,7 +1133,17 @@ window.__orbMorphDiff = () => {
     const arr = sage.polyGeo.attributes.position.array;
     let m = 0;
     for (let i = 0; i < arr.length; i++) m = Math.max(m, Math.abs(arr[i] - sage.cageTo[i]));
-    cage = { maxErr: m, active: !!sage.cageActive, shape: sage.cageShape };
+    // SPHERICITY proof: every cage vertex must sit on ONE sphere, so the radius
+    // spread has to be ~0. A star/prism/icosphere fails this instantly.
+    let rMin = Infinity, rMax = 0;
+    for (let i = 0; i < arr.length; i += 3) {
+      const r = Math.hypot(arr[i], arr[i + 1], arr[i + 2]);
+      if (r < rMin) rMin = r;
+      if (r > rMax) rMax = r;
+    }
+    cage = { maxErr: m, active: !!sage.cageActive, shape: sage.cageShape,
+             radiusMin: rMin, radiusMax: rMax,
+             radiusSpread: rMax - rMin };
   }
   return { shape, shapeHintField: orbState.shapeHint, morphActive,
            targetLengths: MORPH_TARGET_LENGTHS, lattice: lat, cage };

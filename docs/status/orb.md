@@ -1007,3 +1007,90 @@ the circle target with `maxErr = 0.0000` in both states.
   "cages even brighter while listening"), and the ring arcs do **not** actually
   reach the frame edge (radius 1.34 world ≈ 51 px inside a 140 px half-window).
   Flagged for review, not changed.
+
+---
+
+# CAGES → 3D WIREFRAME SPHERES (user, 2026-10-07)
+
+> "nah i dont like the octagram, please change the cages (inner and outer) to
+> 3d spheres please" — and: *"the only change in state would be the color."*
+
+## What was built
+
+`initSageCore` now generates the cage as a **wireframe globe** instead of an
+icosphere (and instead of the octagram prism that was tried in between and
+rejected):
+
+| | before (icosphere) | now |
+|---|---|---|
+| construction | `IcosahedronGeometry(1.15,1)` + `EdgesGeometry` | 5 latitude rings × 20 segments + 6 meridians × 16 segments |
+| edges | ~120 | **196** |
+| node dots | 42 (icosphere verts) | 12 (meridian × parallel crossings) |
+| outer + inner | same geometry @1.0 / @0.56 | same — **spheres by construction** |
+| free spokes | 10 "whiskers" (ended mid-air) | **0** — every segment rejoins the mesh |
+
+Depth comes from the front/back meridian arcs, so it reads as a ball from any
+angle; the inner cage is the identical geometry at 0.56 scale hugging the core.
+
+Shape stays **constant** and **colour is the only per-state change**:
+`BASE_SHAPE` is `circle` (the sphere's silhouette), `SHAPE_MORPHS_ENABLED` and
+`KIND_ACCENTS_ENABLED` remain false.
+
+## Proof — numeric, not a opinion
+
+The CDP probe now reports the radius of **every** cage vertex:
+
+```
+$ npm run orb:trace -- --only=cage
+cage guard: PASS (4/4)
+  ok cage_established_at_boot          cageRadius=1.150..1.150 (SPHERE if spread<0.02)
+  ok mid_task_hint_reaches_renderer    orb_state frames carrying a shape_hint: octagram
+  ok cage_preserved_mid_task           cageRadiusSpread=0.0000
+  ok state_applied_while_shape_stays_circle   state=thinking shapeHint=circle
+```
+
+**All vertices at radius 1.150 with spread 0.0000 = every cage vertex lies on
+one sphere.** A star, prism or icosphere cannot produce that, so this proves
+sphericity directly rather than relying on a screenshot review. The check is
+enforced at **boot** and **mid-task**, with a real brain `octagram` hint
+deliberately delivered and ignored.
+
+## Independent vision check (fresh matrix)
+
+| question | answer |
+|---|---|
+| outer cage a globe? | **YES** — ~4 curved parallels stacked in latitude + ~8–10 meridians converging pole-to-pole, round silhouette (roundness ≈0.9) |
+| inner cage a sphere? | **YES** — ~50% radius, same topology |
+| shape changes across states? | *"I see no star, octagon, hexagon, box, or differing ring count in the cage"* — cage is stable |
+| 3D read | "a ball with some depth", 55–65% — pole convergence sells it; held back by no back-hemisphere occlusion |
+| ratings (3D wireframe sphere) | idle **7/10** · listening 6/10 · thinking 6.5/10 · jobs 6/10 |
+
+Non-spherical items vision flagged are **by design, not shape changes**: the
+job beads (`jobs_active` 2→6), the prismatic Data Rings, the orbit rings'
+dim back-half, and the floating data panes.
+
+## Full gate after the rebuild
+
+```
+npm run test:unit   PASS (6 suites)
+npm run orb:trace   cage guard 4/4 · startup 7/7 · transparency border alpha 0 ·
+                     BugC 6/6 · wave5 9/9 · interaction 19/19 ·
+                     shape directive ok ["circle"] · distinctness PASS (104 pairs)
+npm run orb:size    PASS (12 combos, worst drift 4.6% of 12%)
+node test/orb-diff.cjs  PASS
+```
+
+### Open from the vision review (not actioned — no instruction to change them)
+
+1. **No back-hemisphere occlusion/dimming** → the ball reads ~55–65% 3D rather
+   than fully solid. `polyFrag` already has a depth term
+   (`clamp(1.18 − (vDepth−4.2)·0.22, 0.55, 1.15)` → front 1.15 / back 0.74);
+   strengthening it would deepen the sphere read at the cost of dimming the
+   Data Rings and Answer-Mode lines that share the shader. **Left as-is pending
+   an instruction.**
+2. **Core reads blown-out in idle/listening** (clipped to 255 with the
+   diffraction spikes). The core is *meant* to be the brightest element
+   (checklist §8.3); whether it should stop short of clipping is an art call.
+3. **"A weird box underneath"** — still waiting on the coordinator's vision
+   identification (amendment item 2). My own pass finds no rectangular
+   boundary; the squares are the spec's floating data panes. **Nothing removed.**

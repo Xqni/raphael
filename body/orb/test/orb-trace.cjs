@@ -543,15 +543,21 @@ async function runCageGuard(cdp, brain, rec) {
   const checks = [];
   const add = (name, ok, detail) => checks.push({ name, ok, detail, pass: !!ok });
   const md = () => cdp.evaluateJson('window.__orbMorphDiff()');
+  // SPHERICITY: all cage vertices on ONE sphere (radius spread ~0). This is
+  // what "cages are 3D spheres" means numerically — a star, prism or
+  // icosphere all fail it, a lat/long globe passes.
   const okShape = (m) => m && m.shape === 'circle' && m.morphActive === false &&
-    m.lattice && m.lattice.maxErr < 0.01 && m.cage && m.cage.maxErr < 0.01;
+    m.lattice && m.lattice.maxErr < 0.01 && m.cage && m.cage.maxErr < 0.01 &&
+    m.cage.radiusSpread !== undefined && m.cage.radiusSpread < 0.02;
 
   // (1) BOOT
   const boot = await md();
   add('cage_established_at_boot', okShape(boot),
     boot ? `shape=${boot.shape} morphActive=${boot.morphActive} ` +
           `lattice.maxErr=${boot.lattice && boot.lattice.maxErr.toFixed(4)} ` +
-          `cage.maxErr=${boot.cage && boot.cage.maxErr.toFixed(4)} points=${boot.lattice && boot.lattice.points}`
+          `cage.maxErr=${boot.cage && boot.cage.maxErr.toFixed(4)} ` +
+          `cageRadius=${boot.cage && boot.cage.radiusMin.toFixed(3)}..${boot.cage && boot.cage.radiusMax.toFixed(3)} ` +
+          `(SPHERE if spread<0.02) points=${boot.lattice && boot.lattice.points}`
          : 'probe missing');
 
   // (2) MID-TASK — mock's thinking frame carries shape_hint=octagram, task_kind=llm
@@ -568,7 +574,8 @@ async function runCageGuard(cdp, brain, rec) {
   add('cage_preserved_mid_task', okShape(mid),
     mid ? `applied=${mid.shapeHintField} effective=${mid.shape} morphActive=${mid.morphActive} ` +
           `lattice.maxErr=${mid.lattice && mid.lattice.maxErr.toFixed(4)} ` +
-          `cage.maxErr=${mid.cage && mid.cage.maxErr.toFixed(4)}`
+          `cage.maxErr=${mid.cage && mid.cage.maxErr.toFixed(4)} ` +
+          `cageRadiusSpread=${mid.cage && mid.cage.radiusSpread.toFixed(4)}`
         : 'probe missing');
   add('state_applied_while_shape_stays_circle',
     rx.applied && rx.applied.state === 'thinking' && rx.applied.shapeHint === 'circle',
@@ -731,6 +738,7 @@ async function main() {
       else if (ONLY_PHASE === 'interaction') await runInteraction(cdp, brain, rec);
       else if (ONLY_PHASE === 'bugc') await runBugC(cdp, brain, rec);
       else if (ONLY_PHASE === 'wave5') await runWave5(cdp, brain, rec);
+      else if (ONLY_PHASE === 'cage') await runCageGuard(cdp, brain, rec);
       else throw new Error('unknown --only phase: ' + ONLY_PHASE);
       fs.writeFileSync(path.join(OUT, 'trace-partial.jsonl'), lines.join('\n') + '\n');
       const only = lines.map((l) => { try { return JSON.parse(l); } catch (e) { return null; } })

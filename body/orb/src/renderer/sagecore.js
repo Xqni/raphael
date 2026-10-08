@@ -13,6 +13,12 @@ import {
 } from './shaders/sage.glsl.js';
 
 const TAU = 400; // blend time constant (ms) — inside the spec's 300-600ms window
+// The cage is built as an octagram NATIVELY (see initSageCore) — this is the
+// shape for which projectShape() is an identity copy.
+// The cage is built as a wireframe SPHERE; its morph key is 'circle' (the
+// sphere's silhouette), so projectShape(.., 'circle') is a straight copy and
+// the sphere is never distorted.
+const NATIVE_CAGE_SHAPE = 'circle';
 
 // Per-state visual targets for the Sage layers.
 // nebula, speed(lines), poly, node, ring, spark, spin(rad/ms-ish), bright(core)
@@ -64,10 +70,36 @@ function nGonScale(theta, n) {
 }
 
 /**
+ * Establish the CONSTANT base cage shape at build time, so the cage is correct
+ * from the very first frame with no boot morph (AMENDMENT item 2: "verify the
+ * renderer INIT path"). The OUTER cage (L.poly) and INNER cage (L.cage) share
+ * polyGeo, and the node dots ride nodeGeo — projecting both once makes them
+ * the same octagram by construction.
+ */
+export function initCageShape(L, shape) {
+  if (!L || !shape || !L.polyGeo || !L.nodeGeo) return L;
+  const pa = L.polyGeo.attributes.position;
+  projectShape(L.polyBase, shape, pa.array);
+  pa.needsUpdate = true;
+  const na = L.nodeGeo.attributes.position;
+  projectShape(L.nodeBase, shape, na.array);
+  na.needsUpdate = true;
+  L.cageShape = shape;
+  return L;
+}
+
+/**
  * src/out are Float32Array vertex sets of the SAME topology. `shape` is one of
  * the PROTOCOL §8 / config orb.shape_map values; anything unknown is the ball.
  */
 export function projectShape(src, shape, out) {
+  // 'octagram' IS the native cage geometry (built as a star prism in
+  // initSageCore above), so "projecting" it must be a straight copy — running
+  // the vertex-wise scale over an already-correct star would distort it.
+  if (shape === NATIVE_CAGE_SHAPE) {
+    if (out !== src) out.set(src);
+    return out;
+  }
   for (let i = 0; i < src.length; i += 3) {
     const x = src[i], y = src[i + 1], z = src[i + 2];
     const len = Math.hypot(x, y, z) || 1;
@@ -82,11 +114,8 @@ export function projectShape(src, shape, out) {
       const s = nGonScale(th, 5); px = dx * s; py = dy * s; pz = dz * 0.88;
     } else if (shape === 'hexagon') {         // -> hexagonal prism
       const s = nGonScale(th, 6); px = dx * s; py = dy * s; pz = dz * 0.78;
-    } else if (shape === 'octagram') {        // -> octahedron: sharp, spiky
-      const m = Math.abs(dx) + Math.abs(dy) + Math.abs(dz) || 1e-6;
-      px = dx / m; py = dy / m; pz = dz / m;
     }
-    // 'circle' (and anything unknown) falls through as the plain sphere
+    // 'circle', 'octagram' (native) and anything unknown fall through as-is
     out[i] = px * len; out[i + 1] = py * len; out[i + 2] = pz * len;
   }
 }
@@ -212,36 +241,58 @@ export function initSageCore(THREE, group, scene, pal) {
   L.speed = new THREE.LineSegments(speedGeo, L.speedMat);
   group.add(L.speed);
 
-  // 4) Wireframe polyhedron + node dots + short spokes (spec §2.1.4)
-  const icosa = new THREE.IcosahedronGeometry(1.15, 1);
-  const edges = new THREE.EdgesGeometry(icosa);
-  const ePos = edges.attributes.position.array;
-  const eCount = ePos.length / 6;
-  const uniq = [];
-  const seen = new Set();
-  const ip = icosa.attributes.position.array;
-  for (let i = 0; i < ip.length; i += 3) {
-    const k = ip[i].toFixed(3) + ',' + ip[i + 1].toFixed(3) + ',' + ip[i + 2].toFixed(3);
-    if (!seen.has(k)) { seen.add(k); uniq.push([ip[i], ip[i + 1], ip[i + 2]]); }
+  // 4) WIREFRAME SPHERE CAGE (USER, 2026-10-07): "change the cages (inner and
+  // outer) to 3d spheres please" (after trying an octagram: "nah i dont like
+  // the octagram").
+  //
+  // Built from latitude rings + meridians, so the silhouette is a true circle
+  // and the structure reads as a sphere from ANY angle — a flat star or an
+  // angular polyhedron does not. The INNER cage (L.cage) is the SAME geometry
+  // at 0.56 scale, so outer and inner are spheres by construction.
+  //
+  // Depth budget: 5 parallels x 20 segments + 6 meridians x 16 segments =
+  // 196 edges, comparable to the old icosphere, so the "tangled yarn" problem
+  // does not come back. Node dots ride the meridian x parallel intersections.
+  const SPH_R = 1.15;      // outer cage radius (unchanged from the icosphere)
+  const LAT_SEGS = 20;     // segments per parallel
+  const MER_SEGS = 16;     // segments per meridian
+  const MERIDIANS = 6;
+  const LATS = [-1.15, -0.55, 0.0, 0.55, 1.15].map((k) => Math.asin(k / 1.15));
+  const sphPoint = (theta, phi) => {
+    const rr = Math.cos(phi) * SPH_R;
+    return [Math.cos(theta) * rr, Math.sin(phi) * SPH_R, Math.sin(theta) * rr];
+  };
+  const sphEdges = [];
+  for (const phi of LATS) {                       // parallels
+    const ring = [];
+    for (let a = 0; a < LAT_SEGS; a++) ring.push(sphPoint((a / LAT_SEGS) * Math.PI * 2, phi));
+    for (let a = 0; a < LAT_SEGS; a++) sphEdges.push([ring[a], ring[(a + 1) % LAT_SEGS]]);
   }
-  const SPOKES = 10;   // §3.3: fewer stray spokes (wireframe reads cleaner)
-  const lp = new Float32Array(ePos.length + SPOKES * 6);
-  lp.set(ePos);
-  const aT = new Float32Array((ePos.length / 3) + SPOKES * 2);
-  const aId = new Float32Array(aT.length);
-  const aSp = new Float32Array(aT.length);
-  for (let e = 0; e < eCount; e++) {
+  for (let m = 0; m < MERIDIANS; m++) {           // meridians (pole to pole)
+    const th = (m / MERIDIANS) * Math.PI * 2;
+    const col = [];
+    for (let sI = 0; sI <= MER_SEGS; sI++) col.push(sphPoint(th, -Math.PI / 2 + (sI / MER_SEGS) * Math.PI));
+    for (let sI = 0; sI < MER_SEGS; sI++) sphEdges.push([col[sI], col[sI + 1]]);
+  }
+  const nodeLats = [LATS[1], LATS[3]];             // 6 x 2 = 12 vertex dots
+  const uniq = [];
+  for (let m = 0; m < MERIDIANS; m++) {
+    const th = (m / MERIDIANS) * Math.PI * 2;
+    for (const phi of nodeLats) uniq.push(sphPoint(th, phi));
+  }
+
+  const EDGES = sphEdges;
+  const lp = new Float32Array(EDGES.length * 6);
+  const aT = new Float32Array(EDGES.length * 2);
+  const aId = new Float32Array(EDGES.length * 2);
+  const aSp = new Float32Array(EDGES.length * 2);   // no free whiskers: every
+  for (let e = 0; e < EDGES.length; e++) {          // segment rejoins the mesh
+    const p0 = EDGES[e][0], p1 = EDGES[e][1];
+    lp[e * 6 + 0] = p0[0]; lp[e * 6 + 1] = p0[1]; lp[e * 6 + 2] = p0[2];
+    lp[e * 6 + 3] = p1[0]; lp[e * 6 + 4] = p1[1]; lp[e * 6 + 5] = p1[2];
     aT[e * 2] = 0; aT[e * 2 + 1] = 1;
     aId[e * 2] = aId[e * 2 + 1] = e;
-  }
-  let w = ePos.length / 3;
-  for (let s = 0; s < SPOKES; s++) {
-    const v = uniq[(s * 3) % uniq.length];
-    lp[w * 3 + 0] = v[0]; lp[w * 3 + 1] = v[1]; lp[w * 3 + 2] = v[2]; w++;
-    lp[w * 3 + 0] = v[0] * 1.13; lp[w * 3 + 1] = v[1] * 1.13; lp[w * 3 + 2] = v[2] * 1.13; w++;
-    aT[w - 2] = 0; aT[w - 1] = 1;
-    aId[w - 2] = aId[w - 1] = 2000 + s;
-    aSp[w - 2] = aSp[w - 1] = 1;
+    aSp[e * 2] = aSp[e * 2 + 1] = 0;
   }
   const polyGeo = new THREE.BufferGeometry();
   polyGeo.setAttribute('position', new THREE.BufferAttribute(lp, 3));
