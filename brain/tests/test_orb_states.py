@@ -70,6 +70,10 @@ def fake_ui():
     engine.on_state = lambda frame: hub.refresh_orb_state()
     hub.engine = engine
     orbstate.attach(hub)
+    orbstate.finish_boot()
+    orbstate.build(engine=engine)   # consume the settle baseline like the
+    #                                  lifespan refresh does (this fixture's
+    #                                  tests derive states directly)
     yield sess, hub, engine
     hub._sessions.pop(sess.sid, None)
     orbstate.reset_for_tests()
@@ -275,6 +279,35 @@ def test_e2e_state_req_returns_full_frame(token_path):
 
 # ---- Bug E (Wave-3 P0): speaking must HOLD over listening mid-utterance ----
 @pytest.mark.asyncio
+async def test_boot_settle_first_frame_is_idle_then_activity(fake_ui):
+    """USER DIRECTIVE (2026-10-07): after finish_boot() the FIRST derived
+    frame is the settled idle baseline — never thinking/confirm from leftover
+    jobs; the next frame may then show activity."""
+    from brain.jobs import store
+    sess, hub, engine = fake_ui
+    # leftover from a crash: a job whose status would derive CONFIRM
+    leftover = store.create_job('crashed while confirming', source='text')
+    store.transition(leftover['id'], 'awaiting_confirm', stage='routing',
+                     progress=0.1)
+    try:
+        # arm the settle (as lifespan does after boot)
+        orbstate.finish_boot()
+        # sanity: derivation WOULD show activity right now...
+        assert orbstate.derive_state(engine) == 'confirm'
+        # ...but the first emitted frame is the idle baseline
+        orbstate.refresh(hub=hub, engine=engine)
+        # the next frame derives normally from reality (activity may show)
+        orbstate.refresh(hub=hub, engine=engine)
+        await drain()
+        states = [f['state'] for f in orb_frames(sess)]
+        assert states[0] == 'idle', states
+        assert states[1] == 'confirm', states
+    finally:
+        store.transition(leftover['id'], 'cancelled', stage='done',
+                         progress=1.0)
+
+
+@pytest.mark.asyncio
 async def test_shape_hint_circle_only_hold(fake_ui):
     """Integrator decision 2026-10-07: EVERY task_kind emits shape_hint
     'circle' while the central hold is on — task_kind itself still varies,
@@ -333,6 +366,8 @@ async def test_bug_e_barge_in_still_reaches_listening(fake_ui):
     pipeline, not on the mic flag."""
     sess, hub, engine = fake_ui
     orbstate.finish_boot()
+    orbstate.build(engine=engine)   # baseline consumed: this test is about
+    #                                  speak/listen precedence, not boot
     orbstate.speak_start()
     orbstate.listening_on()
     orbstate.emit('listening', hub=hub, engine=engine)    # held -> speaking
@@ -352,6 +387,8 @@ async def test_bug_e_confirm_still_beats_speaking(fake_ui):
     snap = job_store.create_job('risk check')
     job_store.transition(snap['id'], 'awaiting_confirm', stage='routing',
                          progress=0.1)
+    orbstate.finish_boot()
+    orbstate.build(engine=engine)   # baseline consumed: precedence test
     orbstate.speak_start()                                # question is spoken
     orbstate.refresh(hub=hub, engine=engine)
     await drain()
