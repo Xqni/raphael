@@ -28,9 +28,16 @@ import brain.tools as _tool_reg
 
 _SKIP_DIRS = {'.git', 'node_modules', '.venv', 'venv', '__pycache__', '.cache',
               '.tox', '.mypy_cache', '.pytest_cache'}
-_SECRET_NAMES = {'.env', 'secrets.env', '.secrets', 'id_rsa', 'id_dsa',
-                 'id_ecdsa', 'id_ed25519', '.npmrc', '.netrc'}
-_SECRET_SUFFIXES = ('.key', '.pfx', '.p12', '.keystore', '.jks')
+# AUD-01: the sensitive DENY is resolved-path based and applies INSIDE every
+# allowed root (widening roots must never reach these). Deny dirs are matched
+# on ANY path component (case-insensitive); deny names on the basename.
+_DENY_DIRS = {'.ssh', '.gnupg', '.aws', '.docker', '.kube', '.raphael',
+              'dropbox', 'nextcloud', 'google drive', 'onedrive'}
+_DENY_NAMES = {'.env', 'secrets.env', '.secrets', 'id_rsa', 'id_dsa',
+               'id_ecdsa', 'id_ed25519', '.npmrc', '.netrc',
+               'token', '.token', 'credentials', 'credentials.json',
+               'authorized_keys'}
+_SECRET_SUFFIXES = ('.key', '.pfx', '.p12', '.keystore', '.jks', '.pem', '.ppk')
 _MAX_SCAN = 50000             # walk bound (correctness guard, not tuning)
 
 SPECS = {
@@ -101,7 +108,10 @@ def _cfg(dotted: str, default):
 
 
 def _allowed_roots() -> List[Path]:
-    raw = _cfg('files.allowed_roots', ['~']) or ['~']
+    # AUD-01: the default is the explicit app workspace — NEVER "~" (a
+    # default of "~" put ~/.raphael/token inside reach).
+    raw = _cfg('files.allowed_roots', ['~/raphael-wt', '~/raphael']) or \
+        ['~/raphael-wt', '~/raphael']
     roots: List[Path] = []
     for r in raw:
         try:
@@ -111,10 +121,26 @@ def _allowed_roots() -> List[Path]:
     return roots
 
 
+def _is_denied(p: Path) -> bool:
+    """Sensitive-path deny (AUD-01): token/ssh/gnupg/cloud-store/secret —
+    resolved-path based, applies inside ANY allowed root."""
+    parts_l = {part.lower() for part in p.parts}
+    if parts_l & _DENY_DIRS:
+        return True
+    name_l = p.name.lower()
+    return (name_l in _DENY_NAMES or name_l.startswith('.env')
+            or name_l.endswith(_SECRET_SUFFIXES))
+
+
 def _resolve_in_roots(path: Any) -> Path:
-    p = Path(str(path)).expanduser().resolve()
+    p = Path(str(path)).expanduser().resolve()      # symlinks resolved FIRST
     for root in _allowed_roots():
         if p == root or root in p.parents:
+            if _is_denied(p):
+                raise ValueError(
+                    f'{p} is on the sensitive deny-list (AUD-01: tokens, '
+                    f'ssh/gnupg/cloud stores, key material are never touched '
+                    f'by the file tools)')
             return p
     allowed = ', '.join(str(r) for r in _allowed_roots()) or '(none)'
     raise ValueError(f'{p} is outside files.allowed_roots [{allowed}]')
@@ -122,7 +148,7 @@ def _resolve_in_roots(path: Any) -> Path:
 
 def _is_secret(p: Path) -> bool:
     name = p.name
-    return (name in _SECRET_NAMES or name.startswith('.env')
+    return (name in _DENY_NAMES or name.startswith('.env')
             or name.endswith(_SECRET_SUFFIXES))
 
 
@@ -159,7 +185,10 @@ def file_search(root: str, pattern: str, limit: int = 50) -> str:
             if scanned > _MAX_SCAN:
                 hits.append(f'… scan cap {_MAX_SCAN} reached')
                 return '\n'.join(hits)
-            full = str(Path(dirpath) / fn)
+            full_path = Path(dirpath) / fn
+            if _is_denied(full_path):           # AUD-01: never even listed
+                continue
+            full = str(full_path)
             if fnmatch.fnmatch(fn, pattern) or fnmatch.fnmatch(full, pattern):
                 hits.append(full)
                 if len(hits) >= limit:
@@ -251,8 +280,9 @@ def register(_reg=None) -> None:
     reg.register('file_read', file_read, risky=False, category='local',
                  description='read a text file (capped; secret files refused)',
                  schema=SPECS['file_read'])
-    reg.register('file_write', file_write, risky=False, category='local',
-                 description='write/append a text file inside allowed roots',
+    reg.register('file_write', file_write, risky=True, category='local',
+                 description='write/append a text file inside allowed roots '
+                             '(CONFIRM-gated per AUD-01; sensitive paths denied)',
                  schema=SPECS['file_write'])
     reg.register('file_trash', file_trash, risky=True, category='local',
                  description='MOVE a path to trash (recoverable; confirm-gated) '

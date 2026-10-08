@@ -27,6 +27,33 @@ PROTOCOL_VERSION = '2024-11-05'
 _MAX_LINE = 4_000_000          # single JSON-RPC line cap (bytes-ish)
 _STDERR_TAIL = 4000
 
+# AUD-07: MCP children get a MINIMAL allowlisted environment. Secrets
+# (GITHUB_TOKEN, HF_TOKEN, *_KEY, *_SECRET, ...) are never inherited; extra
+# keys arrive only from the user-authored per-server `env` or config
+# `mcp.env_allow`.
+_BASE_ENV_KEYS = ('PATH', 'HOME', 'LANG', 'LC_ALL', 'LC_CTYPE',
+                  'TMPDIR', 'TEMP', 'TMP', 'USER', 'LOGNAME')
+
+
+def _child_env(extra: Optional[Dict[str, str]] = None,
+               environ: Optional[Dict[str, str]] = None) -> Dict[str, str]:
+    src = dict(environ if environ is not None else os.environ)
+    allow = set(_BASE_ENV_KEYS)
+    try:
+        from brain import config as appcfg
+        for k in appcfg.cfg_get(appcfg.get_config(),
+                                'mcp.env_allow', []) or []:
+            allow.add(str(k))
+    except Exception:  # noqa: BLE001 — config trouble: base allowlist only
+        pass
+    out = {k: src[k] for k in _BASE_ENV_KEYS if k in src}
+    for k in sorted(allow - set(_BASE_ENV_KEYS)):
+        if k in src:
+            out[k] = src[k]
+    for k, v in (extra or {}).items():
+        out[str(k)] = str(v)
+    return out
+
 
 class McpError(RuntimeError):
     """Transport/protocol/timeout failure — carries a short message."""
@@ -48,7 +75,7 @@ class StdioClient:
                 self.argv, shell=False, stdin=subprocess.PIPE,
                 stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                 text=True, encoding='utf-8', errors='replace', bufsize=1,
-                env={**os.environ, **(env or {})}, cwd=cwd)
+                env=_child_env(env), cwd=cwd)          # AUD-07: allowlisted
         except (OSError, ValueError) as e:
             raise McpError(f'cannot spawn {self.argv[0]!r}: {e}')
         threading.Thread(target=self._read_stdout, name='mcp-out',

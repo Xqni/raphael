@@ -1,6 +1,54 @@
 # tools-memory — status
 
-Updated: 2026-10-08 (Wave 5H audit packet: SEC-4 + F-2 done — handoff below)
+Updated: 2026-10-08 (AUD-01/AUD-07 P0 batch done — handoff below)
+
+## P0 addendum — AUD-01 (CRITICAL) + AUD-07 (coord dispatch), VERIFY-FIRST
+
+**AUD-01: CONFIRMED → FIXED — file tools could reach `~/.raphael/token`:**
+- quote (pre-fix) `config.d/tools-memory.yaml:32`:
+  `allowed_roots: ["~"]           # file_read/file_write confined to these (expanded)`
+- quote (pre-fix) `brain/tools/files/__init__.py:31-33`:
+  `_SECRET_NAMES = {'.env', 'secrets.env', '.secrets', 'id_rsa', ...}` /
+  `_SECRET_SUFFIXES = ('.key', '.pfx', '.p12', '.keystore', '.jks')` — no
+  `token`, no `.ssh` dir, no cloud stores → deny-list gap.
+- quote (pre-fix) `:254`:
+  `reg.register('file_write', file_write, risky=False, category='local',` —
+  arbitrary write, unconfirmed.
+- **FIX:** roots → explicit workspace `["~/raphael-wt", "~/raphael"]` (code
+  default too); resolved-path `_is_denied()` on EVERY op (deny dirs
+  `.ssh/.gnupg/.aws/.docker/.kube/.raphael/dropbox/nextcloud/google drive/onedrive`
+  case-insensitive on any component; deny names `token/.token/credentials/authorized_keys/…`
+  + suffixes incl `.pem/.ppk`); `file_write` → **`risky=True` (confirm-gated)**;
+  search never lists denied; restore re-checks tampered origin; symlink
+  escapes die at `resolve()`.
+- **Tests (TEMP fixtures only — real token never touched):** `test_aud01_07.py`
+  — token read/write/trash refused ×3, ssh+cloud denied, search clean,
+  symlink outside+to-denied refused, write confirm-gated, config no `"~"`,
+  restore-tamper refused. **10/10 green.**
+
+**AUD-07: CONFIRMED → FIXED — MCP children inherited the full env:**
+- quote (pre-fix) `brain/tools/mcp/client.py:50`:
+  `env={**os.environ, **(env or {})}, cwd=cwd)` → GITHUB_TOKEN/HF_TOKEN/etc
+  leaked to every configured child.
+- **FIX:** `_child_env()` minimal allowlist (PATH/HOME/LANG/LC_*/TMP*/USER/
+  LOGNAME) + user-authored per-server `env` + config `mcp.env_allow: []`;
+  Popen uses it exclusively.
+- **Tests:** unit (secrets absent / base present / extra present / config
+  extension deliberate) + **e2e sentinel**: fake `envdump` child reports its
+  own `os.environ` → `SENTINEL_AUD07_E2E` + `GITHUB_TOKEN` absent, PATH/HOME
+  present. All in the 10/10 green.
+
+**AUD-15 / AUD-23 / AUD-25 / AUD-28: CANNOT VERIFY** — `grep -rn "AUD-15|23|25|28" docs/`
+→ zero hits; `docs/reviews/2026-10-07-project-wide-audit.md` (PART 2) does not
+exist in the tree or on origin/main. Per verify-first: **not applied** — asked
+on the coord bus for the findings/definitions.
+
+**Verification runs (2026-10-08, one suite at a time):** `brain/memory/tests`
+**175 passed** | `brain/tests` **216 passed** | root `tests/` **214 passed,
+7 xfailed, 0 failed**. **Green CI id: 37717702130** (completed success, main,
+2026-10-08T02:24).
+
+## Wave 5H — audit packet (docs/audit-tasks/tools-memory.md), VERIFY-FIRST applied
 
 ## Wave 5H — audit packet (docs/audit-tasks/tools-memory.md), VERIFY-FIRST applied
 

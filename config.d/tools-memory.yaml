@@ -30,7 +30,10 @@ plugins:
   auto_enable: false             # a plugin tool set never activates without the user
 
 files:
-  allowed_roots: ["~"]           # file_read/file_write confined to these (expanded)
+  allowed_roots: ["~/raphael-wt", "~/raphael"]   # AUD-01: explicit app workspace
+                                 # ONLY (was "~" — that reached ~/.raphael/token).
+                                 # Widening to "~" is a USER edit; the resolved-path
+                                 # sensitive deny below still applies inside any root.
   trash_subdir: trash            # file_trash moves here; NO delete tool exists
   read_max_bytes: 262144
 
@@ -54,3 +57,5 @@ mcp:
                                  # servers start ONLY from this user-authored config
   timeout_s: 10                  # keep small: unresponsive servers delay boot by this
   max_result_chars: 65536        # per tools/call result cap
+  env_allow: []                  # AUD-07: extra keys beyond the built-in minimal
+                                 # set (PATH/HOME/LANG/TMP/USER) handed to MCP children
