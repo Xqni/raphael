@@ -147,6 +147,22 @@ Wave 2 is MERGED; live gate was 3/5 — evidence + bug dossiers: `docs/BUGS-WAVE
       **interaction PASS 19/19** incl. `notice_reaches_renderer`,
       `notice_shown_as_banner`, `notice_never_changes_state`.
 
+### AMENDMENT (user, 2026-10-07 evening): PRESERVE THE CAGE + kill the box
+
+- [ ] **"the orb is now in a weird shape, its not a cage we had earlier — preserve that."
+  RESTORE THE CAGE as the always-on look.** Research findings: (1) the revert was
+  renderer-side only — brain/orbstate.py:187 still emits per-task `shape_hint` from
+  orb.shape_map (llm->octagram etc.), so during any task the lattice morphs away from the
+  cage; brain-core is getting a decision to emit `circle` only for now (field kept for your
+  future plans). (2) verify the renderer INIT path: the revert collapsed to a single
+  `applyLatticeShape()` call site — confirm the cage geometry is established at BOOT (not
+  only on the first state event), otherwise the lattice sits at build-time default = the
+  weird look the user saw. ACCEPTANCE: at rest AND mid-task, the orb is the familiar cage
+  ball; screenshot proof before/after (matrix render), gates green.
+- [ ] (VISION PENDING) "a weird box underneath" the orb — user screenshot taken, vision
+  analysis incoming; will be appended here with the element's identity. Do not guess-remove
+  banners/subtitles until identified.
+
 ## USER DIRECTIVE 2026-10-07 — shape-morph revert (do this FIRST)
 
 - [x] **Revert ALL automatic shape morphing.** DONE + gated — implementation:
