@@ -17,8 +17,9 @@ what the user hears. Gate code NEVER raises on bad input — it refuses.
 """
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
-from typing import Optional
+from typing import Optional, Tuple
 
 from .config import VisionConfig
 from .image import within_max_px
@@ -34,6 +35,28 @@ E_TOO_LARGE = "E_TOO_LARGE"
 E_EMPTY_IMAGE = "E_EMPTY_IMAGE"
 E_UNREACHABLE = "E_UNREACHABLE"   # Body/probe unreachable — NOT a privacy verdict
 E_DEBUG_CAPTURE = "E_DEBUG_CAPTURE"  # §7(4): cloud send needs debug_capture false
+E_SENSITIVE = "E_SENSITIVE"       # sensitive context beyond the static blocklist
+
+# Wave 5H item 2 — short spoken reason for focused-password refusals.
+PASSWORD_FOCUS_REASON = ("A password field is focused — I won't capture "
+                         "the screen.")
+
+# Wave 5H item 2 — DEFAULT sensitive-context patterns (merged with the
+# configurable `computer_use.sensitive_title_patterns` from config.d).
+# UAC/secure-desktop + credential surfaces that are NOT in privacy.blocklist_apps.
+DEFAULT_SENSITIVE_PATTERNS: Tuple[str, ...] = (
+    "user account control",     # UAC prompt
+    "consent.exe",              # UAC broker process
+    "credentialui",             # credential picker
+    "windows security",
+    "smartcard",
+    "bank",                     # configurable-class defaults (audit: bank/wallet/2FA)
+    "wallet",
+    "2fa",
+    "two-factor",
+    "authenticator",
+    "one-time code", "otp code",
+)
 
 
 @dataclass(frozen=True)
@@ -67,8 +90,15 @@ class CloudVisionGate:
     # ---- 2. profile / provider --------------------------------------------
     def check_profile(self) -> Decision:
         cfg = self.config
-        if cfg.provider != "cloud":
+        if cfg.provider == "local":
             return Decision.allow()            # local vision (Wave 6 path) — no egress
+        if cfg.provider != "cloud":
+            # Wave 5H item 1: NO cloud-vision policy configured (''/none/typo)
+            # = no policy to enforce = fail closed, never "call and see".
+            return Decision.deny(
+                E_PROFILE,
+                "No cloud-vision policy is configured for this instance — "
+                "I won't send screenshots anywhere.")
         if not cfg.cloud_allowed:
             return Decision.deny(
                 E_PROFILE,
@@ -91,7 +121,10 @@ class CloudVisionGate:
 
     def check_foreground(self, title: Optional[str]) -> Decision:
         """Fail CLOSED: an unknown foreground title (None) cannot be checked,
-        so no screenshot may leave the machine."""
+        so no screenshot may leave the machine. Beyond the static blocklist,
+        ALSO matches the sensitive-context patterns (Wave 5H item 2): UAC/
+        secure-desktop prompts and configurable bank/wallet/2FA titles —
+        refused with a short spoken reason."""
         if title is None:
             return Decision.deny(
                 E_NO_FOREGROUND,
@@ -103,7 +136,42 @@ class CloudVisionGate:
                 E_BLOCKED,
                 f"A sensitive window ({hit}) is in front — I won't send the "
                 "screen anywhere.")
+        hit = self.matched_sensitive_pattern(title)
+        if hit is not None:
+            return Decision.deny(
+                E_SENSITIVE,
+                f"A sensitive context ({hit}) is in front — I won't send the "
+                "screen anywhere.")
         return Decision.allow()
+
+    # ---- 2b. sensitive contexts beyond the static blocklist (Wave 5H) -------
+    def sensitive_patterns(self) -> Tuple[str, ...]:
+        """UAC/credential defaults UNION the configurable
+        `computer_use.sensitive_title_patterns` (config.d/<lane>.yaml — the
+        lane's own namespace, not authority-guarded)."""
+        return tuple(dict.fromkeys(
+            DEFAULT_SENSITIVE_PATTERNS + tuple(self.config.sensitive_patterns)))
+
+    @staticmethod
+    def _pattern_hit(pattern: str, hay: str) -> bool:
+        """Case-insensitive REGEX when valid, literal substring otherwise —
+        a bad config pattern can never crash the gate or match everything."""
+        pat = str(pattern).strip()
+        if not pat:
+            return False
+        try:
+            return re.search(pat, hay, re.IGNORECASE) is not None
+        except re.error:
+            return pat.casefold() in hay
+
+    def matched_sensitive_pattern(self, identity: str) -> Optional[str]:
+        hay = str(identity or "").casefold()
+        if not hay:
+            return None
+        for pattern in self.sensitive_patterns():
+            if self._pattern_hit(pattern, hay):
+                return str(pattern).strip()
+        return None
 
     # ---- probe failures (Bug F: honest verdicts) -----------------------------
     @staticmethod

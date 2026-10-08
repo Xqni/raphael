@@ -41,13 +41,18 @@ class ScriptedGateway:
                  image: Optional[bytes] = None,
                  on_act: Optional[Callable[..., None]] = None,
                  advance_on_act: bool = True,
-                 act_error: Optional[Exception] = None):
+                 act_error: Optional[Exception] = None,
+                 fg_password_focus: bool = False):
         self.foreground = foreground
         self.trees = list(trees) if trees is not None else [DEFAULT_TREE]
         self.image = image if image is not None else make_jpeg(1280, 720)
         self.on_act = on_act
         self.advance_on_act = advance_on_act
         self.act_error = act_error
+        # Wave 5H: emulates BodyGateway.password_focus — the probe RESETS
+        # then refreshes the flag (fresh per probe, stale True never lingers).
+        self.fg_password_focus = fg_password_focus
+        self.password_focus = False
         self.acts: List[Dict[str, Any]] = []
         self.screenshot_calls = 0
         self.foreground_calls = 0
@@ -60,6 +65,7 @@ class ScriptedGateway:
 
     async def foreground_window(self) -> Any:
         self.foreground_calls += 1
+        self.password_focus = bool(self.fg_password_focus)
         if isinstance(self.foreground, Exception):
             raise self.foreground
         return self.foreground
