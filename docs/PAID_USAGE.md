@@ -60,3 +60,11 @@ Scope: agent-tooling vision (screenshot/image analysis by the integrator's visio
 subagent) → `opencode-go/deepseek-v4-flash-vision-exp` (same model as Raphael's
 product vision slot; $0.15/1M in). TEMPORARY until the RAM upgrade. Ollama to be
 disabled (service disable needs sudo — one-liner handed to user).
+
+## 2026-10-07 — cost anxiety lifted (user, verbatim)
+> "we can use paid models as well bruh, dont worry about the cost. we got $56 dollars
+> worth os usage for the month hahah"
+
+Scope: ALL model usage — paid models fully authorized, cost is NOT a selection
+factor anymore. Speed/quality choose the model; caps below stay as bookkeeping
+only (never as a reason to pick a worse model). Do log spend for the record.
