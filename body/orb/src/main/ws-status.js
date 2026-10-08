@@ -74,6 +74,20 @@ class StatusWS extends EventEmitter {
     this._armBootEscape();
   }
 
+  /** AMENDMENT 2: the escape is a FALLBACK for "if no frame arrives" — so ANY
+   *  inbound frame while we are still `starting` proves the Brain is alive and
+   *  must restart the clock. Without this, a Brain that legitimately streams
+   *  `starting` frames through a long boot got force-flipped to `idle` at 4 s
+   *  while it was talking to us. It also silently corrupted the test harness:
+   *  a synthetic `starting` was being converted to `idle` mid-capture, which
+   *  measured as 6.79 of temporal noise on starting@dark (every other scene
+   *  0.000) and dragged the distinctness threshold to 1.5x6.79 = 10.18, failing
+   *  13 pairs. */
+  _resetBootEscape() {
+    if (this._bootTimer) { clearTimeout(this._bootTimer); this._bootTimer = null; }
+    this._armBootEscape();
+  }
+
   /** One auto-escape per `starting` period (re-armed only when we re-enter it). */
   _armBootEscape() {
     if (this._bootTimer) return;
@@ -180,6 +194,7 @@ class StatusWS extends EventEmitter {
 
   handle(msg) {
     this._rx(msg);
+    if (this.state.orbState === 'starting') this._resetBootEscape();
     switch (msg.type) {
       case 'ping':
         if (this.ws && this.ws.readyState === WebSocket.OPEN) {

@@ -42,7 +42,14 @@ const S = {
   // wash sat over the dim core at 0.35 opacity. `speed`/`spark`/`ring` are all
   // white and the state tint was cream, so the haze was the only colour source.
   // Boot is now the one state with the nebula OFF; idle still gets it (0.55).
-  starting:        { nebula: 0.00, speed: 0.50, poly: 0.70, node: 0.70, ring: 0.40, spark: 0.35, spin: 0.00006, bright: 0.72, cage: 1.00 },
+  // dim WHITE and clearly below every neighbour: killing the coloured haze made
+  // starting too close to private_overlay (diff 7.64) and reconnecting (7.44)
+  // against the 9.67 distinctness floor, so it was failed by the gate. Dropping
+  // bright 0.72 -> 0.45 and thinning poly/node/ring/spark is exactly the user's
+  // "just dim white then full glow white into the idle state" (idle bright =1.00)
+  // and separates it from private_overlay (1.00), reconnecting (0.75) and the
+  // grey-tinted offline (0.30).
+  starting:        { nebula: 0.00, speed: 0.34, poly: 0.55, node: 0.55, ring: 0.26, spark: 0.22, spin: 0.00006, bright: 0.45, cage: 1.00 },
   reconnecting:    { nebula: 0.45, speed: 0.55, poly: 0.85, node: 0.90, ring: 0.55, spark: 0.45, spin: 0.00008, bright: 0.75, cage: 0.80 },
   offline:         { nebula: 0.00, speed: 0.00, poly: 0.30, node: 0.30, ring: 0.00, spark: 0.00, spin: 0.000006, bright: 0.30, cage: 0.25 },
   paused:          { nebula: 0.16, speed: 0.00, poly: 0.75, node: 0.70, ring: 0.40, spark: 0.10, spin: 0.000014, bright: 0.60, cage: 0.50 },
@@ -756,7 +763,16 @@ export function updateSageCore(L, ctx) {
   }
   const cu = ctx.coreU;
   if (cu && cu.uBright && cu.uAmp) {
-    cu.uBright.value = damp(cu.uBright.value, w.bright * fx * Math.max(genSun, 0.001), TAU, dt);
+    const bTarget = w.bright * fx * Math.max(genSun, 0.001);
+    // POSE LOCK must SNAP, not damp — that is what __orbLockPose() promises
+    // ("snap every weight to its target ... so the two captures are a pure
+    // function of state"). tint (lockSageCore) and amp (L.ampS, line 544) were
+    // already snapped; uBright was the one uniform still easing, and `starting`
+    // has by far the longest travel (idle ~1.0 -> 0.45*genSun ~0.07), so it was
+    // still moving when rep1/rep2 were shot. That one scene measured temporal
+    // noise 6.45 while EVERY other scene was 0, lifting distinctness to
+    // 1.5*6.45 = 9.67 and failing 13 pairs that all pass at the real 0.30 floor.
+    cu.uBright.value = ctx.lock ? bTarget : damp(cu.uBright.value, bTarget, TAU, dt);
     cu.uAmp.value = L.ampS;
     if (ctx.core && genSun < 1) {
       ctx.core.scale.setScalar((ctx.ballScale || 1) * (0.01 + 0.99 * genSun)); // sun GROWS from zero (stage 3)
