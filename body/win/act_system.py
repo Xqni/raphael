@@ -11,14 +11,12 @@ import asyncio
 from typing import Any, Dict
 
 try:
-    from .actions import (offload,
-ActionError, opt_enum, reject_extra, journal,
-                          register_action, req_int, req_str
-)
+    from .actions import (offload, ActionError, opt_enum, reject_extra,
+                          journal, register_action, req_int, req_str)
     from .winlayer import MEDIA_KEYS
 except ImportError:  # script mode
-    from actions import (ActionError, opt_enum, reject_extra, journal,
-                         register_action, req_int, req_str)
+    from actions import (offload, ActionError, opt_enum, reject_extra,
+                         journal, register_action, req_int, req_str)
     from winlayer import MEDIA_KEYS
 
 _MAX_CLIPBOARD = 100000

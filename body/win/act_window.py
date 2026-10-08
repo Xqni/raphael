@@ -17,7 +17,7 @@ ActionError, journal, opt_enum, reject_extra,
                           req_str, register_action
 )
 except ImportError:  # script mode
-    from actions import (ActionError, journal, opt_enum, reject_extra,
+    from actions import (offload, ActionError, journal, opt_enum, reject_extra,
                          req_str, register_action)
 
 _OPS = {'list', 'focus', 'minimize', 'maximize', 'restore', 'snap'}

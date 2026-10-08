@@ -151,3 +151,42 @@ async def test_not_found_error_reports_stage_counts(actlog, fake):
     assert 'app not found' in err
     assert 'PATH' in err and 'Start Menu' in err and 'UWP' in err
     assert 'candidates' in err
+
+
+# --------------------------------------------------------------- AUD-11 ----
+async def test_open_app_refuses_literal_paths(actlog, fake):
+    """Trusted boundary: literal exe/document paths are NOT resolved by
+    open_app — they must go through the confirm-gated open_path."""
+    for name in ('C:\\Tools\\tool.exe', '/usr/local/bin/tool', '~/bin/x'):
+        res = await actions.dispatch('open_app', {'name': name}, job='j_lit')
+        assert res['ok'] is False, (name, res)
+        assert 'open_path (confirmation-gated)' in res['error'], res
+    assert fake.calls('launch_path') == [], 'literal path must not launch'
+    assert fake.calls('launch_uwp') == []
+
+
+async def test_open_app_refuses_sensitive_blocklist_entries(actlog, fake,
+                                                            monkeypatch):
+    """Sensitive apps (privacy.blocklist_apps) refuse BEFORE any resolution
+    and steer to the confirm-gated open_path."""
+    import body.win.act_launch as act_launch
+    monkeypatch.setattr(act_launch, '_SENSITIVE_CACHE',
+                        ['1Password', 'KeePass', 'Bitwarden', 'Banking'])
+    res = await actions.dispatch('open_app', {'name': '1Password'},
+                                 job='j_sens')
+    assert res['ok'] is False
+    assert 'open_path' in res['error'] and 'confirmation' in res['error']
+    assert fake.calls('path_commands') == [], 'refused before resolution'
+    # non-sensitive curated launches still work
+    ok = await actions.dispatch('open_app', {'name': 'notepad'}, job='j_ok')
+    assert ok['ok'], ok
+
+
+async def test_confirm_metadata_on_boundary_acts(actlog, fake):
+    """open_path/uia carry their confirm categories (risky gate pairs with
+    registry metadata brain-core enforces at dispatch)."""
+    from body.win import actions as acts
+    assert acts.get_action('open_path').confirm == 'open_arbitrary_file'
+    assert acts.get_action('uia').confirm == 'gui_submission'
+    assert acts.get_action('open_app').confirm is None   # curated stays free
+    assert acts.get_action('launch_url').confirm is None

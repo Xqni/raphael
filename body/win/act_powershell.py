@@ -21,11 +21,10 @@ import re
 from typing import Any, Dict, Optional
 
 try:
-    from .actions import (offload,
-ActionError, reject_extra, register_action, req_str
-)
+    from .actions import (offload, ActionError, reject_extra,
+                          register_action, req_str)
 except ImportError:  # script mode
-    from actions import (ActionError, reject_extra, register_action, req_str)
+    from actions import (offload, ActionError, reject_extra, register_action, req_str)
 
 _POWERSHELL = ['powershell', '-NoProfile', '-NonInteractive',
                '-ExecutionPolicy', 'Bypass', '-Command']

@@ -26,22 +26,31 @@ SPECS = (
     ),
     spec(
         'open_app',
-        'Launch an installed Windows application by name (resolved through '
-        'PATH, Start Menu shortcuts, App Paths registry, then UWP/Store '
-        'apps). Use for "open <app>" commands. Check list_running_apps '
+        'Launch an INSTALLED Windows application by name — curated sources '
+        'only (Start Menu shortcuts, PATH executables, App Paths registry, '
+        'UWP/Store apps). Use for "open <app>" commands. AUD-11 boundary: '
+        'literal filesystem paths are NOT accepted here (use open_path, '
+        'which is confirmation-gated) and names matching '
+        'privacy.blocklist_apps (sensitive apps like password managers) are '
+        'refused — launch those via open_path too. Check list_running_apps '
         'first if the app may already be running.',
-        {'name': prop_string('App name or executable stem, e.g. "notepad", '
-                             '"chrome", "Calculator".')},
+        {'name': prop_string('Installed app name or executable stem, e.g. '
+                             '"notepad", "chrome", "Calculator".')},
         ('name',),
     ),
     spec(
         'open_path',
         'Open an existing LOCAL file or folder with its Windows default '
-        'handler (Explorer for folders). Only real filesystem paths — no '
-        'UNC/network paths, no shell: verbs. The path must already exist.',
-        {'path': prop_string('Absolute local path, e.g. '
-                             '"C:\\\\Users\\\\me\\\\Documents".')},
+        'handler (Explorer for folders). CONFIRMATION REQUIRED (AUD-11): '
+        'handler-opening an arbitrary exe/document executes it — the gate '
+        'asks before dispatch. Only real filesystem paths — no UNC/network '
+        'paths, no shell: verbs. The path must already exist; folders are '
+        'the safe case, executables/scripts run with their handler.',
+        {'path': prop_string('Absolute local path, e.g. an existing file or '
+                             'folder on this PC.')},
         ('path',),
+        risky=True,
+        confirm='open_arbitrary_file',
     ),
     spec(
         'list_running_apps',

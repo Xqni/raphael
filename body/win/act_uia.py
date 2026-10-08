@@ -134,6 +134,10 @@ async def _run_uia(args: Dict[str, Any], backend) -> Any:
 
 
 register_action('uia', _run_uia, validate=_validate_uia,
-                needs_lock=True, confirm=None,
+                needs_lock=True, confirm='gui_submission',
                 describe='UI Automation: find/click/type/read/tree over a '
-                         'structured element selector.')
+                         'structured element selector. click/type are '
+                         'high-impact GUI submissions (forms, sends) — the '
+                         'confirmation gate applies (AUD-11); state what you '
+                         'will click/type in your reply so the confirm '
+                         'question previews it.')

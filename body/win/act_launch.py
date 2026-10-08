@@ -11,7 +11,7 @@ from __future__ import annotations
 import asyncio
 import os
 import re
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import quote_plus
 
 try:
@@ -20,7 +20,7 @@ ActionError, opt_str, register_action, req_str,
                           reject_extra
 )
 except ImportError:  # script mode
-    from actions import (ActionError, opt_str, register_action, req_str,
+    from actions import (offload, ActionError, opt_str, register_action, req_str,
                          reject_extra)
 
 _MAX_URL = 2048
@@ -71,9 +71,43 @@ async def _run_search_youtube(args: Dict[str, Any], backend) -> Dict[str, Any]:
 
 
 # ----------------------------------------------------------------- open_app
+_SENSITIVE_CACHE: Optional[List[str]] = None
+
+
+def sensitive_apps() -> List[str]:
+    """`privacy.blocklist_apps` from config.yaml (AUD-11 sensitive boundary).
+
+    yaml is optional → empty list in minimal test envs (no false refusals);
+    tests inject via `monkeypatch.setattr(act_launch, '_SENSITIVE_CACHE', [...])`."""
+    global _SENSITIVE_CACHE
+    if _SENSITIVE_CACHE is None:
+        apps: List[str] = []
+        try:
+            import pathlib
+            import yaml
+            cfg_path = pathlib.Path(__file__).resolve().parents[2] / 'config.yaml'
+            if cfg_path.is_file():
+                cfg = yaml.safe_load(cfg_path.read_text()) or {}
+                apps = [str(a) for a in
+                        ((cfg.get('privacy') or {}).get('blocklist_apps') or [])]
+        except Exception:  # noqa: BLE001 — no yaml/no config → no refusals
+            apps = []
+        _SENSITIVE_CACHE = apps
+    return _SENSITIVE_CACHE
+
+
 def _validate_open_app(args: Dict[str, Any]) -> Dict[str, Any]:
     reject_extra(args, {'name'})
     name = req_str(args, 'name', max_len=_MAX_NAME)
+    # AUD-11 sensitive boundary: refuses BEFORE any resolution/backend call;
+    # the confirm-gated open_path is the sanctioned route for these.
+    low = name.lower()
+    for entry in sensitive_apps():
+        if entry.lower() and entry.lower() in low:
+            raise ValueError(
+                "app matches sensitive entry '%s' (privacy.blocklist_apps) — "
+                "launch it via open_path, which requires confirmation"
+                % entry)
     return {'name': name}
 
 
@@ -109,14 +143,22 @@ _SOURCE_KIND = {'path': 'path', 'app_path': 'path',
 
 def resolve_app(name: str, backend) -> Tuple[str, str]:
     """-> (kind, payload); raises ActionError('E_INTERNAL', ...) if unknown.
-    kind: path | shortcut | uwp. Stages: literal path -> exact match per
-    source in priority order -> prefix match -> contains match."""
+    kind: path | shortcut | uwp. Stages: exact match per source in priority
+    order -> prefix match -> contains match.
+
+    AUD-11: TRUSTED launches only — curated sources (PATH, Start Menu,
+    App Paths, UWP). Literal filesystem paths are deliberately NOT resolved
+    here; they go through open_path, which is confirmation-gated
+    (confirm='open_arbitrary_file')."""
     n = _normalize(name)
-    # A literal filesystem path wins (relative/expansion resolved by caller).
-    if os.path.sep in name or name.startswith('~'):
-        expanded = os.path.expandvars(os.path.expanduser(name))
-        if os.path.exists(expanded):
-            return ('path', expanded)
+    if os.path.sep in name or name.startswith('~') or ':' in name.split(os.path.sep)[0]:
+        # path-like input: refuse at the trusted boundary (arbitrary
+        # exe/document execution must clear the open_path confirmation).
+        raise ActionError(
+            'E_INTERNAL',
+            "open_app only launches curated apps — literal paths are not "
+            "resolved here; use open_path (confirmation-gated) for "
+            "arbitrary files/executables")
 
     cache: Dict[str, List[Tuple[str, str]]] = {}
 
@@ -225,11 +267,15 @@ register_action('search_youtube', _run_search_youtube,
                 describe='Open YouTube search results for a query string.')
 register_action('open_app', _run_open_app, validate=_validate_open_app,
                 needs_lock=False, confirm=None,
-                describe="Launch a Windows app by name (Start Menu/PATH/"
-                         "App Paths/UWP resolution).")
+                describe="Launch a CURATED Windows app by name (Start Menu/"
+                         "PATH/App Paths/UWP only — literal paths and "
+                         "privacy.blocklist_apps entries are refused and go "
+                         "through the confirmation-gated open_path).")
 register_action('open_path', _run_open_path, validate=_validate_open_path,
-                needs_lock=False, confirm=None,
-                describe='Open an existing local file/folder with its default handler.')
+                needs_lock=False, confirm='open_arbitrary_file',
+                describe='Open an existing local file/folder with its default '
+                         'handler (arbitrary exe/document/handler-open — '
+                         'AUD-11 confirm-gated).')
 register_action('list_running_apps', _run_list_running,
                 validate=_validate_list_running, needs_lock=False, confirm=None,
                 describe='List running applications with their window titles.')

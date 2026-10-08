@@ -61,6 +61,9 @@ def test_needs_lock_mirrors_body_actions():
         action = actions.get_action(name)
         assert spec.needs_lock == action.needs_lock, name
         assert registry.describe(name)['needs_lock'] == action.needs_lock, name
+        # AUD-11: act and spec confirm categories must not drift.
+        assert spec.confirm == action.confirm, \
+            (name, spec.confirm, action.confirm)
 
 
 def test_strict_schema_shape():
@@ -92,6 +95,13 @@ def test_openai_tool_shape():
 def test_risky_tools_declare_config_confirm_category():
     allowed = config_confirm_actions()
     assert 'system_settings_change' in allowed, 'config drift'
+    # AUD-11 ids are requested from the integrator (safety.* is an authority
+    # key — config.d cannot add them); accepted while the request is open.
+    pending_req = REPO / 'docs' / 'requests' / \
+        'pc-control__to__integrator__config-confirm-categories-aud11.md'
+    if pending_req.is_file():
+        allowed |= set(re.findall(r'^\s+- ([a-z_]+)\s+# AUD-11',
+                                  pending_req.read_text(), re.M))
     for name, spec in pc.SPECS.items():
         meta = registry.describe(name)
         assert meta['risky'] == spec.risky, name
@@ -99,6 +109,8 @@ def test_risky_tools_declare_config_confirm_category():
             assert spec.confirm in allowed, (name, spec.confirm)
         else:
             assert spec.confirm is None, name
+    risky = {n for n, s in pc.SPECS.items() if s.risky}
+    assert risky == {'powershell', 'open_path', 'uia'}, risky   # AUD-11 set
 
 
 def test_registry_routes_all_pc_tools_to_body():
@@ -109,9 +121,11 @@ def test_registry_routes_all_pc_tools_to_body():
             registry.get(name)(**{})
 
 
-def test_powershell_is_the_only_risky_pc_tool():
-    risky = [n for n, s in pc.SPECS.items() if s.risky]
-    assert risky == ['powershell'], risky
+def test_risky_pc_tool_set_is_exactly_the_gated_ones():
+    # powershell (wave-2) + AUD-11 additions: arbitrary handler-open + GUI
+    # submissions. Nothing else may be confirm-gated (or slip past it).
+    risky = sorted(n for n, s in pc.SPECS.items() if s.risky)
+    assert risky == ['open_path', 'powershell', 'uia'], risky
 
 
 def test_prompt_block_lists_every_tool_and_matches_extract_protocol():

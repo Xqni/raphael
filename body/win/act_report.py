@@ -30,7 +30,7 @@ ActionError, opt_enum, reject_extra, register_action,
                           req_str
 )
 except ImportError:  # script mode
-    from actions import (ActionError, opt_enum, reject_extra, register_action,
+    from actions import (offload, ActionError, opt_enum, reject_extra, register_action,
                          req_str)
 
 _OPS = {'save', 'list'}
