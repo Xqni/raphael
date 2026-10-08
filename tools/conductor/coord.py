@@ -51,6 +51,9 @@ INBOX_TYPES = {"decision", "answer", "wave_open", "nudge", "pause"}
 DEFAULT_WAVE = 2
 
 
+REPO_ROOT = str(Path(__file__).resolve().parents[2])  # repo root, no hard-coded home (SEC-1)
+
+
 def coord_dir() -> Path:
     return Path(os.environ.get("RAPHAEL_COORD_DIR") or (Path.home() / ".raphael-coord"))
 
@@ -655,7 +658,7 @@ def find_session(cd: Path, lane: str, st: dict | None = None) -> str | None:
             # server builds nested it under location. Accept both.
             d = (s.get("directory") or
                  (s.get("location") or {}).get("directory") or "")
-            if d.rstrip("/").endswith(want.rstrip("/")) or (lane == "integrator" and d == "/home/dami/raphael"):
+            if d.rstrip("/").endswith(want.rstrip("/")) or (lane == "integrator" and d.rstrip("/") == REPO_ROOT):
                 if match is None:
                     match = s.get("id")
                 if s.get("id") in active_ids:
@@ -721,7 +724,7 @@ def cmd_sessions(args) -> int:
     for s in data if isinstance(data, list) else []:
         d = ((s.get("location") or {}).get("directory") or "").rstrip("/")
         lane = None
-        if d == "/home/dami/raphael":
+        if d == REPO_ROOT:
             lane = "integrator"
         elif "/raphael-wt/" in d:
             lane = d.rsplit("/", 1)[-1]
