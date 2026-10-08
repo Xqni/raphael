@@ -171,7 +171,7 @@ Severity reflects impact in the checked source, not whether a feature is current
 
 #### AUD-19 — P1: Setup/dependency installation is not reproducible
 
-**Evidence:** `scripts/setup.sh:54-92` advertises nonexistent `brain/requirements.txt` and prints a stale systemd sample (`Wants=ollama`, `brain/app.py`) unlike `brain/raphael-brain.service`. `brain/voice/scripts/build_fish_venv.sh:8,13-27` hardcodes `/home/dami/raphael`, uses floating versions and no hashes; ignored vendor code is not pinned by the repository. `scripts/install-body-venv.ps1:31-33,78-82` uses unhashed `scripts/body-requirements.txt`; the hashed `body/win/requirements.txt` is only in a lane branch and is not consumed by the installer.
+**Evidence:** `scripts/setup.sh:54-92` advertises nonexistent `brain/requirements.txt` and prints a stale systemd sample (`Wants=ollama`, `brain/app.py`) unlike `brain/raphael-brain.service`. `brain/voice/scripts/build_fish_venv.sh:8,13-27` hardcodes `/home/<wsl-user>/raphael`, uses floating versions and no hashes; ignored vendor code is not pinned by the repository. `scripts/install-body-venv.ps1:31-33,78-82` uses unhashed `scripts/body-requirements.txt`; the hashed `body/win/requirements.txt` is only in a lane branch and is not consumed by the installer.
 
 **Impact:** Clean setup may fail or install a different runtime; dependencies can drift and machine-specific paths defeat portability.
 
