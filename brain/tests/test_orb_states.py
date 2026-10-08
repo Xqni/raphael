@@ -119,8 +119,9 @@ async def test_every_frame_carries_the_contract_fields(fake_ui):
         assert f['task_kind'] in ('system', 'files', 'web', 'media', 'llm',
                                   'gui', 'none'), f
         assert f['provider'] == 'groq' and f['model'] == 'llama-x', f
-    # shape follows task kind via config orb.shape_map
-    assert frames[0]['task_kind'] == 'llm' and frames[0]['shape_hint'] == 'octagram'
+    # CIRCLE-ONLY hold (integrator decision 2026-10-07): task_kind still
+    # varies, shape_hint is pinned to circle while the hold is on
+    assert frames[0]['task_kind'] == 'llm' and frames[0]['shape_hint'] == 'circle'
     assert frames[1]['task_kind'] == 'gui' and frames[1]['shape_hint'] == 'circle'
 
 
@@ -273,6 +274,32 @@ def test_e2e_state_req_returns_full_frame(token_path):
 
 
 # ---- Bug E (Wave-3 P0): speaking must HOLD over listening mid-utterance ----
+@pytest.mark.asyncio
+async def test_shape_hint_circle_only_hold(fake_ui):
+    """Integrator decision 2026-10-07: EVERY task_kind emits shape_hint
+    'circle' while the central hold is on — task_kind itself still varies,
+    the config map stays intact for future re-enable."""
+    sess, hub, engine = fake_ui
+    orbstate.finish_boot()
+    for kind in ('llm', 'gui', 'system', 'web', 'analysis', 'simulation',
+                 'none'):
+        orbstate.set_task(kind)
+        orbstate.refresh(hub=hub, engine=engine)
+    await drain()
+    frames = orb_frames(sess)
+    kinds = [f['task_kind'] for f in frames]
+    shapes = [f['shape_hint'] for f in frames]
+    assert kinds == ['llm', 'gui', 'system', 'web', 'analysis', 'simulation',
+                     'none'], kinds
+    assert shapes == ['circle'] * len(kinds), shapes   # hold: circle ONLY
+    # the map itself is untouched (future re-enable) and the hold flag is on
+    from brain import config as appcfg
+    shape_map = appcfg.cfg_get(appcfg.get_config(), 'orb.shape_map', {})
+    assert shape_map.get('llm') == 'octagram' and shape_map.get('gui') == 'circle'
+    assert orbstate._SHAPE_CIRCLE_ONLY is True
+    orbstate.clear_task()
+
+
 @pytest.mark.asyncio
 async def test_bug_e_no_flicker_speaking_holds_over_listening(fake_ui):
     """Exact renderer sequence from docs/BUGS-WAVE2.md Bug E: the always-listen
