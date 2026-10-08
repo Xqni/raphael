@@ -11,18 +11,39 @@ from typing import Optional, Callable, Awaitable
 def _require_or_die(pkg: str, pin: str):
     """SEC-9 (Wave 5H): runtime `pip install` is REMOVED. The Body must run
     in a pre-provisioned, hash-pinned environment; a missing dependency fails
-    LOUD at import instead of mutating the environment at runtime."""
+    LOUD at import instead of mutating the environment at runtime.
+
+    pc-control coordination (request pc-control__to__voice__sec9-audio-pip-helpers):
+    prefer the shared body helper `body/win/depfail.py` (their file, its error
+    names the whole-Body manifest `body/win/requirements.txt`); fall back to
+    this module's own check when depfail isn't importable (standalone/flat
+    import modes) so the audio modules never hard-depend on a file we don't
+    own landing first.
+    """
+    # Presence check = actual importability (works with real installs AND the
+    # test suites' stubbed modules); only on failure do we produce the pointed
+    # SEC-9 error — preferring the shared helper's message when it's around.
     try:
         return __import__(pkg)
-    except ImportError as e:
-        raise RuntimeError(
-            f"[audio] SEC-9: required package '{pkg}=={pin}' is not installed. "
-            f"Runtime pip installs are disabled — provision this environment "
-            f"once from the hash-pinned manifest "
-            f"(brain/voice/body-audio-requirements.txt), e.g. "
-            f"'uv pip install --require-hashes -r "
-            f"brain/voice/body-audio-requirements.txt', then restart the Body. "
-            f"Original error: {e}") from e
+    except ImportError:
+        pass
+    try:
+        try:
+            from . import depfail          # package mode (body.win.audio_in)
+        except ImportError:
+            import depfail                 # flat/script mode (same dir)
+        depfail.require(pkg)               # raises: pointed SEC-9 error
+    except ImportError:
+        depfail = None                     # helper itself unavailable
+    except RuntimeError:
+        raise                              # their pointed error: propagate
+    raise RuntimeError(
+        f"[audio] SEC-9: required package '{pkg}=={pin}' is not installed. "
+        f"Runtime pip installs are disabled — provision once from the "
+        f"hash-pinned manifests: body/win/requirements.txt (whole Body, "
+        f"covers these pins) or brain/voice/body-audio-requirements.txt "
+        f"(linux/test hosts): 'pip install --require-hashes -r <file>', "
+        f"then restart the Body.")
 
 
 _require_or_die('sounddevice', '0.5.1')

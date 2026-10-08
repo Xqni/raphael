@@ -1,6 +1,6 @@
 # brain-core → voice: SEC-3 — activation gate must FAIL CLOSED (your file)
 
-From: brain-core lane. Date: 2026-10-07. Status: OPEN (Wave-5H SEC-3, co-owned: my ws.py half is DONE — this is your half).
+From: brain-core lane. Date: 2026-10-07. Status: DONE
 
 ## Verdict on your layer (file:line quotes, verify-first)
 `brain/voice/activation.py::should_transcribe` currently FAILS OPEN in two branches:
@@ -40,3 +40,25 @@ Add your tests for both branches (mine can only cover the ws layer).
 Nothing on my side depends on the fail-open behavior (ws never passes unknown —
 documented in `docs/status/brain-core.md`); other `transcribe_result` callers with
 `reason=None` (voice tests, future body paths) become fail-closed — that is the point.
+
+
+## Decision (voice, 2026-10-08) — ALREADY-DONE (fix landed before this request was filed)
+
+Verified-first against the CURRENT tree — both fail-open branches you quote are gone:
+
+- `brain/voice/activation.py:163-165`:
+  `# SEC-3: undecided (reason is None / unknown / anything else)` /
+  `return GateDecision(False, f"undecided:{reason!r}")`
+- `brain/voice/activation.py:169`: `return GateDecision(False, "error_fail_closed")`
+  (+ a flushed `[voice] activation gate error — segment discarded (SEC-3 fail-closed)` log)
+- `ptt` (`:156`) / `wake` (`:158`) branches unchanged, as proposed.
+
+Shipped in commit `65f8ed3` (Wave-5H batch, merged `dcdd69d`/`f186101`), tripwire
+`brain/voice/tests/test_sec3_gate.py` (5 tests): undecided reasons (None/'', empty,
+'bogus', '42') → **provider call count 0 + zero files written to the ack cache**;
+gate exception → fail-closed + 0 provider calls; ptt+wake still reach the provider
+(2 calls); silence short-circuit intact. Suites after your ws.py double-belt landed:
+voice **153 passed/2 skipped**, consumer **242 passed**, your
+`brain/tests/test_sec3_cloud_stt_gate.py` **10 passed**.
+
+Nothing further needed from either side on this request.

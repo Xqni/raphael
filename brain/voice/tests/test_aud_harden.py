@@ -131,3 +131,44 @@ def test_aud32_rotation_never_raises(tmp_path):
     d = tmp_path / "dir.log"
     d.mkdir()
     assert FishSpeechServer._rotate_log_path(d, max_bytes=1) is None
+
+
+# ---- SEC-9 x pc-control shared helper (depfail) ----------------------------
+def test_require_prefers_shared_body_helper(monkeypatch):
+    """With the shared helper present, IT produces the pointed SEC-9 error
+    for a missing package (their message/manifest wins)."""
+    import sys as _sys, types as _t
+    calls = []
+    fake = _t.ModuleType("body.win.depfail")
+
+    def _req(dist, import_name=None):
+        calls.append(dist)
+        raise RuntimeError(
+            "missing Body dependency '%s' — SEC-9; pip install "
+            "--require-hashes -r body/win/requirements.txt" % dist)
+
+    fake.require = _req
+    monkeypatch.setitem(_sys.modules, "body.win.depfail", fake)
+    from body.win.audio_in import _require_or_die
+    with pytest.raises(RuntimeError, match="body/win/requirements.txt"):
+        _require_or_die("definitely_not_installed_pkg_xyz_123", "0.0")
+    assert calls == ["definitely_not_installed_pkg_xyz_123"]
+
+
+def test_require_falls_back_when_helper_absent(monkeypatch):
+    """depfail not importable -> local check still fails LOUD with BOTH
+    manifests named (the audio modules never hard-depend on someone else's
+    file landing first)."""
+    import sys as _sys
+    monkeypatch.setitem(_sys.modules, "body.win.depfail", None)
+    from body.win.audio_in import _require_or_die
+    with pytest.raises(RuntimeError) as ei:
+        _require_or_die("definitely_not_installed_pkg_xyz_123", "0.0")
+    assert "SEC-9" in str(ei.value)
+    assert "brain/voice/body-audio-requirements.txt" in str(ei.value)
+    assert "body/win/requirements.txt" in str(ei.value)
+
+
+def test_require_present_package_returns_module():
+    from body.win.audio_out import _require_or_die
+    assert _require_or_die("numpy", "2.2.6").__name__ == "numpy"

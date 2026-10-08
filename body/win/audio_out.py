@@ -16,18 +16,33 @@ import time
 
 def _require_or_die(pkg: str, pin: str):
     """SEC-9 (Wave 5H): no runtime pip installs on the voice path — a missing
-    dependency fails LOUD with the provisioning command."""
+    dependency fails LOUD with the provisioning command. Prefers the shared
+    `body/win/depfail.py` helper (pc-control-owned; see request
+    pc-control__to__voice__sec9-audio-pip-helpers), falls back to the local
+    check when depfail isn't importable."""
+    # Presence = actual importability (stub-friendly); only on failure is the
+    # pointed SEC-9 error produced, preferring the shared helper's message.
     try:
         return __import__(pkg)
-    except ImportError as e:
-        raise RuntimeError(
-            f"[audio] SEC-9: required package '{pkg}=={pin}' is not installed. "
-            f"Runtime pip installs are disabled — provision this environment "
-            f"once from the hash-pinned manifest "
-            f"(brain/voice/body-audio-requirements.txt), e.g. "
-            f"'uv pip install --require-hashes -r "
-            f"brain/voice/body-audio-requirements.txt', then restart the Body. "
-            f"Original error: {e}") from e
+    except ImportError:
+        pass
+    try:
+        try:
+            from . import depfail
+        except ImportError:
+            import depfail
+        depfail.require(pkg)
+    except ImportError:
+        depfail = None
+    except RuntimeError:
+        raise
+    raise RuntimeError(
+        f"[audio] SEC-9: required package '{pkg}=={pin}' is not installed. "
+        f"Runtime pip installs are disabled — provision once from the "
+        f"hash-pinned manifests: body/win/requirements.txt (whole Body, "
+        f"covers these pins) or brain/voice/body-audio-requirements.txt "
+        f"(linux/test hosts): 'pip install --require-hashes -r <file>', "
+        f"then restart the Body.")
 
 
 _require_or_die('numpy', '2.2.6')
