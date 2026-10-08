@@ -113,14 +113,16 @@ def test_base_profile_is_cloud_temp():
 
 
 def test_cloud_temp_chain_has_no_local_providers():
-    """§c/WAVES: chat/tools = Groq → Zen free; Go/ollama OFF under cloud_temp."""
+    """USER 2026-10-07 (PAID_USAGE): opencode models own the LLM chain;
+    ollama stays OFF under cloud_temp; groq = STT-only tail (caps={'stt'})."""
     text = (REPO / 'config.yaml').read_text(encoding='utf-8')
     m = re.search(r'^\s*chain:\s*\[([^\]]+)\]', text, re.M)
     assert m, 'providers.chain not found'
     chain = [c.strip() for c in m.group(1).split(',')]
     assert 'ollama' not in chain
-    assert 'go' not in chain
-    assert chain[0] == 'groq' and 'zen_free' in chain
+    assert chain[0] == 'go'            # opencode-go paid fast serves first
+    assert 'zen_free' in chain         # opencode free second
+    assert chain[-1] == 'groq'         # groq last: STT home + last resort only
 
 
 def test_no_secrets_in_yaml_or_example_env():
