@@ -11,7 +11,9 @@ chat(messages, tools=None, stream=False, purpose="chat")
 #  messages: OpenAI-style [{"role": "system|user|assistant|tool", "content": ...}]
 #  tools:    None or OpenAI function-tool list (JSON Schema params)
 #  stream:   False -> dict result; True -> async iterator of delta dicts
-#  purpose:  "chat" | "tool" | "plan" | "ack"   (usage/latency tag only)
+#  purpose:  "chat" | "tool" | "plan" | "ack" | "analysis" | "simulation"
+#            (usage/latency tag + model-tier hint; tier map =
+#             config.d/router.yaml -> router.purpose_roles; unknown purpose -> fast)
 #  returns:  {"text": str, "tool_calls": list, "finish": "stop"|"tool_calls"|"length",
 #             "provider": str, "model": str, "usage": {"input": int, "output": int}}
 #  stream:   yields {"delta": str} ... final {"finish", "provider", "model", "tool_calls"?}
