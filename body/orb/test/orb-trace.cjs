@@ -241,27 +241,54 @@ async function runInteraction(cdp, brain, rec) {
   add('menu_pause_is_checkbox', !!pauseItem && pauseItem.type === 'checkbox',
       pauseItem && `label="${pauseItem.label}" type=${pauseItem.type} action=${pauseItem.action}`);
 
-  // --- F-4 (Wave 5H audit): usage + rate-headroom rows, NO new frames -------
-  // Source is GET /status (PROTOCOL §2 REST, SAME port + token as the WS), read
-  // when the menu opens. The mock SERVES a realistic router block, so this
-  // asserts the headroom MATH — tightest provider is zen_free at 58/60 rpm =
-  // 3% headroom with an OPEN circuit — not merely that a row exists.
+  // --- F-4 (Wave 5H): usage + rate headroom, from the ROUTER's accessor ----
+  // Primary source is router.headroom (router__to__orb__headroom-in-menu.md,
+  // IN MAIN via brain/router/core.py::rate_headroom()); GET /status only, NO new
+  // frames. The mock serves headroom with ALL circuits closed while its older
+  // `providers` block still says zen_free is open — so seeing a circuit row in
+  // the DEFAULT state would prove the menu reads the wrong block.
   const usage = (spec || []).find((i) => i.id === 'info-usage');
   const rate = (spec || []).find((i) => i.id === 'info-rate');
+  const circ = (spec || []).find((i) => i.id === 'info-circuit');
+  const vision = (spec || []).find((i) => i.id === 'info-vision');
   add('menu_usage_and_rate_rows', !!usage && !!rate,
       `${usage && usage.label} | ${rate && rate.label}`);
   add('menu_usage_totals_from_router',
       !!usage && /128 calls · 121 ok · 7 err/.test(usage.label || ''),
       `label="${usage && usage.label}"`);
-  add('menu_rate_headroom_math',
-      !!rate && /3%/.test(rate.label || '') && /zen_free/.test(rate.label || '') &&
-      /58\/60/.test(rate.label || ''),
-      `label="${rate && rate.label}"`);
-  const circ = (spec || []).find((i) => i.id === 'info-circuit');
-  add('menu_circuit_row_when_open',
-      !!circ && /zen_free open/.test(circ.label || ''), `label="${circ && circ.label}"`);
+  add('menu_rate_headroom_from_accessor',
+      !!rate && /Rate headroom: zen_free 12 · go 28 · groq 30 rpm/.test(rate.label || ''),
+      `label="${rate && rate.label}" (tightest first)`);
+  add('menu_circuit_absent_when_all_closed', !circ,
+      circ ? `unexpected: ${circ.label}` : 'no circuit row (headroom says all closed)');
+  add('menu_vision_absent_when_healthy', !vision,
+      vision ? `unexpected: ${vision.label}` : 'no vision row (not exhausted)');
   add('menu_status_sent_bearer_token', brain.statusAuthSeen === true,
       `Authorization header present on GET /status: ${brain.statusAuthSeen} (value never stored)`);
+
+  // flip ONLY the headroom block: open a circuit + exhaust today's vision budget
+  brain.statusRouter.headroom.providers.groq.circuit = 'open';
+  brain.statusRouter.headroom.providers.groq.cooldown_s = 41;
+  brain.statusRouter.headroom.vision_paid.exhausted = true;
+  await sleep(1300);                       // > STATUS_TTL_MS so it re-reads
+  const specB = await cdp.evaluateJson('window.raphael.menuSpec()');
+  const circB = (specB || []).find((i) => i.id === 'info-circuit');
+  const visB = (specB || []).find((i) => i.id === 'info-vision');
+  add('menu_circuit_row_when_open',
+      !!circB && /groq open \(41s\)/.test(circB.label || ''),
+      `label="${circB && circB.label}" (groq, not zen_free — proves the source)`);
+  add('menu_vision_budget_row_when_exhausted',
+      !!visB && /Vision budget: today \$0\.0007\/1/.test(visB.label || ''),
+      `label="${visB && visB.label}"`);
+
+  // fallback: compact block removed -> derive from router.providers[*].rpm
+  delete brain.statusRouter.headroom;
+  await sleep(1300);
+  const specC = await cdp.evaluateJson('window.raphael.menuSpec()');
+  const rateC = (specC || []).find((i) => i.id === 'info-rate');
+  add('menu_headroom_falls_back_when_accessor_absent',
+      !!rateC && /Rate headroom: 3% · zen_free 58\/60 rpm/.test(rateC.label || ''),
+      `label="${rateC && rateC.label}"`);
 
   // --- SEC-3: "mic audio is going to the cloud" indicator ------------------
   const mic = (spec || []).find((i) => i.id === 'mic-cloud');
@@ -290,7 +317,7 @@ async function runInteraction(cdp, brain, rec) {
 
   // --- F-4 degradation: Brain reports no usage block -> honest, not missing --
   brain.statusRouter = null;
-  await sleep(1200);                 // > STATUS_TTL_MS so the next open re-reads
+  await sleep(1300);                 // > STATUS_TTL_MS so the next open re-reads
   const specDeg = await cdp.evaluateJson('window.raphael.menuSpec()');
   const usage2 = (specDeg || []).find((i) => i.id === 'info-usage');
   const rate2 = (specDeg || []).find((i) => i.id === 'info-rate');

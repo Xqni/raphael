@@ -544,10 +544,22 @@ function refreshStatus(force) {
   return statusInflight;
 }
 
-/** F-4 rows: usage totals + the TIGHTEST rate headroom across providers.
- *  The two info rows are a STABLE contract — always present, degrading to
- *  "(unavailable)" — so a consumer/test can key on the id, not on whether the
- *  Brain's router block happened to be merged yet. */
+/** F-4 rows — built from the ROUTER's compact headroom accessor exactly as
+ *  `docs/requests/router__to__orb__headroom-in-menu.md` specifies (it is IN
+ *  MAIN: `brain/router/core.py::rate_headroom()`), not from a re-derivation.
+ *
+ *  Three rows are a STABLE contract — always present or deliberately absent by
+ *  rule, degrading to "(unavailable)"/"(none reported)" — so a test can key on
+ *  the id instead of guessing whether the accessor has been merged yet:
+ *    info-usage   always
+ *    info-rate    always
+ *    info-circuit only when some provider's circuit != "closed"
+ *    info-vision  only when vision_paid says exhausted/total_exhausted/
+ *                 ledger_broken (amber; `vision_paid` itself only exists while
+ *                 providers.allow_vision_paid is on)
+ *  Fallback: if the compact block is absent (older payload) we re-derive rpm
+ *  headroom from `router.providers[*].rpm` — same row, second-best source.
+ */
 function usageRows() {
   const r = (statusSnap && statusSnap.router && typeof statusSnap.router === 'object')
     ? statusSnap.router : null;
@@ -560,6 +572,48 @@ function usageRows() {
       : 'Usage 24h: (unavailable)',
     enabled: false,
   }];
+
+  const hr = (r && r.headroom && typeof r.headroom === 'object') ? r.headroom : null;
+  const hrProvs = (hr && hr.providers) || {};
+  const hrNames = Object.keys(hrProvs);
+
+  if (hrNames.length) {
+    // Tightest first: the lowest rpm_headroom IS the binding constraint.
+    const ordered = hrNames.map((n) => {
+      const p = hrProvs[n] || {};
+      return { n, rpm: Number(p.rpm_headroom), circuit: p.circuit || 'closed',
+               cool: Number(p.cooldown_s) || 0 };
+    }).sort((a, b) => (Number.isFinite(a.rpm) ? a.rpm : Infinity)
+                    - (Number.isFinite(b.rpm) ? b.rpm : Infinity));
+    const named = ordered.filter((o) => Number.isFinite(o.rpm)).slice(0, 3);
+    rows.push({
+      id: 'info-rate',
+      label: named.length
+        ? `Rate headroom: ${named.map((o) => `${o.n} ${o.rpm}`).join(' \u00b7 ')} rpm`
+        : 'Rate headroom: (none reported)',
+      enabled: false,
+    });
+    const open = ordered.filter((o) => o.circuit && o.circuit !== 'closed');
+    if (open.length) {
+      rows.push({
+        id: 'info-circuit',
+        label: `Circuit: ${open.map((o) =>
+          `${o.n} ${o.circuit}${o.cool > 0 ? ` (${o.cool}s)` : ''}`).join(' \u00b7 ')}`,
+        enabled: false,
+      });
+    }
+    const vp = hr.vision_paid;
+    if (vp && (vp.exhausted || vp.total_exhausted || vp.ledger_broken)) {
+      const bits = [];
+      if (vp.exhausted) bits.push(`today $${vp.today_usd}/${vp.day_cap_usd}`);
+      if (vp.total_exhausted) bits.push(`total $${vp.total_usd}/${vp.total_cap_usd}`);
+      if (vp.ledger_broken) bits.push('LEDGER BROKEN');
+      rows.push({ id: 'info-vision', label: `Vision budget: ${bits.join(' \u00b7 ')}`, enabled: false });
+    }
+    return rows;
+  }
+
+  // ---- fallback: no compact block yet (older /status) ----------------------
   const provs = (r && r.providers) || {};
   let tight = null;
   for (const name of Object.keys(provs)) {
@@ -568,15 +622,13 @@ function usageRows() {
     if (!Number.isFinite(rpm.cap) || rpm.cap <= 0) continue;
     const used = Number(rpm.used) || 0;
     const head = 1 - (used / rpm.cap);
-    if (!tight || head < tight.head) {
-      tight = { name, head, used, cap: rpm.cap, circuit: p.circuit };
-    }
+    if (!tight || head < tight.head) tight = { name, head, used, cap: rpm.cap, circuit: p.circuit };
   }
   if (tight) {
     rows.push({
       id: 'info-rate',
       label: `Rate headroom: ${Math.max(0, Math.round(tight.head * 100))}% ` +
-             `· ${tight.name} ${tight.used}/${tight.cap} rpm`,
+             `\u00b7 ${tight.name} ${tight.used}/${tight.cap} rpm`,
       enabled: false,
     });
     if (tight.circuit && tight.circuit !== 'closed') {

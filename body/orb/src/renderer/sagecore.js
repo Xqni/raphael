@@ -186,7 +186,32 @@ export function initSageCore(THREE, group, scene, pal) {
   const texCube = makePaneTexture(THREE, 'cube');
   const paneGeo = new THREE.PlaneGeometry(1, 1);
   const N_PANES = 18;   // §3.6: fewer, larger panes (was 30 small ones)
+  // USER (2026-10-07): "the glyphs or [rune] texts should be rings around the
+  // sun and the inner cage … revolving around them in a continuous motion
+  // instead of rotating with them … like a ring around them, not flat 2d discs."
+  //
+  // The old layout scattered 18 axis-aligned, camera-facing squares over a
+  // cylinder. Vision QC named THINKING as the worst state: "flat, straight-on
+  // glyph tokens … NO foreshortening, NO tilt, NO occlusion — every one faces
+  // the camera square-on, i.e. pasted stickers", against the speaking state's
+  // rings which "foreshorten into an ellipse and pass behind the core".
+  //
+  // Now: TWO TILTED RINGS — one around the sun (r 0.78), one around the inner
+  // cage (r 1.02) — sitting between the two cage shells. Each pane is oriented
+  // RADIALLY OUTWARD (lookAt a point 2x its offset from the ring centre) so it
+  // lies on the ring's cylinder: from the camera the near cards read full-face
+  // and the side cards foreshorten, exactly like the speaking glyph ring. They
+  // stay in `scene` (NOT `group`), so they REVOLVE continuously and are never
+  // spin-locked to the sun or the cage, and with `depthWrite:false` + the core
+  // writing depth the far half is occluded — the "passes behind" read.
+  const RING = [
+    { r: 0.78, tx: 0.62, ty: 0.18, dir: +1 },   // around the SUN
+    { r: 1.02, tx: -0.42, ty: 0.55, dir: -1 },  // around the INNER CAGE
+  ];
+  const PER_RING = N_PANES / 2;
   for (let i = 0; i < N_PANES; i++) {
+    const ring = RING[i % 2];
+    const slot = Math.floor(i / 2);
     const near = ((i * 7) % 10) / 9;                 // 0 far .. 1 near
     const isCube = i % 4 === 0;
     const soft = !isCube && near < 0.30;             // far ones blurred (DoF)
@@ -194,19 +219,18 @@ export function initSageCore(THREE, group, scene, pal) {
       map: isCube ? texCube : (soft ? texSoft : texSharp),
       transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
       opacity: 0.12 + near * 0.32, color: 0xdff2ff,
+      side: THREE.DoubleSide,   // ring cards are seen from both faces
     });
     const m = new THREE.Mesh(paneGeo, mat);
-    const s = 0.13 + near * 0.30;   // §3.6: larger
+    const s = 0.12 + near * 0.26;   // §3.6: larger (slightly under the old max)
     m.scale.set(s, s, 1);
-    const ang = (i / N_PANES) * Math.PI * 2 + i * 0.618 * Math.PI * 2;
-    const rad = 0.50 + h01(i + 3) * 0.80;            // max ~1.30 (+half size < edge)
-    const z = -0.35 + ((i * 13) % 9) / 8 * 0.75;
-    m.position.set(Math.cos(ang) * rad, Math.sin(ang) * rad, z);
-    m.rotation.z = (i % 4) * Math.PI * 4;            // axis-aligned squares
+    const ang = (slot / PER_RING) * Math.PI * 2 + (i % 2) * 0.35;
+    const rad = ring.r;
     scene.add(m);
     L.panes.push({
       m, mat, baseOp: mat.opacity, ang, rad, near,
-      speed: (0.008 + h01(i + 11) * 0.014) * (0.4 + near * 1.2), // parallax
+      tiltX: ring.tx, tiltY: ring.ty, dir: ring.dir,
+      speed: (0.008 + h01(i + 11) * 0.014) * (0.4 + near * 1.2) * ring.dir,
       phase: i * 1.7,
     });
   }
@@ -241,47 +265,52 @@ export function initSageCore(THREE, group, scene, pal) {
   L.speed = new THREE.LineSegments(speedGeo, L.speedMat);
   group.add(L.speed);
 
-  // 4) WIREFRAME SPHERE CAGE (USER, 2026-10-07): "change the cages (inner and
-  // outer) to 3d spheres please" (after trying an octagram: "nah i dont like
-  // the octagram").
+  // 4) GEODESIC WIREFRAME CAGE — base spec ORB_REBUILD_TASK §2.1.4: "a large
+  // geodesic/irregular polyhedron of thin white lines connecting bright node
+  // dots at the vertices. It rotates slowly in true 3D with depth-based
+  // brightness." Re-pasted fidelity task §3.3: "a clean geodesic/irregular
+  // polyhedron, FEWER lines than now … It must not look like tangled yarn."
   //
-  // Built from latitude rings + meridians, so the silhouette is a true circle
-  // and the structure reads as a sphere from ANY angle — a flat star or an
-  // angular polyhedron does not. The INNER cage (L.cage) is the SAME geometry
-  // at 0.56 scale, so outer and inner are spheres by construction.
+  // USER (2026-10-07): rejected BOTH earlier shapes — the octagram ("nah i dont
+  // like the octagram") and the lat/long globe ("i dont like the 3d spheres for
+  // the outer and inner cages"). The globe read as stacked latitude rings with
+  // pole convergence: a wireframe GLOBE, not the analysis polyhedron the spec
+  // describes — and it cost 196 edges vs this build's 120, i.e. denser than the
+  // "FEWER lines" requirement allowed.
   //
-  // Depth budget: 5 parallels x 20 segments + 6 meridians x 16 segments =
-  // 196 edges, comparable to the old icosphere, so the "tangled yarn" problem
-  // does not come back. Node dots ride the meridian x parallel intersections.
-  const SPH_R = 1.15;      // outer cage radius (unchanged from the icosphere)
-  const LAT_SEGS = 20;     // segments per parallel
-  const MER_SEGS = 16;     // segments per meridian
-  const MERIDIANS = 6;
-  const LATS = [-1.15, -0.55, 0.0, 0.55, 1.15].map((k) => Math.asin(k / 1.15));
-  const sphPoint = (theta, phi) => {
-    const rr = Math.cos(phi) * SPH_R;
-    return [Math.cos(theta) * rr, Math.sin(phi) * SPH_R, Math.sin(theta) * rr];
+  // IcosahedronGeometry(1.15, 1) = 42 unique vertices / 120 edges. The INNER
+  // cage is the SAME geometry at 0.56 scale, so both cages are geodesic.
+  const CAGE_R = 1.15;
+  const ico = new THREE.IcosahedronGeometry(CAGE_R, 1);
+  const ip = ico.attributes.position.array;
+  // PolyhedronGeometry is NON-indexed (every triangle repeats its vertices), so
+  // the unique vertex list and the unique edge list have to be recovered by
+  // position — that is also what puts the node dots on the real vertices.
+  const vmap = new Map();
+  const verts = [];
+  const addV = (x, y, z) => {
+    const k = `${Math.round(x * 1e4)},${Math.round(y * 1e4)},${Math.round(z * 1e4)}`;
+    let i = vmap.get(k);
+    if (i === undefined) { i = verts.length; vmap.set(k, i); verts.push([x, y, z]); }
+    return i;
   };
-  const sphEdges = [];
-  for (const phi of LATS) {                       // parallels
-    const ring = [];
-    for (let a = 0; a < LAT_SEGS; a++) ring.push(sphPoint((a / LAT_SEGS) * Math.PI * 2, phi));
-    for (let a = 0; a < LAT_SEGS; a++) sphEdges.push([ring[a], ring[(a + 1) % LAT_SEGS]]);
+  const eset = new Set();
+  const geoEdges = [];
+  for (let t = 0; t < ip.length; t += 9) {
+    const a = addV(ip[t], ip[t + 1], ip[t + 2]);
+    const b = addV(ip[t + 3], ip[t + 4], ip[t + 5]);
+    const c = addV(ip[t + 6], ip[t + 7], ip[t + 8]);
+    for (const pair of [[a, b], [b, c], [c, a]]) {
+      const p = pair[0], q = pair[1];
+      const k = p < q ? p * 100000 + q : q * 100000 + p;
+      if (eset.has(k)) continue;
+      eset.add(k);
+      geoEdges.push([verts[p], verts[q]]);
+    }
   }
-  for (let m = 0; m < MERIDIANS; m++) {           // meridians (pole to pole)
-    const th = (m / MERIDIANS) * Math.PI * 2;
-    const col = [];
-    for (let sI = 0; sI <= MER_SEGS; sI++) col.push(sphPoint(th, -Math.PI / 2 + (sI / MER_SEGS) * Math.PI));
-    for (let sI = 0; sI < MER_SEGS; sI++) sphEdges.push([col[sI], col[sI + 1]]);
-  }
-  const nodeLats = [LATS[1], LATS[3]];             // 6 x 2 = 12 vertex dots
-  const uniq = [];
-  for (let m = 0; m < MERIDIANS; m++) {
-    const th = (m / MERIDIANS) * Math.PI * 2;
-    for (const phi of nodeLats) uniq.push(sphPoint(th, phi));
-  }
+  const uniq = verts;
 
-  const EDGES = sphEdges;
+  const EDGES = geoEdges;   // 120 unique geodesic edges
   const lp = new Float32Array(EDGES.length * 6);
   const aT = new Float32Array(EDGES.length * 2);
   const aId = new Float32Array(EDGES.length * 2);
@@ -303,6 +332,14 @@ export function initSageCore(THREE, group, scene, pal) {
     vertexShader: polyVert, fragmentShader: polyFrag,
     uniforms: { uTime: { value: 0 }, uAlpha: { value: 1 }, uPulse: { value: 1 }, uTint: { value: new THREE.Color(0xffffff) }, uDrop: { value: 0 } },
     transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+    // USER (2026-10-07): "make those thin white lines have a real bright glow so
+    // they are visible on any screen". polyFrag writes PREMULTIPLIED
+    // `vec4(uTint*b, b)` (sage.glsl.js:67), but premultipliedAlpha defaulted to
+    // false, so additive blended as SRC_ALPHA and multiplied by `b` AGAIN —
+    // every line drew at b*b instead of b (0.76 -> 0.58 at rest). The hairline
+    // is 1px because ANGLE/D3D12 clamps gl.lineWidth, so this double-dim was
+    // the whole reason they vanished on bright wallpapers.
+    premultipliedAlpha: true,
   });
   L.poly = new THREE.LineSegments(polyGeo, L.polyMat);
   L.poly.rotation.x = 0.30;               // subtle depth, still head-on/graphic
@@ -344,6 +381,7 @@ export function initSageCore(THREE, group, scene, pal) {
       uTint: { value: new THREE.Color(0xffffff) },
     },
     transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+    premultipliedAlpha: true,   // nodeFrag also writes vec4(uTint*b, b) premultiplied
   });
   L.nodes = new THREE.Points(nodeGeo, L.nodeMat);
   L.nodes.rotation.x = 0.30;
@@ -679,12 +717,22 @@ export function updateSageCore(L, ctx) {
   L.sparkMat.uniforms.uTime.value = t;
   L.sparkMat.uniforms.uAlpha.value = w.spark;
 
-  // 2) panes — slow drift with depth parallax + occasional flicker (prealloc'd)
+  // 2) glyph/rune panes — REVOLVE on their tilted rings, radially oriented
   for (let i = 0; i < L.panes.length; i++) {
     const p = L.panes[i];
-    const a = p.ang + t * p.speed;
-    p.m.position.x = Math.cos(a) * p.rad - gx * 2.2;     // panes: heaviest trail (particles lag behind)
-    p.m.position.y = Math.sin(a) * p.rad + Math.sin(t * 0.3 + p.phase) * 0.03 - gy * 2.2;
+    const a = p.ang + t * p.speed;                 // continuous revolution
+    // base circle point, then tilt about X then Y -> a ring in 3D
+    const cx0 = Math.cos(a) * p.rad, cy0 = Math.sin(a) * p.rad;
+    const ct = Math.cos(p.tiltX), st = Math.sin(p.tiltX);
+    const y1 = cy0 * ct, z1 = cy0 * st;
+    const cy2 = Math.cos(p.tiltY), sy2 = Math.sin(p.tiltY);
+    const x2 = cx0 * cy2 + z1 * sy2;
+    const z2 = -cx0 * sy2 + z1 * cy2;
+    const cx = -gx * 2.2, cyy = -gy * 2.2;         // ring centre trails the sun
+    p.m.position.set(cx + x2, cyy + y1 + Math.sin(t * 0.3 + p.phase) * 0.02, z2);
+    // face OUTWARD along the radius -> lies on the ring cylinder, so the card
+    // foreshortens at the sides instead of sitting square-on to the camera
+    p.m.lookAt(cx + x2 * 2, cyy + y1 * 2, z2 * 2);
     let op = p.baseOp * (0.85 + 0.15 * Math.sin(t * (0.5 + i * 0.03) + p.phase));
     if (Math.sin(t * 0.9 + p.phase * 2.7) > 0.992) op *= 0.35; // rare flicker
     p.mat.opacity = op * (0.12 + w.nebula * 1.4);

@@ -449,6 +449,15 @@ function initScene() {
     fragmentShader,
     uniforms: coreU,
     transparent: true,   // soft limb must blend to transparent (no opaque halo ring)
+    // USER (2026-10-07): "get rid of the black haze around the sun at the
+    // center". Root cause: this shader writes PREMULTIPLIED `vec4(base*a, a)`
+    // (fragment.glsl.js:36) but the material left premultipliedAlpha at its
+    // default false, so three.js blended with SRC_ALPHA and applied `a` a
+    // SECOND time -> col*a*a + bg*(1-a), which dips BELOW the backdrop
+    // wherever a is partial. Measured on docs/orb/idle-light.png (bg 235):
+    // mean 195 with 91% of the r=24px ring under backdrop -> a dark annulus
+    // hugging the sun. With the flag on it can only ever be bg + col*a.
+    premultipliedAlpha: true,
   });
   core = new THREE.Mesh(new THREE.SphereGeometry(0.52, 48, 32), coreMat);
   const glowMat = new THREE.ShaderMaterial({
@@ -458,6 +467,13 @@ function initScene() {
     transparent: true,
     depthWrite: false,
     blending: THREE.AdditiveBlending,
+    // NB: deliberately left at the default (false) even though this shader also
+    // writes premultiplied output. Fixing it brightened the corona SKIRT
+    // (exp(-r*1.15) over a 2.6-unit plane), which pushed lit pixels past the
+    // cage and grew the measured orb: orb:size went 183px -> 199px vs the 175px
+    // target (13.8% drift > the 12% allowance) and scales_with_window failed.
+    // The user did not ask for a brighter glow, and weakening the size gate is
+    // not an option — so this one stays as-is and is recorded as a known gap.
   });
   const glow = new THREE.Mesh(new THREE.PlaneGeometry(2.6, 2.6), glowMat);
   glow.position.z = 0.58;    // just beyond the front pole (0.52): haze ALWAYS on top of the ball
@@ -527,9 +543,18 @@ if (backingDiscAlpha > 0) {
     pos[i * 3 + 2] = (Math.random() - 0.5) * 6;
   }
   starGeo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-  const starMat = new THREE.PointsMaterial({ color: 0x58c4f2, size: 0.02, transparent: true, opacity: 0.5 });
-  starsMesh = new THREE.Points(starGeo, starMat);
-  scene.add(starsMesh);
+  // USER (2026-10-07): "just remove those blue particles you are using bruh
+  // they are looking very weird." They were 80 raw PointsMaterial dots in
+  // #58c4f2 (sky blue) scattered ±4 units across the frame — PointsMaterial with
+  // no map draws SQUARE points, and the cyan specks read as dirt on the screen
+  // rather than stars. Removed outright (his first, explicit choice over
+  // "make them very small and blue"). The starfield was decorative only: no
+  // state, gate or test references it (orb:size measures the lit-pixel RADIUS,
+  // and these sat outside r97 anyway).
+  //
+  // `starGeo` is still built above and left in place deliberately — nothing
+  // renders it now, and re-adding a star layer later is a two-line change.
+  starsMesh = null;
 
   sage = initSageCore(THREE, group, scene, PAL); // Sage Core layers (spec §2.1)
   // Both the OUTER cage (L.poly) and the INNER cage (L.cage) share polyGeo, so

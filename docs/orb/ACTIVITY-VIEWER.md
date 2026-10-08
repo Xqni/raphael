@@ -1,144 +1,134 @@
-# F-3 — Activity viewer (DESIGN ONLY, Wave 5H)
+# F-3 — Activity viewer (DESIGN, reconciled to pc-control's schema)
 
-**Status: design. Not implemented.** Blocked on the two upstream APIs named in
-`docs/requests/orb__to__pc-control__act-journal-schema.md` (that file is the
-schema agreement this design assumes). Implementation starts only after
-pc-control exposes reversibility + undo, per the audit packet
-`docs/audit-tasks/orb.md` (F-3, P2, CO-SHARE) and the user's "design first,
-implement after pc-control exposes the API".
+**Status: design updated + implementation BLOCKED on brain-core's relay.**
+No orb code.
 
-Mock-brain tests only (packet rule) — no live stack, no new dependency on a real
-machine.
+## 0. Contract status (verify-first)
+
+| Side | Evidence | State |
+|---|---|---|
+| pc-control — journal + inverse ops | `body/win/journal.py` + `body/win/tests/test_pc_journal.py` (their branch), spec in `docs/requests/pc-control__to__orb__activity-viewer-schema.md` | **ANSWERED** — their schema supersedes the one I proposed |
+| pc-control — `activity` act | `body/win/actions.py:56` `PENDING_PROTO_ADDITIONS = ('activity',)` | **PENDING** protocol (`pc-control__to__integrator__protocol-activity-act.md`) |
+| brain-core — relay endpoints | `brain/app.py:173-287` exposes only `/health`, `/jobs`, `/jobs/{id}`, `/jobs/{id}/cancel`, `/control`, `/status`, `/say` — `grep -n "activity" brain/app.py` → **ZERO HITS** | **BLOCKED** — `pc-control__to__brain-core__activity-endpoint.md` is still `Status: OPEN` |
+| orb — viewer | this design | waiting |
+
+My original proposal (`docs/requests/orb__to__pc-control__act-journal-schema.md`)
+is now marked **ANSWERED** — pc-control owns the journal, so their field names
+win. Differences adopted below: `seq` (not `id`) as the undo target, `kind` +
+`inverse` instead of `reversible`/`undo`, and `POST /activity/undo {seq}` (not
+`POST /activity/{id}/undo`).
 
 ---
 
 ## 1. Why an in-orb panel, not a native menu list
 
-The packet says "viewer in menu area". That is honoured as **reached from the
-menu**, rendered as a panel, for three concrete reasons:
+The packet says "viewer in menu area", honoured as **reached from the menu,
+rendered as a panel**:
 
-1. A native Electron menu cannot show a read-only *list* well — 20-30 rows in a
-   submenu are unreadable, there is no scrolling, and each row needs its own
-   "Undo" affordance plus a per-row result state (pending / done / failed).
-2. Undo is a **state change the user must be able to verify**. A menu closes the
-   moment you click; the "did it work?" feedback would be lost. The panel stays
-   open and shows the row flipping to `Undone ✓`.
-3. The orb already has this exact pattern: `#typed` (`src/renderer/index.html`,
-   W2.3 double-click → typed input → `command{source:'orb'}`). The activity
-   panel is the same mechanism with different content, so it inherits the
-   existing show/hide, pointer and hit-testing behaviour instead of inventing a
-   second one.
+1. A native menu cannot scroll 30 rows or show a per-row result state.
+2. Undo must be *verifiable* — the row has to flip to `Undone ✓` in front of the
+   user; a menu closes on click and loses that.
+3. The orb already has this pattern: `#typed`
+   (`src/renderer/index.html`, W2.3 double-click → typed input →
+   `command{source:'orb'}`). Reuse it instead of inventing a second overlay.
 
-Entry point: a new menu item **`Activity…`** in `orbMenuTemplate()`
-(`src/main/main.js`) → `id: 'activity', action: 'activity'` → opens the panel.
+Entry point: `orbMenuTemplate()` (`src/main/main.js`) → `id: 'activity',
+action: 'activity'` → opens the panel.
 
----
+> **Open question for the integrator:** if "in menu area" is meant literally, say
+> so and this becomes a native submenu instead. Everything below (data, rules,
+> tests) is identical either way.
 
-## 2. Panel anatomy
+## 2. Entry schema — pc-control's, verbatim
+
+```jsonc
+{"seq": 42,                       // monotonic id — the undo TARGET
+ "ts": 1791429000000,             // ms epoch, rendered relative ("2 min ago")
+ "kind": "volume|brightness|window|recycle_move",
+ "act": "volume",                 // act_req action that produced it
+ "job": "j_20261007_0042",        // null for seeds/imports
+ "summary": "volume 55 -> 42",    // pre-sanitised, safe to render
+ "inverse": {...},                // OPAQUE — never rendered
+ "undone": false,
+ "undo_seq": 43}                  // present once undone
+```
+
+## 3. Viewer rules
 
 ```
 ┌──────────────────────────────────────────┐
-│ Recent activity                        ✕ │   header (read-only label)
+│ Recent activity                        ✕ │
 ├──────────────────────────────────────────┤
-│ 18:15  Volume → 40            [Undo]     │   reversible + not yet undone
-│ 18:14  Screenshot                    ·   │   read-only action: no button
-│ 18:12  Volume → 25        [Undone ✓]     │   undo already applied
-│ 18:10  Keystrokes: Ctrl+L           ·   │   irreversible: no button
-│ 18:09  Open app: Firefox        [Undo]   │
+│ 2 min ago   volume 55 -> 42      [Undo]  │  kind has an inverse, !undone
+│ 9 min ago   brightness 80 -> 40    ·     │  undone already (or no inverse)
+│ 14 min ago  window minimize        ·     │
+│ 21 min ago  recycle_move           ·     │  RESERVED kind — never Undo
 ├──────────────────────────────────────────┤
-│ Show more (30 of 128)                    │   only when truncated
+│ Show more (20 of 128)                    │
 └──────────────────────────────────────────┘
 ```
 
-- **Read-only list** of the most recent executed actions, newest first.
-- One row = one journal entry (schema in the request file): `ts`, `summary`,
-  `ok`, `reversible`, `undone`.
-- **`[Undo]` appears only when `reversible === true && undone !== true`.**
-  This is the whole safety story: a button that cannot do its job is never
-  rendered. Irreversible and read-only actions get a `·` spacer so the column
-  stays aligned and the *absence* of a button is visually deliberate.
-- Rows with `ok === false` render the `error` code in a muted red and are still
-  listed (an action that failed is exactly what a user wants to see).
-- Empty / loading / error states:
-  - loading → three skeleton lines (no spinner; the panel must not block input)
-  - empty → "No actions yet."
-  - error → "Couldn't load activity (E_…)" + a **Retry** control. Never blank.
+- **Newest-first** from `GET /activity?limit=20`; render `summary` + relative `ts`.
+- **`[Undo]` only when `undone == false` AND `kind` has an inverse handler.**
+  Today that whitelist is `volume | brightness | window`; `recycle_move` is
+  **reserved — never render Undo for an unknown kind**. The whitelist lives in
+  the viewer but is *derived from* pc-control's contract; if they add a kind, the
+  panel silently shows no button (fail-closed) rather than a dead one.
+- **Undo → `POST /activity/undo {"seq": n}`.** On **503 (Body offline)** show
+  "Body offline" and leave the entry un-undone — **server state is truth**.
+  One undo in flight at a time; a second click while pending is a no-op.
+- After success the entry flips `undone: true`; update in place from the
+  response's `{seq, kind, summary}` or re-fetch.
+- **Never render `inverse` internals.** `summary` is pre-sanitised (no screen
+  content, no paths) — the panel renders nothing beyond it (≤80 chars).
+- States: loading = three skeleton lines (no spinner); empty = "No actions yet.";
+  error = "Couldn't load activity (E_…)" + Retry. Never a blank panel.
+- If the server returns `E_NOT_REVERSIBLE` for a row the panel thought was
+  undoable, **drop the button and keep the row** — never retry.
 
-## 3. Data + undo transport
-
-Same shape as F-4 — authenticated local REST, **no new WS frames**:
+## 4. Data + transport
 
 | Need | Call |
 |---|---|
-| Fill the list | `GET /activity?limit=30` → `{ok, entries[]}` |
-| Undo a row | `POST /activity/{id}/undo` → `{ok, entry}` or `{ok:false, code}` |
+| Fill the list | `GET /activity?limit=20` → `{ok, entries[]}` |
+| Undo a row | `POST /activity/undo {"seq": n}` |
 
-Read on open (TTL-coalesced like `refreshStatus()`, same 600 ms cap so a
-right-click never feels stuck), then refresh only on explicit Retry or after a
-successful undo.
+Same authenticated local REST pattern F-4 already ships (`main.js`
+`refreshStatus()` reads `GET /status` this way): same port, same token,
+`Authorization: Bearer`, TTL-coalesced, bounded read so a right-click never
+stalls. **No new WS frames** — the orb is `role: ui` and may never emit `act_req`
+(PROTOCOL §4); the Brain relays.
 
-**Undo flow:** click → row enters `pending` (button disabled, label
-`Undoing…`) → POST → on success flip the row to `Undone ✓` and refresh; on
-failure show the code inline (`E_NOT_REVERSIBLE`, `E_NOT_FOUND`, `E_BUSY`) and
-re-enable the button if retryable. Exactly one undo in flight at a time — a
-second click while pending is a no-op, not a queue.
+## 5. Test plan (mock-brain only — packet rule)
 
-**Fail-closed rules:**
-- If `GET /activity` fails, show the error state. Never show a cached list as if
-  it were live, and never show a row without its `id`.
-- If the Brain responds `E_NOT_REVERSIBLE` for a row that claimed
-  `reversible: true`, **remove the button and keep the row** (the server is the
-  authority; the panel must not retry).
+`body/orb/test/mock-brain.cjs` already serves `/status` with a 401-without-Bearer
+rule; add `/activity` the same way, with fixtures covering: undoable-not-undone,
+already-undone, reserved `recycle_move`, `ok:false`, and a `503` switch.
 
-## 4. Privacy
-
-- `args` in the journal is already a redacted SUMMARY (the `act_res` journal
-  substitutes `"<omitted N b64 chars>"` for screenshot payloads —
-  `brain/ws.py:671-680`). The panel additionally:
-  - never renders anything longer than the server's `summary` (≤80 chars),
-  - never renders raw `args`, only `summary`,
-  - never renders `job` ids that are not already visible in the Jobs submenu,
-  - shows **nothing** that is not in the response body — no local re-derivation,
-    no screenshot thumbnails, no token/model material.
-- Panel content is excluded from the frame trace the same way notices are
-  (`traceRx` records the fact, never the payload beyond what the protocol
-  already allows).
-
-## 5. Test plan (mock-brain only)
-
-`body/orb/test/mock-brain.cjs` gains an `/activity` fixture beside the `/status`
-one added for F-4 (same 401-without-Bearer rule), with:
-- 5 entries covering: reversible-not-undone, read-only, already-undone,
-  irreversible, `ok:false` with an error code;
-- a switch to serve `null` for the "Brain has no journal yet" path.
-
-New phase `runActivity(cdp, brain, rec)` in `test/orb-trace.cjs`
-(`--only=activity`), asserting:
+New phase `runActivity(cdp, brain, rec)` (`--only=activity`):
 
 | check | proves |
 |---|---|
-| `activity_menu_item_present` | the entry point exists in `orbMenuTemplate()` |
+| `activity_menu_item_present` | entry point exists in `orbMenuTemplate()` |
 | `activity_panel_opens` | menu action → panel visible |
-| `activity_rows_rendered` | 5 rows, newest first |
-| `activity_undo_only_when_reversible` | **exactly** 1 `[Undo]` among the 5 |
-| `activity_undo_reaches_brain` | POST hits the mock (transport, no new frame) |
-| `activity_undo_marks_row` | row flips to `Undone ✓`, button gone |
-| `activity_irreversible_error_shown` | `E_NOT_REVERSIBLE` rendered inline |
-| `activity_degrades_honestly` | `null` fixture → error/empty state, never a blank panel |
+| `activity_rows_rendered_newest_first` | 5 rows, order correct |
+| `activity_undo_only_for_undoable_kinds` | exactly the whitelist rows get `[Undo]` |
+| `activity_undo_targets_seq` | POST body is `{seq: n}` |
+| `activity_undo_marks_row` | flips to `Undone ✓`, button gone |
+| `activity_undo_503_shows_body_offline` | entry stays un-undone (server truth) |
+| `activity_never_renders_inverse` | raw `inverse` never reaches the DOM |
+| `activity_degrades_honestly` | 503/no-data → error state, never blank |
 | `activity_panel_never_changes_state` | `orb_state` untouched (same invariant as notices) |
 
-Gate impact: the panel is **closed by default**, so it changes no pixel in the
-existing sweep — `distinctness` (104 pairs), `orb:size` and `orb:diff` stay
-valid without adjustment. If a future check opens the panel during a sweep, it
-must be closed again before the sweep resumes.
+Panel is **closed by default**, so it changes no pixel of the current sweep —
+`distinctness` (104 pairs), `orb:size` and `orb:diff` stay valid.
 
 ## 6. Sequencing
 
-1. **Now (done):** this design + the schema request to pc-control/brain-core.
-2. **pc-control:** emit `reversible` / `undo` per executed action (it owns
-   `body/win/actions.py`, the only place that knows).
-3. **brain-core:** `GET /activity` + `POST /activity/{id}/undo`.
-4. **orb:** menu item → panel → the test phase above → full gate
-   (`test:unit`, `orb:trace`, `orb:size`, `orb:diff`).
+1. ✅ design (this file) + schema agreement → pc-control answered.
+2. ⛔ **brain-core**: `GET /activity` + `POST /activity/undo` — request OPEN,
+   `brain/app.py` has no such route today.
+3. ⏳ integrator: `activity` into PROTOCOL §7 (`PENDING_PROTO_ADDITIONS`).
+4. ⏳ orb: menu item → panel → test phase → full gate.
 
-No orb code lands before step 2 exposes its API.
+**Nothing in step 4 starts before step 2 lands.**
