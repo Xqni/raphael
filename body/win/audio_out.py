@@ -13,7 +13,26 @@ import sys
 import threading
 import time
 
+
+def _require_or_die(pkg: str, pin: str):
+    """SEC-9 (Wave 5H): no runtime pip installs on the voice path — a missing
+    dependency fails LOUD with the provisioning command."""
+    try:
+        return __import__(pkg)
+    except ImportError as e:
+        raise RuntimeError(
+            f"[audio] SEC-9: required package '{pkg}=={pin}' is not installed. "
+            f"Runtime pip installs are disabled — provision this environment "
+            f"once from the hash-pinned manifest "
+            f"(brain/voice/body-audio-requirements.txt), e.g. "
+            f"'uv pip install --require-hashes -r "
+            f"brain/voice/body-audio-requirements.txt', then restart the Body. "
+            f"Original error: {e}") from e
+
+
+_require_or_die('numpy', '2.2.6')
 import numpy as np
+_require_or_die('sounddevice', '0.5.1')
 import sounddevice as sd
 
 RATE_DEFAULT = 24000          # PROTOCOL §3 speak sample_rate

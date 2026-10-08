@@ -565,3 +565,80 @@ never spawns it (INTERFACES §d / Rule 14). Re-run when the stack's fish is
 back: `brain/.venv/bin/python brain/voice/scripts/p0_gap_probe.py --fresh`
 (expect: zero holes >350ms while fish is uncontended; the budget-fallback
 path logs loudly if not).
+
+## Wave 5H — audit packet `docs/audit-tasks/voice.md` (verify-first)
+
+**SEC-3: CONFIRMED → FIXED (P0).**
+- Quote (pre-fix, `brain/voice/activation.py:147-150`, verbatim):
+  `# reason unknown/None -> caller has not told us; do not drop audio` /
+  `return GateDecision(True, reason or "unknown")` /
+  `except Exception:  # noqa: BLE001 — activation must never break audio` /
+  `return GateDecision(True, "error_fail_open")` — **fail-open on BOTH paths**
+  (unknown reason AND gate exception).
+- Chain quoted: `brain/ws.py:747` `asyncio.to_thread(voice.transcribe_result, buf, reason=reason),`
+  → `brain/voice/__init__.py:78-85` `VoiceStack.transcribe_result` (gate then
+  `self.stt.transcribe`) → `brain/voice/activation.py::should_transcribe` →
+  `brain/voice/stt.py` CloudTranscriber (provider).
+- Fix: verdict required — `reason='ptt'` or `'wake'` allowed; unknown/missing
+  reason → `GateDecision(False, f"undecided:{reason!r}")`; any gate exception →
+  `GateDecision(False, "error_fail_closed")` + loud log. No cloud upload, no
+  disk write without a wake/ptt verdict; PTT/wake paths unchanged.
+- **Tripwire (gate exit criterion)**: `brain/voice/tests/test_sec3_gate.py` —
+  undecided reasons (`None`, `""`, `"bogus"`, `42`) → provider call count **0**
+  + zero files in the ack cache; gate exception → fail-closed + 0 provider
+  calls; ptt/wake still reach the provider (2 calls); silence short-circuit
+  unchanged. Suite: voice **133 passed / 2 skipped**, consumer brain **194 passed**.
+
+**SEC-9: CONFIRMED → FIXED.**
+- Quote (pre-fix, `body/win/audio_in.py:11-22`, verbatim):
+  `def _ensure_pkg(pkg: str, import_name: str = None, pin: str = ''):` /
+  `subprocess.check_call([sys.executable, '-m', 'pip', 'install', '--quiet',`
+  `('%s==%s' % (pkg, pin)) if pin else pkg])` / `_ensure_pkg('sounddevice', pin='0.5.1')`
+  / `_ensure_pkg('numpy', pin='2.2.6')`.
+- `body/win/audio_out.py` — **NOT-APPLICABLE for pip** (imports were bare:
+  `import numpy as np` / `import sounddevice as sd`, no install call), but it
+  got the same fail-loud wrapper for a clear error.
+- Fix: `_require_or_die(pkg, pin)` in both audio modules → `RuntimeError`
+  naming the package, the pin, and the provisioning command; zero pip calls
+  remain (grep-verified: only docstring mentions).
+- Hashed env: `brain/voice/body-audio-requirements.txt` — pins
+  `numpy==2.2.6`, `sounddevice==0.5.1` (+`cffi==2.1.1`, `pycparser==3.0`)
+  with sha256 for linux cp312 **and** win_amd64 cp312 (wheels from PyPI,
+  hashes via `pip hash`). Verified:
+  `pip install --dry-run --require-hashes --platform manylinux2014_x86_64 --python-version 3.12 …` → rc 0
+  and `--platform win_amd64 …` → rc 0.
+
+**F-5: ALREADY-DONE (user decision) + record WRITTEN.**
+- Decision of record: **keep fish-speech** (user's word 2026-10-07);
+  one-page record at **`docs/voice/TTS-DECISION.md`** (measured table, blind
+  A/B protocol, latency threshold ask→first-audio ≤3.0 s, reopen criteria =
+  RAM upgrade + user HF-gate acceptance + user's word). No default switch
+  made (F-5 rule).
+- Blind A/B samples prepared: `~/.raphael/voice/eval/decision_ab/`
+  (`line01..05_{A,B}.wav`, randomized labels, sealed `KEY.txt` + `README.txt`;
+  same 5 canonical lines, same machine) — for the user's ear.
+- **Rule 15 ask→first-audio before/after:** before (fish live) **2.49–9.76 s**
+  fresh / **0.015 s** cached; after (PocketTTS candidate) **79 ms** first
+  stream chunk (int8 48 ms). ≈30–120× faster — recorded as the REOPEN reason,
+  not a switch.
+
+**Scope note (packet rule "ONLY the IDs below"):** the earlier chat request
+SEC-1 (anime-derived tracked refs) is NOT in the registered packet. For the
+record, current tracked files (`git ls-files assets/`):
+`assets/raphael_reference.wav` (synthesized Zira v1 — `docs/VOICE_DATA_SPEC.md:5`
+"SYNTHESIZED reference … Microsoft Zira SAPI") and
+`assets/raphael_reference_jp.wav` (stitched from the 3 Raphael-slime clips —
+`PROGRESS.md:341` "stitched 3 clean clips"; anime sources themselves live
+under `assets/reference/` which is gitignored). History scrub = human-gated,
+no action taken.
+
+### Test output (real runs, one suite at a time — Rule 14)
+```
+$ brain/.venv/bin/python -m pytest brain/voice/tests -q
+133 passed, 2 skipped in 6.34s     (2 skips = fish not running / env, no spawn)
+$ brain/.venv/bin/python -m pytest brain/tests -q
+194 passed, 1 warning in 15.38s
+$ pip install --dry-run --require-hashes … (linux + win_amd64 targets)
+rc 0 / rc 0
+orphans: zero (stack down; no server spawned by this lane)
+```

@@ -8,18 +8,26 @@ import sys
 import struct
 from typing import Optional, Callable, Awaitable
 
-def _ensure_pkg(pkg: str, import_name: str = None, pin: str = ''):
+def _require_or_die(pkg: str, pin: str):
+    """SEC-9 (Wave 5H): runtime `pip install` is REMOVED. The Body must run
+    in a pre-provisioned, hash-pinned environment; a missing dependency fails
+    LOUD at import instead of mutating the environment at runtime."""
     try:
-        __import__(import_name or pkg)
-    except ImportError:
-        import subprocess
-        subprocess.check_call([sys.executable, '-m', 'pip', 'install', '--quiet', 
-                                ('%s==%s' % (pkg, pin)) if pin else pkg])
-        __import__(import_name or pkg)
+        return __import__(pkg)
+    except ImportError as e:
+        raise RuntimeError(
+            f"[audio] SEC-9: required package '{pkg}=={pin}' is not installed. "
+            f"Runtime pip installs are disabled — provision this environment "
+            f"once from the hash-pinned manifest "
+            f"(brain/voice/body-audio-requirements.txt), e.g. "
+            f"'uv pip install --require-hashes -r "
+            f"brain/voice/body-audio-requirements.txt', then restart the Body. "
+            f"Original error: {e}") from e
 
-_ensure_pkg('sounddevice', pin='0.5.1')
+
+_require_or_die('sounddevice', '0.5.1')
 import sounddevice as sd
-_ensure_pkg('numpy', pin='2.2.6')  # was imported bare (compile-only test hid it)
+_require_or_die('numpy', '2.2.6')
 import numpy as np
 
 # PROTOCOL §6 binary frame constants
