@@ -14,11 +14,19 @@ _ROOT = Path(__file__).resolve().parents[2]
 
 
 class _ClosedListener:
-    """Fake accepted-socket factory: first accept() raises -> the relay's
-    accept loop exits immediately (no real port ever bound in tests)."""
+    """Fake listener: accept() raises OSError — the relay accept-loop must
+    treat this as 'socket gone' and exit. fileno() == -1 satisfies the
+    integrator's zombie-listener guard (09092aa: only exit when the socket
+    itself is really gone; otherwise a transient error loops forever)."""
+
+    def fileno(self):
+        return -1
 
     def accept(self):
         raise OSError("test: listener closed")
+
+    def close(self):
+        pass
 
 
 @pytest.fixture
