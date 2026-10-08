@@ -1,19 +1,19 @@
 {
   "sampleMs": 2500,
   "off": {
-    "ema": 16.678542017492582,
-    "n": 151
-  },
-  "on": {
-    "ema": 16.676593565121458,
+    "ema": 16.67671818884583,
     "n": 150
   },
-  "pctOverhead": -0.011682390277763036,
+  "on": {
+    "ema": 16.674904871088607,
+    "n": 150
+  },
+  "pctOverhead": -0.010873348920859876,
   "idle": {
-    "ema": 16.679249480552304,
+    "ema": 16.676475401773054,
     "reason": "calm",
     "skipped": true,
-    "speed": 0.18000000000000113
+    "speed": 0.1800000000000011
   },
   "activeBlur": {
     "amount": 0,
@@ -21,7 +21,7 @@
     "taps": 0,
     "skipped": true,
     "reason": "calm",
-    "speed": 0.18000000000000113,
+    "speed": 0.1800000000000011,
     "reducedMotion": false,
     "quality": "auto",
     "config": "auto"

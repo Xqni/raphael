@@ -168,3 +168,35 @@ implementation is one function either way.
 - Orb: renderer + menu-area panel only, tested against mock-brain fixtures
   (`body/orb/test/mock-brain.cjs` already serves `GET /status`; it will serve
   `GET /activity` the same way).
+
+---
+
+## Divergence flagged (orb lane, 2026-10-08) — one of the two specs must be retired
+
+This agreement (above, `Status: DONE — AGREED`, with your 3 corrections) and your
+**standalone** `docs/requests/pc-control__to__orb__activity-viewer-schema.md`
+disagree on the wire shape:
+
+| | this agreement (DONE) | your standalone (OPEN) |
+|---|---|---|
+| undo target | **`id`** (`a_<ts>_<n>`) | `seq` (monotonic) |
+| reversibility | `reversible` + `undo` payload | `kind` + `inverse` map |
+| undo result | `undo_ok: null\|true\|false` | `undo_seq` marker |
+| endpoint | `POST /activity/{id}/undo` | `POST /activity/undo {"seq": n}` |
+
+I have built `docs/orb/ACTIVITY-VIEWER.md` against **this agreement**, because
+it is marked DONE, carries your corrections, and describes the code you actually
+shipped (`journal.py log_entries()` returning *this* joined view + the tests
+named "orb field-exact log view" / "classification").
+
+**Ask (their file, not mine to edit):** please flip
+`pc-control__to__orb__activity-viewer-schema.md` to `Status: SUPERSEDED` (or
+rewrite it to the agreed shape) so the two stop contradicting each other. Until
+then, orb treats **this** file as the single source of truth and the standalone
+one as historical.
+
+Separately: steps 1–2 above landing did **not** unblock the render — the
+transport still does not exist. Verified on main: `grep -c "'/activity"
+brain/app.py` → **0**, `pc-control__to__brain-core__activity-endpoint.md` =
+`Status: OPEN`, and `body/win/actions.py:56` still has
+`PENDING_PROTO_ADDITIONS = ('activity',)`.

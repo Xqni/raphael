@@ -33,6 +33,26 @@ const beadVert = `
     gl_Position = projectionMatrix * mv;
   }
 `;
+// AUDIT "NOTHING SHOULD FEEL OR SEE LIKE 2D" (2026-10-08): the halo was a flat
+// CircleGeometry with flat colour — a hard-edged 2D DISC. The beads were made
+// shaded spheres back on 10-06 (see the user-feedback note above) but the halo
+// was missed, so each bead still sat on a paper circle. Same view-facing trick
+// as beadFrag, but alpha^1.6 so it falls to ZERO at the limb: a soft glow BALL
+// with no silhouette edge, reading 3D from any angle. Writes premultiplied
+// output, hence premultipliedAlpha:true on the material.
+const haloFrag = `
+  precision mediump float;
+  uniform vec3 uColor;
+  uniform float uAlpha;
+  varying vec3 vN;
+  varying vec3 vV;
+  void main() {
+    float f = clamp(dot(normalize(vN), normalize(vV)), 0.0, 1.0);
+    float a = pow(f, 1.6) * uAlpha;      // 0 at the limb -> no hard edge
+    gl_FragColor = vec4(uColor * a, a);  // premultiplied
+  }
+`;
+
 const beadFrag = `
   precision mediump float;
   uniform vec3 uColor;
@@ -60,7 +80,7 @@ export function initJobDots(THREE, group, pal) {
   J.root.rotation.set(0.10, 0.06, 0);
 
   const geo = new THREE.SphereGeometry(DOT_R, 16, 12);
-  const haloGeo = new THREE.CircleGeometry(HALO_R, 20);
+  const haloGeo = new THREE.SphereGeometry(HALO_R, 16, 12);  // was CircleGeometry
   const mkBead = (color, scale) => {
     const mat = new THREE.ShaderMaterial({
       uniforms: { uColor: { value: new THREE.Color(color) }, uAlpha: { value: 0 } },
@@ -79,9 +99,11 @@ export function initJobDots(THREE, group, pal) {
       vertexShader: beadVert, fragmentShader: beadFrag,
       transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
     });
-    const haloMat = new THREE.MeshBasicMaterial({
-      color: halo, transparent: true, opacity: 0,
-      depthWrite: false, blending: THREE.AdditiveBlending,
+    const haloMat = new THREE.ShaderMaterial({
+      uniforms: { uColor: { value: new THREE.Color(halo) }, uAlpha: { value: 0 } },
+      vertexShader: beadVert, fragmentShader: haloFrag,
+      transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+      premultipliedAlpha: true,
     });
     const m = new THREE.Mesh(geo, mat);
     // NB: not called `halo` — that would shadow (and hit the TDZ of) the
@@ -212,7 +234,7 @@ export function applyJobPalette(J, pal) {
   if (!J || !pal) return;
   for (const d of J.dots) {
     d.mat.uniforms.uColor.value.set(pal.accent);
-    d.haloMat.color.set(pal.haze_teal);
+    d.haloMat.uniforms.uColor.value.set(pal.haze_teal);
   }
   J.spokes.material.color.set(pal.accent);
 }
@@ -241,10 +263,10 @@ export function updateJobDots(J, ctx) {
     d.halo.position.set(x, y, 0.045);
     const tw = 0.7 + 0.3 * Math.sin(t * 3.1 + d.phase);
     d.mat.uniforms.uAlpha.value = J.vis * 0.95 * tw;
-    d.haloMat.opacity = J.vis * 0.30 * tw;
+    d.haloMat.uniforms.uAlpha.value = J.vis * 0.30 * tw;
     const s = (0.9 + 0.2 * Math.sin(t * 4.2 + d.phase)) * (0.5 + 0.5 * J.vis);
     d.m.scale.set(s, s, s);
-    d.halo.scale.set(s, s, 1);
+    d.halo.scale.set(s, s, s);   // uniform: it is a sphere now, not a card
 
     // spoke: parent centre -> this child (fan-out read)
     if (layout.fan && d.slot === 'child') {
@@ -299,7 +321,7 @@ export function lockJobDots(J, jobs, jobList) {
     d.m.position.set(x, y, 0.05);
     d.halo.position.set(x, y, 0.045);
     d.mat.uniforms.uAlpha.value = 0.95;
-    d.haloMat.opacity = 0.30;
+    d.haloMat.uniforms.uAlpha.value = 0.30;
     d.m.scale.set(1, 1, 1);
     d.halo.scale.set(1, 1, 1);
     if (d.slot === 'child') {

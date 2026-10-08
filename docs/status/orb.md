@@ -1576,3 +1576,227 @@ into the synthetic state) and converted the harness's `starting` into `idle`
 pixel diff every 300 ms and printing it next to the suspect uniforms*, not from
 re-reading code — three code-reading hypotheses (nebula, Data Rings, `uBright`)
 were each wrong or incomplete.
+
+---
+
+# RE-VERIFICATION ON A FRESH PRODUCTION BUILD (wave-5H follow-up, coord [38])
+
+Asked for: *"re-verify #fps null + boot-sequence AMENDMENT-2 leftovers on a
+fresh production build."*
+
+**"Production" here means the real page, not the harness's demo page** —
+`main.js:337-340` selects `index.html` unless `--demo` is passed, so the run
+below launched **without** `--demo`, exactly as `orb-trace.cjs:67-84` does
+("*Production page (index.html) — the trace must reproduce what the user sees,
+so --demo is deliberately NOT used here*").
+
+## Result — PASS, all eight assertions
+
+| check | expectation | actual |
+|---|---|---|
+| page | `index.html` | **`index.html`** ✓ |
+| `#fps` element | **absent** | **`false`** ✓ |
+| `#micbadge` element | absent (AMENDMENT 3) | **`false`** ✓ |
+| `#subtitle` text | `""` | **`""`**, `shown=false` ✓ |
+| `document.body.innerText` length | 0 | **0** ✓ — literally no on-orb text |
+| state @9 s | `idle`, not stuck | **`idle`** (`__orbTrace` agrees) ✓ |
+| rendered state history | `starting → idle` | **`starting -> idle`** ✓ |
+| `Runtime.exceptionThrown` | 0 | **0** ✓ |
+
+Static corroboration for `#fps`: `grep -c 'id="fps"' src/renderer/index.html`
+→ **0**, matching the code comment at `renderer.js:40` ("null on production
+page (index.html)"); `fpsEl` is only ever non-null on `demo.html`.
+
+## AMENDMENT-2 leftovers — none found
+
+| check | result |
+|---|---|
+| `tests/boot-sequence.test.cjs` | **13/13 PASS** (auto-escape 259 ms/250 budget · idle beat · normal auth) |
+| `orb:trace --only=boot` (rendered, end-to-end) | **PASS 5/5** — `rendered=starting->idle`, `event_state_lands_after_idle` → `starting->idle->thinking`, `never_stuck_in_starting_or_reconnecting` |
+| orphan processes after the runs | **none** — ports 8906/9406 free, no harness/Electron left from this lane |
+| the only live Electron | the **production install** (a `<wsl-user>` home path) — not mine, deliberately untouched |
+| `ws-status.js` escape fix still on main | `_resetBootEscape` present (2 refs), `HEAD` is an ancestor of `origin/main` |
+
+**No leftover `starting`/`reconnecting`, no orphan timers surfaced, no leaked
+harness processes, no exceptions on the production page.**
+
+## Note on the escape fix reaching production
+
+`ws-status.js` `handle()` now calls `_resetBootEscape()` on **any** inbound
+frame while in `starting` — the AMENDMENT-2 wording is *"auto-escape timeout **if
+no frame arrives**"*, and the original implementation only armed the timer on
+state *transitions*. Merged in `08a30b5`; re-verified here on the production
+page rather than assumed.
+
+---
+
+# 2D BILLBOARDS — CONVERTED (wave-5H follow-up, coord [40])
+
+Scope as agreed: convert the `jobdots` halos and the Answer-Mode petal/bokeh
+sprites; leave the nebula; document the corona; clear the stale `#micbadge`
+bullet.
+
+## What changed
+
+| element | before | after |
+|---|---|---|
+| **job-bead halo** | `CircleGeometry(HALO_R, 20)` + `MeshBasicMaterial` **flat colour, no map** → constant alpha across the disc, then a step to 0 at the circle boundary = a **hard-edged 2D disc** | `SphereGeometry(HALO_R, 16, 12)` + `haloFrag`: `a = pow(f, 1.6) * uAlpha` where `f = dot(N,V)` → **0 at the limb** → soft glow *ball*; `uColor`/`uAlpha` uniforms (3 call sites updated), `halo.scale` `set(s,s,1)` → `set(s,s,s)`, `premultipliedAlpha: true` |
+| **Answer-Mode bokeh** | radial-gradient canvas texture on a **camera-facing** `PlaneGeometry` | `SphereGeometry(0.5, 16, 12)` + new `glowVert`/`glowFrag` (same limb-falloff), `premultipliedAlpha: true`; `makeBokehTexture` retained but unused |
+| **Answer-Mode petals** | `rotation.z` only → **flat against the screen** | fixed 3D tilt `rotation.set(0.75+…, ±1.0, 0)`; the per-frame update writes only `rotation.z`, so x/y persist |
+
+**Why no hard edge is possible now (construction proof, stronger than a pixel
+sample):** `dot(N,V)` is **0 exactly at a sphere's silhouette**, so `pow(f,1.6)`
+puts alpha at **0** there — the glow reaches the background with no step. The
+old `CircleGeometry` + flat `MeshBasicMaterial` had *constant* alpha right up to
+the disc boundary, which is where the edge came from.
+
+*(A pixel-level falloff measurement was attempted at 280 px and again at 600 px
+and **deliberately abandoned**: the bright geodesic cage lines cross the sampling
+rays and re-brighten them mid-falloff, so the ring profile oscillates and any
+"step" it reports is the cage, not the halo. The shader argument above is the
+reliable one; vision was used for the perceptual half.)*
+
+## Accepted by design (not converted, documented)
+
+- **Nebula plane** — the user explicitly likes the cloud; it reads as a *cloud*,
+  not a structural element.
+- **Sun corona glow plane** — a bloom is inherently a billboard: it must face the
+  camera to read as *light*. Converting it to geometry would give the sun a solid
+  edge, directly contradicting spec §3.1 ("no visible edge").
+- **`#micbadge` pill** — **stale entry, cleared**: AMENDMENT 3 deleted the element
+  outright, so there is no DOM pill left to convert; the SEC-3 indicator survives
+  only as the on-demand `mic-cloud` menu row.
+
+## Evidence
+
+**Gates (all run):** `test:unit` 7 suites · `orb:trace` boot 5/5, cage 4/4,
+startup 7/7, transparency `borderA0/rgb0`, BugC 6/6, wave5 9/9,
+interaction 34/34, **distinctness pass=true (104 pairs, failures 0)** ·
+`orb:size` PASS (drift 4.8%) · `orb:diff` **noise floor 0.000 → threshold 0.300,
+PASS**.
+
+Note: the weakest pair moved **0.73 → 0.52** (`jobs` vs `thinking`) because the
+halo lost its hard disc — still 1.7% of pixels changed (≥ the 0.7% floor) and
+1.7× above threshold, so **pass**. Recorded rather than hidden.
+
+**Vision (blind, on the fresh matrix):**
+- `jobs-dark` **7/10** — *"halos read as soft glowing balls, not flat discs… I do
+  not see any that clearly still look like a flat paper disc with a hard outline."*
+- `speaking-dark` **8/10**, `acting-dark` **8/10** — *"petals read as tilted
+  shards in 3D, including foreshortened ones that clearly aren't facing the
+  camera"*, bokeh *"soft blobs, no visible square/rectangular edge"*.
+- control `listening-dark`: *"no teal job beads/halos, no coloured bokeh blobs,
+  no pale petal flakes — clean."*
+- No new artifacts: *"no hard halo edge, no visible sphere silhouette/wireframe
+  on the glows, no colour banding, no solid dark ball, nothing vanished."*
+
+**The one red flag vision raised** — a top-centre bead in `jobs-dark` reading
+"elongated/teardrop" — is explained by the **parallel-minds fan spokes**:
+`docs/orb/trace/wave5.json` records `spokes=6` for that state, i.e. beads have
+spokes deliberately attached (PROTOCOL §5). A bead *with* a spoke reads elongated
+by design. Not a defect from this change.
+
+---
+
+# DEPENDABOT EVAL — electron 30.5.1 → 44.5.1 (PR #10, coord [44])
+
+**VERDICT: MERGE-RECOMMENDED.** Evaluated in an isolated worktree
+(`/tmp/opencode/orb-e44` @ `a02d305`) so my own branch was never dirtied; PR
+touches only `body/orb/package.json` + `body/orb/package-lock.json`.
+
+## Gates on the bumped build — all green
+
+| gate | result on **44.5.1** |
+|---|---|
+| `npm run test:unit` | **7/7 suites** (incl. boot-sequence **13/13**) |
+| `orb:trace` | **EXIT 0** — boot **5/5**, cage **4/4**, startup 7/7 (peak 2.020), transparency **borderA0/rgb0**, BugC **6/6**, wave5 **9/9**, interaction **34/34**, shape directive `["circle"]` |
+| distinctness | **pass=true**, weakest `idle vs private` = **0.73** (104 pairs) |
+| `orb:size` | PASS — worst drift **5.1%** of 12%, edge gap 3px |
+| `orb:diff` | **noise floor 0.000 → threshold 0.300, PASS** |
+
+Deps resolved as electron **44.5.1**, three 0.170.0, ws 8.22.0 — no other
+version moved.
+
+## Security — this is the point of the bump
+
+| build | `npm audit --registry=https://registry.npmjs.org` |
+|---|---|
+| **30.5.1** (before) | **6 vulnerabilities (4 moderate, 2 high)**, exit 1 |
+| **44.5.1** (after) | **0 vulnerabilities**, exit 0 |
+
+`tests/security/SCANNERS.md:56-64` documents exactly those highs: *"6 vulns
+(4 moderate, 2 HIGH) — the highs are `electron 30.5.1` (ASAR integrity bypass)
+and its transitive `extract-zip`; the fix is a MAJOR Electron upgrade
+(>= 41.10.6 / 42.3.4) in the ORB LANE's package.json — **breaking change not
+qa-security's to make**."* **The bump closes the original audit finding** that
+produced `qa-security__to__orb__electron-audit-highs.md`.
+
+Note: `npm audit` without `--registry` still 400s against the configured
+`pkgs.safetycli.com` mirror — that is an endpoint problem, not a lockfile one,
+and is unrelated to this PR (the separate lockfile redirect is commit `ee8823c`).
+
+## API / breaking-change review (30 → 44)
+
+Orb surface: `Menu.buildFromTemplate`, `app.{exit,getPath,on,quit,relaunch,
+requestSingleInstanceLock,setPath,whenReady}`, `contextBridge.exposeInMainWorld`,
+`ipcMain.{handle,on}`, `ipcRenderer.{invoke,on,send}`, `nativeImage.{createEmpty,
+createFromPath}`, `screen.{getAllDisplays,getPrimaryDisplay,on}`, `shell.openPath`,
+`webContents.{on,send}`, plus one `BrowserWindow` block
+(`main.js:309-332`: frame/transparent/alwaysOnTop/skipTaskbar/resizable/movable/
+focusable + webPreferences preload/contextIsolation/nodeIntegration/sandbox/
+backgroundThrottling).
+
+Checked against the official breaking-changes list 44→35:
+
+- **44.0 `clipboard` removed from renderer / rearchitected** → our single grep
+  hit is `win32clipboard` in `scripts/install-body-venv.ps1` — a **Python**
+  import for the Windows Body. **Not Electron. Not affected.**
+- **44.0 `net.request` Sec-Fetch-Dest** → we use plain `node:http` in
+  `main.js refreshStatus()`, never `net`. **N/A.**
+- **44.0 macOS-12 / Windows-ia32 removals** → we ship linux-x64 + win-x64. **N/A.**
+- **42.0 `ELECTRON_SKIP_BINARY_DOWNLOAD` removed** → **0 references** in repo.
+- **42.0 postinstall → on-demand binary download** → our install ran and
+  `electron --version` reported `v44.5.1`. **Works.**
+- **39.0 `window.open` popups always resizable** → **0** `window.open` /
+  `setWindowOpenHandler`. **N/A.**
+- **36.0 `app.commandLine` lowercasing** → **0 references**.
+- No `remote`, no `nodeIntegration:true`, no `webviewTag`, no renderer clipboard.
+
+**Verdict: no API break touches this codebase.**
+
+## Risks checked and cleared
+
+- **Ozone/Wayland (Electron 38 change):** this box has `WAYLAND_DISPLAY=wayland-0`
+  set (`XDG_SESSION_TYPE` unset), so native-Wayland-by-default was the top
+  suspicion for an overlay that depends on always-on-top + transparency +
+  click-through. **Did not materialise:** transparency `borderA0/rgb0` and the
+  full interaction suite (hit-testing, `setIgnoreMouseEvents` forwarding) passed
+  identically. `ozone`/`OZONE` have 0 references in our launch paths.
+- **ANGLE now statically linked (44.0)** — we render through ANGLE/D3D12 on the
+  Intel iGPU; startup, cage and distinctness all unchanged.
+- **preload-in-subframes (44.0)** — preload targets the main frame only;
+  `interaction 34/34` proves IPC/`contextBridge` still work end-to-end.
+
+## Notes for the merger (not blockers)
+
+1. **Spec conflict:** `docs/ORB_REBUILD_TASK.md:116` pins *"electron 30.5.1,
+   three 0.170.0, ws 8.22.0 — no version drift"* — merging **requires updating
+   that base-spec line** (plus the `npm audit endpoint broken` clause can be
+   reworded once SCANNERS.md's documented-highs note is retired).
+2. **This is a VERSION BUMP only** — it is *not* the Windows-native migration.
+   ARCH-1 stays plan-only and human-gated; do not conflate the two.
+3. `sandbox: false` is unchanged and still honoured on 44 — restoring it stays
+   as ARCH-1 item **H4**, deliberately sequenced with the migration.
+4. `tests/security/SCANNERS.md` documented-highs note and
+   `qa-security__to__orb__electron-audit-highs.md` should be retired by
+   **qa-security** after merge (their files, not mine to edit).
+5. Residual: gates run on **WSL/Linux only** — no Windows runtime was exercised.
+   Windows conformance in CI covers docs parsing, not the Electron window, so a
+   post-merge Windows smoke (overlay shows, click-through, topmost) is worth a
+   human eyeball.
+
+## Interlock
+
+`ee8823c` (safetycli lockfile redirect, 1 entry → npmjs, integrity
+byte-verified) is what lets dependabot resolve this PR cleanly — landed on my
+branch, CI **5/5 green**.

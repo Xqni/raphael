@@ -85,6 +85,32 @@ function makeGlyphAtlas(THREE) {
   return tex;
 }
 
+// AUDIT "NOTHING SHOULD FEEL OR SEE LIKE 2D": soft glow rendered as a 3D ball
+// (sphere + view-facing alpha falloff) instead of a textured camera-facing quad.
+const glowVert = `
+  varying vec3 vN;
+  varying vec3 vV;
+  void main() {
+    vN = normalize(normalMatrix * normal);
+    vec4 mv = modelViewMatrix * vec4(position, 1.0);
+    vV = normalize(-mv.xyz);
+    gl_Position = projectionMatrix * mv;
+  }
+`;
+const glowFrag = `
+  precision mediump float;
+  uniform vec3 uColor;
+  uniform float uAlpha;
+  varying vec3 vN;
+  varying vec3 vV;
+  void main() {
+    float f = clamp(dot(normalize(vN), normalize(vV)), 0.0, 1.0);
+    float a = pow(f, 1.7) * uAlpha;      // zero at the limb -> no hard edge
+    gl_FragColor = vec4(uColor * a, a);  // premultiplied
+  }
+`;
+
+// (now unused — kept so the texture helper stays available if a sprite returns)
 function makeBokehTexture(THREE, hex) {
   const c = document.createElement('canvas');
   c.width = c.height = 128;
@@ -338,6 +364,11 @@ export function initAnswerMode(THREE, group, pal) {
       }));
     const s = 0.05 + ((i * 17) % 7) / 7 * 0.04;
     m.scale.set(s, s, 1);
+    // AUDIT (2D billboards): petals were camera-facing (only rotation.z was ever
+    // set = flat against the screen). Give each a FIXED 3D tilt so it sits in
+    // space at an angle; the per-frame update only writes rotation.z, so x/y
+    // persist and the petal never squares up to the camera.
+    m.rotation.set(0.75 + ((i * 13) % 7) / 7 * 1.1, ((i * 29) % 11) / 11 * 2.0 - 1.0, 0);
     AM.root.add(m);
     AM.flakes.push({
       m, mat: m.material,
@@ -358,12 +389,15 @@ export function initAnswerMode(THREE, group, pal) {
   ];
   AM.bokeh = [];
   bokehDefs.forEach((d, i) => {
-    const mat = new THREE.MeshBasicMaterial({
-      map: makeBokehTexture(THREE, d[0]), transparent: true, opacity: 0,
-      depthWrite: false, blending: THREE.AdditiveBlending,
+    // was a radial-gradient texture on a camera-facing PlaneGeometry
+    const mat = new THREE.ShaderMaterial({
+      uniforms: { uColor: { value: new THREE.Color(d[0]) }, uAlpha: { value: 0 } },
+      vertexShader: glowVert, fragmentShader: glowFrag,
+      transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+      premultipliedAlpha: true,
     });
-    const m = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), mat);
-    m.scale.set(d[1], d[1], 1);
+    const m = new THREE.Mesh(new THREE.SphereGeometry(0.5, 16, 12), mat);
+    m.scale.set(d[1], d[1], d[1]);
     AM.root.add(m);
     AM.bokeh.push({
       m, mat, base: d[2],
@@ -469,6 +503,6 @@ export function updateAnswerMode(AM, ctx) {
   for (const bk of AM.bokeh) {
     bk.ang += bk.spd * spinDt;
     bk.m.position.set(Math.cos(bk.ang) * bk.rad, Math.sin(bk.ang) * bk.rad * 0.9, bk.z);
-    bk.mat.opacity = on * bk.base;
+    bk.mat.uniforms.uAlpha.value = on * bk.base;
   }
 }
