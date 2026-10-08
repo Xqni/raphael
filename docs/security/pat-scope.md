@@ -10,7 +10,7 @@
 | Setting | Value | Why |
 |---|---|---|
 | Type | **Fine-grained PAT** (NOT classic — classic tokens are repo-wide) | per-repo scoping |
-| Repository access | **Selected repositories ONLY** — exactly `Xqni/raphael` (addendum §9 build repo) | nothing else is reachable, even with a leaked token |
+| Repository access | **Selected repositories ONLY** — exactly `<gh-owner>/raphael` (addendum §9 build repo) | nothing else is reachable, even with a leaked token |
 | Contents | **Read & write** | `git push` after your confirmation |
 | Actions | **Read & write** | read run status; re-run/dispatch the CI workflows (`ci.yml`, `tests-heavy.yml`, QA-4) |
 | Pull requests | **Read & write** | PR creation/comments from the build pipeline |
