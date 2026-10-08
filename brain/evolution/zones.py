@@ -28,6 +28,8 @@ CORE_EXACT = frozenset({
     "brain/control.py",
     "brain/mode.py",
     "brain/tools/__init__.py",     # central registry (AGENT_RULES §3)
+    "brain/raphael-brain.service", # boot unit (SEC-7 boot/root scripts)
+    "body/win/act_powershell.py",  # PowerShell registry manifest (SEC-7)
     "config.yaml",                 # base + profiles block (safety switches)
     ".env",
     ".env.example",
@@ -37,12 +39,18 @@ CORE_EXACT = frozenset({
 })
 
 # Directory-style globs: "dir/**" = everything under dir (prefix rule).
+# SEC-7 (Wave-5H) added tools/conductor/** + docs/OWNERSHIP*.md; the rest were
+# already guarded. Hash coverage is qa-security's manifest (request filed:
+# evolution-persona__to__integrator__sec7-core-guard-expansion.md) — this
+# classifier only keeps MY controller from ever auto-promoting these paths.
 CORE_GLOBS = (
-    "supervisor/**",               # out-of-band rollback path
-    "scripts/**",                  # bring-up/teardown + task registration
+    "supervisor/**",               # out-of-band rollback path (boot/watchdog)
+    "scripts/**",                  # bring-up/teardown + scripts/win/*.ps1
+    "tools/conductor/**",          # coord CLI + conductor + prompts (SEC-7)
     "brain/evolution/**",          # the controller must not rewrite its own judge
     "tests/**",                    # the gate itself (incl. core_guard.py)
-    ".github/workflows/**",
+    ".github/workflows/**",        # CI incl. the core-guard step (SEC-7)
+    "docs/OWNERSHIP*.md",          # the ownership map itself (SEC-7)
 )
 
 # ---- design 01 §1.2: mutable zone ------------------------------------------
