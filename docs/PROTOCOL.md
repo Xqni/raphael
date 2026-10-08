@@ -42,6 +42,7 @@ Every JSON frame: `{"type": str, "v": 1, ...fields}`. Optional correlation: `"jo
 | `cancel` | all | `job: id\|all`, `scope: gui\|full` | cancel job(s); `gui` releases input lock only |
 | `control` | cli, ui, body | `action: pause\|resume\|private_on\|private_off\|kill_gui\|watch_on\|watch_off`, `persist: bool` | global controls (kill = halt GUI-driving jobs now; pause persists across restarts) |
 | `act_res` | body | `job`, `ok`, `result?`, `error?` | response to an `act_req` |
+| `foreground` | body | `window{hwnd,title,process,pid}\|null`, `ts` | foreground-window push (AUD-05 grant 2026-10-08): sent once on WS connect (snapshot) and on every focus change; brain-core consumer folds it into `brain.vision.context.record_foreground("title \| process")` — the 60 s-fresh ring the router's chat egress gate reads; `null` window = unverifiable (gate stays fail-closed). Lock-free body read (`foreground_info`, `lock:false`); no `act_req` round trip. |
 | `orb_input` | ui | `kind: click\|dblclick\|menu\|submit_text`, `value?` | orb interaction (menu item names are a fixed enum) |
 | `state_req` | ui, cli | — | request full state snapshot (orb state, jobs, mode flags) |
 
@@ -70,6 +71,7 @@ Every JSON frame: `{"type": str, "v": 1, ...fields}`. Optional correlation: `"jo
 |---|---|---|---|
 | send `command` | ✓ | ✓ | ✓ |
 | receive `act_req` (act on PC) | **✓ only** | ✗ | ✗ |
+| send `foreground` push (§3, AUD-05) | **✓ only** | ✗ | ✗ |
 | receive `speak` JSON | ✓ | ✓ | ✗ |
 | receive `speak` binary audio | **✓ only** | ✗ | ✗ |
 | receive `stt_final` / `orb_state` / `subtitle` | ✓ | **✓** | ✓ |

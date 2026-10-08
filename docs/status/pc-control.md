@@ -304,3 +304,50 @@ $ pytest brain                                902 passed, 5 skipped
 Note: the previously-reported root `test_instance_isolation` failure is
 GREEN again on this branch (fixed upstream). No repo `logs/` created by any
 run (both logs redirected to tmp).
+
+## 2026-10-08 — AUD-05 (my half): foreground push producer — DONE
+
+**Verify-first (dispatch [32] requirements):**
+- **Bug F state (checked first):** `docs/BUGS-WAVE2.md:116-122` — *"ROOT CAUSE
+  CORRECTED (computer-use …): `capture_screen` masked a body-WS disconnect …
+  Job 43 … has NO `foreground_info` record … the tool never ran"*
+  → body's `foreground_info` was NEVER broken (jobs 35/41 succeeded in
+  **16 ms** with real window titles); the fix is computer-use's (in flight).
+  So the query is proven fast + healthy — safe to use as the push source.
+- **Lock-free proof:** `body/win/act_window.py` registers
+  `register_action('foreground_info', …, needs_lock=False, …)` and the
+  dispatch only takes the input lock under `if lock or spec.needs_lock`
+  (`body/win/actions.py:396-397`) → push path never acquires it (test
+  `test_push_never_touches_the_input_lock` monkeypatches
+  `acquire_input_lock` to RAISE — push still works).
+
+**Shipped:**
+1. `body/win/foreground.py` — connect snapshot + focus-change push:
+   - primary: Win32 `SetWinEventHook(EVENT_SYSTEM_FOREGROUND)` on a daemon
+     message-pump thread (event-driven detection, ms-level);
+   - fallback (non-Windows / hook failure): 1 s poll; **30 s force-resync**
+     in both modes (ring ts refresh even when idle);
+   - dedupe (hwnd+title+process), retry-on-send-failure, never raises into
+     the client loop; local change→frame→send measured **< 100 ms**
+     (`test_push_latency_under_100ms`).
+2. `body/win/ws_client.py` — `set_sender(_send_frame)` +
+   `fg.start(loop)` in `start_client` (logs `hook=… poll=…`) + connect
+   snapshot right after `auth_ok` in `client_once`.
+3. **PROTOCOL §3 granted edit landed:** new `foreground` frame row
+   (`window{hwnd,title,process,pid}|null`, `ts`, role=body) with the
+   brain-core consumer contract (`record_foreground("title | process")` —
+   the identity shape `brain/tools/computer_use/gateway.py:134` already
+   produces) + §4 capability row `send foreground push … **✓ only**`.
+4. Consumer request → brain-core: `pc-control__to__brain-core__
+   foreground-frame-consumer.md` (ws.py handler: role=body only, null
+   window = unverifiable = don't record = gate stays fail-closed).
+
+**Tests (real, sequential):**
+```
+$ pytest body/win/tests/test_pc_foreground.py             9 passed
+$ pytest body/win/tests                                 183 passed
+$ pytest brain/tools/pc/tests                            11 passed
+$ python3 body/win/e2e_control.py              142 PASS / 0 FAIL (fg:connect/dedupe/change/lock-free)
+$ pytest tests                     213 passed, 1 failed (qa's uia-confirm test = their P0 in flight)
+$ pytest brain                               1046 passed, 6 skipped
+```

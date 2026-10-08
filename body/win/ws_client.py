@@ -155,6 +155,19 @@ async def handle_message(msg: Any, ws, mic_streamer):
               f"ms={int((time.monotonic() - t0) * 1000)}", flush=True)
         return
 
+async def _send_frame(frame) -> bool:
+    """AUD-05: outbound frame sender for the foreground pusher (False when
+    disconnected so foreground.push() retries on the next tick)."""
+    if _current_ws is None:
+        return False
+    try:
+        await _current_ws.send(json.dumps(frame))
+        return True
+    except Exception as e:  # noqa: BLE001 — push must never kill the loop
+        print(f"[body-win] foreground push failed: {e}", flush=True)
+        return False
+
+
 async def client_once(mic_streamer):
     global _current_ws
     websockets = _websockets()
@@ -163,6 +176,10 @@ async def client_once(mic_streamer):
         control_task = asyncio.create_task(_drain_control_queue(ws))
         try:
             await asyncio.wait_for(send_auth(ws), timeout=5)
+            # AUD-05: connect snapshot — feed the brain's foreground ring the
+            # moment we are online (lock-free read, no act_req round trip).
+            fg = _import_late('foreground')
+            await fg.push(force=True)
             async for message in ws:
                 await handle_message(message, ws, mic_streamer)
         finally:
@@ -214,6 +231,14 @@ async def start_client():
     _websockets()  # availability check before the retry loop
     hotkeys = _import_late('hotkeys')
     audio_in = _import_late('audio_in')
+
+    # AUD-05: focus watcher (Win32 hook, poll fallback) -> pushes the brain's
+    # foreground cache on every focus change; sender installed once.
+    fg = _import_late('foreground')
+    fg.set_sender(_send_frame)
+    diag = fg.start(asyncio.get_running_loop())
+    print(f"[body-win] foreground push: hook={diag['hook']} "
+          f"poll={diag['poll']}", flush=True)
 
     hotkeys.set_loop(asyncio.get_running_loop())
     try:
