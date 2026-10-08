@@ -389,3 +389,19 @@ $ python3 body/win/e2e_control.py              144 PASS / 0 FAIL
 $ pytest tests                         241 passed, 7 xfailed (0 failed)
 $ pytest brain                               1046 passed, 6 skipped
 ```
+
+## 2026-10-08 — focused-password-flag + F-3 adjudication compliance — DONE
+
+- **AUD-05 LIVE + MERGED** (coord [38]): `foreground push: hook=True
+  poll=False` in production, consumer feeding, chat answers with
+  `require_foreground=TRUE` (subtitle 2.97s, act 0.55s), refusal pinned by
+  16 gate tests — the seeded chain is end-to-end.
+- **focused-password-flag**: quotes verified (`winlayer._describe` had only
+  name/control_type/automation_id/class_name/rect; `_describe_window` had
+  hwnd/title/pid/process/rect/visible) → added `focused_is_password`
+  (top-level on `foreground_info`, key the gateway already reads) and
+  true-only `is_password`/`focused` on uia descriptors; 4 new tests.
+- **Adjudication [38] complied**: older viewer-schema draft → SUPERSEDED
+  (combined with the integrator's on-main line), signed agreement canonical.
+- Tests (post-rebase): body 194, specs 11, e2e 144 PASS, root 241,
+  brain 1064 passed; branch CI dispatched on the final head.
