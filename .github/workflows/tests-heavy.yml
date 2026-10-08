@@ -53,6 +53,8 @@ jobs:
       - name: golden-transcript evals (persona format + tool-call accuracy)
         env: { RAPHAEL_INSTANCE: qa-security }
         run: python -m pytest -q tests/golden
+      - name: personal-data STRICT gate (SEC-1 criterion-4, FAIL-only per option 1)
+        run: python3 scripts/scan_personal.py --strict
       - name: core guard
         run: python tests/core_guard.py
       - name: capture goldens for review (dispatch input only)
