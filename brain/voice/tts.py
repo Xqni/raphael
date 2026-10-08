@@ -1,6 +1,12 @@
 """brain/voice/tts.py — Fish-Speech TTS adapter + phrase cache + speak stream
-(voice-dev). Emits PROTOCOL §3 `speak` frame dicts, sentence by sentence:
-the FIRST sentence is synthesized and streamed while the rest still generates.
+(voice-dev). Emits PROTOCOL §3 `speak` frame dicts.
+
+GAPLESS DELIVERY (P0, 2026-10-07): multi-sentence replies are PRE-ROLLED —
+every sentence is synthesized first (bounded by `preroll_budget_s`,
+env `RAPHAEL_TTS_PREROLL_S`, default 20s, 0 disables), then all chunks are
+burst-sent, so the body never starves mid-reply (fish ~RTF 0.5 left one
+12.23s inter-chunk hole otherwise). Single-sentence replies and cache hits
+have no added latency. Sentences beyond the spoken cap are never synthesized.
 
 Engine resolution order for speak(text):
   1. PhraseCache hit      -> cached wav chunks (cached=True)
@@ -615,6 +621,20 @@ class TTSEngine:
         self._recovery_attempted = False
         self._recovered_this_speak = False
         self._recovery_notice_shown = False
+        # P0 gapless playback: how long a multi-sentence reply may be
+        # pre-rolled (synthesized before the first chunk is sent). Default
+        # 60s: fish serializes requests, so wall-time per sentence inflates
+        # when the live brain talks concurrently (measured: a 26.4s request
+        # from another client queued ahead) — the budget is a safety valve
+        # against unbounded waits, NOT a latency target; hitting it falls
+        # back to live streaming (holes possible, logged). 0 disables
+        # pre-roll entirely (old sentence-streaming behavior). A one-time
+        # notice is emitted when pre-roll exceeds 8s (Rule-15 UX honesty).
+        try:
+            self.preroll_budget_s = float(
+                os.environ.get("RAPHAEL_TTS_PREROLL_S", "60") or 60)
+        except (TypeError, ValueError):
+            self.preroll_budget_s = 60.0
         # P0 (2026-10-07): non-namespaced pre-reference wavs must never sit in
         # the cache root — swept once at startup (regenerable, moved outside
         # the repo; user-dropped text-named acks are untouched).
@@ -624,7 +644,7 @@ class TTSEngine:
                  f"{voice_data_dir() / 'cache_swept'} (stale-voice cleanup)")
 
     # -- fish death mid-speak recovery (Wave 4) ------------------------------
-    async def _restart_fish(self, timeout_s: float = 90.0) -> bool:
+    async def _restart_fish(self, timeout_s: float = 8.0) -> bool:
         """ONE restart attempt when fish dies mid-speak.
 
         Ownership rule (Rule 14 / INTERFACES §d): we stop a process only if
@@ -877,9 +897,21 @@ class TTSEngine:
 
         synthesized: List[bytes] = []
         notice: Optional[str] = None
+        remainder: List[str] = []
         if fish_ok:
             self.stats.engine = "fish"
-            for sent in sentences:
+            # P0 (2026-10-07) GAPLESS PLAYBACK: fish runs at ~RTF 0.5, so
+            # sentence N+1 is NOT ready when N's chunks finish — the body
+            # drains and we get a mid-reply hole (measured: ONE 12.23s
+            # inter-chunk hole; fish log shows the cause: a single dense
+            # sentence request taking 11.81s of generation). Fix: PRE-ROLL
+            # multi-sentence replies — synthesize the whole reply FIRST
+            # (bounded by preroll_budget_s), then burst-send every chunk, so
+            # the body never starves. Single-sentence replies and cache hits
+            # are unaffected (no added latency). Disable with
+            # RAPHAEL_TTS_PREROLL_S=0 (old sentence-streaming behavior).
+            t_preroll = time.perf_counter()
+            for i, sent in enumerate(sentences):
                 if cancel is not None and cancel.is_set():
                     yield _end(interrupted=True)
                     return
@@ -895,18 +927,71 @@ class TTSEngine:
                         f"TTS engine error ({e.code}) — partial speech; "
                         f"{e.detail[:120]}")
                     break
-                # stream the sentence NOW while the next one generates
+                if len(sentences) > 1:
+                    elapsed = time.perf_counter() - t_preroll
+                    buffered_s = sum(len(p) / 2.0 / rate for p in synthesized)
+                    remaining = len(sentences) - (i + 1)
+                    # budget is a hard cap (checked first): never wait longer
+                    if remaining and elapsed > self.preroll_budget_s:
+                        remainder = sentences[i + 1:]
+                        _log(f"[tts] preroll budget "
+                             f"{self.preroll_budget_s}s hit after "
+                             f"{i + 1}/{len(sentences)} sentences — streaming "
+                             f"the rest live (gaps possible)")
+                        break
+                    # adaptive early-start: once the BUFFERED audio can out-run
+                    # the estimated remaining generation (1.3x margin), start
+                    # speaking and stream the tail as it arrives — cuts the
+                    # pre-roll wait without reintroducing holes.
+                    est_remaining_gen = (elapsed / (i + 1)) * remaining * 1.3
+                    if remaining and buffered_s >= est_remaining_gen:
+                        remainder = sentences[i + 1:]
+                        _log(f"[tts] preroll adaptive start: "
+                             f"{len(synthesized)} sentences ({buffered_s:.1f}s "
+                             f"audio) buffered in {elapsed:.1f}s, streaming "
+                             f"the remaining {remaining}")
+                        break
+            if len(sentences) > 1:
+                preroll_s = round(time.perf_counter() - t_preroll, 2)
+                _log(f"[tts] preroll: {len(synthesized)}/{len(sentences)} "
+                     f"sentences buffered in {preroll_s}s before first chunk")
+                if preroll_s > 8.0:
+                    notice = notice or self._once(
+                        "Preparing the full reply — one moment.")
+            # burst-send everything buffered (gapless head) ...
+            for pcm in synthesized:
                 chunk_evs, next_seq = self._chunk_events(pcm, seq, job, False,
                                                          "fish")
                 for ev in chunk_evs:
                     if cancel is not None and cancel.is_set():
                         seq = ev["seq"]
-                        yield _end(interrupted=True)
+                        yield _end(interrupted=True, notice=notice)
                         return
                     seq = ev["seq"] + 1
                     yield ev
-                if not fish_ok:
+            # ... then any budget-deferred tail, sentence by sentence
+            for sent in remainder:
+                if cancel is not None and cancel.is_set():
+                    yield _end(interrupted=True, notice=notice)
+                    return
+                try:
+                    wav = await self._synthesize_resilient(sent)
+                    pcm, _ = wav_bytes_to_s16le_pcm(wav, rate)
+                except TTSError as e:
+                    fish_ok = False
+                    notice = notice or self._once(
+                        f"TTS engine error ({e.code}) — partial speech; "
+                        f"{e.detail[:120]}")
                     break
+                chunk_evs, next_seq = self._chunk_events(pcm, seq, job, False,
+                                                         "fish")
+                for ev in chunk_evs:
+                    if cancel is not None and cancel.is_set():
+                        seq = ev["seq"]
+                        yield _end(interrupted=True, notice=notice)
+                        return
+                    seq = ev["seq"] + 1
+                    yield ev
             if fish_ok and synthesized:
                 # store full phrase for future cache hits — but ONLY when the
                 # render actually matches the reference voice (P0 2026-10-07:

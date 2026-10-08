@@ -508,3 +508,60 @@ orphans: zero (fish reused for renders, never spawned)
   proof: body log line shows `dropped=0, kept>0` on a multi-sentence reply.
 - **brain** restart → timbre gate + auto-sweep active (live data was already
   purged directly, so accent is fixed even before restart).
+
+## P0 follow-up — the 12.23s brain-side hole (finish P0)
+
+Root cause (with fish-server evidence): **per-sentence speak cadence** — fish
+generates serially at ~RTF 0.5 (per-request 2-9s; 11.81s for one 145-token
+dense request; 26.4s when ANOTHER client's request queues ahead of ours),
+and while sentence N+1 generates, NOTHING is sent → the body drains → hole.
+The integrator's probe (mean 138ms, ONE 12230ms hole) matches exactly.
+
+Fix in `TTSEngine.speak()` (`brain/voice/tts.py`):
+- **reply-level pre-roll**: multi-sentence replies are synthesized first,
+  then burst-sent — the body never starves (single-sentence replies and cache
+  hits unaffected: no added latency);
+- **adaptive early-start**: as soon as buffered audio ≥ 1.3× estimated
+  remaining generation, speaking begins and the tail streams in;
+- **hard budget** `RAPHAEL_TTS_PREROLL_S` (default 60s, 0 disables → old
+  behavior): beyond it we stream live (logged "gaps possible") so a stuck fish
+  can never hang a reply; one-time notice when pre-roll >8s
+  ("Preparing the full reply — one moment.");
+- fish-death recovery wait tightened 90s → 8s (never stalls a stream long).
+
+Measured (`brain/voice/scripts/p0_gap_probe.py`, same metric as the
+integrator's WS probe):
+| run | chunks | mean gap | max gap | holes >350ms |
+|---|---|---|---|---|
+| baseline (integrator) | 91 | 138 ms | **12 230 ms** | 1 |
+| after fix (cached reply) | 210 | 0.0 ms | **1.0 ms** | **0** |
+| after fix (cached, 2nd run) | 228 | 82.7 ms | 0.0 ms* | 0 |
+| after fix (FRESH, 8-sentence stress, contended) | 228 | — | 18 782 ms | 1 (budget hit at 7/8 — expected fallback, logged) |
+
+* p95 = 0 in all post-fix runs.
+Honest limits: (1) a fresh reply whose TOTAL generation exceeds the budget
+falls back to streaming (by design — budget vs holes tradeoff); when fish is
+slower than realtime across a whole reply, gapless requires waiting (the
+notice covers UX). (2) The streamed-LLM path (one `speak()` per sentence in
+`loop.py::_SentenceSpeaker`) is brain-core's cadence → OPEN request
+`docs/requests/voice__to__brain-core__streamed-sentence-batching.md`.
+- Contract tests: `brain/voice/tests/test_p0_fixes.py` — **13 passed**
+  (preroll-all, adaptive-start, budget-fallback, single-sentence no-delay,
+  reset-keeps, stale-drop, sweep, timbre gate, stats).
+
+### Test output
+```
+$ brain/.venv/bin/python -m pytest brain/voice/tests -q
+129 passed, 1 skipped in 14.85s
+$ brain/.venv/bin/python -m pytest brain/tests -q
+192 passed, 1 warning in 15.08s
+orphans: zero (fish never spawned by this lane)
+```
+
+### Pending on fish availability
+The final **fresh** 4-sentence acceptance re-run (`p0_gap_probe.py --fresh`)
+could not complete — the live fish server went down mid-session and this lane
+never spawns it (INTERFACES §d / Rule 14). Re-run when the stack's fish is
+back: `brain/.venv/bin/python brain/voice/scripts/p0_gap_probe.py --fresh`
+(expect: zero holes >350ms while fish is uncontended; the budget-fallback
+path logs loudly if not).

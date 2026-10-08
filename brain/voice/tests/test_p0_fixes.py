@@ -207,3 +207,113 @@ def test_reference_matching_render_is_cached(tmp_path, capsys):
     assert chunks
     assert eng.cache.load("Task complete.") is not None  # cached
     assert "cached phrase (timbre cos" in capsys.readouterr().out
+
+
+# ---- P0 gaps: reply-level pre-roll (gapless burst) -------------------------
+def _short_wav(ms=300):
+    """A SHORT (0.3s) ref-like wav — keeps the adaptive early-start from
+    firing (0.3s buffered < 1.3x estimated remaining gen) so the ALL-first
+    contract can be asserted deterministically."""
+    pytest.importorskip("soundfile")
+    import io
+
+    import soundfile as sf
+    buf = io.BytesIO()
+    sr = 32000
+    t = np.arange(int(sr * ms / 1000), dtype=np.float32) / sr
+    sf.write(buf, (0.3 * np.sin(2 * np.pi * 300.0 * t)).astype(np.float32),
+             sr, format="WAV", subtype="PCM_16")
+    return buf.getvalue()
+
+
+class _SlowFish(_FakeFishVoice):
+    """Fake fish where every synthesis takes real (small) time, so the
+    pre-roll order can be observed deterministically."""
+
+    def __init__(self, wav_bytes: bytes, delay_s: float = 0.5):
+        super().__init__(wav_bytes)
+        self.delay_s = delay_s
+        self.order: list = []
+
+    async def synthesize(self, text):
+        self.calls += 1
+        self.order.append(text)
+        await asyncio.sleep(self.delay_s)
+        return self.wav_bytes
+
+
+def test_multi_sentence_reply_is_prerolled_before_first_chunk(tmp_path):
+    """The gapless contract: no chunk is sent until the reply's buffer can
+    out-run the rest of generation — here (fast gen, short audio) that means
+    ALL sentences are synthesized first (the 12.23s-hole contract)."""
+    eng = _engine(tmp_path)
+    fish = _SlowFish(_short_wav(), delay_s=0.5)
+    eng.fish = fish
+
+    first_chunk_at = None
+    chunks = 0
+    async def run():
+        nonlocal first_chunk_at, chunks
+        async for e in eng.speak("One sentence here. Two sentences here. "
+                                 "Three sentences here.", job="j_pre",
+                                 max_sentences=0):   # uncapped: all 3 count
+            if e["event"] == "chunk":
+                chunks += 1
+                if first_chunk_at is None:
+                    first_chunk_at = len(fish.order)
+    asyncio.run(run())
+    assert chunks > 0
+    assert first_chunk_at == 3, "first chunk must wait for ALL sentences"
+
+
+def test_single_sentence_reply_has_no_preroll_delay(tmp_path):
+    pytest.importorskip("soundfile")
+    eng = _engine(tmp_path)
+    fish = _SlowFish(JP_REF.read_bytes(), delay_s=0.05)
+    eng.fish = fish
+    first_chunk_at = None
+    async def run():
+        nonlocal first_chunk_at
+        async for e in eng.speak("Only one sentence.", job="j_one"):
+            if e["event"] == "chunk" and first_chunk_at is None:
+                first_chunk_at = len(fish.order)
+    asyncio.run(run())
+    assert first_chunk_at == 1   # nothing extra to wait for
+
+
+def test_preroll_adaptive_start_when_buffer_wins(tmp_path, capsys):
+    """LONG audio vs fast gen: speaking must start early (buffered audio can
+    out-run estimated remaining generation) instead of waiting for everything."""
+    pytest.importorskip("soundfile")
+    eng = _engine(tmp_path)
+    fish = _SlowFish(JP_REF.read_bytes(), delay_s=0.05)   # 8.5s audio each
+    eng.fish = fish
+    first_chunk_at = None
+    async def run():
+        nonlocal first_chunk_at
+        async for e in eng.speak("Alpha one. Beta two. Gamma three.",
+                                 job="j_adapt", max_sentences=0):
+            if e["event"] == "chunk" and first_chunk_at is None:
+                first_chunk_at = len(fish.order)
+    asyncio.run(run())
+    assert first_chunk_at == 1                     # adaptive, not full wait
+    assert "preroll adaptive start" in capsys.readouterr().out
+
+
+def test_preroll_budget_falls_back_to_live_streaming(tmp_path, capsys):
+    """RAPHAEL_TTS_PREROLL_S=0 disables pre-roll (old behavior): chunks start
+    after the FIRST sentence even though more are pending."""
+    eng = _engine(tmp_path)
+    eng.preroll_budget_s = 0.0                     # disabled (hard cap, 1st)
+    fish = _SlowFish(_short_wav(), delay_s=0.03)
+    eng.fish = fish
+    first_chunk_at = None
+    async def run():
+        nonlocal first_chunk_at
+        async for e in eng.speak("Alpha one. Beta two. Gamma three.",
+                                 job="j_off"):
+            if e["event"] == "chunk" and first_chunk_at is None:
+                first_chunk_at = len(fish.order)
+    asyncio.run(run())
+    assert first_chunk_at == 1                     # streams from sentence 1
+    assert "preroll budget" in capsys.readouterr().out
