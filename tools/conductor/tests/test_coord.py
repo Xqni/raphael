@@ -15,11 +15,14 @@ import tempfile
 import threading
 import time
 import unittest
+from unittest import mock
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 CONDUCTOR_DIR = HERE.parent
 COORD = CONDUCTOR_DIR / "coord.py"
+sys.path.insert(0, str(CONDUCTOR_DIR))
+import coord as coord_module  # noqa: E402
 
 
 def fresh_env() -> tuple[dict, Path]:
@@ -117,6 +120,27 @@ class CoordBase(unittest.TestCase):
         self.assertEqual(st["lanes"]["orb"]["session_id"], "ses_abc123")
         out = json.loads(run(self.env, "status", "--json").stdout)
         self.assertEqual(out["lanes"]["orb"]["session_id"], "ses_abc123")
+
+    def test_find_session_reads_opencode_v2_top_level_directory(self):
+        """OpenCode v2 Session.directory is top-level, not location.directory."""
+        st = json.loads((self.d / "state.json").read_text())
+        st["lanes"]["voice"]["session_id"] = None
+        session_list = subprocess.CompletedProcess(
+            args=[], returncode=0,
+            stdout=json.dumps([
+                {"id": "ses_other", "directory": "/tmp/other"},
+                {"id": "ses_voice", "directory": "/home/dami/raphael-wt/voice"},
+            ]), stderr="")
+        active = subprocess.CompletedProcess(
+            args=[], returncode=0,
+            stdout=json.dumps({"data": {"ses_voice": {"type": "idle"}}}), stderr="")
+        with mock.patch.object(coord_module.subprocess, "run",
+                               side_effect=[session_list, active]) as run:
+            sid = coord_module.find_session(self.d, "voice", st)
+        self.assertEqual(sid, "ses_voice")
+        self.assertEqual(st["lanes"]["voice"]["session_id"], "ses_voice")
+        self.assertEqual(run.call_args_list[0].args[0][:4],
+                         ["opencode", "session", "list", "--format"])
 
     def _fake_conductor(self) -> int:
         """Start a process whose /proc cmdline contains 'conductor'; return its pid."""

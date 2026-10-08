@@ -14,6 +14,7 @@ import sys
 import tempfile
 import time
 import unittest
+from unittest import mock
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -178,6 +179,67 @@ class TestFailureCaps(CBase):
         ok = c.wake_lane(st, "voice", "test")
         self.assertFalse(ok)
         self.assertIn("voice", st.get("run_queue", []))
+
+
+class TestDispatchEfficiency(CBase):
+    def test_existing_session_ping_bypasses_headless_caps(self):
+        """A reusable session wake is not a headless process spawn."""
+        st = self.st()
+        st["lanes"]["voice"]["session_id"] = "ses_existing"
+        coord.write_state(self.d, st)
+        c = self.mk(dry=False)
+        c.active_count = lambda: 99
+        c.runs_last_hour = lambda: 99
+        pings = []
+        c._try_ping = lambda sid, msg: pings.append(sid) or "ok"
+
+        self.assertTrue(c.wake_lane(self.st(), "voice", "unit-test"))
+        self.assertEqual(pings, ["ses_existing"])
+        runs = coord.read_jsonl(c.runs_path)
+        self.assertEqual(runs[-1]["kind"], "ping")
+
+    def test_ping_records_do_not_consume_headless_hourly_budget(self):
+        c = self.mk(dry=False)
+        for i in range(20):
+            c._record_launch("ping", "voice", [], "", None)
+        self.assertEqual(c.runs_last_hour(), 0)
+        c._record_launch("headless", "voice", ["opencode"], "/tmp/wt", None)
+        self.assertEqual(c.runs_last_hour(), 1)
+
+    def test_duplicate_session_ping_is_coalesced(self):
+        st = self.st()
+        st["lanes"]["voice"]["session_id"] = "ses_existing"
+        coord.write_state(self.d, st)
+        c = self.mk(dry=False)
+        c.cfg["session_ping_cooldown_s"] = 90
+        c._try_ping = lambda sid, msg: "ok"
+        self.assertTrue(c.wake_lane(st, "voice", "first"))
+        pings_before = len([r for r in coord.read_jsonl(c.runs_path) if r["kind"] == "ping"])
+        self.assertFalse(c.wake_lane(st, "voice", "duplicate"))
+        pings_after = len([r for r in coord.read_jsonl(c.runs_path) if r["kind"] == "ping"])
+        self.assertEqual(pings_before, pings_after)
+        self.assertIn("voice", st.get("run_queue", []))
+
+    def test_stale_session_404_falls_back_to_headless_once(self):
+        st = self.st()
+        st["lanes"]["voice"]["session_id"] = "ses_deleted"
+        coord.write_state(self.d, st)
+        c = self.mk(dry=False)
+        c.cfg["lane_headless_cmd"] = [sys.executable, "-c", "pass"]
+        c._try_ping = lambda sid, msg: "404"
+        st = self.st()
+        self.assertTrue(c.wake_lane(st, "voice", "stale-session"))
+        starts = [r for r in coord.read_jsonl(c.runs_path) if r["kind"] == "headless"]
+        self.assertEqual(len(starts), 1)
+        self.assertIsNone(st["lanes"]["voice"].get("session_id"))
+        c.cleanup_children()
+
+    def test_zero_exit_empty_prompt_response_is_not_retried(self):
+        c = self.mk(dry=False)
+        ok = subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr="")
+        with mock.patch("conductor.subprocess.run", return_value=ok) as run:
+            self.assertEqual(c._try_ping("ses_existing", "one wake"), "ok")
+        self.assertEqual(run.call_count, 1, "empty 204 success must not enqueue a duplicate turn")
 
 
 class TestLoopGuard(CBase):

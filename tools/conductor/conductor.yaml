@@ -1,5 +1,5 @@
 {
- "_comment": "Conductor config \u2014 JSON syntax (valid YAML 1.2) so python stdlib json.load can read it. SPEED MANDATE (AGintENTS_RULES Rule 15, 2026-10-07): paid fast models are authorized \u2014 handler runs use opencode-go/mimo-v2.5 for near-instant turns. Pings use each session's own configured model.",
+ "_comment": "Conductor config — JSON syntax (valid YAML 1.2). Rule 15: paid-fast Go for headless turns; existing-session pings reuse the session model. Dispatch request docs/requests/integrator__dispatch-chain-efficiency.md: runs_per_hour applies to spawned processes only; session pings coalesced per lane.",
  "tick_s": 15,
  "debounce_s": 75,
  "max_parallel_runs": 3,
@@ -77,5 +77,6 @@
  "wake_grace_s": 600,
  "_guard_note": "patient loop guard: grace per wake attempt, 1 re-ping, then escalate (interactive turns take minutes)",
  "server_watchdog": true,
- "_watchdog_note": "user mandate 2026-10-06: never multiple servers at once; conductor kills stray/multiple fish api_servers every tick (live_e2e=true exempts the single legitimate one)"
+ "_watchdog_note": "user mandate 2026-10-06: never multiple servers at once; conductor kills stray/multiple fish api_servers every tick (live_e2e=true exempts the single legitimate one)",
+ "session_ping_cooldown_s": 60
 }

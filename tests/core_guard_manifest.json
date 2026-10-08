@@ -18,5 +18,5 @@
   "scripts/win/make-ref-voice.ps1": "60fb334719cab6f756cf1e538b350c13572fcec433a7de7688b17644dff667d1",
   "scripts/win/mute.ps1": "4afa81ae0537901e0533809d9ad32c2cc861a15e03a0677e14b2fd9581c9c1d3",
   "supervisor/**": "991cbce0d69fff7e10431fdff42b5955758c479065ec4e2476aa1fdd03ec9a3e",
-  "tools/conductor/**": "46ad0fe2a0ac0acc9d484d6b488ef146225dc05a3aedbe6e10659d30d25dbe3a"
+  "tools/conductor/**": "ee2116962f460b757855f003950062c16147ccc937260727619338370645cef0"
 }

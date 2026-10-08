@@ -617,14 +617,14 @@ def find_session(cd: Path, lane: str, st: dict | None = None) -> str | None:
     if sid:
         return sid
     # fallback: discover by worktree directory (rename-proof — titles are user-owned).
-    # Multiple sessions can share a directory (history) — prefer RUNNING, else first
-    # (the API returns newest first).
+    # OpenCode v2 session list exposes `directory` at top level; older servers nested
+    # it under location. Multiple sessions may share a directory — prefer active.
     try:
         r = subprocess.run(
-            ["opencode", "api", "get", "/api/session?limit=200"],
+            ["opencode", "session", "list", "--format", "json", "--max-count", "500"],
             capture_output=True, text=True, timeout=30,
         )
-        data = json.loads(r.stdout).get("data", [])
+        data = json.loads(r.stdout)
         active_ids = set()
         with contextlib.suppress(Exception):
             ra = subprocess.run(
@@ -635,7 +635,10 @@ def find_session(cd: Path, lane: str, st: dict | None = None) -> str | None:
         want = f"/raphael-wt/{lane}" if lane in LANES else "/raphael"
         match = None
         for s in data if isinstance(data, list) else []:
-            d = ((s.get("location") or {}).get("directory") or "")
+            # OpenCode v2 Session exposes directory at the top level; older
+            # server builds nested it under location. Accept both.
+            d = (s.get("directory") or
+                 (s.get("location") or {}).get("directory") or "")
             if d.rstrip("/").endswith(want.rstrip("/")) or (lane == "integrator" and d == "/home/dami/raphael"):
                 if match is None:
                     match = s.get("id")

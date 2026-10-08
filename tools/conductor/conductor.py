@@ -118,8 +118,12 @@ class Conductor:
         if not self.runs_path.exists():
             return 0
         cutoff = now() - 3600
+        # The hourly process-spawn cap is for expensive headless runs only.
+        # Prompting a registered interactive session is context-preserving and
+        # does not spawn a process; it has its own per-lane debounce below.
         return sum(1 for r in read_jsonl(self.runs_path)
-                   if r.get("kind") not in (None,) and r.get("ts_start", 0) >= cutoff)
+                   if r.get("kind") in ("headless", "integrator")
+                   and r.get("ts_start", 0) >= cutoff)
 
     def active_count(self) -> int:
         n = len(self.children) + len(self.dry_active)
@@ -205,7 +209,9 @@ class Conductor:
     def _try_ping(self, sid: str, msg: str) -> str:
         """API prompt injection into an existing session -> 'ok' | '404' | 'error'.
         steer first (works while idle AND busy — busy processes it in order), then an
-        explicit queue retry on non-404 failures."""
+        explicit queue retry only when the CLI reports failure. A zero exit is accepted
+        even if the server returned an empty 204 rather than a JSON envelope; retrying
+        would enqueue the same paid turn twice."""
         for delivery in ("steer", "queue"):
             payload = json.dumps({"text": msg, "delivery": delivery})
             try:
@@ -214,7 +220,7 @@ class Conductor:
                      "--data", payload],
                     capture_output=True, text=True, timeout=60)
                 out = (r.stdout or "") + (r.stderr or "")
-                if r.returncode == 0 and '"data"' in (r.stdout or ""):
+                if r.returncode == 0:
                     return "ok"
             except Exception as e:
                 out = str(e)
@@ -234,19 +240,6 @@ class Conductor:
             if lane not in st["run_queue"]:
                 st["run_queue"].append(lane)
             return False
-        if self.active_count() >= int(self.cfg.get("max_parallel_runs", 3)):
-            st.setdefault("run_queue", [])
-            if lane not in st["run_queue"]:
-                st["run_queue"].append(lane)
-            self.log(f"{lane}: at capacity ({self.active_count()}) — queued")
-            return False
-        if self.runs_last_hour() >= int(self.cfg.get("runs_per_hour", 12)):
-            st.setdefault("run_queue", [])
-            if lane not in st["run_queue"]:
-                st["run_queue"].append(lane)
-            self.log(f"{lane}: runs/hour cap — queued")
-            return False
-
         sid = meta.get("session_id")
         if not sid and self.cfg.get("api_check", False):
             sid = coord.find_session(self.cd, lane, st)
@@ -255,6 +248,12 @@ class Conductor:
 
         # ---- dry-run: record the intended wake, treat as active for the cap
         if self.dry:
+            if self.active_count() >= int(self.cfg.get("max_parallel_runs", 3)):
+                st.setdefault("run_queue", [])
+                if lane not in st["run_queue"]:
+                    st["run_queue"].append(lane)
+                self.log(f"{lane}: dry-run capacity ({self.active_count()}) — queued")
+                return False
             kind = "ping" if sid else "headless"
             append_jsonl(self.dry_path, {
                 "ts": now(), "lane": lane, "kind": kind, "session": sid,
@@ -266,8 +265,18 @@ class Conductor:
                      f"{lane} ({reason})")
             return True
 
-        # ---- ping the lane's existing session (context preserved, zero idle cost)
+        # ---- ping the lane's existing session (context preserved, zero spawn cost).
+        # Coalesce duplicate wakes: one session gets at most one prompt per cooldown;
+        # unread inbox/events remain queued and the next wake processes the whole batch.
         if sid:
+            cooldown = float(self.cfg.get("session_ping_cooldown_s", 60))
+            last_ping = float(meta.get("last_ping", 0) or 0)
+            if last_ping and now() - last_ping < cooldown:
+                st.setdefault("run_queue", [])
+                if lane not in st["run_queue"]:
+                    st["run_queue"].append(lane)
+                self.log(f"{lane}: session ping coalesced ({int(cooldown - (now()-last_ping))}s cooldown)")
+                return False
             msg = self.cfg.get(
                 "ping_msg",
                 "coord wake: read your inbox and ~/.raphael-coord/prompts/lane_continue.md, "
@@ -288,6 +297,22 @@ class Conductor:
                 self._record_launch("ping-fail", lane, [], "", None)
                 self.log(f"ping FAILED {lane} — counted as a failure")
                 return False
+
+        # Headless fallback is the only path subject to process concurrency and
+        # runs/hour caps. Existing sessions were handled above and must not be
+        # blocked by the headless budget.
+        if self.active_count() >= int(self.cfg.get("max_parallel_runs", 3)):
+            st.setdefault("run_queue", [])
+            if lane not in st["run_queue"]:
+                st["run_queue"].append(lane)
+            self.log(f"{lane}: headless capacity ({self.active_count()}) — queued")
+            return False
+        if self.runs_last_hour() >= int(self.cfg.get("runs_per_hour", 12)):
+            st.setdefault("run_queue", [])
+            if lane not in st["run_queue"]:
+                st["run_queue"].append(lane)
+            self.log(f"{lane}: headless runs/hour cap — queued")
+            return False
 
         # ---- headless fallback: only if no session exists AND the worktree lock is free
         if self.lane_locked(lane):
