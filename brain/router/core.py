@@ -615,7 +615,7 @@ class Router:
             role=role, purpose=purpose,
             call=lambda p, m: p.chat(m, msgs, tools=tools,
                                      timeout=self.config.providers.request_timeout_s),
-            require_capability="tools" if tools else None,
+            require_capability=("tools" if tools else "chat"),
             estimate=estimate_input_tokens(msgs, tools),
         )
         latency = (time.monotonic() - start) * 1000.0

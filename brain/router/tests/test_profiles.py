@@ -67,7 +67,7 @@ def test_repo_config_is_cloud_temp_chain() -> None:
     assert cfg.profile == "cloud_temp"
     assert cfg.providers.chain == ["go", "zen_free", "groq"]
     assert cfg.providers.allow_go_runtime is True  # USER 2026-10-07 opencode chat
-    assert cfg.providers.allow_paid_runtime is False
+    assert cfg.providers.allow_paid_runtime is True  # USER 2026-10-07 opencode paid models own chat
     assert cfg.voice.stt_engine == "groq"
     assert cfg.vision.provider == "cloud"
     assert cfg.local_model.enabled is False
@@ -76,7 +76,7 @@ def test_repo_config_is_cloud_temp_chain() -> None:
     assert cfg.providers.allow_vision_paid is True
     assert cfg.providers.vision_paid_daily_cap_usd == 1.00
     assert cfg.providers.allow_go_runtime is True  # USER 2026-10-07 opencode chat
-    assert cfg.providers.allow_paid_runtime is False
+    assert cfg.providers.allow_paid_runtime is True  # USER 2026-10-07 opencode paid models own chat
     assert cfg.providers.vision_paid_price_per_mtok["input"] > 0
 
 
