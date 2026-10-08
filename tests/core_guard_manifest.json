@@ -1,6 +1,22 @@
 {
+  ".github/workflows/ci.yml": "f9dd7efba8a38c2de6183016bd9e8a501eef55e9ca9ca4630a2507ef91b5035f",
+  ".github/workflows/tests-heavy.yml": "cb8984ab38dbb75351d3dbd42963c2d7c287ac8a61fbab59cf40f6e6f602331b",
+  "body/win/act_powershell.py": "cf3e850af55fa05cfe1fd4f973b0c0accf75b3e88d5186c49317f85a6d2b1697",
   "brain/auth.py": "0efc6d4a679a6a6b7b1c0f1df02042d4b0e67f3320426e964532c872f6dc355c",
   "brain/confirm.py": "640104b2528a4338ce8951b73122cb28d7888dd844a87bc05c64bf81971a8b3d",
   "brain/control.py": "db9bcf042115a74e7e1c0a4dce8f20b45c4bb7baea235190444e34e3217ff569",
-  "brain/mode.py": "9137e5e8e34201f9ecbb7bb9fb7daddfc0db8793972fe2d18f501bcd6687d03c"
+  "brain/evolution/**": "2fcd09f1bd61d696faf39c0d02c9f1c5334a44f89f18b5271e7b77c9a726e6cd",
+  "brain/mode.py": "9137e5e8e34201f9ecbb7bb9fb7daddfc0db8793972fe2d18f501bcd6687d03c",
+  "brain/raphael-brain.service": "5e8930ec15d96fb2eadc7442ffd004229309c71f12b9172c1ef058c8f8da4a9b",
+  "docs/OWNERSHIP.md": "f3c41b823c9235ae6dc1ad94eab7bb9c1be2bc3ec818172529248e3577bf9097",
+  "scripts/install-brain-unit.sh": "56d8b3cacc47c5cf5a283fa147834e14fa7bdc4691d7521c545f9c694c6789de",
+  "scripts/setup.ps1": "86246033646b4441ea7bbddd932802ddf3cf3298622803a561ec0cdbd5f03e5d",
+  "scripts/setup.sh": "4b30e3e82013486e0fa15a035b9fc6e9ba5f7769f1c9b0dc60917996f58ca9ef",
+  "scripts/token-gen.sh": "2bbcf8d3b1e9079908efb4224fef4c412bf88a2a342f7db9a4fab172fe532283",
+  "scripts/uninstall.ps1": "e0968d287d51943fce68404b283fcb286f493f621d5bb9d7b138a7f8d47b59a1",
+  "scripts/win/allow-brain-localhost.ps1": "630faa699eee95088f485f690aae25a823ba1cf53788ca2f08d9c74bf5854f48",
+  "scripts/win/make-ref-voice.ps1": "60fb334719cab6f756cf1e538b350c13572fcec433a7de7688b17644dff667d1",
+  "scripts/win/mute.ps1": "4afa81ae0537901e0533809d9ad32c2cc861a15e03a0677e14b2fd9581c9c1d3",
+  "supervisor/**": "991cbce0d69fff7e10431fdff42b5955758c479065ec4e2476aa1fdd03ec9a3e",
+  "tools/conductor/**": "32695ce56851b6f753b280dba94d2cd56a71a3ad8e640020afaf1048b364db8c"
 }

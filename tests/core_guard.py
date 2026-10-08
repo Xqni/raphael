@@ -21,13 +21,52 @@ CORE_GUARD_FILES = [
     'brain/auth.py',
     'brain/control.py',
     'brain/mode.py',
+    # SEC-7 expansion (approved request:
+    # docs/requests/evolution-persona__to__integrator__sec7-core-guard-expansion.md)
+    'tools/conductor/**',
+    '.github/workflows/ci.yml',
+    '.github/workflows/tests-heavy.yml',
+    'docs/OWNERSHIP.md',
+    'scripts/setup.sh',
+    'scripts/setup.ps1',
+    'scripts/uninstall.ps1',
+    'scripts/install-brain-unit.sh',
+    'scripts/token-gen.sh',
+    'brain/raphael-brain.service',
+    'supervisor/**',
+    'scripts/win/allow-brain-localhost.ps1',
+    'scripts/win/make-ref-voice.ps1',
+    'scripts/win/mute.ps1',
+    'body/win/act_powershell.py',
+    'brain/evolution/**',
 ]
+
+
+def _tracked_under(directory: str) -> list:
+    """Tracked files beneath a dir (git ls-files — ignores untracked scratch)."""
+    try:
+        out = subprocess.run(['git', 'ls-files', '--', directory],
+                             cwd=REPO, capture_output=True, text=True, timeout=30)
+        if out.returncode == 0 and out.stdout.strip():
+            return [ln for ln in out.stdout.splitlines() if ln]
+    except Exception:  # noqa: BLE001 — fall back to a filesystem walk
+        pass
+    return [str(f.relative_to(REPO)) for f in sorted((REPO / directory).rglob('*'))
+            if f.is_file() and 'node_modules' not in f.parts and '.git' not in f.parts]
 
 
 def hashes() -> dict:
     out = {}
     for rel in CORE_GUARD_FILES:
-        out[rel] = hashlib.sha256((REPO / rel).read_bytes()).hexdigest()
+        if rel.endswith('/**'):
+            base = rel[:-3]
+            agg = hashlib.sha256()
+            for f in _tracked_under(base):
+                agg.update(f.encode('utf-8'))
+                agg.update(hashlib.sha256((REPO / f).read_bytes()).digest())
+            out[rel] = agg.hexdigest()
+        else:
+            out[rel] = hashlib.sha256((REPO / rel).read_bytes()).hexdigest()
     return out
 
 

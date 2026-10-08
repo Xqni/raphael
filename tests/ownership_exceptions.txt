@@ -13,3 +13,5 @@ brain/formats.py =brain-core  # 2026-10-07 integrator APPROVED contract (brain-c
 tests/conformance/test_protocol.py =integrator  # 2026-10-07 atomic pair with my §3 hand-edit (answer/report rows): whitelist+doc must land together or conformance goes red — qa notified to rebase
 brain/analysis.py =brain-core  # 2026-10-07 integrator P0 assignment (analysis/sim privacy gates tripwire) + evolution approved contract: Analysis job type + 3 gates
 brain/simulation.py =brain-core  # 2026-10-07 same P0 batch: Simulation sandbox dry-run job type
+tests/core_guard.py =integrator  # 2026-10-08 SEC-7 approved request (evolution-persona__to__integrator__sec7-core-guard-expansion.md): dir-aware hashes + 13 control-plane entries
+tests/core_guard_manifest.json =integrator  # same approved request: --update run with --approval reference (auto-generated manifest)
