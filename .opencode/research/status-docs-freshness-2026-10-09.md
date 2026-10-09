@@ -1,6 +1,6 @@
 # Status-docs freshness pass — 2026-10-09
 
-Scope: `docs/status/*.md` in /home/dami/raphael (repo per task). Method: evidence-only
+Scope: `docs/status/*.md` in <repo-root>/raphael (repo per task). Method: evidence-only
 corrections appended as `## Current as of 2026-10-09 (integrator freshness pass)` at the END
 of each touched file; no body rewrites, no deletions. Nothing staged, nothing committed, nothing pushed.
 

@@ -12,14 +12,14 @@ tests-heavy (same head):
 - status: completed
 - conclusion: success
 - created_at: 2026-10-08T14:22:34Z
-- url: https://github.com/Xqni/raphael/actions/runs/37791936216
+- url: https://github.com/<gh-owner>/raphael/actions/runs/37791936216
 
 jobs:
 - name: Ubuntu — brain + mock suites
   status: completed
   conclusion: success
   duration: ~5m 47s
-  url: https://github.com/Xqni/raphael/actions/runs/37795171680/job/113372627499
+  url: https://github.com/<gh-owner>/raphael/actions/runs/37795171680/job/113372627499
 - name: Protocol conformance (ubuntu-latest)
   status: completed
   conclusion: success
