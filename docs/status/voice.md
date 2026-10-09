@@ -865,3 +865,16 @@ $ brain/.venv/bin/python -m pytest brain/tests/test_sec3_cloud_stt_gate.py -q
 10 passed in 36.13s        (brain-core's SEC-3 + continuation contract)
 orphans: zero
 ```
+
+## Current as of 2026-10-09 (integrator freshness pass)
+
+- **Merged + wave closed.** `git merge-base --is-ancestor agent/voice main` → true (verified 2026-10-09). WAVE-5H GATE PASSED recorded in main at `2247a65` (tag `wave-5h-gate`); this lane's straggler-sweep doc record merged at `cccd26a`. Latest completed main CI at report time: **37800865212** (success).
+- **Stale — header "Updated: 2026-10-06 (Wave 2 complete …)"**: the body runs through 2026-10-08 (Waves 3/4/5, the 5H packet, the P0 drift fix, Cut A/B landing all logged above); the header predates two more waves of work.
+- **Stale — "## Blocked: Two OPEN requests await their owners … `voice__to__integrator__audio-end-pass-reason.md` — ws.py should pass `reason` … (currently fails open)"**: that file is Status **DONE** (2026-10-06, implemented in `brain/ws.py::_on_audio_end`); SEC-3's later fail-closed work superseded it entirely. The second listed request, `voice__to__brain-core__voice-confirm-wiring.md`, is still genuinely Status OPEN (file checked 2026-10-09).
+- **Stale — "## Next: per docs/WAVES.md (current_wave: 2)"**: `docs/WAVES.md:2` has `current_wave: 5`; waves 3/4/5 + the 5H sprint were executed and gate-passed. Nothing in the lane waits on a wave bump.
+- **Requests with Status OPEN whose implementation has landed (owner flip pending — evidence 2026-10-09):**
+  - `voice__to__brain-core__stt-outage-subtitle.md` — wired: `brain/ws.py:874,947,958` call `stt_outage_subtitle`.
+  - `voice__to__brain-core__utt-continuation-merge.md` — wired: `brain/ws.py:765-766` `if raw_reason == 'continuation'`.
+  - `voice__to__brain-core__streamed-sentence-batching.md` — wired: `brain/loop.py:294-299` `_SentenceSpeaker` batch hold.
+  - `voice__to__router__turbo-stt-for-purpose-transcribe.md` — landed per router's Wave-5H Cut B record (`brain/router/roles.py:35` stt hints turbo-first + `config.d/router.yaml:12`); this doc's own Cut B section re-measured it live.
+- **Still genuinely not wired (checked, unchanged):** `voice__to__brain-core__speak-warn-notices.md` — Status OPEN and no `speak_notice` call site in `brain/loop.py`/`brain/ws.py` (grep 2026-10-09).

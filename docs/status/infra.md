@@ -342,3 +342,12 @@ class on the next `raphael stop`). No orphans from this session (Rule 14).
   on the conductor's call (exit criteria are the human's, §11).
 - Blockers: none. The §d shadow row itself is brain-core's (assigned);
   infra is ready the moment it lands (one-line table entry).
+
+## Current as of 2026-10-09 (integrator freshness pass)
+
+- **Merged + wave closed.** `git merge-base --is-ancestor agent/infra main` → true (verified 2026-10-09). WAVE-5H GATE PASSED recorded in main at `2247a65` (tag `wave-5h-gate`); this lane's post-gate doc record merged at `ccf4a86`. Latest completed main CI at report time: **37800865212** (success).
+- **Stale — SEC-1 row "qa CI request OPEN"**: superseded by this lane's post-gate work — OPTION 1 implemented on this lane (commit `8f941d2`: `scan_personal --strict` gates on FAIL-severity only, REVIEW advisory with counts) and wired into tests-heavy the same day by qa-security (commit `4620775`; branch CI **37799170764** success; merged to main at `48f74f3`; SCANNERS.md strict semantics + npm `--audit-level=high`). Request files confirm: `qa-security__to__infra__personal-scan-strict-severity-scope.md` Status **DONE** ("infra implemented OPTION 1, 2026-10-08"); `infra__to__qa-security__ci-personal-scan.md` Status **ANSWERED**.
+- **Stale — "F-7: DRAFT (co-sign pending)"**: `infra__to__integrator__f7-readiness-cosign.md` is now Status **CO-SIGNED** (integrator, 2026-10-08) with a gate-8 amendment; enablement remains human per rule 12.
+- **Request closure:** `infra__to__orb__npm-safetycli-lock.md` is Status **ANSWERED** (closed by requester 2026-10-08, commit `02e98c3`) — the doc's Blocked bullet claiming it pending predates that closure.
+- **Still genuinely open (checked, unchanged):** `infra__to__integrator__sec5-env-dev-and-docs.md` remains Status OPEN — the SEC-5 "PROPOSED (integrator lines pending)" row is still accurate.
+- **Stale — "## Next: … await review — `wave_done` on the conductor's call"**: the conductor's call happened — the 5H gate passed and this lane merged; nothing awaits review here as of 2026-10-09.

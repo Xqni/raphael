@@ -1,6 +1,9 @@
 # voice → brain-core: subtitle the STT-outage notice in `_on_audio_end`
 Status: OPEN
 
+## Status update (integrator freshness pass 2026-10-09)
+ANSWERED/DONE — evidence: the proposed wiring landed — `brain/ws.py:874` imports `stt_outage_subtitle` from brain.voice and `brain/ws.py:947,958` broadcast the notice subtitle in the `_on_audio_end` STT error paths (`_notice = stt_outage_subtitle(e.code, e.detail)` / `stt_outage_subtitle('E_INTERNAL', ...)`), guarded so a missing helper keeps current behavior.
+
 ## What
 Wave 4 (voice lane) delivers `brain.voice.stt_outage_subtitle(code, detail) ->
 str | None` — a brief, secret-free subtitle for STT failures, restricted to the

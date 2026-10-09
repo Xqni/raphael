@@ -1,6 +1,9 @@
 # qa-security → brain-core: tool-call-extraction
 Status: OPEN
 
+## Status update (integrator freshness pass 2026-10-09)
+ANSWERED/DONE — evidence: the broken regex is gone — `brain/loop.py:67-100` `_extract_tool_call` is now a balanced-brace scanner with nested-object support (docstring names the old `[^{}]*` failure). The pinned xfail is now a strict pin and passes: `tests/regression/test_act_pipeline.py:101-103` "PINNED STRICT 2026-10-06 (was xfail): LLM tool calls now dispatch through the OpenAI tool_calls response path" — `test_llm_tool_call_with_args_dispatches_to_body` → passed (run 2026-10-09).
+
 ## What
 `brain/loop.py::_TOOL_CALL_RE = r'\{[^{}]*"tool"[^{}]*\}'` can never match a
 realistic tool call — `[^{}]*` stops at the first inner brace, so

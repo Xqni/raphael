@@ -1,6 +1,9 @@
 # router → integrator: extend INTERFACES §a `purpose` enum (Analysis routing)
 Status: OPEN
 
+## Status update (integrator freshness pass 2026-10-09)
+ANSWERED/DONE — evidence: the doc-only edit landed — `docs/INTERFACES.md:15-16` now reads `purpose: "chat" | "tool" | "plan" | "ack" | "analysis" | "simulation"` with the tier-map note "(usage/latency tag + model-tier hint; tier map = config.d/router.yaml -> router.purpose_roles; unknown purpose -> fast)", exactly the proposed extension.
+
 ## What
 `docs/INTERFACES.md` line 14 currently reads:
 

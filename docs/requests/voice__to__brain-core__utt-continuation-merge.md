@@ -1,6 +1,9 @@
 # voice → brain-core: utterance continuation merge (STT latency Cut A)
 Status: OPEN
 
+## Status update (integrator freshness pass 2026-10-09)
+ANSWERED/DONE — evidence: both halves landed. Brain append path: `brain/ws.py:765-766` "utterance-continuation merge (voice request ACCEPTED 2026-10-08)" — `reason == 'continuation'` appends instead of clearing the buffer. Body half: `body/win/audio_in.py:87-114` (Cut A 2026-10-08) sends `reason='continuation'` on resume inside the window. Contract row: `docs/PROTOCOL.md:38` `audio_start` reason enum now includes `continuation` "(additive, granted 2026-10-08)".
+
 ## What
 To cut the 2 500 ms body VAD hangover (71 % of the perceived
 stop-speaking→subtitle wait — measurement: `brain/voice/STT-REPLY-LATENCY.md`)

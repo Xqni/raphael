@@ -27,3 +27,6 @@ and `::test_job_snapshot_reports_awaiting_confirm`.
 Touch: `brain/loop.py` (+ maybe a guard in `brain/jobs/store.py::transition`).
 Risk: clients that filter on `status=='running'` — none in-repo do (orb uses
 stats, body ignores job_event status details). Both xfails flip green.
+
+## Status update (integrator freshness pass 2026-10-09)
+ANSWERED/DONE — evidence: the proposed transition landed — `brain/loop.py:523` `store.transition(rowid, 'awaiting_confirm', stage='routing', ...)` immediately followed by the emit at :526. Both pinned tests now pass without xfail: `tests/regression/test_orb_lifecycle.py::test_orb_confirm_state_while_awaiting` + `::test_job_snapshot_reports_awaiting_confirm` → "2 passed" (run 2026-10-09).

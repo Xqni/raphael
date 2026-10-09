@@ -405,3 +405,11 @@ $ pytest brain                               1046 passed, 6 skipped
   (combined with the integrator's on-main line), signed agreement canonical.
 - Tests (post-rebase): body 194, specs 11, e2e 144 PASS, root 241,
   brain 1064 passed; branch CI dispatched on the final head.
+
+## Current as of 2026-10-09 (integrator freshness pass)
+
+- **Merged + wave closed.** `git merge-base --is-ancestor agent/pc-control main` → true (verified 2026-10-09). WAVE-5H GATE PASSED recorded in main at `2247a65` (tag `wave-5h-gate`); this lane's doc record merged at `9784e0c`. Latest completed main CI at report time: **37800865212** (success).
+- **Stale — header "Updated: 2026-10-06 (Wave 2 complete — handoff below)"**: the body of this doc runs through 2026-10-08 (Waves 3, 4, 5 and the 5H packet all logged below); the header date understates the record by two days.
+- **Stale — top "## Blocked: Live-Brain use of `brain/tools/pc` awaits the brain-core auto-discovery request"**: landed long ago — this doc's own Wave-5H section records "AUD-05 LIVE + MERGED … the seeded chain is end-to-end" with the pc tools registered and fed by brain-core's lifespan discovery. The Wave-2-era blocked item no longer reflects the lane.
+- **Stale — top "## Next: … Waves 3-5 … start only when `docs/WAVES.md current_wave` advances"**: `docs/WAVES.md:2` has `current_wave: 5`; waves 3/4/5 + 5H were executed (the log sections below ARE those waves). The old stop-here posture is historical only.
+- **Still genuinely open (checked, unchanged):** `pc-control__to__integrator__protocol-activity-act.md` Status OPEN (§7 enum addition for `activity{op}`) and `pc-control__to__brain-core__activity-endpoint.md` Status OPEN (REST relay for the orb/CLI). The F-3 activity-viewer chain is not fully closed yet.

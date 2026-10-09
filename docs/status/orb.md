@@ -1848,3 +1848,12 @@ the configured `pkgs.safetycli.com` mirror (`Invalid request payload JSON format
 — that is a registry-endpoint problem, not a lockfile one, and is unrelated to
 either request above. The CI step already uses the real registry, which is why
 the bump's clean result reproduces there.
+
+## Current as of 2026-10-09 (integrator freshness pass)
+
+- **Merged + wave closed.** `git merge-base --is-ancestor agent/orb main` → true (verified 2026-10-09). WAVE-5H GATE PASSED recorded in main at `2247a65` (tag `wave-5h-gate`); this lane's closure record merged at `96f406c` (inbound request loops satisfied). Latest completed main CI at report time: **37800865212** (success).
+- **Stale — header "Updated: 2026-10-06"**: the body of this doc runs through 2026-10-08 (Wave 4 resilience, Wave 5 renderer work, the 5H audit, the electron bump eval, the fresh-build re-verification); the header date is two days behind the record.
+- **Stale — the "BLUE PARTICLES" section's merge claims**: "on `origin/main`? NO — `48da3dd` … the removal is correct but has never been merged … nothing has shipped since `b0ed6ce`. Fix = post `wave_done` → merge → supervisor relaunch." — superseded: `agent/orb` is an ancestor of `main` (verified 2026-10-09), so the starfield removal (and the rest of the batch) shipped; the wave-5H gate passed (`2247a65`). The "merge first" action item is done.
+- **Closure — `qa-security__to__orb__electron-audit-highs.md`**: the "ball is in qa's court" section is resolved — the file is now Status **ANSWERED** (qa-security verified on current main 2026-10-08; electron 44.5.1, `npm audit` 0 highs), and per qa's commit `83652aa` the npm gate was tightened back to `--audit-level=high` and the SCANNERS.md allow-list note retired. This lane's follow-up item #4 (ask qa to retire those) is complete.
+- **Confirmed accurate — `infra__to__orb__npm-safetycli-lock.md`**: Status **ANSWERED** (closed by requester 2026-10-08, commit `02e98c3`) — matches this doc's record.
+- **Still genuinely open (checked, unchanged):** `orb__to__brain-core__orb-state-transitions.md` and `orb__to__integrator__backing-disc-default-zero.md` are both still Status OPEN in their files — this doc's statements about them remain correct, including the note that the orb-state-transitions substance was answered in coord while the file flip stays with brain-core.

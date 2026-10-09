@@ -2,6 +2,11 @@
 
 Priority order after Phase 3 completes. Do not let these silently vanish.
 
+> Refresh note (2026-10-09): the stack was shut down AGAIN on 2026-10-09 (user
+> order, before a laptop restart) — see the 2026-10-09 addendum in §0 and the
+> authoritative pickup state in `docs/HANDOFF-2026-10-09.md`. Development
+> through Wave 5 is complete (`wave-5h-gate`, 2026-10-08; `docs/WAVES.md`).
+
 ## 0. ⏸️ RAPHAEL TEMPORARILY SHUT DOWN (user, 2026-10-05 evening) — RAM for Premiere Pro video editing
 - Task "Raphael" is **Disabled** (not deleted), all her processes killed (supervisor/body/orb/brain/fish/relay/keepalive + ollama per user). Free RAM ~2.9 -> ~3.3+ GB; WSL kept alive ONLY for OpenCode (this session) + the comics vision stack needs ollama again later.
 - DO NOT re-enable before the user says go. (RAM upgrade later SKIPPED — user, 2026-10-05 evening: budget tight — so revival is gated on the user's word ONLY, not on any RAM swap.)
@@ -9,6 +14,7 @@ Priority order after Phase 3 completes. Do not let these silently vanish.
     Enable-ScheduledTask -TaskName 'Raphael'; Start-ScheduledTask -TaskName 'Raphael'
     (ollama auto-restarts at its next boot OR: Start-Process ollama; fish TTS pre-warms at brain startup automatically; body/orb/brain relaunch via the task.)
 - RAM upgrade skipped for now → keep .wslconfig `memory=10GB` (a bump to 12GB only if/when RAM actually lands). Note: `experimental.autoMemoryReclaim=discard` is already staged in .wslconfig (backup: `~/.raphael-backups/`) — it arms at the next WSL start/reboot.
+- **2026-10-09 addendum (user-directed shutdown #2, before a laptop restart):** the stack was brought up again between 10-05 and 10-09 (Wave-3 live gate and all) and then intentionally stopped on 2026-10-09. Current facts (verified, `docs/HANDOFF-2026-10-09.md` §1): task "Raphael" **Disabled**, root WSLg service disabled, and the keepalive cron **removed** (backup outside git at `~/.raphael-coord/crontab.keepalive.bak` — NOT in this repo). Nothing auto-starts. DO NOT re-enable before the user says go. Revival shape on next bring-up: start the supervisor (`supervisor/main.py` from Windows via its UNC path — see `logs/supervisor.log` for the exact launch line), which respawns brain, body, orb and launches the wsl-relay + fish TTS; then run the verify battery in `docs/HANDOFF-2026-10-09.md` §5 (or the Enable/Start-ScheduledTask pair above once the task path is preferred).
 
 ## 1. Boot auto-start (logon registration) — DONE 2026-10-05 (user: "move ahead")
 - Token generated (file-only; WSL+Windows hash-verified; token-gen.sh fixed: value now travels via STDIN — WSL->Win32 interop passes NO arbitrary env vars).

@@ -1,6 +1,9 @@
 # router → brain-core: register the foreground hook (AUD-05, your half)
 Status: OPEN
 
+## Status update (integrator freshness pass 2026-10-09)
+ANSWERED/DONE — evidence: the hook is registered at startup exactly as requested — `brain/app.py:79-87` "AUD-05 (P0 + dispatch 2026-10-08): wire the PRODUCTION foreground hook" → `from brain.router import set_foreground_check as _set_fg` + `_set_fg(_fg.provider)`, with the push-cache data source shipped as `brain/foreground.py` (fresh <5s cache, `provider()` fail-closed to None/UNKNOWN).
+
 ## What
 `brain.router.set_foreground_check(fn)` exists and is now ENFORCED
 (production path): with no hook registered, `chat()`, `chat(stream=True)`,

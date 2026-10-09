@@ -1,6 +1,9 @@
 # router → integrator: vision-free-model-gap
 Status: OPEN
 
+## Status update (integrator freshness pass 2026-10-09)
+ANSWERED/DONE — evidence: option 2 was chosen and landed — `config.yaml:48` `allow_vision_paid: true` annotated "USER APPROVAL 2026-10-06 'use the opencode go paid models for vision for now'" with the spend cap at `:49` `vision_paid_daily_cap_usd: 1.00` ("hard stop -> vision() refuses E_OFFLINE"). The narrow refusal-code sub-ask was left as `reason`-discriminator per the request's own fallback. The dedicated-go-vision tier is served (`config.d/router.yaml` rpm/tpm `go_vision` entries).
+
 ## What
 `vision()` (INTERFACES §a, Wave-2 exit criterion 3: *"What am I looking at" returns a real vision answer*) cannot pick a model under today's free chain — live discovery run 2026-10-06 from this worktree:
 

@@ -25,3 +25,6 @@ isolation exists to prevent (AGENT_RULES §5). Wave 4 exit criteria depend on it
 - Not a Core Guard change (no auth/kill/pause/private/allow-list semantics touched).
 - If `8911`/`9411` collide with a planned lane, any free value is fine — the lane owns the choice,
   we only need the derivation to be honored.
+
+## Status update (integrator freshness pass 2026-10-09)
+ANSWERED/DONE — evidence: `docs/INTERFACES.md:81` carries the `shadow` row in the instance-derivation table (port 8911 / CDP 9411 / `~/.raphael/shadow/` data-dir, pidfile per the generic data-dir derivation). The sanctioned edit is recorded in `tests/ownership_exceptions.txt` ("docs/INTERFACES.md =brain-core # 2026-10-07 integrator decision … shadow row").

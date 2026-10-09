@@ -97,3 +97,11 @@ Updated: 2026-10-08 (AUD P0 batch COMPLETE: AUD-05/08/09/10/17/21/22/24/29 + [56
 - `./brain/.venv/bin/python -m pytest -q brain/tests brain/router/tests brain/voice/tests brain/tools/pc/tests brain/tools/computer_use/tests` → **367 passed, 4 skipped** (wave-3 new: fastpath open/search 5, Bug E flicker 3, /status router block 1; round-3 was 346+2)
 - `cd tests && ./.venv/bin/python -m pytest -q .` → **187 passed, 9 xfailed, 2 xpassed** (xpasses = qa's ollama-gate xfails awaiting infra — unrelated to brain-core)
 - Hermetic: no live providers, no real stack, **no Fish touched or spawned** (path-scoped TTS mock), no Ollama (AGENT_RULES §5/§7); router faked at the INTERFACES §a seam, STT faked at `voice.transcribe_result`.
+
+## Current as of 2026-10-09 (integrator freshness pass)
+
+- **Merged + wave closed.** `git merge-base --is-ancestor agent/brain-core main` → true (verified 2026-10-09). WAVE-5H GATE PASSED is recorded in main at `2247a65` (2026-10-08, tag `wave-5h-gate`); the doc-record merge for this lane is `7f0b6e8`. Latest completed main CI at report time: **37800865212** (success, 2026-10-08T15:27Z); scheduled tests-heavy sweep **37925272630** success (2026-10-09T11:41Z).
+- **Stale — "## In progress: (Wave-5H packet reported; awaiting review/merge)"**: superseded by the gate pass above; nothing is awaiting review on this lane as of 2026-10-09.
+- **Stale — "## Blocked: … ARCH-5 waits on integrator's direction"**: the decision already arrived and is recorded in this doc's own AUD P0 batch section ("ARCH-5 decision received: keep-name-canonical … nothing to code"); no open wait remains.
+- **Still genuinely queued (checked, unchanged):** `voice__to__brain-core__speak-warn-notices.md` is Status OPEN and no `speak_notice`/`notice_spoken_text` call site exists in `brain/loop.py` or `brain/ws.py` (grep 2026-10-09) — the "## Next" item stands.
+- **Note (owner flip pending, not this lane's file):** the memory/skills injection half of `tools-memory__to__brain-core__loop-memory-skills-injection.md` has landed in code (`brain/loop.py:166-193` AUD-22 injection; `arm_all` wired in `brain/app.py:116-117`), but the request file is still Status OPEN and `plugins.load_enabled()` has no call site in `brain/` (grep 2026-10-09).

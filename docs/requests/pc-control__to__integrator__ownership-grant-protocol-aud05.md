@@ -44,3 +44,6 @@ exception entry written by YOU/qa — as long as
   content itself is already merged-in-intent and accepted ([35]). Once it
   lands I rebase + re-dispatch `gh workflow run ci.yml --ref agent/pc-control`
   and post the wave_done with that green `data.ci_run`.
+
+## Status update (integrator freshness pass 2026-10-09)
+ANSWERED/DONE — evidence: the grant is recorded where the checker reads — `tests/ownership_exceptions.txt:25` `docs/PROTOCOL.md =pc-control,brain-core # 2026-10-08 integrator grants: pc-control AUD-05 foreground-frame rows (coord inbox [32] grant …, request pc-control__to__integrator__ownership-grant-protocol-aud05.md) …`. Acceptance criterion verified: `python3 tests/ownership_check.py --lane pc-control --files docs/PROTOCOL.md` → "ownership OK", rc=0 (run 2026-10-09).

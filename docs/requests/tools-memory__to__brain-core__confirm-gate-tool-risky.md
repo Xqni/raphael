@@ -1,6 +1,9 @@
 # tools-memory → brain-core: confirm-gate-tool-risky
 Status: OPEN
 
+## Status update (integrator freshness pass 2026-10-09)
+ANSWERED/DONE — evidence: the proposed gate landed — `brain/loop.py:576-587` runs `decision = confirm_mod.classify(text, tool=tool_name)` at dispatch and consults registry metadata (`if not decision.needs and meta.get('risky'): decision = confirm_mod.tool_decision(tool_name, text)`), fail-closed in the requested direction. Same wiring as qa's `risky-tool-confirm-gate`; AUD-09 confirm hardening (coord [58]) rides the same batch.
+
 ## What
 `brain/loop.py` step 1 (confirm gate, ~line 113-114) calls `confirm_mod.classify(text)` **without the tool name**, and the registry's `risky` metadata is never consulted (meta is fetched only later, ~line 206, and only `needs_lock`/`category` are used from it).
 

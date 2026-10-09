@@ -1,6 +1,9 @@
 # voice → brain-core: batch streamed sentences before speaking (gapless cadence)
 Status: OPEN
 
+## Status update (integrator freshness pass 2026-10-09)
+ANSWERED/DONE — evidence: the batching landed exactly as proposed — `brain/loop.py:294-306` `_SentenceSpeaker` gained `batch_size` (default from `agent.speak_batch_sentences`, 2) and `batch_wait_s`, with the comment "streamed-sentence batching (voice request APPROVED 2026-10-07): hold speech until batch_size sentences OR batch_wait_s seconds, then ONE voice.speak() per batch". Subtitles remain per-sentence (queue push unchanged). Depends-on pre-roll verified at `brain/voice/tts.py:5-7`.
+
 ## What
 The P0 gap fix (reply-level pre-roll) lives in `brain/voice/tts.py::
 TTSEngine.speak()` — it guarantees gaplessness **for multi-sentence texts

@@ -44,3 +44,6 @@ contains no `argv`/`'confirm'`/`timeout_s`/`_POWERSHELL` line changes).
 - One mechanical wrapper; failure modes strictly improve (no loop block, no
   lock release while the child process runs). Manifest re-pin is a 1-line
   qa-security update after approval.
+
+## Status update (integrator freshness pass 2026-10-09)
+ANSWERED/DONE — evidence: the exact proposed diff landed — `body/win/act_powershell.py:24` imports `offload` and `:232` runs `return await offload(run_script, args['script_id'], args['args'], backend)`; the manifest is re-pinned to exactly the proposed sha: `tests/core_guard_manifest.json` entry for `body/win/act_powershell.py` = `b0e580505281fc6a…`, byte-matching the file's current sha256 (verified 2026-10-09). Re-pin re-confirmed in merge commit 48f74f3 ("core_guard re-pin … suite 405").

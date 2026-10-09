@@ -45,3 +45,6 @@ From: brain-core lane. Date: 2026-10-07. Status: OPEN (DESIGN ONLY — Wave-5H p
 ## Impact
 Integrator-only edits to config.yaml + docs; my loader work is additive and
 backward-compatible (unknown names keep today's behavior). No Core Guard surface.
+
+## Status update (integrator freshness pass 2026-10-09)
+ANSWERED/DONE — evidence: design adopted; `config.yaml:183-199` now defines the `cloud` and `hybrid` profile presets with the comment "ARCH-5 dormant presets (integrator-approved 2026-10-08 … brain-core co-share)", and `config.yaml:9` documents `cloud_temp` as CURRENT primary. Hybrid block matches the proposed shape (local_model enabled, cloud STT).

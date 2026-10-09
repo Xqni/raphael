@@ -74,3 +74,6 @@ live probe run is yours/the integrator's.
   (your pre-buffer) and my batching request are the same knob from your side.
 - **Recommendation:** close this CC as superseded by pre-roll + the batching request;
   latency decision of record = accept the floor (audio_end→subtitle 554 ms median).
+
+## Status update (integrator freshness pass 2026-10-09)
+ANSWERED/DONE — evidence: voice's in-file Answer (2026-10-08) confirmed H-B and fixed it — reply-level pre-roll ships in `brain/voice/tts.py:5-7,730-742` (`preroll_budget_s` / `RAPHAEL_TTS_PREROLL_S`), measured max inter-chunk gap 1.0 ms. The "remaining half" it deferred to `voice__to__brain-core__streamed-sentence-batching` has ALSO landed on main (`brain/loop.py:294-306`, `_SentenceSpeaker` batch hold). Nothing of this CC remains.

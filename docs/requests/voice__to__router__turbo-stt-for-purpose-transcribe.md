@@ -1,6 +1,9 @@
 # voice → router: fastest Groq STT model for the transcribe seam (latency Cut B)
 Status: OPEN
 
+## Status update (integrator freshness pass 2026-10-09)
+ANSWERED/DONE — evidence: router-side selection landed — `brain/router/roles.py:32-35` the STT slot weights `[turbo, whisper, distil-whisper, speech-to-text]` with the comment "'turbo'/'distil' weight the FAST variants so the slot resolves to whisper-large-v3-turbo regardless of provider list order (voice Cut B, request voice__to__router__turbo-stt-for-purpose-transcribe)". No signature change; discovery still never hardcodes model IDs.
+
 ## What
 Measured baseline for `segment-close → subtitle` (probe
 `brain/voice/scripts/stt_reply_latency.py`, 5 live runs, real Groq):

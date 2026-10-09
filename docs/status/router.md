@@ -473,3 +473,10 @@ keys printed): Groq `GET /models` → 200/11 models (also proved the need for a 
 models, no `free`/capability metadata. Live paid-endpoint discovery (the
 `opencode-go/deepseek-v4-flash-vision-exp` id in PAID_USAGE/WAVES) was the integrator's
 observation, not a call from this lane.
+
+## Current as of 2026-10-09 (integrator freshness pass)
+
+- **Merged + wave closed.** `git merge-base --is-ancestor agent/router main` → true (verified 2026-10-09). WAVE-5H GATE PASSED recorded in main at `2247a65` (tag `wave-5h-gate`). Latest completed main CI at report time: **37800865212** (success).
+- **Stale — "loop-label + arch5 + e-budget requests remain with their owners"** (Wave 5H follow-up batch, item 4): all three have since been answered — `router__to__integrator__e-budget-code.md` Status **ANSWERED** (integrator 2026-10-08), `router__to__integrator__arch5-router-contribution.md` Status **ANSWERED** (2026-10-08), `router__to__brain-core__chat-purpose-label.md` Status **ANSWERED**. Also closed since: `router__to__orb__headroom-in-menu.md` Status **ANSWERED** (orb side DONE) and `router__to__qa-security__ownership-ci-base.md` Status **ANSWERED** (fixed per this lane's proposal).
+- **Still genuinely blocked (checked, unchanged):** Wave-2 exit criterion 3 (live "what am I looking at" E2E) remains the human's/integrator's run — no evidence of a live run in `git log` or the request file `router__to__integrator__vision-free-model-gap.md`. The "## Next: IDLE / WAIT until `wave_open`" section is a Wave-2-era posture; the wave-5H record above it is the current state.
+- The two skip tests noted under ARCH-5 ("presets pending integrator") remain pending integrator action — the ARCH-5 contribution request is answered but the `profiles.cloud`/`profiles.hybrid` YAML paste into base config has no landing commit in `git log` as of 2026-10-09.

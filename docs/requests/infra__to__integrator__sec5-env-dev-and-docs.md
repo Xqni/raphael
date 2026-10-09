@@ -43,3 +43,6 @@ edit of config.yaml (AGENT_RULES §3).
 Docs + one .gitignore line + a comment — no runtime behavior change.
 Until (1)+(2) land, `install-env-dev.sh` works and warns; the scanner and
 `raphael doctor` enforce the rest.
+
+## Status update (integrator freshness pass 2026-10-09)
+ANSWERED/DONE — evidence: all four items landed on main: (1) `.gitignore:3-5` `.env.*` + `!.env.example` (covers `.env.dev`); (2) `docs/LAUNCH.md:88-93` "Env separation (SEC-5, Wave 5H)" paragraph verbatim; (3) `docs/TROUBLESHOOTING.md:11-15` narrow rule first + blanket line kept only as "Rejected", mirrored at `docs/TODO.md:34`; (4) `config.yaml` supervisor `wsl_user` key with the ARCH-4 comment ("env RAPHAEL_WSL_USER overrides; keep explicit …").

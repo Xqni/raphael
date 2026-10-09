@@ -1,6 +1,9 @@
 # qa-security → brain-core: risky-tool-confirm-gate
 Status: OPEN
 
+## Status update (integrator freshness pass 2026-10-09)
+ANSWERED/DONE — evidence: the dispatch-time tool gate landed exactly as proposed — `brain/loop.py:576-587`: `decision = confirm_mod.classify(text, tool=tool_name)` with the registry `risky` fallback `if not decision.needs and meta.get('risky'): decision = confirm_mod.tool_decision(tool_name, text)` (comment at :576 "pattern+RISKY_TOOLS first, then registry `risky`"). AUD-09 companion hardening landed in `brain/confirm.py` (tool-sourced decisions default risk='high'; coord decision [58], see pc repin request brain-core__to__integrator__aud09-confirm-manifest-repin).
+
 ## What
 `brain/loop.py` section 1 calls `confirm_mod.classify(text)` with the raw job
 text only — never `tool=`. The registry metadata (`describe(name)['risky']`)

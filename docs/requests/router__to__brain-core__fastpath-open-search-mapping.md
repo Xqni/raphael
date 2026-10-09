@@ -1,6 +1,9 @@
 # router → brain-core: fastpath open+search mapping (Wave-2 Bug B, router half)
 Status: OPEN
 
+## Status update (integrator freshness pass 2026-10-09)
+ANSWERED/DONE — evidence: the proposed mapping landed near-verbatim — `brain/fastpath.py:135` `_search` intent, registrations at `:194-198` (`register_intent('search ' / 'search for ' / 'youtube ', _search)` with the comment "Bug B (router request APPROVED): explicit search intents"), and the "open youtube and search …" redirect in `_open` (comment at :116 cites the live-gate failure). Existing branches preserved per proposal.
+
 ## What
 Exact proposed change to `brain/fastpath.py` (brain-core-owned file — AGENT_RULES §2:
 I propose, you implement; I never edit it). Today `_open` sends the WHOLE phrase to

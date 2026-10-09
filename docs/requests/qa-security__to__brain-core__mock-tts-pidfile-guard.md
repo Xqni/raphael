@@ -27,3 +27,6 @@ absent).
 ## Impact
 Touch: `brain/tests/conftest.py` (brain-core-owned). qa-security's suite is
 already guarded either way.
+
+## Status update (integrator freshness pass 2026-10-09)
+ANSWERED/DONE — evidence: both items landed. (1) `brain/tests/conftest.py` autouse fixture `_hermetic_tts` patches `VoiceStack.speak/warmup` per test (path-guarded so voice's own suites keep the real pipeline — the import-time patch is gone); (2) `brain/app.py:37-45` `_pidfile_targets()` returns EMPTY under `PYTEST_CURRENT_TEST`, so TestClient boots never touch the live brain pidfiles.

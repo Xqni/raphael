@@ -1,6 +1,9 @@
 # voice → brain-core: session-wide test state leaking into other suites
 Status: OPEN
 
+## Status update (integrator freshness pass 2026-10-09)
+ANSWERED/DONE — evidence: both leaks fixed. (1) `brain/tests/test_config.py:66` now uses `monkeypatch.setenv('RAPHAEL_PROFILE', 'local')` (tracked/auto-restored — no raw `os.environ` write); (2) the import-time `VoiceStack.speak = _fake_speak` patch was replaced by the autouse `_hermetic_tts` fixture in `brain/tests/conftest.py` (per-test setup/teardown, path-guarded so brain/voice suites in a combined session get the real pipeline — the fixture docstring names the 4 voice-test failures this cured).
+
 ## What
 Two isolation issues in `brain/tests/` that make OTHER lanes' tests fail when
 the suites run in one session (reproduced on main: `pytest brain` → 6 failures

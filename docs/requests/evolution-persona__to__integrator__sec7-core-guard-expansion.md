@@ -91,3 +91,6 @@ Additive hash coverage + explicit parsing rules; no behavior change for the live
 Guard semantics weakened (this STRENGTHENS them). My lane will mirror the expansion in its
 fail-closed classifier (`brain/evolution/zones.py` — already mostly there) and gate the shadow
 pipeline on the expanded verifier once you land the `--update`.
+
+## Status update (integrator freshness pass 2026-10-09)
+ANSWERED/DONE — evidence: Part B landed — `tests/core_guard.py:25-41` cites this request by filename and hash-covers `tools/conductor/**`, both workflows, `docs/OWNERSHIP.md`, boot scripts, `scripts/win/*.ps1`, `body/win/act_powershell.py`, `brain/evolution/**`. Part C write-side spec landed in `tools/conductor/coord.py:293-312` (`MSG_MAX = 4000` "SEC-7 Part C rule 2", `DATA_MAX`, `_REF_RE` whitelist, `_validate_event` drop-not-truncate). The remaining CONSUMER-side (prompt) fencing is tracked separately in `qa-security__to__integrator__coord-prompts-untrusted-framing.md` (still OPEN).

@@ -153,3 +153,10 @@ Updated: 2026-10-08 (Wave 5H + AUD-26)
 - 2026-10-07 (wave 5): `python3 tests/core_guard.py` → `Core Guard OK (4 files byte-stable)` (exit 0)
 - 2026-10-07 (wave 5): `tests/ownership_check.py --lane evolution-persona --worktree` → `ownership OK (10 checked)`
 - 2026-10-07 (wave 4): `tests/.venv/bin/python -m pytest brain/evolution/tests -q` → **49 passed in 0.14s**
+
+## Current as of 2026-10-09 (integrator freshness pass)
+
+- **Merged + wave closed** (already recorded at the top of this doc, re-verified 2026-10-09): `git merge-base --is-ancestor agent/evolution-persona main` → true; WAVE-5H GATE PASSED at `2247a65` (tag `wave-5h-gate`).
+- **Stale — "## Blocked: Full controller (`controller/worktree/promote`) still waits on: infra rollback-hook seam, qa-security golden-harness seam + CORE_GUARD_FILES extension, router weights ownership"**: the controller no longer waits to exist — `brain/evolution/controller.py` is built and tested (this doc's AUD-26 section quotes `controller.py:55/114/189/201` and 19 controller tests; F-1 ran a real PROPOSE-mode loop) and the CORE_GUARD_FILES extension landed (SEC-7 manifest 4 → 20 entries, per this doc's 5H section). Whether the infra rollback-hook seam and router weights items individually remain open is not independently verified here — but "full controller still waits" is no longer accurate as written.
+- **Stale — "## Next: … build `worktree.py` + `controller.py` skeleton"**: already built (evidence above); nothing to build on ping.
+- **Stale — "the 3 most recent main ci.yml runs are RED (integrator merges) — flagged for integrator"**: superseded; `gh run list` (2026-10-09) shows the latest completed main CI runs green — **37800865212** (success, 2026-10-08T15:27Z) and the scheduled tests-heavy sweep **37925272630** (success, 2026-10-09T11:41Z). The red window was transient and no longer needs the integrator's attention.

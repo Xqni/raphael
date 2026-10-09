@@ -149,3 +149,41 @@ terminal-foreground tests.
 | 5 | pause / private / kill work | **PASS** (acks verified; private blocks cloud: "Private mode is on — cloud models are disabled. Fast path only.") |
 
 `wave-2-gate` tag NOT created — re-run full gate at wave-3 close after Bugs B/D/F.
+
+---
+
+## STATUS REFRESH 2026-10-09 (docs-only pass — append, nothing above deleted)
+
+The wave-3 re-run demanded by the line above HAPPENED and PASSED; every bug in
+this file is now fixed on `main`. Each "open"-looking entry was re-verified
+against `main` by grepping the code (evidence below); the historical entries
+above are kept as-written.
+
+**Gate outcome (supersedes the table above):** `wave-3-gate` tag WAS created
+2026-10-07 (user GO, live run by integrator — `docs/WAVES.md:55-60`): "all six
+criteria PASS live — 1) text+voice YouTube command (search_youtube URL
+opened…), 2) spoken answer in JP great-sage voice (`prove_reference.py` PROOF
+OK, sha1=f64bd512ea1e), 3) real vision answer via Go paid slot, 4) distinct
+live orb states incl speaking (Bug C), 5) pause/private/kill acked, 6) mock
+suite 272 passed rc=0." Later gates: `wave-4-gate`, `wave-5-gate`, and
+`wave-5h-gate` (2026-10-08, hardening sprint — record in `docs/WAVES.md`).
+
+**Per-bug verification against `main` (2026-10-09):**
+
+| Bug | Status | Evidence on `main` |
+|---|---|---|
+| A (vision E_OFFLINE) | **FIXED + regression test** | `brain/router/tests/test_vision_paid_slot.py` asserts the `x-opencode-session` header (grep-verified); wave-3 live criterion 3 PASS. |
+| B (open_app YouTube) | **FIXED** | `brain/fastpath.py:115-123` comment "Wave-2 Bug B … is a YOUTUBE SEARCH, not an app launch" → `tool='search_youtube'`; `body/win/winlayer.py:469` `os.startfile(path)  # noqa: S606 — shell-less default handler` (no cmd window); wave-3 live criterion 1 PASS ("search_youtube URL opened"). |
+| C (no pulse + stuck cages) | **FIXED** | stale-seq guard removed — `body/orb/src/renderer/renderer.js:1395-1403` documents `ev.seq <= lastSpeakSeq` being dropped ("nothing is dropped any more"); pulse verified live `amp1=0.15 -> amp2=0.95` (`docs/status/orb.md:421-422`, 4 new state-machine tests); wave-3 live criterion 4 PASS. |
+| D (JP reference not used live) | **FIXED** | loud ref-loading shipped — `brain/voice/tts.py:668` logs `[tts] ref sent: path=… bytes=… sha1=…` on every synthesis; cache is reference-namespaced (`brain/voice/tts.py:640`); `brain/voice/scripts/prove_reference.py` exists; wave-3 live proof OK (sha1=f64bd512ea1e). |
+| E (speaking→listening flicker) | **FIXED** | `brain/orbstate.py:176-189`: "SPEAKING HOLDS (Bug E, P0): once a speak pipeline is active, `speaking` wins over `listening` for the WHOLE utterance"; regression coverage in `brain/tests/test_orb_states.py`. |
+| F (foreground refusal on terminal) | **FIXED** | reachability/privacy split shipped — `brain/vision/gate.py:36` `E_UNREACHABLE … # Body/probe unreachable — NOT a privacy verdict`; `brain/vision/gate.py:178-183` `unreachable()` explicitly cites "(Bug F: a mid-restart body disconnect was being reported as 'can't verify which window')". |
+| G (stale supervisor/orb pids) | **FIXED** | `docs/WAVES.md:53` merge-board record: "Every P0 gate bug (A/B/C/D/E/F/G) landed with regression tests"; teardown now kills orb processes by cwd identity and removes the wrapper pidfile (`supervisor/main.py:775-778`). |
+
+**Caveats:**
+- The live stack has been intentionally STOPPED since 2026-10-09 (user order;
+  nothing auto-starts — `docs/HANDOFF-2026-10-09.md` §1), so any future live
+  re-verification rides the next user-approved bring-up.
+- This file carries 5 advisory REVIEW-class scanner hits (voice-clip rule,
+  lines with the reference-voice names) — advisory by the 2026-10-08 strict
+  decision (FAIL-only gate), 0 FAIL-severity. Left as-is deliberately.

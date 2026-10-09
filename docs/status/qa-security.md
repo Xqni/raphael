@@ -359,3 +359,12 @@ Windows CI job is authored but not executed here (no Windows host).
   Wave 4 re-review.
 - Watch for requests addressed to this lane:
   `ls docs/requests/*__to__qa-security__*.md` (none at handoff time).
+
+## Current as of 2026-10-09 (integrator freshness pass)
+
+- **Merged + wave closed.** `git merge-base --is-ancestor agent/qa-security main` → true (verified 2026-10-09). WAVE-5H GATE PASSED recorded in main at `2247a65` (tag `wave-5h-gate`). Latest completed main CI at report time: **37800865212** (success, 2026-10-08T15:27Z); scheduled tests-heavy sweep **37925272630** success (2026-10-09T11:41Z).
+- **Stale — header "Updated: 2026-10-07 (Wave 3 open; CI ownership fix done)"**: the body carries 2026-10-08 5H-sprint content through the strict-gate wiring; the header predates it.
+- **Stale — "strict deferred until human scrub" (SEC-1 advisory wiring)**: superseded the same day by infra's OPTION 1, wired by this lane: FAIL-only strict gate + REVIEW advisory in tests-heavy (commit `4620775`; branch CI **37799170764** success; suite 405; merged to main at `48f74f3`), with SCANNERS.md strict semantics + npm `--audit-level=high` restored. The deferral record above it (commit `60fdb09`) is historical.
+- **Stale — electron/npm gate posture**: `qa-security__to__orb__electron-audit-highs.md` is Status **ANSWERED** (verified on current main 2026-10-08; electron 44.5.1, `npm audit` 0 highs) per commit `83652aa` — the CI step was tightened back to `--audit-level=high` and the SCANNERS allow-list note retired. The "request filed … major bump = orb's" framing above is closed.
+- **Stale — "## Next: WAVES.md `current_wave: 2` → STOP here"**: `docs/WAVES.md:2` has `current_wave: 5`; waves 3/4/5 + the 5H sprint were all executed and gate-passed. The Wave-3/4/5 queue items below it were completed (golden transcripts, resilience matrix, evolution-gate tests are all recorded as DONE in this doc).
+- **Post-gate closures (evidence):** request-disposition batch merged at `0d20b22` (4 flips + electron HIGH-gate restore, branch CI 37795738095 5/5); the SEC-1 strict wiring merged at `48f74f3`.

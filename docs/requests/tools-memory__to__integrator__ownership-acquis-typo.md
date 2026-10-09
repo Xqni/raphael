@@ -1,6 +1,9 @@
 # tools-memory → integrator: OWNERSHIP typo `ACQUISP…` blocks branch CI (one-char fix)
 Status: OPEN
 
+## Status update (integrator freshness pass 2026-10-09)
+ANSWERED/DONE — evidence: the one-character fix landed — `docs/OWNERSHIP.md:28` tools-memory row now spells `docs/skills/ACQUISITION.md` correctly (verified byte-exact 2026-10-09); recorded in merge-window commit 3777788 ("OWNERSHIP ACQUISITION typo P->I (caught byte-level by tools-memory)").
+
 ## What
 `docs/OWNERSHIP.md` row for **tools-memory** spells the F-2 path wrong —
 **byte-level proof** (parsed by `tests/ownership_check.py::load_lane_table`):

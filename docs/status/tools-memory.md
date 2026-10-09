@@ -286,3 +286,10 @@ qa's fix landed). CI green reference for QA-4: run **37711404220**
   - `./brain/.venv/bin/python -m pytest -q brain/tests` → **152 passed, 1 warning in 12.00s** (= merged main baseline)
   - `cd tests && ./.venv/bin/python -m pytest -q .` → **197 passed, 9 xfailed, 1 warning in 35.58s** (= post-qa-merge baseline)
 - In-wave runs (each after the task that produced them): memory 10 → 31 → 41 → 58 → 86 → 106 → 116; brain 134 and root 187 re-verified green after every shared-schema/registry change (pre-merge baselines).
+
+## Current as of 2026-10-09 (integrator freshness pass)
+
+- **Merged + wave closed.** `git merge-base --is-ancestor agent/tools-memory main` → true (verified 2026-10-09). WAVE-5H GATE PASSED recorded in main at `2247a65` (tag `wave-5h-gate`). Latest completed main CI at report time: **37800865212** (success); scheduled tests-heavy sweep **37925272630** success (2026-10-09T11:41Z).
+- **Stale — Blocked item "`loop-memory-skills-injection.md` (Status OPEN) … Until then memory is build-verified but not injected end-to-end"**: the injection half has landed in code — `brain/loop.py:166-193` (AUD-22: `retrieve` + `active_skills` framed between history and the live question) and `arm_all` wired at startup (`brain/app.py:116-117`), both on main (grep 2026-10-09). The request FILE is still Status OPEN (owner flip pending), and the `plugins.load_enabled()` wiring has **no** call site in `brain/` (grep 2026-10-09) — so the item is now partially stale, not fully open.
+- **Stale — "## Next: … `wave_done` … stands for merge position 9 … idle until pinged"**: the merge happened; nothing awaits a merge slot on this lane as of 2026-10-09.
+- **Still genuinely open (checked 2026-10-09):** `tools-memory__to__integrator__ownership-acquis-typo.md` and `tools-memory__to__integrator__progress-md-rebase-conflict.md` are both still Status OPEN in their files (no flip recorded); `tools-memory__to__qa-security__instance-count-12.md` is Status ANSWERED (qa's cross-source fix, already noted above).

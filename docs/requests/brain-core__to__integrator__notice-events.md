@@ -48,3 +48,6 @@ the decision lands once). Core Guard untouched; no provider/key data ever in a n
 - frame name/fields as proposed (or your preferred spelling);
 - which of the emitter sources (1/2/3) are in scope;
 - whether `body` role should also receive it.
+
+## Status update (integrator freshness pass 2026-10-09)
+ANSWERED/DONE — evidence: PROTOCOL §3 row landed — `docs/PROTOCOL.md:56` `| notice | ui, cli | text, level: info|warn, ts, job? | proactive heads-up (additive, 2026-10-07 integrator-approved …) |`; `brain/notice.py` exists and the restart-recovery emitter is wired at boot (`brain/app.py:134-138`). Merge record: commit 7f0b6e8 "proactive-Notice checkbox ticked (approved+merged)".

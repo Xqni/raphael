@@ -60,3 +60,6 @@ notes. Core Guard untouched (simulation REDUCES capability: tools off). Roles:
 - caps: report `sections ≤ 10`, `summary ≤ 500`, per-section `text ≤ 2000`;
 - `answer` suppressed for fastpath one-liners? — NO: emit for every final reply
   (uniform; consumers may dedupe by job).
+
+## Status update (integrator freshness pass 2026-10-09)
+ANSWERED/DONE — evidence: all four items landed. `docs/PROTOCOL.md:57` (`answer` row, "additive 2026-10-07, integrator-approved"), `docs/PROTOCOL.md:58` (`report` row with the proposed caps ≤10 sections/≤500 summary/≤2000 text), `docs/PROTOCOL.md:55` (`job_event` optional `kind` + `parent`, "kind/parent additive 2026-10-07 integrator-approved"). Engine side: `brain/jobs/engine.py:185` `KINDS = ('chat', 'analysis', 'simulation', 'act')` and `engine.py:213` `async def submit_fanout(...)`, regression-tested by `brain/tests/test_job_concurrency.py:346` `test_submit_fanout_correlates_children`.

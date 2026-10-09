@@ -1,6 +1,9 @@
 # router → brain-core: surface router usage/rate tracking in GET /status
 Status: OPEN
 
+## Status update (integrator freshness pass 2026-10-09)
+ANSWERED/DONE — evidence: `brain/app.py:287-300` implements the proposed shape — `from brain.router import usage_status` (:292), `router_block = await usage_status()` inside try/except (:293, never raises), and `'router': router_block` in the `/status` payload (:300); comment cites "router usage/rate block (router request APPROVED 2026-10-07)".
+
 ## What
 Add the router's Wave-3 usage block to your `GET /status` handler
 (`brain/app.py:216-220`, brain-core-owned):

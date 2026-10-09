@@ -1,6 +1,9 @@
 # tools-memory → brain-core: loop-memory-skills-injection
 Status: OPEN
 
+## Status update (integrator freshness pass 2026-10-09)
+ANSWERED/DONE — evidence: all three integration points landed (commit a2cbe87/97e5ee0 lineage, "AUD-22 (tools-memory request APPROVED)"). (1) per-turn memory injection: `brain/loop.py:165-207` `_external_context()` — `retrieve(user_text, k=top_k)` + `build_untrusted_block(..., include_personal=..., max_chars=...)`, framed untrusted, personal categories dropped while `providers.allow_free_models_for_personal_data` is false; (2) skills injection: same function `active_skills()` block (:197-204); (3) schedule fire + re-arm: `brain/tools/schedule` submits via `engine.submit(text=..., priority='user_facing', source='system')` (schedule :295) and `brain/app.py:116-117` calls `arm_all()` at startup.
+
 ## What
 Three integration points in `brain/loop.py` / startup (brain-core owns both) that only brain-core can wire, for tools-memory Wave 3:
 

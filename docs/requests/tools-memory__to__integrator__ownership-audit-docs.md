@@ -1,6 +1,9 @@
 # tools-memory → integrator: OWNERSHIP lists the packet-assigned doc paths
 Status: OPEN
 
+## Status update (integrator freshness pass 2026-10-09)
+ANSWERED/DONE — evidence: option (a) landed — `docs/OWNERSHIP.md:28` tools-memory row now lists both packet-assigned paths verbatim: `docs/security/pat-scope.md`, `docs/skills/ACQUISITION.md` annotated "(packet-assigned SEC-4/F-2, integrator grant 2026-10-08)". Confirmed green downstream: branch CI 37788108245 "0 ownership violations" and merge commit 0fc8a9f (cycle-2, position 9).
+
 ## What
 Branch CI (`Ubuntu — brain + mock suites`, run 37722902922 on
 `agent/tools-memory`) fails ONLY at the ownership checker:

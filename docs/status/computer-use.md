@@ -270,3 +270,10 @@ CI collect:      pytest -q brain --collect-only    -> 785 tests, 0 errors
   verified); (3) fastpath see_screen intents landed; (4) journaling request
   merged before any real screenshot; (5) one real `see_screen` + one real
   short `computer_use` run under RAPHAEL_INSTANCE=computer-use.
+
+## Current as of 2026-10-09 (integrator freshness pass)
+
+- **Merged + wave closed.** `git merge-base --is-ancestor agent/computer-use main` → true (verified 2026-10-09). WAVE-5H GATE PASSED recorded in main at `2247a65` (2026-10-08, tag `wave-5h-gate`). Latest completed main CI at report time: **37800865212** (success).
+- **Stale — "## Next: … Waves 3–5 … start only when docs/WAVES.md `current_wave` says so"**: `docs/WAVES.md:2` has `current_wave: 5` since 2026-10-07; Waves 3, 4, 5 and the 5H sprint were all executed and closed (the wave-5H packet table above is the record). The wave_done/posture statement no longer reflects the lane's state.
+- **Stale — the Wave-5 "Known non-mine failure" (instance table `==11` vs 12)**: fixed upstream by qa-security's cross-source fix; this doc's own 5H test block already records "prior instance-table failure fixed by qa" — no action, just noting the tracked failure no longer exists on main.
+- **Request closure:** `computer-use__to__pc-control__focused-password-flag.md` is now Status **DONE** (implemented by pc-control 2026-10-08; this lane's consumption code therefore no longer "stays False until body ships flags" — the flags shipped; pc-control doc record merged at `9784e0c`).

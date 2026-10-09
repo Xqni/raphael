@@ -105,3 +105,6 @@ dots, shape morphs, amplitude); this request is only about EMISSION.
 - Until this lands, the orb renders `starting/idle/thinking/acting/speaking/
   confirm/error/reconnecting/offline` correctly when told, and the mock-brain
   trace harness keeps proving it.
+
+## Status update (integrator freshness pass 2026-10-09)
+ANSWERED/DONE — evidence: emission landed via `brain/orbstate.py` (single frame builder; `VALID_STATES` at :33-34 includes starting/listening/acting/speaking/error). Wiring: `brain/ws.py:791-792` (`orbstate.listening_on(); orbstate.emit('listening', ...)` on audio_start), `brain/ws.py:939,955` + `brain/app.py:97` (`mark_error`), `brain/app.py:111` (`emit('starting')` at boot), `brain/loop.py:606` (`emit('acting')`) and `brain/loop.py:381-408,445-466` (speaking on speak start/end); real `shape_hint`/`task_kind`/`provider`/`model` carried per frame. Pinned test `tests/regression/test_orb_lifecycle.py::test_every_lifecycle_state_emitted` passes (1 passed, run 2026-10-09).
