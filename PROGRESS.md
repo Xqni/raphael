@@ -114,3 +114,15 @@ T1 fast free · T2 strong free · T3/T4 paid (log to docs/PAID_USAGE.md).
 - infra [38]: merged-ack + incident acknowledged; branch contained in main; WAIT.
 - GITLEAKS MAIN RED FIXED: 4 uncovered = 49deea5 (pre-rewrite fixture literals via my mis-merge) -> baseline regen per SCANNERS.md conscious-acceptance (156, local 0 leaks, reason committed; permanent fix = human history rewrite ATTENTION).
 - orb [42]: root-causes confirmed (gitleaks mine-fixed; ownership base-artifact -> qa improvement routed); pc [40]: focused-password accepted, rides next cycle.
+- WAVE-5H GATE EVIDENCE: C1 register updated (18+1 statuses, all P0/HIGH/CRIT in accepted vocabulary) ✓; C2 runs tracked (37792241017 SUCCESS; tip run queued) ; C3 tripwires in CI suites ✓; C4 ZERO non-ledger FAILs ✓; C5 tests-heavy 37791936216 SUCCESS ✓.
+- Straggler sweep MERGED (router/pc/voice/qa) + test_aud_harden import-order fix (IMPORT_FROM getattr-first) + 2 more baseline regens — all gates green, pushed; brain 1127.
+- qa scanner-count clarification sent (their ~335 vs tool's 0); request-file flips nudged (infra safetycli, qa electron).
+- infra [40]: safetycli request CLOSED (ANSWERED, grep=0 proof) + branch hygiene (9449ca6 restored/rebased, 4b0443f rides next batch); WAIT.
+- qa [57]: scanner clarification closed (~335 retracted, 55/0 confirmed); electron request flip DONE (44.5.1, 0 highs, npm gate tightened); strict-severity PROPOSAL -> DECISION option1 (strict=FAIL-only, REVIEW advisory) -> infra implements, qa flips strict step after.
+- qa [58]: post-gate batch (2 commits, CI 5/5) MERGED after their verify-first flag; brain-core/voice gate acks (cursors moved). All lanes idle pending wave_open (human-gated).
+- qa [59]/router [54] heartbeats: option1 sequencing acked (qa pings when infra's strict flag lands) + router gate ack (head in main, credit trail noted). All lanes idle pending wave_open.
+- orb [46]: closure-record commit 89f2f04 kept -> rides next merge pass (strict-flag sweep with infra batch); all else in main.
+- STRICT-FLAG SWEEP MERGED: infra OPTION-1 (--strict FAIL-only, REVIEW advisory, proof15/15) + orb closure record 89f2f04 + infra rebase — battery+gitleaks gated green, pushed. qa pinged to wire tests-heavy strict step.
+- qa [60]: SEC-1 STRICT gate wired (tests-heavy step + guard #8, CI 37799170764) -> MERGED on main, battery+strict+gitleaks gated green. orb [47]: all loops closed (commit merged + both requests flipped by owners). EVERYTHING post-gate complete; all lanes idle pending wave_open.
+- qa [61] heartbeat: post-gate complete, 0-diff vs main, WAIT.
+- qa [62] heartbeat: confirmed template wakes = conductor liveness (not unmet work); WAIT correct.
