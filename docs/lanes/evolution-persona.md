@@ -91,5 +91,10 @@ Wave 4 is MERGED + **GATE PASSED** (tag `wave-4-gate`, 10/10 lanes, mock 308 gre
   coordinator order, covering the actual lane branch (earlier main-run ids 37716631721 /
   tests-heavy 37717108187 also green). wave_done = merge position 10.
 
+### WAVE 5H CLOSED — lane MERGED (2026-10-08, position 10/10)
+
+- Merge verified: `ff1e13e` ∈ `origin/main`; post-merge guard OK (20), suites 93+77, main CI
+  green ×3 (latest 37792241017); accepted branch QA-4 = 37780552325 (5/5).
+
 ## Later waves
 - Per docs/WAVES.md — do not start early (AGENT_RULES §11).

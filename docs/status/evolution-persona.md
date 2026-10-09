@@ -3,6 +3,11 @@
 Updated: 2026-10-08 (Wave 5H + AUD-26)
 
 ## Done
+- **MERGED 2026-10-08 — position 10/10, WAVE 5H CLOSED.** Verified: `ff1e13e` is an ancestor
+  of `origin/main` (merge landed); post-merge checks on the merged main: `tests/core_guard.py` →
+  `Core Guard OK (20 files byte-stable)`, evolution suite **93 passed**, persona suite
+  **77 passed**, main CI **green ×3** (latest `37792241017`, success, 2026-10-08T14:24:46Z) plus
+  my accepted branch QA-4 `37780552325` (5/5). Branch rebased onto merged main — clean.
 - **Branch CI (QA-4) GREEN 2026-10-08: run `37779671356` — conclusion success, ALL 5 jobs green**
   (Ubuntu brain+mock suites, Protocol conformance ×2, Windows Body unit, Security scanners),
   head `781482e`. Saga (3 prior reds, all mine + fixed): run 1 `37777566560` → my controller
