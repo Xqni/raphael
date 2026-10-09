@@ -45,7 +45,7 @@ Wave 2 is MERGED; live gate was 3/5 — evidence + bug dossiers: `docs/BUGS-WAVE
 ## Wave 3 — goals (after P0)
 - [x] Job concurrency polish (input-lock fairness, per-job cancel) — `brain/jobs/lock.py` fairness guard + `engine.on_job_cancelled` per-job speech interrupt + `stats().input_lock.job` fix; 8 tests (fbb9d07).
 - [x] Conversation-memory hooks to tools-memory — producer side wired in `brain/loop.py::_conversation_hook` (fail-silent, absent-module no-op), API proposed in `docs/requests/brain-core__to__tools-memory__conversation-hook.md`; e2e test w/ fake module incl. raising-hook survival.
-- [ ] Proactive Notice events — **contract first**: `docs/requests/brain-core__to__integrator__notice-events.md` filed (PROTOCOL §3 row + emitters). BLOCKED pending decision; no frame emitted before approval.
+- [x] Proactive Notice events — **DONE + APPROVED + merged**: contract `brain-core__to__integrator__notice-events.md` approved same-day; `brain/notice.py` emitters (ui+cli only, per-key ratelimit, fail-silent, presence-only) + boot-recovery pending-flush + provider outage pair + SEC-3 cloud-upload indicator; PROTOCOL §3 rows landed by the integrator at merge. Tests `brain/tests/test_notice.py` (13: exact shapes, ratelimit, 1-pair/10min outage, redaction-free text, boot-notice e2e, storm bounds).
 
 ## Wave 4 (start only when WAVES.md says so — current_wave: 4)
 
