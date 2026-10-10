@@ -137,11 +137,18 @@ def test_authority_keys_enforced_in_loader():
 
 # --- 3. unclassified tool defaults to confirm (xfail until P3) -------------
 
-@pytest.mark.xfail(
-    reason="Wave 5U charter §5.5.1 + design-review HIGH: an unclassified tool "
-           "must default to CONFIRM (default-confirm); classify() still "
-           "returns needs=False for an unknown tool. Flips when brain-core "
-           "lands the confirm_policy lookup (lane line 72).")
-def test_unclassified_tool_defaults_to_confirm():
-    d = classify("", tool="some_unmapped_tool_xyz")
+def test_unclassified_model_picked_tool_defaults_to_confirm():
+    """Wave 5U charter §5.5.1 + design-review HIGH: an unclassified MODEL-PICKED
+    tool defaults to CONFIRM (P3 ladder step 3, brain-core c5e131f). A fastpath
+    act or plain chat (not model-picked) stays act-first — pinned below."""
+    # model-picked unknown tool -> default-confirm
+    d = classify("", tool="some_unmapped_tool_xyz", model_picked=True)
     assert d.needs is True
+    assert d.risk == "high"          # unclassified model-picked defaults non-voice
+
+
+def test_non_model_picked_tool_stays_act_first():
+    """The default must never confirm a fastpath act / plain chat — only
+    MODEL-PICKED tools take the declared default (P3 step 3 guard)."""
+    d = classify("", tool="some_unmapped_tool_xyz")   # model_picked=False
+    assert d.needs is False

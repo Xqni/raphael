@@ -140,13 +140,11 @@ def test_classified_tool_confirm_class_still_gated():
     assert d.action == "delete_files"
 
 
-# --- tripwires: flip to XPASS when brain-core wires the lookup ---------------
+# --- P3 landed (brain-core c5e131f, 2026-10-10): promoted from xfail -------
 
-@pytest.mark.xfail(
-    reason="P3 lookup not wired: safety.confirm_policy=auto for a classified "
-           "class must suppress the gate BEFORE the risk regex "
-           "(docs/lanes/brain-core.md:72; plan P3 line 30)")
 def test_policy_auto_class_suppresses_pattern_gate(monkeypatch):
+    """P3 ladder step 1: a class verdict outranks the risk regex — a policy
+    `auto` class suppresses the gate even when the regex matches."""
     from brain import config as cfg
 
     patched = copy.deepcopy(cfg.get_config())
@@ -154,11 +152,9 @@ def test_policy_auto_class_suppresses_pattern_gate(monkeypatch):
     monkeypatch.setattr(cfg, "get_config", lambda: patched)
     d = confirm_mod.classify("delete the download folder")
     assert d.needs is False, \
-        "policy 'auto' ignored — confirm.py does not consult confirm_policy yet"
+        "policy 'auto' ignored — confirm.py does not consult confirm_policy"
 
 
-@pytest.mark.xfail(
-    reason="P3 not wired: brain/confirm.py must read config key "
-           "safety.confirm_policy (docs/lanes/brain-core.md:72)")
 def test_confirm_module_references_confirm_policy():
+    """brain/confirm.py reads config key safety.confirm_policy (P3 lookup)."""
     assert "confirm_policy" in inspect.getsource(confirm_mod)
