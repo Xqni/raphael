@@ -12,8 +12,18 @@ Updated: 2026-10-09 (repo-wide freshness pass; supersedes the 2026-10-05 bootstr
 - Electron 30.5.1 → 44.5.1 merged on orb's vetted verdict (6 vulns incl. ASAR HIGH → 0).
 - Docs: `docs/HANDOFF-2026-10-09.md` (fresh-joiner map), README/TODO/BUGS refresh, lane status freshness sections, AUDIT register statuses updated from merged evidence.
 
+## Wave 5U (USEFUL-NOW sprint, opened 2026-10-10 — current)
+- Charter `docs/USEFUL-NOW-PLAN.md` committed; AGENT_RULES rule 16 (scoped constraint lifts: local Kokoro TTS + faster-whisper STT, confirm cards in chat UI + orb).
+- Main reds cleared ×3 (tier-default test, gitleaks baseline, go-first chain restore per owner decision) → main green run 38029764736.
+- Wave A merges (5U fixed order): **1. brain-core `c5e131f`** (P1 tier runtime, navigate pairing, P3 confirm policy LIVE, P0 batch: typed_confirm/needs_confirm/input-lock admission/foreground legibility/derived latency), **2. pc-control** (navigate_url in-place act + confirm-class tags on all pc tools, green 38030219227).
+- Integration collision fixed: brain-core's strict SPECS validator × pc's new tool entries — registry re-discovery glue (cached lane modules get one idempotent `_register_all` re-run) → brain 1168 green.
+- Systemic ownership fixes: exceptions parser comma-lists; `tests/core_guard_manifest.json` re-pin sanctions merged to one line (integrator,infra,evolution); PERMANENT `tests/security/gitleaks-baseline.json` multi-lane grant (SCANNERS.md-mandated regen); reviewed grants: config.yaml → voice,evolution; brain/ws.py + visibility test → voice.
+- `safety.confirm_policy.classes` completed (+send_email +account_login — qa PENDING ledger cleared).
+- Queued merges, all ownership pre-verified: voice (6 ahead) → orb (2, green 38031831247) → infra (8, CI 38063311634) → qa (12, green 38046653258 incl. the transitional-act_pipeline fix) → tools-memory (12, green 38044483348) → evolution (6, CI 38063314386). voice CI 38063317210 dispatched; watcher running.
+- Pre-approval honored: Codex returned `Insufficient balance` (0 calls); chat profile stays opencode-go (Go-first per owner) with `chat_daily_cap_usd: 0.50`.
+
 ## In progress
-- Repository-wide freshness pass (2026-10-09): parallel audits of lane status docs, request Status lines, and top-level docs → single reviewed commit + push. This file is its integrator-owned piece.
+- Wave A merge queue → Wave A live demo (one stack, pre-flight pgrep/port sweep, teardown verified) → Wave B dispatch (browser worker, world-state+tasks, Kokoro+local STT, Raphael Chat, tasks/chat verbs).
 
 ## Blocked (human-only — mirrored from the ATTENTION register)
 - Repo visibility (make private), PAT rotation/narrowing, git history rewrite approval, branch protection enablement, cloud-vs-RAM decision (gates wave 6), Node-on-Windows approval for orb ARCH-1. Details in `docs/HANDOFF-2026-10-09.md` §2.

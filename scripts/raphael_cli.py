@@ -174,6 +174,42 @@ def cmd_status(ctx, args):
     return EXIT_OK
 
 
+def cmd_latency(ctx, args):
+    """P0.8 derived-latency snapshot (Wave 5U): stages from /status.latency.
+    Read-only slice — the demo's 'how fast is she now' verifier."""
+    code, payload = api(ctx, "GET", "/health")
+    early = _auth_or_down(ctx, code, payload)
+    if early:
+        _print(early[0])
+        return early[1]
+    if code != 200:
+        where = ("not reachable (no connection)" if code is None
+                 else "unreachable (HTTP %s)" % code)
+        print("brain: %s — try `raphael start`" % where)
+        return EXIT_DOWN
+    code, st = api(ctx, "GET", "/status")
+    if code in (401, 403):
+        out = _auth_or_down(ctx, code, st)
+        if out:
+            _print(out[0])
+            return out[1]
+    if code != 200 or not isinstance(st, dict):
+        print("brain: /status unavailable (HTTP %s)" % code)
+        return EXIT_FAIL
+    lat = st.get("latency")
+    if not isinstance(lat, dict) or not lat:
+        print("latency: no samples yet (ask her something first)")
+        return EXIT_OK
+    for key in sorted(lat):
+        val = lat[key]
+        if isinstance(val, dict):
+            inner = "  ".join("%s=%s" % (k, v) for k, v in sorted(val.items()))
+            print("%-22s %s" % (key, inner))
+        else:
+            print("%-22s %s" % (key, val))
+    return EXIT_OK
+
+
 def cmd_pause(ctx, args):
     return _control(ctx, "pause")
 
@@ -1094,6 +1130,7 @@ def build_parser():
     sub = p.add_subparsers(dest="cmd", required=True)
 
     sub.add_parser("status", help="health + /status snapshot")
+    sub.add_parser("latency", help="derived latency stages (P0.8) from /status")
     sub.add_parser("start", help="start supervisor (Windows) / brain (WSL)")
     sub.add_parser("stop", help="stop supervisor+brain(+body), verify down")
     sub.add_parser("restart", help="stop then start")
@@ -1150,7 +1187,7 @@ def build_parser():
 
 
 HANDLERS = {
-    "status": cmd_status, "start": cmd_start, "stop": cmd_stop,
+    "status": cmd_status, "latency": cmd_latency, "start": cmd_start, "stop": cmd_stop,
     "restart": cmd_restart, "pause": cmd_pause, "resume": cmd_resume,
     "private": cmd_private, "logs": cmd_logs, "jobs": cmd_jobs,
     "cancel": cmd_cancel, "say": cmd_say, "selftest": cmd_selftest,
