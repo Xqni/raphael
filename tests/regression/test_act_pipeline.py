@@ -5,7 +5,7 @@ and the LLM tool-call extraction path.
 import pytest
 
 from harness.mock_body import MockBody
-from harness.wssession import WSSession
+from harness.wssession import WSSession, SessionTimeout
 
 
 def test_fastpath_gui_tool_runs_via_body_act_req(client, qa_token):
@@ -98,9 +98,13 @@ def test_lock_busy_reported_as_e_lock_busy(client, qa_token):
         assert failed.get('error_code') == 'E_LOCK_BUSY', failed
 
 
-# PINNED STRICT 2026-10-06 (was xfail): LLM tool calls now dispatch through
-# the OpenAI tool_calls response path (merged router/brain-core; the embedded
-# JSON regex remains a fallback only).
+# UPDATED 2026-10-10 (transitional cleanup, integrator decision msg51/52):
+# launch_url is tagged auto in the confirm policy, so its tool-call dispatches
+# straight to an act_req with NO confirm gate. To keep this test robust across
+# class-tag changes (if launch_url is ever re-gated to confirm), it DEFENSIVELY
+# answers a needs_confirm if one fires before the act_req, then asserts the
+# act_req shape. This replaces the stale "# times out today (xfail)" comment —
+# the test passes strictly on main.
 def test_llm_tool_call_with_args_dispatches_to_body(client, qa_token,
                                                     router_to_mock):
     router_to_mock.push({'tool': {'name': 'launch_url',
@@ -109,7 +113,18 @@ def test_llm_tool_call_with_args_dispatches_to_body(client, qa_token,
          WSSession(client, qa_token, role='cli') as cli:
         cli.send({'type': 'command', 'v': 1,
                   'text': 'prepare the weekly demo site', 'source': 'text'})
-        cli.wait(lambda m: m.get('type') == 'ack', timeout=5)
-        req = body.next_act_req(timeout=8)     # times out today (xfail)
+        ack = cli.wait(lambda m: m.get('type') == 'ack', timeout=5)
+        job = ack['job']
+        # If launch_url is confirm-gated (not auto), answer the gate first so
+        # the act_req is released; if it dispatches straight through, this
+        # times out harmlessly and we proceed to the act_req.
+        try:
+            cli.wait(lambda m: m.get('type') == 'needs_confirm'
+                     and m.get('job') == job, timeout=2)
+            cli.send({'type': 'confirm_resp', 'v': 1, 'job': job,
+                      'answer': 'yes'})
+        except SessionTimeout:
+            pass   # no confirm gate (launch_url=auto) — expected today
+        req = body.next_act_req(timeout=8)
         assert req['action'] == 'launch_url'
         assert req['args'] == {'url': 'https://example.com'}

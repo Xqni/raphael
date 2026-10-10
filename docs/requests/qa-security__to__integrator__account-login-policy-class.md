@@ -1,6 +1,6 @@
 # qa-security → integrator: account_login missing from confirm_policy classes (Wave 5U P0.3 drift, live-caught)
 
-Status: OPEN
+Status: RESOLVED (2026-10-10: account_login added to confirm_policy.classes on main; see tests/regression/test_confirm_policy.py — pending ledger cleared)
 
 ## What
 `config.yaml` Wave-5U P0.3 additions (commit 095068a) added `account_login`

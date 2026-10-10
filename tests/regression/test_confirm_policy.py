@@ -84,23 +84,18 @@ def test_confirm_actions_list_fully_covered_by_policy():
     """The two config authorities may not diverge: every action in
     safety.confirm_actions must have a policy class (plan P3 line 29).
 
-    PENDING_POLICY_CLASS = known-open gaps with a filed request; the gate
-    stays ACTIVE for anything NEW. When a pending class lands, its ledger
-    entry is removed (the `assert pending <= missing` below is the reminder).
+    RESOLVED 2026-10-10: `account_login` (the one drift this guard caught
+    live) landed in confirm_policy.classes on main — the guard is now strict
+    with an empty pending set. Any future `confirm_actions` entry without a
+    policy class reddens here immediately.
     """
-    # request qa-security__to__integrator__account-login-policy-class.md
-    # (Wave 5U P0.3 added account_login to confirm_actions+typed_confirm but
-    # not to confirm_policy.classes — caught live 2026-10-10 by this test)
-    pending = {"account_login"}
+    pending: set = set()   # known-open gaps + filed request; empty = fully covered
     cfg = yaml.safe_load(CONFIG.read_text())
     actions = set(cfg["safety"]["confirm_actions"])
     classes = set(_policy()["classes"])
     missing = actions - classes
     unexpected = missing - pending
     assert not unexpected, f"confirm_actions without policy class: {sorted(unexpected)}"
-    if pending:
-        assert pending <= missing, \
-            f"stale ledger entries (class landed — remove from pending): {sorted(pending - missing)}"
 
 
 def test_reversible_classes_present_with_valid_value():
