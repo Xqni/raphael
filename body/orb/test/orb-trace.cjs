@@ -331,6 +331,59 @@ async function runInteraction(cdp, brain, rec) {
       !!rate2 && /unavailable/.test(rate2.label || ''),
       `label="${rate2 && rate2.label}"`);
 
+  // --- WAVE 5U §5.6 task 1: ORB CONFIRM CARD -------------------------------
+  // Owner pre-approval 3 allows confirm cards on the orb, but ONLY in the
+  // `confirm` state; AMENDMENT 3 keeps every other text path off. The acceptance
+  // line is literally "card only in confirm state; text length back to 0 after
+  // resolve", so that is what these assert.
+  const ccProbe = () => cdp.evaluateJson(
+    'JSON.stringify({ state: window.__orbDebug && window.__orbDebug.state, ' +
+    'shown: !!(document.getElementById("confirmcard")||{}).classList?.contains("show"), ' +
+    'head: (document.querySelector("#confirmcard .cc-head")||{}).textContent || "", ' +
+    'risk: (document.querySelector("#confirmcard .cc-risk")||{}).textContent || "", ' +
+    'job:  (document.querySelector("#confirmcard .cc-job")||{}).textContent || "", ' +
+    'textLen: (document.body.innerText||"").length })');
+
+  brain.step('needs_confirm');
+  await sleep(700);
+  const cc1 = await ccProbe();
+  add('confirm_card_shows_only_in_confirm_state',
+      cc1.state === 'confirm' && cc1.shown === true,
+      `state=${cc1.state} shown=${cc1.shown}`);
+  add('confirm_card_uses_available_fields',
+      /Open YouTube and play lo-fi/.test(cc1.head) && /high/.test(cc1.risk) && /j_mock_1/.test(cc1.job),
+      `head=${JSON.stringify(cc1.head)} risk=${JSON.stringify(cc1.risk)} job=${JSON.stringify(cc1.job)}`);
+  add('confirm_card_makes_text_appear', cc1.textLen > 0,
+      `innerText.length=${cc1.textLen} (only while confirm)`);
+
+  // Approve -> orb_input{kind:'confirm', value:'yes'} on the existing ws.py path
+  const inputsBefore = brain.received.filter((r) => r.frame && r.frame.type === 'orb_input').length;
+  await cdp.evaluate('document.querySelector("#confirmcard .cc-yes").click()');
+  await sleep(500);
+  const confirms = brain.received.filter((r) => r.frame && r.frame.type === 'orb_input'
+    && r.frame.kind === 'confirm');
+  add('confirm_approve_sends_orb_input', confirms.length > inputsBefore &&
+      confirms.some((r) => r.frame.value === 'yes'),
+      `orb_input frames: ${JSON.stringify(confirms.map((r) => r.frame.value))}`);
+
+  // resolve -> card hides AND the page is text-free again
+  brain.step('idle');
+  await sleep(700);
+  const cc2 = await ccProbe();
+  add('confirm_card_hides_and_text_returns_to_zero',
+      cc2.shown === false && cc2.textLen === 0 && cc2.state !== 'confirm',
+      `shown=${cc2.shown} innerText.length=${cc2.textLen} state=${cc2.state}`);
+
+  // forward-compat: brain-core P0.3 fields, when they land, drive the headline
+  brain.step('needs_confirm_p03');
+  await sleep(600);
+  const cc3 = await ccProbe();
+  add('confirm_card_prefers_p03_action_target',
+      /launch_url/.test(cc3.head) && /example\.test/.test(cc3.head) && /medium/.test(cc3.risk),
+      `head=${JSON.stringify(cc3.head)} risk=${JSON.stringify(cc3.risk)}`);
+  brain.step('idle');
+  await sleep(600);
+
   brain.step('speaking');   // restore the state the rest of this phase assumes
   await sleep(400);
 

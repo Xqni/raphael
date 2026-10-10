@@ -1857,3 +1857,94 @@ the bump's clean result reproduces there.
 - **Closure — `qa-security__to__orb__electron-audit-highs.md`**: the "ball is in qa's court" section is resolved — the file is now Status **ANSWERED** (qa-security verified on current main 2026-10-08; electron 44.5.1, `npm audit` 0 highs), and per qa's commit `83652aa` the npm gate was tightened back to `--audit-level=high` and the SCANNERS.md allow-list note retired. This lane's follow-up item #4 (ask qa to retire those) is complete.
 - **Confirmed accurate — `infra__to__orb__npm-safetycli-lock.md`**: Status **ANSWERED** (closed by requester 2026-10-08, commit `02e98c3`) — matches this doc's record.
 - **Still genuinely open (checked, unchanged):** `orb__to__brain-core__orb-state-transitions.md` and `orb__to__integrator__backing-disc-default-zero.md` are both still Status OPEN in their files — this doc's statements about them remain correct, including the note that the orb-state-transitions substance was answered in coord while the file flip stays with brain-core.
+
+---
+
+# WAVE 5U — Wave A: ORB CONFIRM CARD (§5.6 task 1, ~2h timebox)
+
+Charter `docs/USEFUL-NOW-PLAN.md` §5.6; **owner pre-approval 3** explicitly allows
+confirm cards *"in the chat UI and on the orb (orb only in confirm state)"* — so
+this is the **single documented exception** to AMENDMENT 3 (no on-screen text).
+Every other text path stays behind `ORB_TEXT_ENABLED = false`, untouched.
+
+## Verify-first: what already existed vs what I had to build
+
+| piece | state on main (verified) | verdict |
+|---|---|---|
+| `ws.py` confirm path | `brain/ws.py:664` — `if kind in ('menu','click','confirm') … resolve_oldest_pending(value, via='click')` | **ALREADY-DONE** — `orb_input{kind:'confirm', value:'yes'\|'no'}` works today |
+| `needs_confirm` emission | `brain/loop.py:531-537` — emits `question`, `actions`, `risk`, `expires_at`, `job` | **PARTIAL** — the `{action, target, detail}` fields in §5.6 are **brain-core P0.3 and are NOT on main yet** |
+| main→renderer plumbing | `ws-status.js:240` `needs_confirm` → `updateOrbState('confirm')` + `emit('confirm', msg)`; `main.js:853` → `webContents.send('confirm', …)`; `preload.js:7 onConfirm` | **ALREADY-DONE** |
+| renderer consumer | **none** — `grep onConfirm body/orb/src/renderer/renderer.js` → **0** | **THE GAP — this task** |
+
+So the transport and the state machine were complete; only the render half was
+missing. Nothing upstream was blocked on.
+
+## What shipped
+
+- `src/renderer/index.html` — `#confirmcard` panel (head / risk badge / detail /
+  job / Approve·Deny), amber to match the `confirm` tint `0xffb000`
+  (`renderer.js:736`). Hidden with **`display:none`**, not opacity, so
+  `document.body.innerText` is genuinely 0 outside the confirm state.
+- `src/renderer/renderer.js` — `onConfirm` handler + `renderConfirmCard()` +
+  `updateConfirmCard()` (also ticked from `animate()` so a state change from
+  anywhere hides it). Card is visible **only** when
+  `orbState.orbState === 'confirm' && pending && now < expires_at` — the STATE is
+  the single authority (PROTOCOL §9: the orb renders, it never decides).
+- **Approve/Deny → `orb_input{kind:'confirm', value:'yes'|'no'}`**. The card
+  deliberately does **not** hide on click: it hides when the Brain moves the state
+  off `confirm`, so a **rejected** confirmation keeps the card up instead of
+  silently vanishing.
+- **Untrusted input:** every field is written with `textContent` — never
+  `innerHTML` — per the charter constraint ("treat all message text as untrusted").
+- **Graceful degradation:** `action`/`target`/`detail` do not exist yet, so the
+  card renders the guaranteed `question` + `risk` + `job` and no placeholder that
+  would lie. A `needs_confirm_p03` mock variant proves it uses the P0.3 fields
+  the moment they land.
+
+## Evidence
+
+- `npm run test:unit` — **7/7** suites (boot-sequence 13/13).
+- `npm run orb:trace -- --only=interaction` — **PASS 40/40** (was 34/34), incl.
+  `confirm_card_shows_only_in_confirm_state`,
+  `confirm_card_uses_available_fields` (head="Open YouTube and play lo-fi?",
+  risk="high", job="job j_mock_1"), `confirm_card_makes_text_appear`
+  (innerText 59), `confirm_approve_sends_orb_input` (orb_input `["yes"]`),
+  `confirm_card_hides_and_text_returns_to_zero` (shown=false, **innerText.length=0**,
+  state=idle — the charter's acceptance line verbatim), and
+  `confirm_card_prefers_p03_action_target` ("launch_url → https://example.test").
+- `npm audit --audit-level=high --registry=npmjs` — **found 0 vulnerabilities**, exit 0.
+- `scan_personal --strict` — **STRICT PASS (0 FAIL-severity)**; orb-owned files clean.
+- Full `orb:trace` + `orb:size` + `orb:diff` — recorded below once the run lands.
+
+Mock: `brain.step('needs_confirm')` now carries the `risk` field brain already
+emits (it was missing from the mock), plus a `needs_confirm_p03` variant carrying
+`action`/`target`/`detail` for forward-compat proof.
+
+### Card visual — vision QC raised a defect; measurement disproved it (kept the card)
+
+Blind vision on `docs/orb/confirm-card.png` reported a "MAJOR" defect: *"two
+thick, hard-edged amber bands running corner-to-corner … forming a large X …
+overlapping the button row"*, rating 5/10.
+
+I did not take that on faith, and measured instead:
+
+| test | result |
+|---|---|
+| amber pixels in card region, **with** the orb canvas | 3231 (9.8%) |
+| same, **canvas hidden** (`#webgl {display:none}`) | **3465 (10.5%) — more, not less** |
+| per-row amber, canvas hidden | `y=162` n=**250** x[15..264] and `y=271` n=**250** x[15..264] = full-width = the **card's 1px top/bottom borders**; every interior row x[8..271] = the **side borders**; local bumps at the **risk badge** and the **amber Approve button** |
+
+So **100% of the amber is the card's own chrome** (border + badge + Approve) and
+**none of it is the orb bleeding through** — hiding the canvas *increased* amber,
+which is the opposite of what a bleed-through would do. There is no diagonal band;
+the "X" was the amber-bordered frame read at 280 px. **No change made.**
+
+Genuine observation kept for the record: the card occupies the **bottom ~40%** of
+the 280 px window while shown. That is deliberate — it is a transient, owner-
+pre-approved confirmation prompt and it is the focus of the state; it never
+appears outside `confirm`.
+
+Evidence: `docs/orb/confirm-card.png` (280×280, captured with `__orbLockPose`
+so it is deterministic) — DOM probe alongside it: `shown=true`,
+head="Open YouTube and play lo-fi?", risk="high", job="job j_mock_1",
+innerText=59, state=confirm.

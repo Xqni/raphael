@@ -116,6 +116,42 @@
       "pass": true
     },
     {
+      "name": "confirm_card_shows_only_in_confirm_state",
+      "ok": true,
+      "detail": "state=confirm shown=true",
+      "pass": true
+    },
+    {
+      "name": "confirm_card_uses_available_fields",
+      "ok": true,
+      "detail": "head=\"Open YouTube and play lo-fi?\" risk=\"high\" job=\"job j_mock_1\"",
+      "pass": true
+    },
+    {
+      "name": "confirm_card_makes_text_appear",
+      "ok": true,
+      "detail": "innerText.length=59 (only while confirm)",
+      "pass": true
+    },
+    {
+      "name": "confirm_approve_sends_orb_input",
+      "ok": true,
+      "detail": "orb_input frames: [\"yes\"]",
+      "pass": true
+    },
+    {
+      "name": "confirm_card_hides_and_text_returns_to_zero",
+      "ok": true,
+      "detail": "shown=false innerText.length=0 state=idle",
+      "pass": true
+    },
+    {
+      "name": "confirm_card_prefers_p03_action_target",
+      "ok": true,
+      "detail": "head=\"launch_url → https://example.test\" risk=\"medium\"",
+      "pass": true
+    },
+    {
       "name": "hit_test_decision",
       "ok": true,
       "detail": "dist=0 hitR=112.0 viewport=280x280 inside=true typedOpen=false",
@@ -124,7 +160,7 @@
     {
       "name": "mousemove_listener_wired",
       "ok": true,
-      "detail": "listener saw clientX=196 clientY=219 dist=96.8 inside=true seen=2 (expect inside == dist<=112)",
+      "detail": "listener saw clientX=75 clientY=112 dist=70.8 inside=true seen=2 (expect inside == dist<=112)",
       "pass": true
     },
     {

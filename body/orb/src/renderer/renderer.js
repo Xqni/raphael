@@ -84,6 +84,69 @@ const subtitleEl = document.getElementById('subtitle');
 // renders them. "KEEP cage/colors/pulse/job-dots + on-demand menu" — the
 // right-click menu (incl. the mic-cloud row) is user-invoked and untouched.
 const ORB_TEXT_ENABLED = false;
+
+// WAVE 5U §5.6 task 1 — ORB CONFIRM CARD (owner pre-approval 3: "confirm cards
+// allowed in the chat UI and on the orb (orb only in confirm state)").
+// The ONLY text allowed through while ORB_TEXT_ENABLED is false. Painted with
+// `textContent` (never innerHTML) because PROTOCOL §9 question / §3 frames are
+// UNTRUSTED input, and hidden with `display:none` so document.body.innerText
+// stays 0 everywhere else — which is exactly the gate's check.
+const cc = {
+  root: document.getElementById('confirmcard'),
+  head: document.querySelector('#confirmcard .cc-head'),
+  risk: document.querySelector('#confirmcard .cc-risk'),
+  detail: document.querySelector('#confirmcard .cc-detail'),
+  job: document.querySelector('#confirmcard .cc-job'),
+  pending: null,   // last needs_confirm payload, or null once resolved/expired
+};
+if (cc.root) {
+  cc.root.querySelectorAll('.cc-actions button').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      // PROTOCOL §3 orb_input -> brain/ws.py:664 resolves the oldest pending
+      // confirm for any of menu|click|confirm. The card does NOT hide here: it
+      // hides when the Brain moves the state off `confirm`, so a REJECTED
+      // confirmation keeps the card up instead of silently vanishing.
+      const answer = btn.getAttribute('data-answer');
+      if (!answer || !cc.pending) return;
+      traceRx('confirm_out', { kind: 'confirm', value: answer, job: cc.pending.job || null });
+      window.raphael.sendOrbInput({ kind: 'confirm', value: answer });
+    });
+  });
+}
+
+/** Paint a needs_confirm payload. Only renders fields that ACTUALLY arrived —
+ *  action/target/detail are brain-core P0.3 and may be absent, in which case the
+ *  card degrades to the guaranteed question + risk + job rather than showing a
+ *  placeholder that lies. */
+function renderConfirmCard(c) {
+  if (!cc.root || !c) return;
+  const headline = (c.action && c.target) ? `${c.action} \u2192 ${c.target}`
+                                          : (c.question || '');
+  cc.head.textContent = headline;                     // textContent = escaped
+  cc.risk.textContent = c.risk ? String(c.risk) : '';
+  cc.risk.hidden = !c.risk;
+  cc.detail.textContent = c.detail ? String(c.detail) : '';
+  cc.detail.hidden = !c.detail;
+  cc.job.textContent = c.job ? `job ${c.job}` : '';
+  cc.job.hidden = !c.job;
+}
+
+/** Visible ONLY while the orb is in `confirm` with a live, unexpired request —
+ *  the state is the single authority (PROTOCOL §9: the orb renders, it never
+ *  decides). */
+function updateConfirmCard() {
+  if (!cc.root) return;
+  const inConfirm = orbState.orbState === 'confirm';
+  // Resolved means the Brain moved OFF `confirm` — the request is no longer
+  // pending, so drop it. A REJECTION never moves the state, which is exactly
+  // why the card stays up there (and why dropping on state-change is safe).
+  // Without this the last payload would linger and be re-shown by a later
+  // synthetic `confirm` state with stale text.
+  if (!inConfirm) cc.pending = null;
+  const live = !!cc.pending && inConfirm &&
+               (!cc.pending.expires_at || Date.now() < cc.pending.expires_at);
+  cc.root.classList.toggle('show', live);
+}
 const params = new URLSearchParams(window.location.search);
 const DEMO = params.get('demo') === '1';
 
@@ -804,6 +867,7 @@ function computeMotionBlur(dt) {
 function animate(now) {
   requestAnimationFrame(animate);
   noteState(now); // AMENDMENT 2: record the rendered state sequence (boot -> idle -> ...)
+  updateConfirmCard(); // WAVE 5U: card visible only in `confirm`, and only while live
   if (DEMO && !manualState && window.__orbDemoTimeline === true) {
     // Auto-timeline is OPT-IN now (default off): the natural boot story owns
     // the opening — starting plays the generation sequence, eases into idle.
@@ -1380,6 +1444,12 @@ if (window.raphael) {
   window.raphael.onAnswer((a) => { traceRx('answer', a); updateAnswer(a); });
   window.raphael.onReport((r) => { traceRx('report', r); updateReport(r); });
   window.raphael.onJobs((j) => { orbJobs = Array.isArray(j) ? j : []; traceRx('jobs', { n: orbJobs.length }); });
+  window.raphael.onConfirm((c) => {
+    traceRx('confirm', c);
+    cc.pending = c || null;
+    if (c) renderConfirmCard(c);
+    updateConfirmCard();
+  });
   window.raphael.onNotice((n) => {
     traceRx('notice', n);          // recorded, but orbState is never touched
     updateNotice(n);

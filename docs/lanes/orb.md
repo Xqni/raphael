@@ -263,6 +263,26 @@ user's own wording, then what actually changed.
         outright, so there is no DOM pill left to convert. (The SEC-3 indicator
         survives as the on-demand `mic-cloud` menu row.)
 
+## WAVE 5U — §5.6 orb = UI lane (sprint active)
+
+Charter: `docs/USEFUL-NOW-PLAN.md` §5.6. Owner pre-approval **3** authorises
+confirm cards in the chat UI **and on the orb (orb only in confirm state)** —
+the single documented exception to AMENDMENT 3.
+
+- [x] **Wave A — orb confirm card (~2h).** Shown **only** while
+      `orbState === 'confirm'` with a live, unexpired `needs_confirm`; Approve /
+      Deny send `orb_input{kind:'confirm', value:'yes'|'no'}`; hides on resolve
+      or timeout, **not** on click (so a rejection keeps it up); all fields via
+      `textContent` (never `innerHTML` — untrusted frames); `ORB_TEXT_ENABLED`
+      stays `false` for everything else. `interaction` **34/34 → 40/40**, `test:unit`
+      7/7, `npm audit --audit-level=high` 0 vulns, `scan_personal --strict` PASS.
+      **Note:** `{action, target, detail}` are brain-core **P0.3, not on main** —
+      the card degrades to `question`+`risk`+`job` today and a `needs_confirm_p03`
+      mock variant proves it picks them up the moment they land.
+- [ ] Wave B — Raphael Chat MVP in `web/chat/` (tasks 2–7 of §5.6): chat UI,
+      tasks panel, chat confirm cards, voice toggle + PTT, mobile, job dots +
+      "Open chat". **Not started.**
+
 ## WAVE 5H AUDIT TASKS (packet `docs/audit-tasks/orb.md`)
 
 Verify-first: every finding quoted with `file:line`, reported CONFIRMED /
