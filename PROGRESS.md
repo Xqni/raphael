@@ -126,3 +126,12 @@ T1 fast free · T2 strong free · T3/T4 paid (log to docs/PAID_USAGE.md).
 - qa [60]: SEC-1 STRICT gate wired (tests-heavy step + guard #8, CI 37799170764) -> MERGED on main, battery+strict+gitleaks gated green. orb [47]: all loops closed (commit merged + both requests flipped by owners). EVERYTHING post-gate complete; all lanes idle pending wave_open.
 - qa [61] heartbeat: post-gate complete, 0-diff vs main, WAIT.
 - qa [62] heartbeat: confirmed template wakes = conductor liveness (not unmet work); WAIT correct.
+
+## 2026-10-09 — Wave R research sprint (COMPLETE, docs-only)
+- Lanes paused live via direct session pings (after fixing the delivery bug: inbox appends alone don't wake sessions when the conductor/service is down); state.json mode=research_sprint; stack stayed OFF throughout.
+- R1 architecture review (brain-core surface): boundary sound; real seams = confirm-in-cancel, lock-name derivation, hard-coded risk regex; target Mermaid diagram + prioritized mitigations.
+- R2 tooling survey: 24 candidates across 8 areas; overrides applied by me where surveys meet measurements (openWakeWord REJECT per AUD-06 data; silero-vad DEFER to RAM gate; trufflehog REJECT; orchestrator frameworks REJECT — our coord bus proven by this very sprint).
+- R3 VulnClaw: adopt-FOR-TESTING-ONLY (isolated VM, ask/auto_review, never full_access, user authorization) — framing reproduced verbatim.
+- R4 gap list: 14 grounded gaps (9 security, incl. the voice-confirm cluster that keeps qa's xfails red).
+- R5 decision gate: voice-confirm batch = top code priority when wave 6 opens; semgrep = only new CI adopt; everything else BUILD CUSTOM S/M or DEFER/HUMAN.
+- Nothing implemented; R1-R5 + this summary pushed to main for the human's review.
