@@ -11,7 +11,8 @@ Sol burn was cache+output on a 1M-token session, not the per-call price).
 | Integrator default | opencode/mimo-v2.6-flash-free | $0 (free) | policy #1; paid only per-turn by request |
 | Lane routine default | opencode-go/mimo-v2.5 | $0.14/$0.28 ($0.0028) | proven all-wave workhorse; best cache economics of any paid model |
 | Lane sessions (ALL) | opencode-go/mimo-v2.5 | $0.14/$0.28 ($0.0028) | USER 2026-10-09: no model upgrades on sessions — flagships/strong models are per-DELEGATION subagent picks only; the earlier haiku session assignments were reverted |
-| Deep research / hard debug | opencode-go/deepseek-v4-pro | $0.66/$1.98 ($0.022) | proven on today's canon re-runs |
+| Deep research / hard debug | opencode-go/deepseek-v4-pro | $0.66/$1.98 ($0.022) | proven on today's canon re-runs; USER-APPROVED 2026-10-09 ('deepseek-v4 when needed') |
+| Small paid per-delegation (user-approved set) | claude-haiku-5-5 ($0.10/$0.50), gpt-6-luna ($0.10/$0.50), deepseek-v4-pro | | USER 2026-10-09: 'you can use haiku or luna too when needed or deepseek-v4' — per-delegation only, never session defaults |
 | Big-context tasks (>200k) | opencode-go/minimax-m3 | $0.30/$1.20 ($0.06) | 512k context — cheapest big-brain |
 | Code-specialist escalations | opencode-go/kimi-k2.7-code | $0.95/$4.00 ($0.19) | named-task only |
 | Cheap strong alternates | gpt-6-luna ($0.10/$0.50), qwen3.8-flash ($0.15/$0.47), deepseek-v4.1-flash ($0.15/$0.60, $0.003 cache), glm-5.3-flash ($0.15/$0.50) | | substitution pool when a primary is rate-limited |

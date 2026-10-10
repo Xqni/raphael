@@ -25,6 +25,13 @@ result = router.predict(state_str, questions)  # questions = {id: {type: choice|
 - GPU timing: `torch.cuda.synchronize()` before/after `time.time()`.
 - Abstention: `min_confidence=` → `low_confidence` flag / `decide()` returns None (fail-closed).
 
+## Question schema (verified 2026-10-09 by live bring-up)
+Each question needs `instructions` (the NL text the model answers) AND `criteria`:
+- choice: `criteria = {label: short_description, ...}`
+- score: `criteria = ["level0", "level1", ...]` (index0 first)
+Missing either raises ValueError in `_check_question`. Zero-shot: needs_confirm works
+with explicit phrasing (delete→yes ✓); intent/task_kind remain ~0.36-class until fine-tune.
+
 ## Rules
 1. **Phase 1 = ADVISORY** (orb shape_hint, urgency, hints). Zero-shot misfires are real
    (delete→confirm 0.09, research→out_of_scope). Never gate safety on it yet.
