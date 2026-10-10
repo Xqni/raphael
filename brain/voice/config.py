@@ -104,6 +104,16 @@ class VoiceConfig:
     fish_temperature: float = 0.2
     fish_repetition_penalty: float = 1.2
     tts_sample_rate: int = 24000
+    # Wave 5U §5.3 (item 1): engine seam — fish (JP-clone tier, server) or
+    # kokoro (local 82M, in-process). Default stays fish until the owner
+    # picks a Kokoro voice from the rendered samples; RAPHAEL_TTS_ENGINE
+    # flips it live. The phrase cache is namespaced per engine+voice, so
+    # switching engines can never replay the other engine's audio.
+    tts_engine: str = "fish"        # fish | kokoro
+    kokoro_voice: str = "af_heart"  # owner pick pending (af_nicole/af_heart/af_bella rendered)
+    kokoro_speed: float = 1.0       # kokoro create() speed (clamped 0.5-2.0 upstream)
+    kokoro_model: str = "brain/voice/models/kokoro/kokoro-v1.0.onnx"   # gitignored
+    kokoro_voices: str = "brain/voice/models/kokoro/voices-v1.0.bin"   # gitignored
     spoken_max_sentences: int = 2          # voice_personality
     #  spoken_reply_max_sentences: cap on what is SPOKEN (screen carries the rest)
     wake_word: str = "raphael"
@@ -381,6 +391,8 @@ def load_voice_config(config_path: Optional[Path] = None) -> VoiceConfig:
         "ptt_hotkey", "always_listen", "ack_cache", "chunk_ms",
         "fish_host", "fish_port", "fish_device", "fish_checkpoint",
         "fish_compile", "fish_venv", "fish_vendor",
+        "tts_engine", "kokoro_voice", "kokoro_speed", "kokoro_model",
+        "kokoro_voices",
     }
     extra = {k: v for k, v in section.items() if k not in known}
     cfg = VoiceConfig(
@@ -400,6 +412,13 @@ def load_voice_config(config_path: Optional[Path] = None) -> VoiceConfig:
         tts_reference_required=_as_bool(section.get("tts_reference_required",
                                                      True), True),
         tts_sample_rate=int(section.get("tts_sample_rate", 24000) or 24000),
+        tts_engine=str(section.get("tts_engine", "fish") or "fish").strip().lower(),
+        kokoro_voice=str(section.get("kokoro_voice", "af_heart") or "af_heart"),
+        kokoro_speed=float(section.get("kokoro_speed", 1.0) or 1.0),
+        kokoro_model=str(section.get("kokoro_model",
+                                     "brain/voice/models/kokoro/kokoro-v1.0.onnx")),
+        kokoro_voices=str(section.get("kokoro_voices",
+                                      "brain/voice/models/kokoro/voices-v1.0.bin")),
         spoken_max_sentences=int(vp.get("spoken_reply_max_sentences", 2) or 2),
         wake_word=str(section.get("wake_word", "raphael")),
         ptt_hotkey=str(section.get("ptt_hotkey", "ctrl+alt+space")),
@@ -433,6 +452,9 @@ def load_voice_config(config_path: Optional[Path] = None) -> VoiceConfig:
     cfg.fish_port = _env("RAPHAEL_FISH_PORT", cfg.fish_port, int)
     cfg.fish_device = _env("RAPHAEL_FISH_DEVICE", cfg.fish_device, str)
     cfg.fish_compile = _env("RAPHAEL_FISH_COMPILE", cfg.fish_compile, _as_bool_raw)
+    cfg.tts_engine = (_env("RAPHAEL_TTS_ENGINE", cfg.tts_engine, str)
+                      .strip().lower() or "fish")
+    cfg.kokoro_voice = _env("RAPHAEL_KOKORO_VOICE", cfg.kokoro_voice, str)
     cfg.always_listen = _env("RAPHAEL_ALWAYS_LISTEN", cfg.always_listen,
                              _as_bool_raw)
     return cfg

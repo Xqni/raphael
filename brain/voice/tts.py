@@ -58,7 +58,8 @@ from typing import Any, AsyncIterator, Dict, List, Optional, Tuple
 import httpx
 import numpy as np
 
-from .config import VoiceConfig, load_voice_config, voice_data_dir
+from .config import (REPO_ROOT, VoiceConfig, load_voice_config,  # noqa: F401
+                     voice_data_dir)
 from .activation import get_playback_echoes
 from .wake import normalize_text
 
@@ -406,8 +407,121 @@ class PhraseCache:
             return None
 
 
+# ---- Synth engine seam (Wave 5U §5.3 item 1) ------------------------------
+class Synth:
+    """TTS engine seam: TTSEngine talks to a Synth; fish and kokoro are two
+    implementations picked by voice.tts_engine. `synthesize(text)` returns
+    WAV bytes (any rate — TTSEngine resamples to cfg rate downstream).
+    `voice_id()` is the phrase-cache namespace component (engine+voice), so
+    two engines can never replay each other's cached audio."""
+
+    name = "synth"
+
+    async def synthesize(self, text: str) -> bytes:
+        raise NotImplementedError
+
+    def voice_id(self) -> str:
+        raise NotImplementedError
+
+    async def start(self) -> None:
+        """Optional warmup (server spawn / model load). Default: no-op."""
+        return None
+
+    def stop(self) -> None:
+        """Teardown (Rule 14: stop only what WE started). Default: no-op."""
+        return None
+
+
+# ---- kokoro-82M local engine (Wave 5U §5.3 item 2) ------------------------
+KOKORO_CALM_FEMALE = ("af_nicole", "af_heart", "af_bella")
+
+
+class KokoroSynth(Synth):
+    """Kokoro-82M ONNX engine — local, CPU default, in-process (NO server
+    process, so Rule 14's single-instance rule holds trivially: one lazy
+    session per TTSEngine). Weights live under brain/voice/models/kokoro/
+    (gitignored); missing weights raise TTSError pointing at the download
+    script — TTSEngine falls back to SUBTITLE-ONLY + one-time notice (never
+    a silent default voice, Bug D discipline). Output is 24 kHz float; we
+    wrap to WAV bytes here and TTSEngine resamples to voice.tts_sample_rate.
+    """
+
+    name = "kokoro"
+
+    def __init__(self, cfg: VoiceConfig):
+        self.cfg = cfg
+        self._k: Optional[Any] = None
+        self._load_error: Optional[str] = None
+        self.load_ms: Optional[float] = None
+
+    @property
+    def model_path(self) -> Path:
+        p = Path(self.cfg.kokoro_model)
+        return p if p.is_absolute() else REPO_ROOT / p
+
+    @property
+    def voices_path(self) -> Path:
+        p = Path(self.cfg.kokoro_voices)
+        return p if p.is_absolute() else REPO_ROOT / p
+
+    def voice_id(self) -> str:
+        return f"kokoro-{self.cfg.kokoro_voice}"
+
+    def _ensure(self) -> Any:
+        if self._k is not None:
+            return self._k
+        if self._load_error:
+            raise TTSError("E_INTERNAL", self._load_error)
+        missing = [str(p) for p in (self.model_path, self.voices_path)
+                   if not (p.exists() and p.stat().st_size > 0)]
+        if missing:
+            self._load_error = (
+                "kokoro weights missing: " + ", ".join(missing) +
+                " — run brain/voice/scripts/download_kokoro_weights.sh "
+                "(weights are gitignored, ~337MB)")
+            raise TTSError("E_INTERNAL", self._load_error)
+        try:
+            from kokoro_onnx import Kokoro
+        except ImportError as e:
+            self._load_error = (
+                f"kokoro-onnx not installed ({e}) — pip install "
+                "--require-hashes -r brain/voice/kokoro-requirements.txt")
+            raise TTSError("E_INTERNAL", self._load_error)
+        t0 = time.perf_counter()
+        try:
+            self._k = Kokoro(str(self.model_path), str(self.voices_path))
+        except Exception as e:  # noqa: BLE001 — loud, never silent
+            self._load_error = f"kokoro load failed: {type(e).__name__}: {e}"
+            raise TTSError("E_INTERNAL", self._load_error) from e
+        self.load_ms = (time.perf_counter() - t0) * 1000.0
+        _log(f"[tts] kokoro loaded in {self.load_ms:.0f} ms "
+             f"(voice={self.cfg.kokoro_voice}, cpu)")
+        return self._k
+
+    async def synthesize(self, text: str) -> bytes:
+        k = self._ensure()
+
+        def _run():
+            import soundfile as sf
+            samples, sr = k.create(text, voice=self.cfg.kokoro_voice,
+                                   speed=self.cfg.kokoro_speed, lang="en-us")
+            return np.asarray(samples, dtype=np.float32), int(sr)
+
+        # CPU-bound ONNX inference off the event loop (same rule as whisper)
+        samples, sr = await asyncio.to_thread(_run)
+        if samples.size == 0:
+            raise TTSError("E_INTERNAL", "kokoro returned empty audio")
+        import soundfile as sf
+        buf = io.BytesIO()
+        sf.write(buf, samples, sr, format="WAV", subtype="PCM_16")
+        return buf.getvalue()
+
+    def stop(self) -> None:
+        self._k = None                     # drop the session (GC frees RAM)
+
+
 # ---- fish-speech server (isolated venv) ------------------------------------
-class FishSpeechServer:
+class FishSpeechServer(Synth):
     """Manages the fish-speech v1.5.0 API server subprocess + REST calls.
 
     Server command (docs/en/inference.md @ v1.5.0):
@@ -419,6 +533,13 @@ class FishSpeechServer:
     Response: raw wav bytes (Content-Type audio/wav), decoder sample rate
               (32000 for firefly_gan_vq -> resampled here to 24000).
     """
+
+    name = "fish"
+
+    def voice_id(self) -> str:
+        # cache namespace = reference fingerprint (Bug D); the warmth tag is
+        # applied by TTSEngine via cfg.tier_cache_fingerprint
+        return reference_fingerprint(self.cfg.reference_path)
 
     def __init__(self, cfg: VoiceConfig):
         self.cfg = cfg
@@ -736,12 +857,27 @@ class TTSEngine:
         self.reference_path, self._tier_note = self.cfg.tier_voice_path()
         self.reference_fp = reference_fingerprint(self.reference_path)
         self._tier_notice_shown = False
+        # Wave 5U §5.3 item 1: engine seam. `synth` is the active Synth
+        # (fish server OR kokoro session), picked by voice.tts_engine
+        # (default fish = the approved JP-clone tier; kokoro is the new
+        # local engine). The phrase-cache namespace carries the engine+voice
+        # id, so the two engines can NEVER replay each other's cached audio.
+        self.engine_name = (self.cfg.tts_engine or "fish").strip().lower()
+        self.synth: Synth
+        if self.engine_name == "kokoro":
+            self.synth = KokoroSynth(self.cfg)
+        else:
+            self.engine_name = "fish"
+            self.synth = FishSpeechServer(self.cfg)
+        # `self.fish` kept for the fish engine + its mid-speak recovery path;
+        # None under kokoro (that path is guarded by engine_name).
+        self.fish = self.synth if self.engine_name == "fish" else None
         # P2 (Wave 5P): cache namespace = reference fp + tier warmth tag, so
         # two tiers sharing one reference can never replay each other's wav.
-        self.cache_fp = self.cfg.tier_cache_fingerprint(self.reference_fp)
+        # kokoro carries its OWN voice id instead (no reference file).
+        self.cache_fp = self.synth.voice_id()
         self.cache = PhraseCache(self.cfg.ack_cache_path,
                                  fingerprint=self.cache_fp)
-        self.fish = FishSpeechServer(self.cfg)
         self.stats = SpeakStreamStats()
         self._notice_shown = False      # degraded-mode notice: ONCE per process
         # fish-death recovery state (Wave 4 failure modes) — per-speak flags
@@ -798,9 +934,13 @@ class TTSEngine:
             return False
 
     async def _synthesize_resilient(self, sentence: str) -> bytes:
-        """Synthesize one sentence with ONE restart+retry on engine death.
+        """Synthesize one sentence via the ACTIVE Synth. Fish: ONE restart+
+        retry on server death. Kokoro: in-process, no server to restart — a
+        load error is permanent for the process (raises, -> subtitle fallback).
         Reference errors are never retried (a restart cannot fix a missing
         reference — that must fail loud, Bug D)."""
+        if self.engine_name != "fish":
+            return await self.synth.synthesize(sentence)   # kokoro: direct
         try:
             return await self.fish.synthesize(sentence)
         except TTSError as e:
@@ -824,7 +964,10 @@ class TTSEngine:
         the phrase cache when anything changed — self-heals both a user
         reference swap AND a persona-tier flip (great_sage -> ciel) WITHOUT a
         restart, invalidating old-voice cache entries from that first chunk.
-        Returns the current fingerprint."""
+        Returns the current fingerprint. NO-OP under kokoro (its cache ns is
+        the fixed engine+voice id, not a reference file — Wave 5U)."""
+        if self.engine_name == "kokoro":
+            return self.reference_fp        # nothing reference-scoped to heal
         path, note = self.cfg.tier_voice_path()
         fp = reference_fingerprint(path)     # content-addressed: catches an
         # in-place file swap too (Bug D), not just a path/tier change
@@ -870,10 +1013,18 @@ class TTSEngine:
         return int(self.cfg.tts_sample_rate or TTS_SAMPLE_RATE_DEFAULT)
 
     async def warmup(self) -> None:
-        """Pre-start the fish server (resume hook: ARCHITECTURE §6 reliability).
-        Never raises — warmup failure degrades to fallback at speak time.
-        Also verifies (LOUDly) that the reference voice is loadable, so a
-        missing ref is visible at boot instead of at the first answer."""
+        """Pre-start the ACTIVE engine (resume hook: ARCHITECTURE §6
+        reliability). Never raises — warmup failure degrades to fallback at
+        speak time. Fish: also verifies (LOUDly) that the reference voice is
+        loadable, so a missing ref is visible at boot instead of at the first
+        answer. Kokoro: loads the model once here (lazy single instance)."""
+        if self.engine_name == "kokoro":
+            try:
+                await self.synth.synthesize("Warmup.")   # triggers lazy load
+                _log(f"[tts] kokoro warmup OK (voice={self.cfg.kokoro_voice})")
+            except TTSError as e:
+                _log(f"[tts] kokoro warmup FAILED (will fall back): {e.detail[:200]}")
+            return
         try:
             await self.fish.ensure_started()
         except TTSError as e:
@@ -888,7 +1039,7 @@ class TTSEngine:
             _log(f"[tts] BLOCKED (reference) at warmup: {e.detail}")
 
     def shutdown(self) -> None:
-        self.fish.stop()
+        self.synth.stop()               # fish: stop OUR server; kokoro: drop session
 
     def _chunk_events(self, pcm: bytes, seq_start: int, job: Optional[str],
                       cached: bool, engine: str) -> Tuple[List[Dict[str, Any]], int]:
@@ -1009,28 +1160,35 @@ class TTSEngine:
                 return
             # corrupt cache: fall through to synthesis
 
-        # --- 2b. fish-speech, sentence by sentence --------------------------
-        fish_ok = False
+        # --- 2b. synthesis via the ACTIVE engine, sentence by sentence ------
+        engine_ok = False
         pre_err: Optional[TTSError] = None
         if not force_fallback:
-            try:
-                await self.fish.ensure_started()
-            except TTSError as e:
-                pre_err = e
-            if pre_err is None:
+            if self.engine_name == "kokoro":
                 try:
-                    # LOUD reference gate (Bug D): a missing reference must
-                    # never reach a default-voice synthesis
-                    self.fish.check_reference()
-                    fish_ok = True
+                    self.synth._ensure()      # LOUD: missing weights/install
+                    engine_ok = True           #   raise -> subtitle fallback
                 except TTSError as e:
                     pre_err = e
+            else:
+                try:
+                    await self.fish.ensure_started()
+                except TTSError as e:
+                    pre_err = e
+                if pre_err is None:
+                    try:
+                        # LOUD reference gate (Bug D): a missing reference must
+                        # never reach a default-voice synthesis
+                        self.fish.check_reference()
+                        engine_ok = True
+                    except TTSError as e:
+                        pre_err = e
 
         synthesized: List[bytes] = []
         notice: Optional[str] = None
         remainder: List[str] = []
-        if fish_ok:
-            self.stats.engine = "fish"
+        if engine_ok:
+            self.stats.engine = self.engine_name
             # P0 (2026-10-07) GAPLESS PLAYBACK: fish runs at ~RTF 0.5, so
             # sentence N+1 is NOT ready when N's chunks finish — the body
             # drains and we get a mid-reply hole (measured: ONE 12.23s
@@ -1053,7 +1211,7 @@ class TTSEngine:
                     synthesized.append(pcm)
                 except TTSError as e:
                     # engine died mid-stream: finish what we have + notice
-                    fish_ok = False
+                    engine_ok = False
                     notice = self._once(
                         f"TTS engine error ({e.code}) — partial speech; "
                         f"{e.detail[:120]}")
@@ -1092,7 +1250,7 @@ class TTSEngine:
             # burst-send everything buffered (gapless head) ...
             for pcm in synthesized:
                 chunk_evs, next_seq = self._chunk_events(pcm, seq, job, False,
-                                                         "fish")
+                                                         self.engine_name)
                 for ev in chunk_evs:
                     if cancel is not None and cancel.is_set():
                         seq = ev["seq"]
@@ -1109,13 +1267,13 @@ class TTSEngine:
                     wav = await self._synthesize_resilient(sent)
                     pcm, _ = wav_bytes_to_s16le_pcm(wav, rate)
                 except TTSError as e:
-                    fish_ok = False
+                    engine_ok = False
                     notice = notice or self._once(
                         f"TTS engine error ({e.code}) — partial speech; "
                         f"{e.detail[:120]}")
                     break
                 chunk_evs, next_seq = self._chunk_events(pcm, seq, job, False,
-                                                         "fish")
+                                                         self.engine_name)
                 for ev in chunk_evs:
                     if cancel is not None and cancel.is_set():
                         seq = ev["seq"]
@@ -1123,14 +1281,17 @@ class TTSEngine:
                         return
                     seq = ev["seq"] + 1
                     yield ev
-            if fish_ok and synthesized:
-                # store full phrase for future cache hits — but ONLY when the
-                # render actually matches the reference voice (P0 2026-10-07:
-                # one live entry scored 0.64 = off-voice, and a cached
-                # wrong-voice phrase replays forever).
+            if engine_ok and synthesized:
+                # store full phrase for future cache hits. FISH ONLY (P0
+                # 2026-10-07): the render must match the reference voice (one
+                # live entry scored 0.64 = off-voice, and a cached wrong-voice
+                # phrase replays forever) — timbre gate vs the reference. KOKORO
+                # has no reference file; its own voice IS canonical, so it stores
+                # unconditionally (Wave 5U).
                 try:
                     full = b"".join(synthesized)
-                    score = timbre_similarity(full, rate, self.reference_path)
+                    score = (timbre_similarity(full, rate, self.reference_path)
+                             if self.engine_name == "fish" else None)
                     if score is not None and score < STORE_MIN_COS:
                         _log(f"[tts] cache store REFUSED: timbre cos "
                              f"{score:.2f} < {STORE_MIN_COS} vs "
@@ -1150,7 +1311,7 @@ class TTSEngine:
                     pass
 
         # --- 2c. degraded fallback (SUBTITLE-ONLY, one-time notice) ---------
-        if not fish_ok and not synthesized:
+        if not engine_ok and not synthesized:
             # Wave 2 task 3: Fish unavailable -> no audio at all (never a
             # placeholder tone), loop.py already subtitles the reply; the
             # ONE-TIME notice explains the missing voice instead of silence
