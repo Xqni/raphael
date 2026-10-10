@@ -143,10 +143,12 @@ def test_apply_tier_on_real_lane_fragment():
     from brain import config as cfg
     real = cfg.CONFIG_PATH.parent / "config.d" / "evolution-persona.yaml"
     text = real.read_text(encoding="utf-8")
+    import re as _re
+    original_tier = _re.search(r"(?m)^\s*tier:\s*([a-z_]+)", text).group(1)
     out = P.apply_tier(text, "ciel")
     assert "tier: ciel" in out
-    assert P.apply_tier(out, "great_sage") == text      # byte-identical restore
-    assert "mode: propose" in out                       # evolution block untouched
+    assert P.apply_tier(out, original_tier) == text   # byte-identical restore
+    assert "mode: propose" in out                     # evolution block untouched
 
 
 def test_demotion_is_always_allowed_rising_is_not():
