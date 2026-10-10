@@ -145,6 +145,12 @@ safety:
       gui_submission: confirm
       files_write: auto                    # reversible local writes: act-first-and-report
       web_fetch: auto                      # read-only
+      # Wave 5U additions (tools-memory request wave5u-confirm-classes, approved 2026-10-10)
+      read_only: auto                      # file_read/search, shell_list, github_status, mcp_list, schedule readers
+      schedule: auto                       # timers/reminders/schedule writers (reversible local)
+      system_command: confirm              # shell
+      web_publish: confirm                 # github_push / publishing
+      mcp_tool: confirm                    # MCP wrapped tools + mcp_refresh (spawn)
     # edits to this map must go through a confirmed act (self-protecting)
   failsafe_corner: true                    # pyautogui mouse-to-corner
   kill_switch_hotkey: "ctrl+alt+shift+k"
