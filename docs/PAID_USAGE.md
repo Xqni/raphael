@@ -68,3 +68,11 @@ disabled (service disable needs sudo — one-liner handed to user).
 Scope: ALL model usage — paid models fully authorized, cost is NOT a selection
 factor anymore. Speed/quality choose the model; caps below stay as bookkeeping
 only (never as a reason to pick a worse model). Do log spend for the record.
+
+## 2026-10-09 — Console reconciliation (integrator, user-shared numbers)
+
+- **Go-endpoint quota windows (web dashboard, user-verified):** rolling (5h) 29% (resets ~2h15m) · **weekly 100% — EXHAUSTED** (resets ~1d21h) · monthly 50% (resets ~27d21h).
+- **Extra-usage balance: $9.72 available** ("use your balance after reaching the limits") — the fallback once a window is hit; verify auto-recharge state on the web (not readable via MCP).
+- **Console MCP ledger (workspace "Main", owner):** all-time cost $0.0072 / 3 requests (mimo-v2.6-flash via opencode-go). This ledger and the quota windows are DIFFERENT systems — the MCP exposes the cost ledger + model/member management; quota percentages exist only on the web dashboard. Watchers must not conflate them.
+- **Behavior while weekly=100%:** prefer free-tier models (ollama gpt-oss:120b-cloud, zen free flash) for delegation; spend from the $9.72 balance only when free is rate-limited or quality demands it; log any balance spend here after the fact.
+- Console MCP powers verified live: get_context (owner), get_usage/list_members/list_providers/list_models/set_model_enabled/set_member_budget. Budget cap currently NULL (none set) — left unset per user.
