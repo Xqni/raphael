@@ -88,9 +88,14 @@ def _engine(tmp_path, cfg=None):
 
 
 # ---- 1. persona-tier voice profiles ----------------------------------------
-def test_tier_default_is_great_sage_on_the_approved_reference():
+def test_tier_default_is_the_approved_repo_default():
+    # Wave 5U/5P decision (integrator 2026-10-10, request
+    # qa-security__to__voice__tier-default-test-conflict.md): the APPROVED
+    # repo default tier is `raphael` (config.yaml persona.tier); the
+    # fail-closed fallback for a MISSING/unknown tier is `great_sage` and is
+    # covered separately (this test no longer conflates the two).
     cfg = load_voice_config(_REPO / "config.yaml")
-    assert cfg.persona_tier == "great_sage"          # fail-closed default
+    assert cfg.persona_tier == "raphael"             # approved repo default
     path, note = cfg.tier_voice_path()
     assert path == JP_REF and note is None           # the user-approved voice
 
