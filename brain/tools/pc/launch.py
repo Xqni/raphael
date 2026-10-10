@@ -25,6 +25,22 @@ SPECS = (
         ('query',),
     ),
     spec(
+        'navigate_url',
+        'Open a URL by NAVIGATING IN PLACE — the preferred tool for any '
+        'browser navigation (P0 UX): reuses the foreground browser tab '
+        '(Ctrl+L, type URL, Enter) or the visible browser window (focus '
+        'first), so "open YouTube" then "search X" does NOT spawn a second '
+        'tab. First-ever open (no browser window anywhere) launches the '
+        'default handler. Requires the input lock (keystrokes). Use this '
+        'instead of launch_url/search_youtube whenever the target is a web '
+        'page; launch_url stays for "open a NEW tab/window" requests.',
+        {'url': prop_string('Absolute http(s) URL to navigate to, e.g. '
+                            '"https://www.youtube.com/results?'
+                            'search_query=pewdiepie".')},
+        ('url',),
+        needs_lock=True,
+    ),
+    spec(
         'open_app',
         'Launch an INSTALLED Windows application by name — curated sources '
         'only (Start Menu shortcuts, PATH executables, App Paths registry, '

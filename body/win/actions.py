@@ -53,7 +53,8 @@ LOG_MAX_BYTES = 5 * 1024 * 1024  # rotate the action log (1 backup)
 # 2026-10-07: `report` landed via protocol-report-act.md (APPROVED AS
 # PROPOSED, integrator edited §7 by hand).
 # 2026-10-07 F-3: `activity` pending via protocol-activity-act.md.
-PENDING_PROTO_ADDITIONS = ('activity',)
+# 2026-10-09 P0 UX [42]: `navigate_url` pending via protocol-navigate-act.md.
+PENDING_PROTO_ADDITIONS = ('activity', 'navigate_url')
 
 
 class ActionError(Exception):

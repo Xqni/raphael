@@ -413,3 +413,29 @@ $ pytest brain                               1046 passed, 6 skipped
 - **Stale — top "## Blocked: Live-Brain use of `brain/tools/pc` awaits the brain-core auto-discovery request"**: landed long ago — this doc's own Wave-5H section records "AUD-05 LIVE + MERGED … the seeded chain is end-to-end" with the pc tools registered and fed by brain-core's lifespan discovery. The Wave-2-era blocked item no longer reflects the lane.
 - **Stale — top "## Next: … Waves 3-5 … start only when `docs/WAVES.md current_wave` advances"**: `docs/WAVES.md:2` has `current_wave: 5`; waves 3/4/5 + 5H were executed (the log sections below ARE those waves). The old stop-here posture is historical only.
 - **Still genuinely open (checked, unchanged):** `pc-control__to__integrator__protocol-activity-act.md` Status OPEN (§7 enum addition for `activity{op}`) and `pc-control__to__brain-core__activity-endpoint.md` Status OPEN (REST relay for the orb/CLI). The F-3 activity-viewer chain is not fully closed yet.
+
+## 2026-10-09 — P0 UX [42]: navigate_url (YouTube two-tabs) — DONE
+
+Spec from the dispatch: reuse an existing browser tab in place
+(Ctrl+L + type + Enter via the input-lock path); first-ever open launches.
+
+**Shipped:** `navigate_url{url}` in `body/win/act_launch.py`:
+- target pick (deterministic — confirm-first never needed): foreground
+  browser (`process in _BROWSERS` + non-empty title) -> topmost EnumWindows
+  browser -> launch;
+- reuse path: `focus_window` (only when not already foreground, 120 ms
+  settle) -> `_chord('ctrl+l')` -> `type_text(url)` (inline, ordered, under
+  the lock — act is needs_lock=True) -> 50 ms -> `_chord('enter')`;
+  failure => E_INTERNAL "…URL not opened" and NO shell-open fallback
+  (never double-opens);
+- launch path: `open_url` (scheme-validated http/https via the shared
+  launch_url validator), zero input injection;
+- 20th tool registered (needs_lock=True, confirm=None) + `PENDING` +
+  §7 request `protocol-navigate-act.md`; failure-matrix tables extended
+  (invalid scheme / list_windows crash / locked).
+Note: `fg:change-push` e2e check retargeted to windows[0] — the new
+navigate row legitimately moves the foreground (focus 1002), which had made
+the old windows[1] "change" a dedupe no-op.
+
+**Tests (real, sequential):** navigate 7; body 204; specs 11; e2e
+149 PASS/0 FAIL; root 241 (6 xfail/1 xpass); brain 1104 passed.

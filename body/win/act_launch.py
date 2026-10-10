@@ -15,13 +15,13 @@ from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import quote_plus
 
 try:
-    from .actions import (offload,
-ActionError, opt_str, register_action, req_str,
-                          reject_extra
-)
+    from .actions import (offload, ActionError, opt_str, register_action,
+                          req_str, reject_extra)
+    from .act_input import _chord
 except ImportError:  # script mode
     from actions import (offload, ActionError, opt_str, register_action, req_str,
                          reject_extra)
+    from act_input import _chord
 
 _MAX_URL = 2048
 _MAX_QUERY = 200
@@ -259,9 +259,74 @@ async def _run_list_running(args: Dict[str, Any], backend) -> Dict[str, Any]:
             **({'truncated': True} if total > len(apps) else {})}
 
 
+# ---------------------------------------------------------- navigate_url ---
+# P0 UX (coord inbox [42], user-reported): "open youtube" + "search X" must
+# NAVIGATE IN PLACE, not spawn a second tab. Browsers are identified by
+# process basename; the FOREGROUND browser wins, else the topmost (z-order)
+# window from EnumWindows. First-ever open (no browser anywhere) still
+# launches via the default handler — no confirmation needed (the URL is
+# scheme-validated http/https only).
+_BROWSERS = frozenset({
+    'chrome.exe', 'msedge.exe', 'firefox.exe', 'brave.exe', 'opera.exe',
+    'opera gx.exe', 'vivaldi.exe', 'waterfox.exe', 'floorp.exe',
+})
+_SETTLE_S = 0.12            # activation settle before Ctrl+L
+_POST_TYPE_S = 0.05         # address bar catches up before Enter
+
+
+def _browser_of(win: Any) -> bool:
+    proc = str((win or {}).get('process') or '').lower()
+    return proc in _BROWSERS and bool(str((win or {}).get('title') or '').strip())
+
+
+def _validate_navigate_url(args: Dict[str, Any]) -> Dict[str, Any]:
+    return _validate_launch_url(args)      # same http(s)-only guard
+
+
+async def _run_navigate_url(args: Dict[str, Any], backend) -> Any:
+    url = args['url']
+    windows = await offload(backend.list_windows)
+    fg = await offload(backend.foreground)
+    fg_hwnd = (fg or {}).get('hwnd')
+    if _browser_of(fg):
+        target = fg                        # the visible foreground tab
+    else:
+        # z-order first candidate (EnumWindows order) — deterministic pick,
+        # so the target is always identifiable (no confirm needed per spec)
+        target = next((w for w in windows if _browser_of(w)), None)
+    if target is None:
+        await offload(backend.open_url, url)   # first-ever open: launch
+        return {'mode': 'launch', 'opened': url}
+    hwnd = target.get('hwnd')
+    if hwnd != fg_hwnd:
+        await offload(backend.focus_window, hwnd)
+        await asyncio.sleep(_SETTLE_S)
+    # Input-lock path (needs_lock=True): Ctrl+L -> type URL -> Enter.
+    # Inline on purpose: ordered input must run under the held lock exactly
+    # like act_input's atomic units.
+    try:
+        _chord(backend, 'ctrl+l')
+        backend.type_text(url)
+        await asyncio.sleep(_POST_TYPE_S)
+        _chord(backend, 'enter')
+    except Exception as e:
+        raise ActionError('E_INTERNAL',
+                          'navigate-in-place failed (%s) — URL not opened'
+                          % type(e).__name__)
+    return {'mode': 'reuse', 'hwnd': hwnd, 'process': target.get('process')}
+
+
 register_action('launch_url', _run_launch_url, validate=_validate_launch_url,
                 needs_lock=False, confirm=None,
                 describe='Open an absolute http(s) URL in the default browser.')
+register_action('navigate_url', _run_navigate_url,
+                validate=_validate_navigate_url, needs_lock=True, confirm=None,
+                describe='Open a URL NAVIGATING IN PLACE (P0 UX [42]): '
+                         'reuses the foreground/visible browser tab via '
+                         'Ctrl+L + type + Enter under the input lock; '
+                         'first-ever open (no browser window) launches the '
+                         'default handler. Prefer over launch_url for any '
+                         'browser navigation.')
 register_action('search_youtube', _run_search_youtube,
                 validate=_validate_search_youtube, needs_lock=False, confirm=None,
                 describe='Open YouTube search results for a query string.')
