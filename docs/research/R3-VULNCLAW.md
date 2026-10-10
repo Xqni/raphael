@@ -2,7 +2,7 @@
 
 **Assessment ID:** R3-VULNCLAW
 **Type:** QA-Security Reviewer (paper-only)
-**Project:** /home/dami/raphael
+**Project:** <repo-root>
 **Date:** Fri Oct 09 2026
 **Scope:** Evaluate VulnClaw strictly as an external black-box security test tool against Raphael's deliberately exposed surface (WS/REST API, relay, web UI). No runtime execution, no installation, no scanning, no code changes.
 
