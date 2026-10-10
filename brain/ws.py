@@ -618,6 +618,19 @@ class WsHub:
                              'answer': answer, 'accepted': True})
 
     async def _on_control(self, s: Session, msg: Dict[str, Any]):
+        # Wave 5P P1: `tier` field = set (string) / get (null or '');
+        # invalid tier = loud E_BAD_MSG (never silently normalized).
+        if 'tier' in msg:
+            from . import loop
+            try:
+                tier = loop.set_persona_tier(msg.get('tier'))
+            except ValueError as e:
+                await self._send(s, {'type': 'error', 'v': 1,
+                                     'code': 'E_BAD_MSG', 'detail': str(e)})
+                return
+            await self._send(s, {'type': 'ack', 'v': 1, 'ok': True,
+                                 'tier': tier})
+            return
         action = msg.get('action')
         persist = bool(msg.get('persist', True))
         try:

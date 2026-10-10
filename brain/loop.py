@@ -103,6 +103,103 @@ def _extract_tool_call(text: str):
     return None, {}
 
 
+# ---- persona tier (Wave 5P P1: config persona.tier + /control set/get) ------
+_session_tier: Optional[str] = None   # runtime override; None = config default
+
+
+def _persona_tier_names() -> Tuple[str, ...]:
+    """Known tier names; brain.persona.tiers (evolution lane) is the
+    authority. Import failure degrades to the wave-5 names — never a crash."""
+    try:
+        from .persona.tiers import TIERS
+        return tuple(TIERS)
+    except Exception:  # noqa: BLE001 — persona degrades, the loop never does
+        return ('great_sage', 'raphael', 'ciel')
+
+
+def persona_tier() -> str:
+    """Effective tier: session override -> config persona.tier -> great_sage.
+    Unknown/missing values fail CLOSED to great_sage (never an error)."""
+    tiers = _persona_tier_names()
+    if _session_tier in tiers:
+        return _session_tier
+    try:
+        t = appcfg.cfg_get(appcfg.get_config(), 'persona.tier', None)
+    except Exception:  # noqa: BLE001
+        t = None
+    return t if t in tiers else 'great_sage'
+
+
+def set_persona_tier(value: Optional[str]) -> str:
+    """Runtime tier set/get (P1, /control surface). None/'' -> get (no
+    change); an INVALID tier is a LOUD ValueError — tier is owner/config
+    authority, the model can never self-raise it (addendum §14)."""
+    global _session_tier
+    tiers = _persona_tier_names()
+    if value is None or not str(value).strip():
+        return persona_tier()
+    v = str(value).strip().lower()
+    if v not in tiers:
+        raise ValueError(f'unknown persona tier: {value!r} '
+                         f'(valid: {", ".join(tiers)})')
+    _session_tier = v
+    return v
+
+
+def reset_persona_tier_for_tests() -> None:
+    global _session_tier
+    _session_tier = None
+
+
+def _tier_prompt_paths() -> Dict[str, str]:
+    """tier -> prompt-file path from config persona.tiers (P1); {} on error."""
+    try:
+        spec = appcfg.cfg_get(appcfg.get_config(), 'persona.tiers', {}) or {}
+    except Exception:  # noqa: BLE001
+        return {}
+    return {str(k): str(v.get('prompt')) for k, v in spec.items()
+            if isinstance(v, dict) and v.get('prompt')}
+
+
+def _read_tier_prompt(name: str) -> Optional[str]:
+    path = _tier_prompt_paths().get(name)
+    if not path:
+        return None
+    try:
+        with open(path, encoding='utf-8') as f:
+            txt = f.read().strip()
+        return txt or None
+    except OSError:
+        return None
+
+
+def _tier_prompt_block() -> str:
+    """Tier prompt-file content for message assembly (P1). A missing or
+    unreadable prompt file fails CLOSED: fall back to great_sage's file and
+    surface ONE warn Notice (ratelimited); if that is missing too, no block —
+    the base operational prompt carries on and the loop never dies."""
+    tier = persona_tier()
+    block = _read_tier_prompt(tier)
+    if block:
+        return f'Persona tier ({tier}):\n{block}'
+    try:
+        from . import notice
+        if tier == 'great_sage':
+            notice.emit('Persona prompt for tier "great_sage" unavailable — '
+                        'using the base prompt.', level='warn',
+                        key='persona-tier-great_sage', cooldown_s=60.0)
+        else:
+            notice.emit(f'Persona prompt for tier "{tier}" unavailable — '
+                        'fail-closed to great_sage.', level='warn',
+                        key=f'persona-tier-{tier}', cooldown_s=60.0)
+    except Exception:  # noqa: BLE001 — a notice can never break assembly
+        pass
+    if tier == 'great_sage':
+        return ''
+    fb = _read_tier_prompt('great_sage')
+    return f'Persona tier (great_sage, fallback):\n{fb}' if fb else ''
+
+
 # ---- persona + multi-turn context ------------------------------------------
 def persona_system_prompt() -> str:
     """Raphael's system prompt, BUILT from config.voice_personality (addendum §10)."""
@@ -126,6 +223,12 @@ def persona_system_prompt() -> str:
         'screen (the UI shows your full reply as text, so details are not '
         'lost).',
     ]
+    # Wave 5P P1: the active tier's prompt file rides as its own block right
+    # after the identity line (identity first — the tier block is register +
+    # posture, not a replacement for the operational rules below).
+    tier_block = _tier_prompt_block()
+    if tier_block:
+        lines.insert(1, tier_block)
     if forms:
         lines.append('Canonical reply shapes: '
                      + '; '.join(str(f) for f in forms))
