@@ -3,6 +3,11 @@
 Updated: 2026-10-08 (Wave 5H + AUD-26)
 
 ## Done
+- **Wave 5P P1 (2026-10-09):** tier prompts authored from the canon brief (verified quotes:
+  §1 lineage/naming, §3 autonomy rules incl. "consent before destroying a resource", §4 tier
+  table, §5 Ciel delta; §7 register never asserted — lint-proven), debunk-register lint test
+  green (80 persona tests), tier continuity note committed. Small commits: 5f5e64a (prompts+note),
+  3d573cf (lint). Core Guard OK (20), staged personal-data scans 0 findings.
 - **MERGED 2026-10-08 — position 10/10, WAVE 5H CLOSED.** Verified: `ff1e13e` is an ancestor
   of `origin/main` (merge landed); post-merge checks on the merged main: `tests/core_guard.py` →
   `Core Guard OK (20 files byte-stable)`, evolution suite **93 passed**, persona suite
