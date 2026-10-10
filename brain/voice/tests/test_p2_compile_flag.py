@@ -35,12 +35,36 @@ def test_compile_flag_env_off():
 
 
 def test_compile_supported_by_vendored_server():
-    assert FishSpeechServer(load_voice_config())._compile_supported() is True
-
-
-def test_spawn_appends_compile_when_enabled(monkeypatch):
-    """_spawn's cmd gains --compile iff cfg.fish_compile (never twice)."""
+    """Probe asserts the REAL vendored tree carries --compile — but the
+    vendor tree is gitignored, so a lean CI checkout must SKIP, not fail
+    (the positive case runs wherever the tree exists: local + the pod)."""
+    import pytest
     cfg = load_voice_config()
+    utils = cfg.fish_vendor_path / "tools" / "server" / "api_utils.py"
+    if not utils.exists():
+        pytest.skip(f"fish vendor tree absent (lean checkout): {utils}")
+    assert FishSpeechServer(cfg)._compile_supported() is True
+
+
+def _fake_spawn_cfg(tmp_path):
+    """Config whose _spawn() prerequisites all EXIST without the real ~2GB
+    fish models — so argv construction is asserted on ANY checkout (CI
+    included; models/vendor are gitignored and only exist locally)."""
+    cfg = load_voice_config()
+    ckpt = tmp_path / "ckpt"
+    ckpt.mkdir()
+    (ckpt / "firefly-gan-vq-fsq-8x1024-21hz-generator.pth").write_bytes(b"x")
+    cfg.fish_checkpoint = str(ckpt)
+    venv_bin = tmp_path / "venv" / "bin"
+    venv_bin.mkdir(parents=True)
+    (venv_bin / "python").write_text("#!/bin/sh\n")
+    cfg.fish_venv = str(tmp_path / "venv")
+    return cfg
+
+
+def test_spawn_appends_compile_when_enabled(tmp_path):
+    """_spawn's cmd gains --compile iff cfg.fish_compile (never twice)."""
+    cfg = _fake_spawn_cfg(tmp_path)
     cfg.fish_compile = True
     fish = FishSpeechServer(cfg)
     cmd = _capture_cmd(fish)
@@ -48,8 +72,8 @@ def test_spawn_appends_compile_when_enabled(monkeypatch):
     assert cmd.count("--compile") == 1
 
 
-def test_spawn_omits_compile_when_disabled():
-    cfg = load_voice_config()
+def test_spawn_omits_compile_when_disabled(tmp_path):
+    cfg = _fake_spawn_cfg(tmp_path)
     cfg.fish_compile = False
     cmd = _capture_cmd(FishSpeechServer(cfg))
     assert "--compile" not in cmd
