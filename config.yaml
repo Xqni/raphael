@@ -39,7 +39,7 @@ runtime_opencode:
 # caps are {'stt'}, and chat paths require a chat/tools capability, so it can
 # never answer an LLM turn (brain/router/groq.py + core.py capability require).
 providers:
-  chain: [zen_free, go, groq]               # ordered failover: zen_free = opencode free+fast FIRST (2026-10-09: go answers slowly while weekly-cap=100%/balance-billed; zen free was3-4x faster live) · go = paid fallback · groq = STT-only tail / last-resort
+  chain: [go, zen_free, groq]               # OWNER-DECIDED 2026-10-10 (charter Q1: 'Go first, cloud profile'): go = opencode-go primary · zen_free = free fallback · groq = STT-only tail. (2026-10-09 zen-first reorder superseded; if go latency is poor at demo time, revisit WITH the owner via P0.8 metrics.)
   groq_base_url: https://api.groq.com/openai/v1   # GROQ_API_KEY from .env — never logged
   zen_base_url: https://opencode.ai/zen/v1
   go_base_url: https://opencode.ai/zen/go/v1
