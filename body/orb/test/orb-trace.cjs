@@ -80,6 +80,10 @@ async function launchOrb(cdpPort) {
       RAPHAEL_WS_URL: `ws://127.0.0.1:${Instance.wsPort()}/ws`,
       MESA_LOADER_DRIVER_OVERRIDE: 'd3d12',
       GALLIUM_DRIVER: 'd3d12',
+      RAPHAEL_ORB_OFFSCREEN_RENDER: '1',
+      // WAVE 5U: keep the gate window OFF the visible desktop — the user saw it
+      // flash across their screen mid-run. Rendering path is unchanged (same
+      // GL driver, same size); only the initial BrowserWindow x/y moves.
     },
   });
   const out = fs.createWriteStream(path.join(OUT, 'orb-stdout.log'), { flags: 'a' });

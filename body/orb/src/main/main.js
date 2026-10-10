@@ -320,6 +320,15 @@ function createWindow() {
     focusable: true,
     show: true,
     webPreferences: {
+      // TEST HOOK ONLY (Wave 5U): RAPHAEL_ORB_OFFSCREEN_RENDER=1 uses Electron
+      // offscreen rendering so the gate harness never presents a window on the
+      // user's desktop (they saw it flash). Two approaches were MEASURED and
+      // rejected first: an off-screen x/y is clamped back on-screen by the
+      // WSLg/Weston compositor (x=-5000 came back screenX=1616), and show:false
+      // renders ONE frame but throttles rAF (startup sampling 148 -> 7 samples,
+      // distinctness noise 0.000 -> 8.072) — so the gates must not use it.
+      // Same precedent as RAPHAEL_ORB_SIZE_PX; unset in production.
+      offscreen: process.env.RAPHAEL_ORB_OFFSCREEN_RENDER === '1',
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,

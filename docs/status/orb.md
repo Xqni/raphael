@@ -1984,3 +1984,66 @@ brain + mock suites`. Investigated rather than re-run blind:
   entries in the meantime.
 - Fixed by rebasing (not by touching anyone's file): baseline 179, gitleaks
   *"no leaks found"*, `ownership_check` **OK (30 files)**, delta orb-only.
+
+---
+
+# GATE WINDOWS OFF-SCREEN (user: "the orb flashed") — WAVE 5U
+
+The gate harness (`orb:trace`, `orb:size`) opens a real Electron window, and the
+user saw it **flash across their screen** during a ~9-minute run. Three
+approaches were tried; **two failed by measurement** and one was adopted.
+Recorded in full because the failures are the useful part.
+
+## 1. Off-screen coordinates — **FAIL (compositor clamps)**
+
+`RAPHAEL_ORB_OFFSCREEN=x,y` (precedent: the existing `RAPHAEL_ORB_SIZE_PX`
+"Test hook only" in `config.js`), launched with `-5000,-5000`. Read back from
+the renderer: `{"screenX":1616,"screenY":24}`.
+
+The WSLg/Weston compositor **clamped it straight back on-screen**. Negative
+coordinates do not work here.
+
+## 2. `show: false` (hide the window) — **FAIL (throttles rAF)**
+
+My first check said this worked: renderer alive, `frame=21`, screenshot
+"25.5% lit, core r40 = 149,156,157 → RENDERS". **That check was too shallow** —
+it proved *one frame* appears, not that the loop runs at rate. The full gate
+caught it immediately:
+
+| gate | with normal window | with `show:false` |
+|---|---|---|
+| startup samples | 148 | **7** (7930 ms) |
+| `confirm_card_hides_and_text_returns_to_zero` | ok | **FAIL** — the tick lives in `animate()`, which was throttled |
+| distinctness noise floor | 0.000 | **8.072** → threshold 12.109, **4 pairs fail** |
+
+A hidden window can render *a* frame but does not run the loop. Hook removed.
+
+**Lesson recorded:** a single screenshot is not evidence that an animation-gated
+gate still works. This is exactly the class of mistake that costs a full re-run.
+
+## 3. Electron offscreen rendering — **ADOPTED (verified on both axes)**
+
+`webPreferences.offscreen: true` behind `RAPHAEL_ORB_OFFSCREEN_RENDER='1'`
+(same test-hook precedent). Measured before adopting — deliberately on **both**
+axes this time:
+
+| check | result |
+|---|---|
+| frame rate over 2 s | **43.0 FPS** (frames 336 → 422) — no throttling |
+| startup-style spin probe, polled at 50 ms | **40 / 40 samples** |
+| `Page.captureScreenshot` | 23.0% lit, core r40 = `76,98,89` |
+
+The window is never presented, so it cannot flash, yet the render loop runs at
+full rate — which is what gates 1 and 2 both needed.
+
+Wired into `test/orb-trace.cjs` and `test/orb-size.cjs`; `orb-diff` needs no
+change (it only reads the PNGs the other two write). **Production is unchanged**
+when the env var is absent — `offscreen: false` — same contract as
+`RAPHAEL_ORB_SIZE_PX`.
+
+## Not used: Xvfb
+
+The standard CI answer is a virtual display, but `Xvfb`/`xvfb-run` are **not
+installed** on this box (`which Xvfb` → nothing), and installing system packages
+is out of scope for a lane task. If infra wants it, that is the most idiomatic
+long-term fix and would supersede the hook.
