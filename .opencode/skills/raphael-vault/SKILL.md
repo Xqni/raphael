@@ -6,14 +6,14 @@ description: Raphael's own Obsidian vault — her persona canon, memory journal,
 # raphael-vault skill
 
 Raphael's personal Obsidian vault: persona canon + memory journal. The REPO
-(`/home/dami/raphael`) stays the source of truth for code and process; the VAULT is the
+(`<repo-root>`) stays the source of truth for code and process; the VAULT is the
 source of truth for persona and memory. This is separate from the damianqt pipeline vault
-(`C:\Users\jxesu\damianqt-vault` — YouTube/comics sessions own that; never cross-write).
+(`C:\<win-user>\damianqt-vault` — YouTube/comics sessions own that; never cross-write).
 
 ## Paths (recorded once — never guess again)
 
-- Obsidian (Windows): `C:\Users\jxesu\raphael-vault`
-- WSL (tools live here): `/mnt/c/Users/jxesu/raphael-vault`
+- Obsidian (Windows): `C:\<win-user>\raphael-vault`
+- WSL (tools live here): `/mnt/c/<win-user>/raphael-vault`
 
 ## Layout
 

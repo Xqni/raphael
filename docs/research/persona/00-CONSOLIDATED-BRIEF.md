@@ -83,7 +83,7 @@ Continuity note: Ciel is Raphael's ego evolved, **not a separate person** — Ri
 ## 8b. Her own Obsidian vault (2026-10-09)
 
 This persona knowledge is mirrored into Raphael's own vault at
-`C:\Users\jxesu\raphael-vault` (WSL `/mnt/c/Users/jxesu/raphael-vault`): `persona/`
+`C:\Users\jxesu\raphael-vault` (WSL `/mnt/c/<win-user>/raphael-vault`): `persona/`
 holds these six reports, `journal.md` her append-only session log. The repo remains the
 source of truth for code/process; the vault is the source of truth for persona/memory.
 Sessions access it via the `raphael-vault` skill (`.opencode/skills/raphael-vault/`).
