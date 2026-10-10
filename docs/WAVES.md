@@ -149,6 +149,21 @@ removal rides the HUMAN-approved history rewrite in ATTENTION).
 **Wave 6 stays HUMAN-GATED** (see ATTENTION: repo visibility, PAT scope, history rewrite,
 branch protection, cloud-vs-RAM, Node-on-Windows). current_wave stays 5 until the user opens it.
 
+## Wave 5P — persona adoption sprint (PROPOSED 2026-10-09; runs INSIDE wave 5; current_wave stays 5)
+
+Codifies Raphael/Ciel from the canon research (`docs/research/persona/`) plus the vetted
+companion takeaways (`docs/research/companions/00-COMPANION-TAKEAWAYS.md`) into the code.
+Full packet + design laws + exit criteria: `docs/research/persona/06-CODE-ADOPTION-PLAN.md`.
+
+Packets: P1 persona tiers as runtime state · P2 voice tier parameters · P3 user-editable
+confirm policy (extends R5 confirm-categories) · P4 clarify-on-ambiguity · P5 named
+context slots · P6 spoken memory privacy · P7 journal-as-memory-surface · P8 notice tone.
+Merge order: P1 → P3/P4 → P5 → P6 → P7 → P2/P8. DEFERRED on record: proactive
+suggestion engine (AUD-06 human gate), cross-device sync, cloud-VM execution,
+mouth-anthropomorphism, wave-6 local models (RAM gate).
+
+**Lanes remain PAUSED; this wave starts only on the user's go.**
+
 ## Wave 6 — NOT NOW
 
 **WAVE-5 GATE PASSED 2026-10-07 — tag `wave-5-gate`:** all 10 lanes merged; mock sweep
