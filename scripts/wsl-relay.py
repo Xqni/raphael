@@ -175,8 +175,34 @@ def main():
     srv.listen(128)
     print("[wsl-relay] %s:%d -> 127.0.0.1:%d" % (ip, LISTEN_PORT,
                                                  DIAL_PORT), flush=True)
+    accept_loop(srv)
+    return 0
+
+
+def accept_loop(srv):
+    """Resilient accept loop — ported from the Windows leg's
+    zombie-listener guard (supervisor/main.py, incident 2026-10-08; this
+    helper stayed bare and died on the FIRST transient OSError, and with
+    one spawn per bring-up and no watchdog the whole chain went dark until
+    a manual rescue — recurring wedges 2026-10-08 AND 2026-10-09,
+    design-review finding 3).
+
+    Semantics (identical to the Windows leg): a transient accept OSError
+    is LOGGED and the loop CONTINUES while the bound socket lives; only
+    `fileno() == -1` (socket really gone) ends the loop. The connection
+    semaphore and thread-per-connection model are unchanged."""
     while True:
-        client, _addr = srv.accept()
+        try:
+            client, _addr = srv.accept()
+        except OSError as exc:
+            if srv.fileno() == -1:
+                print("[wsl-relay] listener closed — accept loop exiting",
+                      flush=True)
+                return
+            print("[wsl-relay] transient accept OSError (%s) — continuing"
+                  % exc, flush=True)
+            time.sleep(0.1)
+            continue
         if not _slots.acquire(blocking=False):
             try:
                 client.close()
