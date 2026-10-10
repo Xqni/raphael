@@ -48,6 +48,15 @@ def migrate(conn) -> None:
     cur.execute('''
     CREATE INDEX IF NOT EXISTS idx_memories_owner ON memories(owner, category)
     ''')
+    # P5 (wave 5P): named context slots — every memory is tagged; guard so
+    # wave-1..5H DBs (already shipped) gain the column additively.
+    _mcols = {r[1] for r in cur.execute('PRAGMA table_info(memories)')}
+    if 'slot' not in _mcols:
+        cur.execute("ALTER TABLE memories ADD COLUMN slot TEXT "
+                    "NOT NULL DEFAULT 'default'")
+    cur.execute('''
+    CREATE INDEX IF NOT EXISTS idx_memories_slot ON memories(owner, slot)
+    ''')
 
     # FTS5 index (external content = memories) + sync triggers. Availability is
     # detected, not assumed: if this sqlite build lacks FTS5, fts.ensure()
