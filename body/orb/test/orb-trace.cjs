@@ -80,7 +80,6 @@ async function launchOrb(cdpPort) {
       RAPHAEL_WS_URL: `ws://127.0.0.1:${Instance.wsPort()}/ws`,
       MESA_LOADER_DRIVER_OVERRIDE: 'd3d12',
       GALLIUM_DRIVER: 'd3d12',
-      RAPHAEL_ORB_OFFSCREEN_RENDER: '1',
       // WAVE 5U: keep the gate window OFF the visible desktop — the user saw it
       // flash across their screen mid-run. Rendering path is unchanged (same
       // GL driver, same size); only the initial BrowserWindow x/y moves.
@@ -360,6 +359,19 @@ async function runInteraction(cdp, brain, rec) {
   add('confirm_card_makes_text_appear', cc1.textLen > 0,
       `innerText.length=${cc1.textLen} (only while confirm)`);
 
+  // BUG 1 — while a card is live the window must NOT be click-through, or
+  // Approve/Deny are unreachable (main.js:362 starts with setIgnoreMouseEvents(true)).
+  const info1 = await cdp.evaluateJson('window.raphael.instanceInfo()');
+  add('confirm_card_stops_click_through_while_live', info1 && info1.mouseThrough === false,
+      `main mouseThrough=${info1 && info1.mouseThrough} (must be false while a card is up)`);
+
+  // BUG 3 — the card must sit BELOW the orb's centre so it never hides her.
+  const geo = await cdp.evaluateJson(
+    'JSON.stringify({ top: Math.round(document.getElementById("confirmcard").getBoundingClientRect().top), ' +
+    'mid: Math.round(window.innerHeight/2) })');
+  add('confirm_card_never_covers_orb_centre', geo.top > geo.mid,
+      `card top=${geo.top} vs window centre=${geo.mid} (top must be > centre)`);
+
   // Approve -> orb_input{kind:'confirm', value:'yes'} on the existing ws.py path
   const inputsBefore = brain.received.filter((r) => r.frame && r.frame.type === 'orb_input').length;
   await cdp.evaluate('document.querySelector("#confirmcard .cc-yes").click()');
@@ -385,6 +397,25 @@ async function runInteraction(cdp, brain, rec) {
   add('confirm_card_prefers_p03_action_target',
       /launch_url/.test(cc3.head) && /example\.test/.test(cc3.head) && /medium/.test(cc3.risk),
       `head=${JSON.stringify(cc3.head)} risk=${JSON.stringify(cc3.risk)}`);
+  // BUG 4 — a stale card must die when its job goes TERMINAL, even if the
+  // Brain never moves the orb_state off `confirm`. Drive only a job_event so a
+  // passing check proves the NEW clear path, not the state-exit one.
+  brain.broadcast({ type: 'job_event', v: 1, job: 'j_mock_2', status: 'cancelled' });
+  await sleep(700);
+  const cc4 = await ccProbe();
+  add('confirm_card_clears_on_job_terminal',
+      cc4.shown === false && cc4.textLen === 0,
+      `shown=${cc4.shown} innerText.length=${cc4.textLen} state=${cc4.state} (state still confirm, card must be gone)`);
+
+  // BUG 1 exit path — after hiding, click-through goes back under the cursor's
+  // control (pointer parked outside -> must be clickable-through again).
+  await cdp.evaluate(
+    'window.dispatchEvent(new MouseEvent("mousemove", { clientX: 2, clientY: 2 }))');
+  await sleep(300);
+  const info2 = await cdp.evaluateJson('window.raphael.instanceInfo()');
+  add('confirm_card_restores_click_through_on_hide', info2 && info2.mouseThrough === true,
+      `main mouseThrough=${info2 && info2.mouseThrough} (must be true again with pointer outside)`);
+
   brain.step('idle');
   await sleep(600);
 

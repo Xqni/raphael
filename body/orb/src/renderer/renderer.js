@@ -134,18 +134,27 @@ function renderConfirmCard(c) {
 /** Visible ONLY while the orb is in `confirm` with a live, unexpired request —
  *  the state is the single authority (PROTOCOL §9: the orb renders, it never
  *  decides). */
+let confirmOpen = false;   // drives the click-through policy, like typedOpen
+
 function updateConfirmCard() {
   if (!cc.root) return;
   const inConfirm = orbState.orbState === 'confirm';
   // Resolved means the Brain moved OFF `confirm` — the request is no longer
   // pending, so drop it. A REJECTION never moves the state, which is exactly
   // why the card stays up there (and why dropping on state-change is safe).
-  // Without this the last payload would linger and be re-shown by a later
-  // synthetic `confirm` state with stale text.
   if (!inConfirm) cc.pending = null;
   const live = !!cc.pending && inConfirm &&
                (!cc.pending.expires_at || Date.now() < cc.pending.expires_at);
+  if (live === confirmOpen) return;         // nothing changed — don't fight the mouse
+  confirmOpen = live;
   cc.root.classList.toggle('show', live);
+  // BUG 1: the window is click-through by default (main.js:362
+  // setIgnoreMouseEvents(true, {forward:true})), so Approve/Deny were
+  // unreachable — clicks passed straight through to whatever is behind. While a
+  // card is live the window must stop ignoring the mouse, exactly like
+  // openTyped/closeTyped already do for the text box; on hide the policy goes
+  // back to the cursor.
+  setMouseThrough(live ? false : !pointerInside);
 }
 const params = new URLSearchParams(window.location.search);
 const DEMO = params.get('demo') === '1';
@@ -1444,6 +1453,18 @@ if (window.raphael) {
   window.raphael.onAnswer((a) => { traceRx('answer', a); updateAnswer(a); });
   window.raphael.onReport((r) => { traceRx('report', r); updateReport(r); });
   window.raphael.onJobs((j) => { orbJobs = Array.isArray(j) ? j : []; traceRx('jobs', { n: orbJobs.length }); });
+  // BUG 4: a stale card must die when its job goes terminal (cancel / timeout),
+  // not only when an orb_state push happens to move the state off `confirm`.
+  // `jobs` (above) carries the FILTERED list and cannot distinguish "terminal"
+  // from "never seen", so this uses the raw job_event forwarded by main.js.
+  if (window.raphael.onJobEvent) window.raphael.onJobEvent((m) => {
+    if (!m || !cc.pending || m.job !== cc.pending.job) return;
+    if (['done', 'failed', 'cancelled', 'interrupted'].includes(m.status)) {
+      traceRx('confirm_cleared_terminal', { job: m.job, status: m.status });
+      cc.pending = null;
+      updateConfirmCard();
+    }
+  });
   window.raphael.onConfirm((c) => {
     traceRx('confirm', c);
     cc.pending = c || null;
@@ -1515,7 +1536,9 @@ function setMouseThrough(through) {
 }
 
 function setPointerInside(v) {
-  if (v === pointerInside || typedOpen) return;
+  // `confirmOpen` joins `typedOpen`: while a card is on screen the window must
+  // stay clickable, so the cursor must not hand click-through back.
+  if (v === pointerInside || typedOpen || confirmOpen) return;
   pointerInside = v;
   setMouseThrough(!v);
 }

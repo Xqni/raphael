@@ -98,7 +98,6 @@ async function once(size, scale, verbose) {
       RAPHAEL_WS_URL: `ws://127.0.0.1:${wsPort}/ws`,
       MESA_LOADER_DRIVER_OVERRIDE: 'd3d12',
       GALLIUM_DRIVER: 'd3d12',
-      RAPHAEL_ORB_OFFSCREEN_RENDER: '1',
     },
   });
 

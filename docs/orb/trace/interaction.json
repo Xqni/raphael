@@ -134,6 +134,18 @@
       "pass": true
     },
     {
+      "name": "confirm_card_stops_click_through_while_live",
+      "ok": true,
+      "detail": "main mouseThrough=false (must be false while a card is up)",
+      "pass": true
+    },
+    {
+      "name": "confirm_card_never_covers_orb_centre",
+      "ok": true,
+      "detail": "card top=157 vs window centre=140 (top must be > centre)",
+      "pass": true
+    },
+    {
       "name": "confirm_approve_sends_orb_input",
       "ok": true,
       "detail": "orb_input frames: [\"yes\"]",
@@ -152,6 +164,18 @@
       "pass": true
     },
     {
+      "name": "confirm_card_clears_on_job_terminal",
+      "ok": true,
+      "detail": "shown=false innerText.length=0 state=confirm (state still confirm, card must be gone)",
+      "pass": true
+    },
+    {
+      "name": "confirm_card_restores_click_through_on_hide",
+      "ok": true,
+      "detail": "main mouseThrough=true (must be true again with pointer outside)",
+      "pass": true
+    },
+    {
       "name": "hit_test_decision",
       "ok": true,
       "detail": "dist=0 hitR=112.0 viewport=280x280 inside=true typedOpen=false",
@@ -160,13 +184,13 @@
     {
       "name": "mousemove_listener_wired",
       "ok": true,
-      "detail": "listener saw clientX=140 clientY=140 dist=0.0 inside=true seen=1 (expect inside == dist<=112)",
+      "detail": "listener saw clientX=82 clientY=279 dist=150.6 inside=false seen=5 (expect inside == dist<=112)",
       "pass": true
     },
     {
       "name": "main_follows_renderer",
       "ok": true,
-      "detail": "renderer.pointerInside=true -> main.mouseThrough=false (must be the exact opposite)",
+      "detail": "renderer.pointerInside=false -> main.mouseThrough=true (must be the exact opposite)",
       "pass": true
     },
     {

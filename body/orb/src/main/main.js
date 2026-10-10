@@ -320,15 +320,8 @@ function createWindow() {
     focusable: true,
     show: true,
     webPreferences: {
-      // TEST HOOK ONLY (Wave 5U): RAPHAEL_ORB_OFFSCREEN_RENDER=1 uses Electron
-      // offscreen rendering so the gate harness never presents a window on the
-      // user's desktop (they saw it flash). Two approaches were MEASURED and
-      // rejected first: an off-screen x/y is clamped back on-screen by the
-      // WSLg/Weston compositor (x=-5000 came back screenX=1616), and show:false
-      // renders ONE frame but throttles rAF (startup sampling 148 -> 7 samples,
-      // distinctness noise 0.000 -> 8.072) — so the gates must not use it.
-      // Same precedent as RAPHAEL_ORB_SIZE_PX; unset in production.
-      offscreen: process.env.RAPHAEL_ORB_OFFSCREEN_RENDER === '1',
+      // NB: no window-hiding test hook here — see docs/status/orb.md
+      // "gate windows off-screen" for the FOUR mechanisms measured and rejected.
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
@@ -849,6 +842,13 @@ function startStatusWS() {
   });
   statusWS.on('jobs', (jobs) => {
     if (win && !win.isDestroyed()) win.webContents.send('orb-jobs', jobs);
+  });
+  // WAVE 5U bug 4: the orb must clear a stale confirm card on job_terminal /
+  // cancelled, not only on an orb_state push. `jobs` above carries the FILTERED
+  // list (ws-status.js:123 drops terminal rows) so the renderer cannot tell
+  // "gone because terminal" from "never seen" — forward the raw event instead.
+  statusWS.on('job_event', (m) => {
+    if (win && !win.isDestroyed()) win.webContents.send('job_event', m);
   });
   statusWS.on('answer', (a) => {
     if (win && !win.isDestroyed()) win.webContents.send('answer', a);

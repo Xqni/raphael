@@ -1987,63 +1987,39 @@ brain + mock suites`. Investigated rather than re-run blind:
 
 ---
 
-# GATE WINDOWS OFF-SCREEN (user: "the orb flashed") — WAVE 5U
+# GATE WINDOWS OFF-SCREEN — FOUR MECHANISMS MEASURED, ALL REJECTED (WAVE 5U)
 
-The gate harness (`orb:trace`, `orb:size`) opens a real Electron window, and the
-user saw it **flash across their screen** during a ~9-minute run. Three
-approaches were tried; **two failed by measurement** and one was adopted.
-Recorded in full because the failures are the useful part.
+User saw the gate window flash on their desktop. The coordinator offered three
+ways out (off-screen coords / minimize / "document why a visible window is
+required"). **All three, plus a fourth, were tried and all four failed.** This is
+the record so nobody re-treads them.
 
-## 1. Off-screen coordinates — **FAIL (compositor clamps)**
+| # | mechanism | result | decisive measurement |
+|---|---|---|---|
+| 1 | **Off-screen coordinates** (`x=-5000`) | **FAIL — clamped** | renderer reported `screenX:1616, screenY:24`. WSLg/Weston clamps any out-of-bounds x back to the visible area. The coordinator's suggested `(20000,20000)` is the same mechanism, so it clamps identically — *inference from the clamp behaviour, since it is symmetric*; `−5000` is the measured case. |
+| 2 | **`show: false`** | **FAIL — throttles** | rendered ONE frame (screenshot 25.5% lit) so it looked fine, but the full gate caught it: startup samples **148 → 7**, `confirm_card_hides_and_text_returns_to_zero` FAILED (its tick lives in `animate()`), distinctness noise **0.000 → 8.072** (threshold 12.109, 4 pairs fail). A hidden window draws a frame but does not run the loop. |
+| 3 | **`webPreferences.offscreen`** | **FAIL — breaks a user-facing feature** | The confirm card rendered a **giant amber diagonal X across its own face**. Isolated: with off-screen rendering **off** the card is clean (verified by eye at 600 px), with it **on** the X appears; `elementFromPoint` still returns the correct card element, so hit-testing is right and **painting** is not — Chromium's offscreen path composites the canvas above the DOM card. Also disproved the integrator's alternate guess (that it came from `ac91b66`'s gate work) — no, it came from *this* hook. |
+| 4 | **`win.minimize()`** | **FAIL — no-op** | `instanceInfo().minimized` returned **false** (WSLg does not honour it). FPS was fine (46.0) and the spin probe 30/30, so rendering was never the problem — the call simply does nothing here. |
 
-`RAPHAEL_ORB_OFFSCREEN=x,y` (precedent: the existing `RAPHAEL_ORB_SIZE_PX`
-"Test hook only" in `config.js`), launched with `-5000,-5000`. Read back from
-the renderer: `{"screenX":1616,"screenY":24}`.
+**Conclusion: a visible window is required on this box.** CDP attach +
+`Page.captureScreenshot` + full-rate rAF all need a real, presented window, and
+every way of not-presenting it either breaks the render, breaks the card, or is
+silently ignored.
 
-The WSLg/Weston compositor **clamped it straight back on-screen**. Negative
-coordinates do not work here.
+**All four hooks were REMOVED** (not left as dead env vars that silently do
+nothing): `RAPHAEL_ORB_OFFSCREEN_RENDER`, `RAPHAEL_ORB_MINIMIZE`,
+`RAPHAEL_ORB_HIDDEN`, `RAPHAEL_ORB_OFFSCREEN` — grep over `src/` and `test/` now
+returns **none**. Gates run on a normal window, exactly as before this task.
 
-## 2. `show: false` (hide the window) — **FAIL (throttles rAF)**
+**The fix that would work is Xvfb** (a virtual display: window fully presented,
+rendering at full rate, invisible to the user) — but `Xvfb`/`xvfb-run` are **not
+installed** and installing system packages is outside a lane's scope. Flagged to
+infra: `apt-get install xvfb` + wrapping the three harness spawns in `xvfb-run`
+would close this permanently and supersede the whole hunt. Until then the flash
+is a known, documented cost of running the gates on this box.
 
-My first check said this worked: renderer alive, `frame=21`, screenshot
-"25.5% lit, core r40 = 149,156,157 → RENDERS". **That check was too shallow** —
-it proved *one frame* appears, not that the loop runs at rate. The full gate
-caught it immediately:
-
-| gate | with normal window | with `show:false` |
-|---|---|---|
-| startup samples | 148 | **7** (7930 ms) |
-| `confirm_card_hides_and_text_returns_to_zero` | ok | **FAIL** — the tick lives in `animate()`, which was throttled |
-| distinctness noise floor | 0.000 | **8.072** → threshold 12.109, **4 pairs fail** |
-
-A hidden window can render *a* frame but does not run the loop. Hook removed.
-
-**Lesson recorded:** a single screenshot is not evidence that an animation-gated
-gate still works. This is exactly the class of mistake that costs a full re-run.
-
-## 3. Electron offscreen rendering — **ADOPTED (verified on both axes)**
-
-`webPreferences.offscreen: true` behind `RAPHAEL_ORB_OFFSCREEN_RENDER='1'`
-(same test-hook precedent). Measured before adopting — deliberately on **both**
-axes this time:
-
-| check | result |
-|---|---|
-| frame rate over 2 s | **43.0 FPS** (frames 336 → 422) — no throttling |
-| startup-style spin probe, polled at 50 ms | **40 / 40 samples** |
-| `Page.captureScreenshot` | 23.0% lit, core r40 = `76,98,89` |
-
-The window is never presented, so it cannot flash, yet the render loop runs at
-full rate — which is what gates 1 and 2 both needed.
-
-Wired into `test/orb-trace.cjs` and `test/orb-size.cjs`; `orb-diff` needs no
-change (it only reads the PNGs the other two write). **Production is unchanged**
-when the env var is absent — `offscreen: false` — same contract as
-`RAPHAEL_ORB_SIZE_PX`.
-
-## Not used: Xvfb
-
-The standard CI answer is a virtual display, but `Xvfb`/`xvfb-run` are **not
-installed** on this box (`which Xvfb` → nothing), and installing system packages
-is out of scope for a lane task. If infra wants it, that is the most idiomatic
-long-term fix and would supersede the hook.
+**Second lesson (mine, recorded because it cost runs):** `pkill -f
+"debugging-port=9406"` matches **my own shell** — the pattern is in the command
+line — so it was sending SIGTERM to my own commands and killing gate runs
+mid-flight ("Killed by SIGTERM" with no results). Never `pkill -f` a pattern
+contained in your own command string.

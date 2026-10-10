@@ -7,6 +7,7 @@ contextBridge.exposeInMainWorld('raphael', {
   onConfirm: (cb) => ipcRenderer.on('confirm', (_e, c) => cb(c)),
   onNotice: (cb) => ipcRenderer.on('notice', (_e, n) => cb(n)),
   onJobs: (cb) => ipcRenderer.on('orb-jobs', (_e, j) => cb(j)),
+  onJobEvent: (cb) => ipcRenderer.on('job_event', (_e, m) => cb(m)),
   onAnswer: (cb) => ipcRenderer.on('answer', (_e, a) => cb(a)),
   onReport: (cb) => ipcRenderer.on('report', (_e, r) => cb(r)),
   onPalette: (cb) => ipcRenderer.on('orb-palette', (_e, p) => cb(p)),
