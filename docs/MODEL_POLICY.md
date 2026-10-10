@@ -9,9 +9,9 @@ Sol burn was cache+output on a 1M-token session, not the per-call price).
 | Role | Pick | Price in/out per 1M (cache read) | Why |
 |---|---|---|---|
 | Integrator default | opencode/mimo-v2.6-flash-free | $0 (free) | policy #1; paid only per-turn by request |
-| Lane routine default | opencode-go/mimo-v2.5 | $0.14/$0.28 ($0.0028) | proven all-wave workhorse; best cache economics of any paid model |
+| Lane routine default ('everything else') | opencode-go/mimo-v2.5 | $0.14/$0.28 ($0.0028) | USER 2026-10-09: 'other cheaper models for everything else' — proven workhorse; best cache economics |
 | Lane sessions (ALL) | opencode-go/mimo-v2.5 | $0.14/$0.28 ($0.0028) | USER 2026-10-09: no model upgrades on sessions — flagships/strong models are per-DELEGATION subagent picks only; the earlier haiku session assignments were reverted |
-| Deep research / hard debug | opencode-go/deepseek-v4-pro | $0.66/$1.98 ($0.022) | proven on today's canon re-runs; USER-APPROVED 2026-10-09 ('deepseek-v4 when needed') |
+| Issues & debugging (default) | opencode-go/claude-haiku-5-5 | $0.10/$0.50 ($0.01) | USER 2026-10-09: 'use haiku 5.5 for issues and debugs, cheaper models for everything else' — the default debug/issue tier; escalate to deepseek-v4-pro ($0.66/$1.98, also user-approved) only when haiku stalls |
 | Small paid per-delegation (user-approved set) | claude-haiku-5-5 ($0.10/$0.50), gpt-6-luna ($0.10/$0.50), deepseek-v4-pro ($0.66/$1.98) | | USER 2026-10-09: approved 'when needed' AND 'only for really tough tasks' — qualifying class ONLY: hard debugging after 2 failed cheaper attempts, intricate race/security design, or one-off hard problems. NOT for routine delegation; free/mimo covers everything else; never session defaults |
 | Big-context tasks (>200k) | opencode-go/minimax-m3 | $0.30/$1.20 ($0.06) | 512k context — cheapest big-brain |
 | Code-specialist escalations | opencode-go/kimi-k2.7-code | $0.95/$4.00 ($0.19) | named-task only |

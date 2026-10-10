@@ -313,6 +313,11 @@ class WakeStream:
     """
 
     BLOCK_FRAMES = 1600   # 100ms @16k
+    # Cut A live-bug fix (integrator glue 2026-10-09, voice-owned file): the
+    # grace hold at the run loop referenced self.CONTINUATION_GRACE which only
+    # existed on VadSegmenter -> AttributeError killed the wake task at startup
+    # ("wake task died") and the mic went deaf. One source of truth:
+    CONTINUATION_GRACE = VadSegmenter.CONTINUATION_GRACE
 
     def __init__(self, on_frame, on_start, on_end, device=None,
                  log=None):
