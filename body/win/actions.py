@@ -53,7 +53,13 @@ LOG_MAX_BYTES = 5 * 1024 * 1024  # rotate the action log (1 backup)
 # 2026-10-07: `report` landed via protocol-report-act.md (APPROVED AS
 # PROPOSED, integrator edited §7 by hand).
 # 2026-10-07 F-3: `activity` pending via protocol-activity-act.md.
+# 2026-10-10: `navigate_url` landed in §7 (integrator grant [44]) — removed.
+# 2026-10-10: `browser{op,...}` is ALREADY in §7 (Wave 5U P1 pre-approval)
+# but NOT yet implemented — Wave B builds act_browser.py; the conformance
+# test subtracts DOC_PENDING_IMPLEMENTATION from the missing set so §7 and
+# the registry can drift ONLY in this one documented direction.
 PENDING_PROTO_ADDITIONS = ('activity',)
+DOC_PENDING_IMPLEMENTATION = ('browser',)
 
 
 class ActionError(Exception):

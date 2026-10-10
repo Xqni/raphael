@@ -14,6 +14,7 @@ SPECS = (
         {'url': prop_string('Absolute http(s) URL to open, e.g. '
                             '"https://www.example.com/page".')},
         ('url',),
+        confirm='auto',
     ),
     spec(
         'search_youtube',
@@ -23,6 +24,24 @@ SPECS = (
         {'query': prop_string('Search terms (max 200 chars), e.g. '
                               '"lo-fi hip hop".')},
         ('query',),
+        confirm='auto',
+    ),
+    spec(
+        'navigate_url',
+        'Open a URL by NAVIGATING IN PLACE — the preferred tool for any '
+        'browser navigation (P0 UX): reuses the foreground browser tab '
+        '(Ctrl+L, type URL, Enter) or the visible browser window (focus '
+        'first), so "open YouTube" then "search X" does NOT spawn a second '
+        'tab. First-ever open (no browser window anywhere) launches the '
+        'default handler. Requires the input lock (keystrokes). Use this '
+        'instead of launch_url/search_youtube whenever the target is a web '
+        'page; launch_url stays for "open a NEW tab/window" requests.',
+        {'url': prop_string('Absolute http(s) URL to navigate to, e.g. '
+                            '"https://www.youtube.com/results?'
+                            'search_query=pewdiepie".')},
+        ('url',),
+        needs_lock=True,
+        confirm='auto',
     ),
     spec(
         'open_app',
@@ -37,6 +56,7 @@ SPECS = (
         {'name': prop_string('Installed app name or executable stem, e.g. '
                              '"notepad", "chrome", "Calculator".')},
         ('name',),
+        confirm='auto',
     ),
     spec(
         'open_path',
@@ -59,5 +79,6 @@ SPECS = (
         'need to know what is open.',
         {},
         (),
+        confirm='auto',
     ),
 )

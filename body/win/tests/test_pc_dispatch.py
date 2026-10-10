@@ -25,9 +25,12 @@ def protocol_seven_actions():
 def test_registry_matches_protocol_enum_plus_requested_additions():
     doc = protocol_seven_actions()
     reg = set(actions.action_names())
-    # Every §7 action is implemented...
-    missing = doc - reg
+    # Every §7 action is implemented EXCEPT the documented Wave-B pending
+    # (`browser` was pre-approved into §7; act_browser.py lands in Wave B).
+    missing = doc - reg - set(actions.DOC_PENDING_IMPLEMENTATION)
     assert not missing, 'PROTOCOL §7 actions not implemented: %s' % sorted(missing)
+    assert set(actions.DOC_PENDING_IMPLEMENTATION) <= doc, (
+        'DOC_PENDING_IMPLEMENTATION entries must be real §7 members')
     # ...and the ONLY extras are the three documented additions.
     extra = reg - doc
     assert extra == set(actions.PENDING_PROTO_ADDITIONS), sorted(extra)

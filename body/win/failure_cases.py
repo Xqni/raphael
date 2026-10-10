@@ -41,6 +41,7 @@ INVALID_ARGS = {
     'list_running_apps': {'bogus': 1},
     'report': {'op': 'save', 'title': 't', 'body': 'not json', 'format': 'json'},
     'activity': {'op': 'teleport'},
+    'navigate_url': {'url': 'javascript:alert(1)'},   # same scheme guard
 }
 
 # action -> (FakeWin method that raises BackendError, happy args)
@@ -65,6 +66,7 @@ CRASH_CASES = {
     'report': ('reports_dir', {'op': 'save', 'title': 'Crash',
                                'body': 'crash body'}),
     'activity': ('set_volume', {'op': 'undo'}),
+    'navigate_url': ('list_windows', {'url': 'https://crash.test'}),
 }
 
 

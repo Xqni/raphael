@@ -14,6 +14,7 @@ SPECS = (
         '100 = loudest). Read-only action otherwise; no confirmation needed.',
         {'level': prop_int('Volume percent 0-100.', 0, 100)},
         ('level',),
+        confirm='auto',
     ),
     spec(
         'brightness',
@@ -21,6 +22,7 @@ SPECS = (
         'Laptops only — desktop monitors may not respond.',
         {'level': prop_int('Brightness percent 0-100.', 0, 100)},
         ('level',),
+        confirm='auto',
     ),
     spec(
         'media',
@@ -30,6 +32,7 @@ SPECS = (
         {'op': prop_enum('Media command to send.', _MEDIA_OPS)},
         ('op',),
         needs_lock=True,
+        confirm='auto',
     ),
     spec(
         'notify',
@@ -37,6 +40,7 @@ SPECS = (
         'Use to surface a short message to the user without speaking.',
         {'text': prop_string('Notification text, 1-500 chars.')},
         ('text',),
+        confirm='auto',
     ),
     spec(
         'clipboard',
@@ -48,5 +52,6 @@ SPECS = (
          'text': prop_string('Text to write — required only when op=write '
                              '(max 100000 chars).')},
         ('op',),
+        confirm='auto',
     ),
 )
