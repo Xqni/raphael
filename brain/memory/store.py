@@ -40,20 +40,23 @@ def _validate(text: Any, source: Any, category: Any) -> str:
 
 
 def remember(text: Any, *, source: str = 'observed', category: str = 'fact',
-             pinned: bool = False, owner: Optional[str] = None) -> int:
+             pinned: bool = False, owner: Optional[str] = None,
+             slot: Optional[str] = None) -> int:
     """Store one memory. Returns the new row id. Raises ValueError on
     empty text / unknown source / category. AUD-15 retention: oldest
     UNPINNED rows beyond `memory.max_rows` are dropped in the same
-    transaction (pinned rows are never trimmed)."""
-    from . import get_conn
+    transaction (pinned rows are never trimmed).
+    P5: rows are tagged with `slot` (default = the ACTIVE context slot)."""
+    from . import get_conn, slots
     text = _validate(text, source, category)
+    slot_val = slots.validate(slot) if slot is not None else slots.active_slot()
     conn = get_conn()
     try:
         cur = conn.execute(
-            'INSERT INTO memories (text, source, category, pinned, owner) '
-            'VALUES (?, ?, ?, ?, ?)',
+            'INSERT INTO memories (text, source, category, pinned, owner, slot) '
+            'VALUES (?, ?, ?, ?, ?, ?)',
             (text, source, category, 1 if pinned else 0,
-             owner or default_owner()))
+             owner or default_owner(), slot_val))
         _trim(conn, owner or default_owner())
         conn.commit()
         return int(cur.lastrowid)

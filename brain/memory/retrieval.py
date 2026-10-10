@@ -60,27 +60,28 @@ def _scored(row: Dict[str, Any], base: float) -> Dict[str, Any]:
     return row
 
 
-def _fts_matches(conn, toks: List[str], owner: str, limit: int) -> List[Dict[str, Any]]:
+def _fts_matches(conn, toks: List[str], owner: str, slot: str,
+                 limit: int) -> List[Dict[str, Any]]:
     """BM25 via FTS5. bm25() returns NEGATIVE values (more negative = better),
-    so base = -bm25 (higher = better)."""
+    so base = -bm25 (higher = better). P5: scoped to owner + active slot."""
     expr = ' OR '.join(f'"{t}"' for t in toks)
     rows = conn.execute(
-        'SELECT m.id, m.text, m.ts, m.source, m.category, m.pinned, '
+        'SELECT m.id, m.text, m.ts, m.source, m.category, m.pinned, m.slot, '
         '       bm25(memories_fts) AS rank '
         'FROM memories_fts JOIN memories m ON m.id = memories_fts.rowid '
-        'WHERE memories_fts MATCH ? AND m.owner = ? '
+        'WHERE memories_fts MATCH ? AND m.owner = ? AND m.slot = ? '
         'ORDER BY rank LIMIT ?',
-        (expr, owner, int(limit))).fetchall()
+        (expr, owner, slot, int(limit))).fetchall()
     return [_scored(dict(r), -float(r['rank'])) for r in rows]
 
 
-def _keyword_matches(conn, toks: List[str], owner: str,
+def _keyword_matches(conn, toks: List[str], owner: str, slot: str,
                      limit: int) -> List[Dict[str, Any]]:
     """Fallback (no FTS5): token-overlap scoring, same return shape."""
     tokset = {t.lower() for t in toks}
     rows = conn.execute(
-        'SELECT id, text, ts, source, category, pinned FROM memories '
-        'WHERE owner = ?', (owner,)).fetchall()
+        'SELECT id, text, ts, source, category, pinned, slot FROM memories '
+        'WHERE owner = ? AND slot = ?', (owner, slot)).fetchall()
     out = []
     for r in rows:
         d = dict(r)
@@ -93,24 +94,29 @@ def _keyword_matches(conn, toks: List[str], owner: str,
 
 
 def retrieve(query: Any, k: Optional[int] = None, *,
-             owner: Optional[str] = None) -> List[Dict[str, Any]]:
+             owner: Optional[str] = None,
+             slot: Optional[str] = None) -> List[Dict[str, Any]]:
     """Pinned always + top-k matches. Returns [{id, text, ts, source,
-    category, pinned, score}] — DATA ONLY (wrap with block.py before any
-    model sees it). Fail-silent: errors -> []."""
+    category, pinned, slot, score}] — DATA ONLY (wrap with block.py before any
+    model sees it). Fail-silent: errors -> [].
+    P5: scoped to `slot` if given (read-only override — asking about another
+    slot must NOT switch the active context), else the active slot."""
     conn = None
     try:
         k = int(k if k is not None else (_cfg('memory.top_k', 5) or 5))
         if k <= 0:
             return []
         owner = owner or default_owner()
-        from . import get_conn
+        from . import get_conn, slots
+        slot = slots.validate(slot) if slot is not None \
+            else slots.active_slot()      # P5: scoped to active (or override)
         conn = get_conn()
 
         pinned_rows = [dict(r) for r in conn.execute(
-            'SELECT id, text, ts, source, category, pinned FROM memories '
-            'WHERE owner = ? AND pinned = 1 '
+            'SELECT id, text, ts, source, category, pinned, slot FROM memories '
+            'WHERE owner = ? AND slot = ? AND pinned = 1 '
             'ORDER BY uses DESC, ts DESC LIMIT ?',
-            (owner, _PINNED_CAP)).fetchall()]
+            (owner, slot, _PINNED_CAP)).fetchall()]
         pinned_ids = {r['id'] for r in pinned_rows}
         for r in pinned_rows:
             r['score'] = float('inf')              # pinned sorts first by design
@@ -121,7 +127,7 @@ def retrieve(query: Any, k: Optional[int] = None, *,
             try:
                 if _fts.available():
                     try:
-                        matches = _fts_matches(conn, toks, owner,
+                        matches = _fts_matches(conn, toks, owner, slot,
                                                k + len(pinned_ids))
                     except Exception:  # noqa: BLE001 — corrupt/unusable index:
                         try:
@@ -129,9 +135,9 @@ def retrieve(query: Any, k: Optional[int] = None, *,
                         except Exception:  # noqa: BLE001
                             pass
                         matches = _keyword_matches(  # degrade, keep the turn
-                            conn, toks, owner, k + len(pinned_ids))
+                            conn, toks, owner, slot, k + len(pinned_ids))
                 else:
-                    matches = _keyword_matches(conn, toks, owner,
+                    matches = _keyword_matches(conn, toks, owner, slot,
                                                k + len(pinned_ids))
             except Exception:  # noqa: BLE001 — catastrophic: pinned still ship
                 matches = []

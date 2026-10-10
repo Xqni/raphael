@@ -49,6 +49,11 @@ def _clean_state():
             _mcp._booted = False
         except Exception:  # noqa: BLE001
             pass
+        try:                                  # P5: no context-slot leakage
+            from brain.memory import slots as _slots
+            _slots.reset_cache_for_tests()
+        except Exception:  # noqa: BLE001
+            pass
         conn = get_conn()
         try:
             conn.execute('DELETE FROM memories')
@@ -56,6 +61,7 @@ def _clean_state():
             conn.execute('DELETE FROM plugins_index')
             conn.execute('DELETE FROM schedules')
             conn.execute('DELETE FROM reports')
+            conn.execute("DELETE FROM state WHERE key = 'active_slot'")
             conn.commit()
         finally:
             conn.close()

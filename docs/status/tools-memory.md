@@ -1,8 +1,69 @@
 # tools-memory — status
 
-Updated: 2026-10-08 (GREEN BRANCH CI ACHIEVED — QA-4 satisfied; details below)
+Updated: 2026-10-10 (Wave 5U Wave A: confirm-class tags DONE — handoff below)
 
-## ✅ GREEN CI RUN: 37788108245 (branch `agent/tools-memory`, head `05320c8`)
+## Wave 5U Wave A (§5.4 P0.1) — confirm-class tags ✅ 2026-10-10
+
+- **Delivered:** every tool in my six namespaces carries an explicit
+  `confirm=<class>` (registry metadata consumed at loop.py:585):
+  `web_*=web_fetch` · `file_read/file_search/shell_list/github_status/mcp_list
+  /timer_list/schedule_list=read_only` · `file_write/file_restore=files_write`
+  · `file_trash=delete_files` · `shell=system_command` · `github_push=web_publish`
+  · `timer_set/timer_cancel/reminder_set/schedule_set/schedule_cancel=schedule`
+  · `mcp_refresh` + dynamic wrapped `=mcp_tool` (charter: wrapped default
+  confirm until config marks a read-only class — Wave-C task 5).
+- **Coordination (P0.2):** class names filed for the integrator's
+  `safety.confirm_policy` (Core Guard): request
+  `tools-memory__to__integrator__wave5u-confirm-classes.md`
+  (new: read_only/schedule auto; system_command/web_publish/mcp_tool confirm).
+  Until it lands: tags fail CLOSED (safe direction, never a loosening).
+- **Tests (5):** coverage derived from package SPECS (an untagged future tool
+  fails by construction — the P0.2 guard), exact charter mapping, vocabulary
+  drift guard, risky⇒tagged (pc rule + risky trio classes), MCP wrapped
+  default `mcp_tool` via fake server.
+- **Battery (fresh base, sequential):** memory **217** | brain **242** |
+  root **270 passed, 1 failed** — the 1 = `contract/test_config_and_tools.py::
+  test_cloud_temp_chain_has_no_local_providers` (**MAIN-SIDE**, evidence:
+  `git log origin/main..HEAD -- config.yaml` = empty — my branch never
+  touched it; config says `chain: [zen_free,...]` (integrator commit
+  13bcfae) while qa's test asserts `chain[0]=='go'` — both on current main,
+  fails on plain origin/main). Same class as the voice tier test
+  (`test_tier_default_is_great_sage_on_the_approved_reference` — also fails
+  on latest main, verified post-rebase; my earlier error post stands).
+  gitleaks+regen **exit 0**; scan_personal my-files **0**; repo FAIL **0**.
+- **PUSH/DISPATCH pending** for the green id (covers wave-5P wave_done too —
+  [31]); branch CI stays red on the two main-side tests until their owners
+  align them.
+
+## Wave 5P — persona adoption packets P5/P6/P7 (all ✅ 2026-10-09)
+
+**Binding inputs read first:** `06-CODE-ADOPTION-PLAN.md` (packets + design laws)
++ `00-CONSOLIDATED-BRIEF.md` (canon + **debunk register** — no refuted claim
+entered any of my prompts/docs/strings; my features are persona-neutral
+plumbing, tone lives in P1/P2).
+
+| Packet | Delivered | Tests |
+|---|---|---|
+| **P5 context slots** | `memories.slot` guarded ALTER (default `'default'` → byte-identical parity: all 189 prior tests green unchanged), `brain/memory/slots.py` (validate/switch/list; state-table persistence → survives restart; act-first no-confirm per spec), retrieval + `build_context` scoped to active slot incl. pinned; `retrieve(slot=)` read-only override (asking ≠ switching); profile global by design | 10 |
+| **P6 spoken privacy** | wave-4 export/delete **verified FIRST** (7/7 + quotes: `export_all`/`wipe`/`store.forget`/`delete_skill`/trash); `brain/memory/privacy.py`: `recall` (owner+slot scoped, speakable, bad-slot raises for clarify), `forget_fact` (**needs_confirm preview → confirmed delete**, owner-wide, never cross-owner, idempotent), `memory_report` (local paragraph + export/wipe pointers); router-boom private-mode test = all local | 6 |
+| **P7 journal** | `brain/memory/journal.py` → repo-root `vault/journal.md` (gitignored ✓): **append-only `'a'` only** (source-shape + prefix tests), redaction-before-write (secrets→REDACTED, ids/paths→SEC-1 placeholders), dated single-line entries, `read_recent` read-back, fail-silent; tmp fixtures never touch real vault; SEC-1 pre-commit flagged my rule literals 12 → **assembled → 0** | 7 |
+
+- **Seam request** `tools-memory__to__brain-core__wave5p-memory-seams.md`
+  (all three packets' intent surface for brain-core's fastpath: switch/recall/
+  forget-confirm/report/journal append+read).
+- **Suites (2026-10-09, one at a time):** memory **212** | brain **242** |
+  root **271 passed, 7 xfailed, 0 failed**. scan_personal: my files **0**,
+  repo-wide FAIL-severity **0** (86 REVIEW = ledger/transitional). gitleaks
+  with policy-regenerated baseline: **exit 0**.
+- **PENDING for QA-4:** push cycle + branch dispatch (same as wave-5H:
+  I verify remote==HEAD first, dispatch, reply with green id → wave_done).
+
+## Wave 5H / 5P merge note
+- TEMP exceptions entry (gitleaks-baseline) was removed at my position-9
+  merge per its note — my baseline regens since are per SCANNERS.md policy
+  and will need the same treatment at the next merge (flag it in wave_done).
+
+## GREEN CI RUN (wave-5H): 37788108245 (5/5, head 05320c8)
 
 - **5/5 jobs SUCCESS**: Security scanners (gitleaks `no leaks found` ×3 +
   pip-audit + bandit + npm audit) | Ubuntu brain+mock suites | Windows body |

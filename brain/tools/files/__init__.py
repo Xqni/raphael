@@ -275,20 +275,25 @@ def file_restore(trash_id: str) -> str:
 def register(_reg=None) -> None:
     reg = _reg if _reg is not None and hasattr(_reg, 'register') else _tool_reg
     reg.register('file_search', file_search, risky=False, category='local',
+                 confirm='read_only',
                  description='glob-search files under an allowed directory',
                  schema=SPECS['file_search'])
     reg.register('file_read', file_read, risky=False, category='local',
+                 confirm='read_only',
                  description='read a text file (capped; secret files refused)',
                  schema=SPECS['file_read'])
     reg.register('file_write', file_write, risky=True, category='local',
+                 confirm='files_write',
                  description='write/append a text file inside allowed roots '
                              '(CONFIRM-gated per AUD-01; sensitive paths denied)',
                  schema=SPECS['file_write'])
     reg.register('file_trash', file_trash, risky=True, category='local',
+                 confirm='delete_files',
                  description='MOVE a path to trash (recoverable; confirm-gated) '
                              '— there is no delete tool',
                  schema=SPECS['file_trash'])
     reg.register('file_restore', file_restore, risky=False, category='local',
+                 confirm='files_write',
                  description='restore a trashed path by its trash id',
                  schema=SPECS['file_restore'])
 

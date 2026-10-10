@@ -116,11 +116,12 @@ def register(_reg=None) -> None:
     # Overwrites the wave-2 placeholder `shell` (shell=True) — metadata stays
     # risky=True; command surface narrows to the script allow-list.
     reg.register('shell', shell, risky=True, needs_lock=False,
-                 category='local',
+                 category='local', confirm='system_command',
                  description='run a REGISTERED script by name (fixed script '
                              'registry, confirm-gated; no arbitrary commands)',
                  schema=SPECS['shell'])
     reg.register('shell_list', shell_list, risky=False, category='local',
+                 confirm='read_only',
                  description='list the registered shell scripts',
                  schema=SPECS['shell_list'])
 

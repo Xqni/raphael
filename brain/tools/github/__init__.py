@@ -115,10 +115,12 @@ def github_push(remote: Any = 'origin', branch: Any = '') -> str:
 def register(_reg=None) -> None:
     reg = _reg if _reg is not None and hasattr(_reg, 'register') else _tool_reg
     reg.register('github_status', github_status, risky=False, category='local',
+                 confirm='read_only',
                  description='check gh/git/token presence (values never shown); '
                              'repo creation/visibility is a human action',
                  schema=SPECS['github_status'])
     reg.register('github_push', github_push, risky=True, category='local',
+                 confirm='web_publish',
                  description='git push the local repo (confirm-gated)',
                  schema=SPECS['github_push'])
 

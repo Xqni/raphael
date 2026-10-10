@@ -440,17 +440,19 @@ def pump_pending_count() -> int:
 
 def register(_reg=None) -> None:
     reg = _reg if _reg is not None and hasattr(_reg, 'register') else _tool_reg
-    for name, fn, desc in (
-            ('timer_set', timer_set, 'set a countdown timer (fires as a spoken job)'),
-            ('timer_list', timer_list, 'list pending timers and reminders'),
-            ('timer_cancel', timer_cancel, 'cancel a pending timer/reminder by id'),
-            ('reminder_set', reminder_set, 'set a reminder at an ISO datetime'),
+    for name, fn, desc, cls in (
+            ('timer_set', timer_set, 'set a countdown timer (fires as a spoken job)', 'schedule'),
+            ('timer_list', timer_list, 'list pending timers and reminders', 'read_only'),
+            ('timer_cancel', timer_cancel, 'cancel a pending timer/reminder by id', 'schedule'),
+            ('reminder_set', reminder_set, 'set a reminder at an ISO datetime', 'schedule'),
             ('schedule_set', schedule_set,
-             'set a recurring schedule (every Nm|h|d / daily HH:MM)'),
-            ('schedule_list', schedule_list, 'list pending recurring schedules'),
+             'set a recurring schedule (every Nm|h|d / daily HH:MM)', 'schedule'),
+            ('schedule_list', schedule_list, 'list pending recurring schedules', 'read_only'),
             ('schedule_cancel', schedule_cancel,
-             'cancel a recurring schedule by id')):
-        reg.register(name, fn, risky=False, category='local',
+             'cancel a recurring schedule by id', 'schedule')):
+        # Wave 5U §5.4 P0: every tool carries an explicit confirm class
+        # (P0.2 fail-closed: no class -> confirm; class -> policy lookup).
+        reg.register(name, fn, risky=False, category='local', confirm=cls,
                      description=desc, schema=SPECS[name])
 
 

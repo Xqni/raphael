@@ -364,12 +364,15 @@ def web_summarize(question: Any, url: Any = None, text: Any = None) -> str:
 def register(_reg=None) -> None:
     reg = _reg if _reg is not None and hasattr(_reg, 'register') else _tool_reg
     reg.register('web_fetch', web_fetch, risky=False, category='local',
+                 confirm='web_fetch',
                  description='fetch an http(s) page as text (SSRF-guarded, capped)',
                  schema=SPECS['web_fetch'])
     reg.register('web_search', web_search, risky=False, category='local',
+                 confirm='web_fetch',
                  description='web search returning [{title,url}] JSON',
                  schema=SPECS['web_search'])
     reg.register('web_summarize', web_summarize, risky=False, category='local',
+                 confirm='web_fetch',
                  description='summarize a URL or inline text via the router',
                  schema=SPECS['web_summarize'])
 

@@ -222,6 +222,7 @@ def _register_dynamic(cfg_srv: Dict[str, Any], tools: List[Dict[str, Any]]):
         _tool_reg.register(
             tname, _make_call(cfg_srv['name'], t['name']),
             risky=risky, needs_lock=False, category='local',
+            confirm='mcp_tool',            # Wave 5U §5.4: wrapped = confirm
             description=f"{t['description']} [MCP {cfg_srv['name']}]",
             schema=t['schema'])
         registered.append(tname)
@@ -378,10 +379,12 @@ def shutdown_clients() -> None:
 def register(_reg=None) -> None:
     reg = _reg if _reg is not None and hasattr(_reg, 'register') else _tool_reg
     reg.register('mcp_list', mcp_list, risky=False, category='local',
+                 confirm='read_only',
                  description='list configured MCP servers and their '
                              'callable (allow-listed) tools',
                  schema=SPECS['mcp_list'])
     reg.register('mcp_refresh', mcp_refresh, risky=False, category='local',
+                 confirm='mcp_tool',
                  description='reconnect MCP servers and re-register '
                              'allow-listed tools',
                  schema=SPECS['mcp_refresh'])
