@@ -131,12 +131,13 @@ async def test_subtitles_flow_per_sentence_before_batching():
 
 @pytest.mark.asyncio
 async def test_batch_defaults_come_from_lane_config():
-    """config.d/brain-core.yaml carries the knobs (2 / 1.5 by default)."""
+    """config.d/brain-core.yaml carries the knobs (1 / 0 since the kokoro
+    owner call 2026-10-10: first sentence speaks ASAP, no batching)."""
     from brain import config as appcfg
     assert appcfg.cfg_get(appcfg.get_config(), 'agent.speak_batch_sentences',
-                          None) == 2
+                          None) == 1
     assert appcfg.cfg_get(appcfg.get_config(), 'agent.speak_batch_wait_s',
-                          None) == 1.5
+                          None) == 0
     v = FakeVoice()
     spk = loop_mod._SentenceSpeaker(None, 'j_cfg', v)   # no explicit knobs
-    assert spk.batch_size == 2 and abs(spk.batch_wait_s - 1.5) < 1e-9
+    assert spk.batch_size == 1 and spk.batch_wait_s == 0

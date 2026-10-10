@@ -232,13 +232,19 @@ def register_builtin_intents():
             return None
         # UX pairing (coord decision 2026-10-10): repeat search with a
         # browser up navigates the EXISTING tab to the results page.
+        from . import worldstate as _ws_state
+        _tab = _ws_state.active_tab()
         if _browser_reuse_available() and _have_tool('navigate_url'):
+            _url = ('https://www.youtube.com/results?search_query='
+                    + quote_plus(q))
+            _ws_state.record_search(q, 'youtube', _url,
+                                    tab_id=(_tab or {}).get('tab_id'))
             return IntentResult(
                 text=f'Searching YouTube for {q}…',
-                tool='navigate_url',
-                tool_args={'url': 'https://www.youtube.com/results'
-                                  '?search_query=' + quote_plus(q)},
+                tool='navigate_url', tool_args={'url': _url},
                 task_kind='web')
+        _ws_state.record_search(q, 'youtube', '',
+                                tab_id=(_tab or {}).get('tab_id'))
         return IntentResult(text=f'Searching YouTube for {q}…',
                             tool='search_youtube', tool_args={'query': q},
                             task_kind='web')
@@ -247,6 +253,65 @@ def register_builtin_intents():
         # P3: the policy map is config-owned; the answer is deterministic.
         from . import confirm as _confirm
         return IntentResult(text=_confirm.policy_summary(), task_kind='none')
+
+    # ---- Wave 5U task 6: browser follow-ups (world-state seams) -----------
+    # Tool names coordinated with pc-control (request brain-core__to__
+    # pc-control__browser-followup-tools.md). Registry probe = safe pairing
+    # window: tool not landed yet -> HONEST refusal, never fake success.
+    def _no_browser_tool(name):
+        return IntentResult(
+            text=(f'The browser worker is not connected — I cannot do that '
+                  f'yet ({name} unavailable).'),
+            task_kind='none')
+
+    def _scroll(text, ctx):
+        direction = 'up' if 'up' in text else 'down'
+        if _have_tool('browser_scroll'):
+            return IntentResult(text=f'Scrolling {direction}.',
+                                tool='browser_scroll',
+                                tool_args={'direction': direction},
+                                needs_lock=True, task_kind='gui')
+        return _no_browser_tool('browser_scroll')
+
+    def _go_back(text, ctx):
+        if _have_tool('browser_back'):
+            return IntentResult(text='Going back.', tool='browser_back',
+                                tool_args={}, needs_lock=True,
+                                task_kind='gui')
+        return _no_browser_tool('browser_back')
+
+    def _go_forward(text, ctx):
+        if _have_tool('browser_forward'):
+            return IntentResult(text='Going forward.', tool='browser_forward',
+                                tool_args={}, needs_lock=True,
+                                task_kind='gui')
+        return _no_browser_tool('browser_forward')
+
+    def _read_page(text, ctx):
+        if _have_tool('browser_read'):
+            return IntentResult(text='Reading the page.',
+                                tool='browser_read', tool_args={},
+                                task_kind='web')
+        return _no_browser_tool('browser_read')
+
+    def _open_result(text, ctx):
+        m = re.search(
+            r'\b(\d+|first|second|third|fourth|fifth|sixth|seventh|'
+            r'eighth|ninth|tenth)\b', text, re.IGNORECASE)
+        if not m:
+            return None
+        token = m.group(1).lower()
+        _words = {'first': 1, 'second': 2, 'third': 3, 'fourth': 4,
+                  'fifth': 5, 'sixth': 6, 'seventh': 7, 'eighth': 8,
+                  'ninth': 9, 'tenth': 10}
+        n = _words.get(token) or (int(token) if token.isdigit() else 0)
+        if not (1 <= n <= 10):
+            return None
+        if _have_tool('browser_click'):
+            return IntentResult(text=f'Opening result {n}.',
+                                tool='browser_click', tool_args={'n': n},
+                                needs_lock=True, task_kind='gui')
+        return _no_browser_tool('browser_click')
 
     def _screenshot(text, ctx):
         return IntentResult(text='Taking a screenshot…', tool='screenshot',
@@ -295,6 +360,22 @@ def register_builtin_intents():
                 'what is the date', "what's the date", 'time today'):
         register_intent(_kw, _now)
 
+    # task 6 follow-ups — registered BEFORE 'open ' so result-ordinals win
+    # the prefix race against the generic app/URL launch intent
+    for _n, _w in ((1, 'first'), (2, 'second'), (3, 'third'), (4, 'fourth'),
+                   (5, 'fifth'), (6, 'sixth'), (7, 'seventh'), (8, 'eighth'),
+                   (9, 'ninth'), (10, 'tenth')):
+        register_intent(f'open the {_w} result', _open_result)
+        register_intent(f'open result {_n}', _open_result)
+    register_intent('scroll down', _scroll)
+    register_intent('scroll up', _scroll)
+    for _kw in ('go back a page', 'go back', 'browser back'):
+        register_intent(_kw, _go_back)
+    for _kw in ('go forward a page', 'go forward', 'browser forward'):
+        register_intent(_kw, _go_forward)
+    for _kw in ('read this page', 'read the page'):
+        register_intent(_kw, _read_page)
+    register_intent('now search ', _search)
     register_intent('open ', _open)
     # Bug B (router request APPROVED): explicit search intents — the
     # docstring always promised YouTube search on the fast path.

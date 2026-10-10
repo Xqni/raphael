@@ -45,6 +45,7 @@ CAN_SEND_CONTROL = {'ui', 'body', 'cli'}
 CAN_SEND_ACT_RES = {'body'}
 CAN_SEND_ORB_INPUT = {'ui'}
 CAN_SEND_FOREGROUND = {'body'}      # AUD-05 push (grant: pc dispatch 2026-10-08)
+CAN_SEND_BROWSER_TAB = {'body'}     # Wave 5U task 6 world-state push
 CAN_SEND_STATE_REQ = {'ui', 'cli'}
 CAN_SEND_JOB_QUERY = {'ui', 'body', 'cli'}
 CAN_SEND_CANCEL = {'ui', 'body', 'cli'}
@@ -52,7 +53,7 @@ CAN_SEND_CANCEL = {'ui', 'body', 'cli'}
 KNOWN_CLIENT_TYPES = {
     'command', 'audio_start', 'audio_end', 'confirm_resp', 'control', 'act_res',
     'orb_input', 'state_req', 'job_list', 'job_get', 'cancel', 'pong', 'auth',
-    'foreground',
+    'foreground', 'browser_tab',
 }
 
 MAX_MSG = 8 * 1024 * 1024          # §1: 8 MiB
@@ -449,6 +450,7 @@ class WsHub:
             'audio_end': CAN_SEND_AUDIO,
             'confirm_resp': CAN_SEND_CONFIRM_RESP,
             'control': CAN_SEND_CONTROL,
+            'browser_tab': CAN_SEND_BROWSER_TAB,
             'act_res': CAN_SEND_ACT_RES,
             'orb_input': CAN_SEND_ORB_INPUT,
             'foreground': CAN_SEND_FOREGROUND,
@@ -721,6 +723,18 @@ class WsHub:
                     return
         # plain interaction — acknowledged; deeper menu wiring is orb-dev's side
         await self._send(s, {'type': 'ack', 'v': 1, 'kind': kind})
+
+    async def _on_browser_tab(self, s: Session, msg: Dict[str, Any]):
+        """Wave 5U task 6: active browser tab push (pc-control; PROTOCOL
+        request brain-core__to__integrator__browser-tab-frame.md). role=body
+        only; empty/null url CLEARS the tab context; never breaks session."""
+        from . import worldstate
+        try:
+            worldstate.record_browser_tab(msg.get('url'), msg.get('title'),
+                                          msg.get('tab_id'))
+        except Exception:  # noqa: BLE001 — world state must never kill a frame
+            pass
+        await self._send(s, {'type': 'ack', 'v': 1, 'kind': 'browser_tab'})
 
     async def _on_foreground(self, s: Session, msg: Dict[str, Any]):
         """AUD-05 foreground frame consumer (pc-control contract, request

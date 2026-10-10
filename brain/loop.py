@@ -767,10 +767,15 @@ def build_runner(hub=None):
                     out = {'b64': f'<omitted {len(out.get("b64") or "")} '
                                   f'b64 chars>',
                            'bytes': out.get('bytes')}
+                from . import worldstate as _wstate   # task 6: last action
+                _wstate.record_action(tool_name, True, args)
                 return (True, '' if out is None else str(out))
             except _JobAborted:
                 raise
             except Exception as e:  # noqa: BLE001 — tool failure, not loop crash
+                from . import worldstate as _wstate
+                _wstate.record_action(tool_name, False, args,
+                                      detail=f'{type(e).__name__}: {e}')
                 return (False, f'{tool_name} failed: {type(e).__name__}: {e}'[:300])
             finally:
                 if needs_lock:
