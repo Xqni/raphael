@@ -1,7 +1,8 @@
 """persona.tier switch test plan (docs/evolution/03-tier-switch-test-plan.md).
 
 Two layers:
-  A) REAL repo — the lane fragment sets the default tier and must never touch
+  A) REAL repo — the lane fragment sets the default tier (Wave 5P: production default
+     is `raphael`, mirroring the integrator-owned base) and must never touch
      authority keys (safety/providers) from the integrator-owned config.yaml;
   B) TMP config tree — per-tier `voice_personality` overlays ride the standard
      config.d deep-merge: mappings merge, lists/scalars replace, and
@@ -27,9 +28,17 @@ def _clean(monkeypatch, tmp_path):
 
 
 # ---------- A) real repo ----------------------------------------------------
-def test_lane_fragment_sets_default_tier_great_sage():
+def test_lane_fragment_default_tier_matches_integrator_base():
+    """Wave 5P: the integrator-owned base (config.yaml persona.tier) is the
+    production default; the lane fragment must MIRROR it exactly (the fragment
+    is the promotion flip-point, never a silent override)."""
     c = cfg.load_config(force=True)
-    assert tiers.tier_of(c) == "great_sage"
+    assert tiers.tier_of(c) == "raphael"
+    base = yaml.safe_load(cfg.CONFIG_PATH.read_text(encoding="utf-8"))
+    frag = yaml.safe_load(
+        (cfg.CONFIG_PATH.parent / "config.d" / "evolution-persona.yaml")
+        .read_text(encoding="utf-8"))
+    assert frag["persona"]["tier"] == base["persona"]["tier"]
     assert tiers.tier_of(c) in tiers.TIERS
 
 
