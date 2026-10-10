@@ -155,7 +155,11 @@ def test_risky_tool_metadata_gates_llm_dispatch(client, qa_token,
         job = ack['job']
         conf = cli.wait(lambda m: m.get('type') == 'needs_confirm'
                         and m.get('job') == job, timeout=10)
-        assert 'file_trash' in conf['question'], conf  # metadata reason surfaced
+        # P3 live (brain-core c5e131f): the metadata gate classifies
+        # file_trash -> policy class delete_files, and the question
+        # surfaces the CLASS (integrator transitional fix, credited qa —
+        # the old assert pinned the pre-P3 tool-name wording).
+        assert 'delete_files' in conf['question'], conf  # class reason surfaced
         cli.send({'type': 'confirm_resp', 'v': 1, 'job': job, 'answer': 'no'})
         final = _wait_terminal(cli, job, timeout=8)
         assert final['status'] == 'cancelled', final   # never dispatched

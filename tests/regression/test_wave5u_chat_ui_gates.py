@@ -40,7 +40,17 @@ def test_no_innerhtml_sinks_in_orb_renderer():
     sinks = ("innerHTML", "outerHTML", "insertAdjacentHTML", "document.write")
     offenders = []
     for f in _shipped_files():
-        text = f.read_text(encoding="utf-8", errors="replace")
+        # comment-aware (integrator transitional fix 2026-10-10, credited qa):
+        # the naive substring scan flagged orb's OWN guard comment ("never
+        # innerHTML") in renderer.js. Strip //, /* */ and # comment lines —
+        # real sinks (assignments/calls) still redden the suite.
+        code_lines = []
+        for line in f.read_text(encoding="utf-8", errors="replace").splitlines():
+            s = line.lstrip()
+            if s.startswith(("//", "/*", "*", "#")):
+                continue
+            code_lines.append(line)
+        text = "\n".join(code_lines)
         for s in sinks:
             if s in text:
                 offenders.append(f"{f.relative_to(REPO)}: {s}")
