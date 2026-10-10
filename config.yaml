@@ -148,6 +148,8 @@ safety:
       # Wave 5U additions (tools-memory request wave5u-confirm-classes, approved 2026-10-10)
       read_only: auto                      # file_read/search, shell_list, github_status, mcp_list, schedule readers
       schedule: auto                       # timers/reminders/schedule writers (reversible local)
+      send_email: confirm                  # (added 2026-10-10: was in confirm_actions but missing from classes — qa PENDING ledger)
+      account_login: confirm               # (same)
       system_command: confirm              # shell
       web_publish: confirm                 # github_push / publishing
       mcp_tool: confirm                    # MCP wrapped tools + mcp_refresh (spawn)
