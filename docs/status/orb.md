@@ -1948,3 +1948,39 @@ Evidence: `docs/orb/confirm-card.png` (280×280, captured with `__orbLockPose`
 so it is deterministic) — DOM probe alongside it: `shown=true`,
 head="Open YouTube and play lo-fi?", risk="high", job="job j_mock_1",
 innerText=59, state=confirm.
+
+### Final gate record (Wave A, run on the shipped code)
+
+```
+npm run test:unit        PASS — 7 suites (7 morph, 4 gl-recovery, 5 morph-clock,
+                           8 palette, 8 port-safety, state-machine, 13 boot-sequence)
+npm run orb:trace        PASS — boot 5/5 · cage 4/4 · startup 7/7 (peak 2.042,
+                           rest 0.193, governor acted 0x) · transparency
+                           borderA0/rgb0 · BugC 6/6 · wave5 9/9 ·
+                           interaction **40/40** (was 34/34) · DISTINCTNESS
+                           pass=true 104 pairs failures 0 (weakest jobs vs
+                           thinking = 0.52) · shape directive ["circle"]
+npm run orb:size         PASS — 12 combos, worst drift 4.8% of 12%, edge gap 3px,
+                           min coverage 59.5%
+node test/orb-diff.cjs   PASS — noise floor 0.000 → threshold 0.300
+npm audit --audit-level=high --registry=npmjs   found 0 vulnerabilities, exit 0
+python3 scripts/scan_personal.py --strict        STRICT PASS (0 FAIL-severity)
+```
+
+CI (branch, after rebasing onto main): **38031429376 — success, 5/5 jobs**.
+
+### Two CI failures that were NOT mine (recorded, both resolved by rebasing)
+
+The first branch run (**38031023602**) failed on `Security scanners` + `Ubuntu —
+brain + mock suites`. Investigated rather than re-run blind:
+
+- **gitleaks** flagged 19 findings — **all in other lanes' files** (`PROGRESS.md`,
+  `docs/research/persona/*`, `.opencode/skills/raphael-vault/*`,
+  `.opencode/research/*`); **zero** in `body/orb/**`, `docs/orb/**` or my status
+  doc.
+- `git show --stat HEAD` proved my commit touched **only** my own files; the
+  other-lane files showed up in `origin/main..HEAD` purely because the branch was
+  **7 commits behind**, and main had grown the gitleaks baseline **160 → 179**
+  entries in the meantime.
+- Fixed by rebasing (not by touching anyone's file): baseline 179, gitleaks
+  *"no leaks found"*, `ownership_check` **OK (30 files)**, delta orb-only.
