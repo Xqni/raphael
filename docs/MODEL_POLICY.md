@@ -1,5 +1,42 @@
 # MODEL_POLICY.md — Raphael build-time model tiering (DRAFT, Phase 0)
 
+## CURRENT SPENDING POLICY — 2026-10-09 (overrides historical tier advice below)
+
+Incident record: switching the long-context integrator session to Sol burned
+~$3 of extra-usage credit within minutes ($9.72 -> $6.75, user-verified on the
+web dashboard). Root cause: ~1M+ token session context x $0.2/M cache-read +
+$10/M output per turn. The rules below exist because of that burn.
+
+1. **Integrator stays on a FREE model by default** (mimo-v2.6-flash-free).
+   A paid model for the integrator session requires an explicit per-turn user
+   request; paid context cost scales with session length, so short turns are
+   mandatory regardless of model.
+2. **Last-reported credit is the working runway: $6.75 (2026-10-09).** Update
+   this figure in PAID_USAGE.md whenever the user shares a dashboard reading.
+   The Console MCP usage ledger is a DIFFERENT meter (cost ledger) — never
+   subtract it from the credit balance, never treat it as a hard guard.
+3. **Free-first while weekly quota = 100%** (resets ~2026-10-10 ~21h window):
+   lane defaults and subagents use free models (mimo-v2.6-flash-free,
+   big-pickle, ollama gpt-oss:120b-cloud, zen free flash). Paid (balance) only
+   when a task genuinely cannot be done free AND the expected value > cost.
+4. **Flagship models (Sol/Astra/Fable/Opus/o3-pro/Daybreak, any >$2/M output):
+   never a lane default, never a whole-lane assignment.** Per-task paid
+   delegation only, one at a time, short prompts, file-based handoffs to keep
+   context small. Astra/Fable-class ($10+/M output) additionally require the
+   user to name the task first.
+5. **Balance floor: below $2.00 remaining credit, paid delegation stops
+   entirely** (free-only + report blocked). User may move this floor.
+6. **Any billing/limit error stops the paid path immediately** — save state,
+   log, free fallback or report blocked. No paid retries.
+7. **Every paid delegation gets logged** to docs/PAID_USAGE.md with model,
+   task, and estimated cost; the user is told when a burn >$0.50 happens.
+8. No budget cap, recharge change, or model-disable is set without the user
+   saying so (their explicit standing instruction).
+
+Lane sessions currently default to opencode-go/mimo-v2.5 (cheap paid); when
+Wave 5P opens, flip suitable lanes to free defaults per rule 3.
+
+
 Applies to the BUILD only (orchestrator + subagents). Raphael's own runtime model chain is defined in `config.yaml` and never uses paid-pool models unless the user flips `allow_paid_runtime` / `allow_go_runtime`.
 
 ## Verified facts (checked against live docs 2026-10-04)

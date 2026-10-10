@@ -76,3 +76,21 @@ only (never as a reason to pick a worse model). Do log spend for the record.
 - **Console MCP ledger (workspace "Main", owner):** all-time cost $0.0072 / 3 requests (mimo-v2.6-flash via opencode-go). This ledger and the quota windows are DIFFERENT systems — the MCP exposes the cost ledger + model/member management; quota percentages exist only on the web dashboard. Watchers must not conflate them.
 - **Behavior while weekly=100%:** prefer free-tier models (ollama gpt-oss:120b-cloud, zen free flash) for delegation; spend from the $9.72 balance only when free is rate-limited or quality demands it; log any balance spend here after the fact.
 - Console MCP powers verified live: get_context (owner), get_usage/list_members/list_providers/list_models/set_model_enabled/set_member_budget. Budget cap currently NULL (none set) — left unset per user.
+
+## 2026-10-09 — BURN INCIDENT + correction (integrator)
+
+- **Event:** integrator session switched to opencode/gpt-6.1-sol (user-authorized
+  "try the cool models") at ~21:2x; within minutes the user's web dashboard showed
+  extra-usage credit $9.72 -> **$6.75 (~$2.97 burned)**. Weekly Go quota100% spent,
+  so every call hit the balance. Cause: this session's ~1M+ token context x Sol
+  cache-read/output pricing per turn.
+- **Immediate correction:** integrator + router sessions returned to
+  opencode/mimo-v2.6-flash-free (verified via session API); paid re-runs already
+  completed (dormant). Lane defaults unchanged (mimo-v2.5 cheap paid) but lanes
+  are paused; flip to free when Wave 5P opens.
+- **Policy:** docs/MODEL_POLICY.md "CURRENT SPENDING POLICY" section supersedes
+  older tier advice: free-first while weekly capped, flagship models never
+  whole-lane, $2 balance floor, one paid delegation at a time, all paid work
+  logged, no caps/recharge/model-disables without the user.
+- **Runway (user-reported): $6.75.** Console usage ledger ($2.77 workspace cost
+  over 16 requests) is a separate meter — not subtracted from the balance.
