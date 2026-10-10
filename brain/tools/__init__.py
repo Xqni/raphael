@@ -216,6 +216,19 @@ def _apply_specs(module_name: str, specs: Dict[str, Any]) -> None:
         validate_schema(tname, raw)                # raises BadToolSpec loudly
         meta = _META.get(tname)
         if meta is None:
+            # Re-discovery after a registry reset (test force=True or a lane
+            # reload): cached modules never re-execute their import-time
+            # _register_all (sys.modules hit) — give the module one
+            # idempotent re-registration chance before failing loud.
+            # (Integration glue 2026-10-10: pc's navigate_url SPECS entry vs
+            # brain-core's strict check were each green alone.)
+            import sys as _sys
+            with __import__('contextlib').suppress(Exception):
+                ra = getattr(_sys.modules.get(module_name), '_register_all', None)
+                if callable(ra):
+                    ra()
+            meta = _META.get(tname)
+        if meta is None:
             raise BadToolSpec(
                 f'SPECS entry {tname!r} (from {module_name}) has no '
                 f'registered tool — call register() for it first')
