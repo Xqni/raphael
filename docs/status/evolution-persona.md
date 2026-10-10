@@ -3,6 +3,14 @@
 Updated: 2026-10-08 (Wave 5H + AUD-26)
 
 ## Done
+- **Wave 5P CI dispatch (2026-10-10): red at 2 MAIN-lineage blockers (0 findings from my commits)** —
+  reproduced locally: gitleaks 19 leaks all in 4 integrator main commits (vault skill 7, research
+  brief 6, .opencode/research 3, PROGRESS 2, R3 1; commits 2e6c6fcf/6b304ac7/db9022ae/990780d9) →
+  qa baseline update needed; voice's stale `great_sage` default test vs integrator's new
+  `persona.tier: raphael` base → voice's fix. **My lane fix committed (`6332e87`):** fragment tier
+  synced great_sage → raphael (mirrors base; stays the CIEL flip-point), fragment==base cross-test,
+  tier-agnostic apply_tier roundtrip. Suites: persona **80**, evolution **93**, guard OK.
+  Wave_done with green `data.ci_run` pending the main fixes + rebase + re-dispatch.
 - **Wave 5P P1 (2026-10-09):** tier prompts authored from the canon brief (verified quotes:
   §1 lineage/naming, §3 autonomy rules incl. "consent before destroying a resource", §4 tier
   table, §5 Ciel delta; §7 register never asserted — lint-proven), debunk-register lint test
