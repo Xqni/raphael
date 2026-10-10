@@ -11,3 +11,8 @@ agent:
   # — raise these again only when fish is the active engine.
   speak_batch_sentences: 1
   speak_batch_wait_s: 0
+
+# Wave 5U task 7 — background task runtime (charter §5.1)
+workers:
+  max_background: 2          # concurrent kind='task' jobs (chat never queues behind them)
+  stall_s: 90                # no task progress for this long -> stalled + Notice

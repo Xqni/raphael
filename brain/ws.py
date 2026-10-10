@@ -593,6 +593,9 @@ class WsHub:
             text=text, priority=priority, source=source, session=s.sid,
             kind=kind, parent=parent,
             input_lock=_fp.needs_lock_hint(text))
+        # (G) speak:false — text/subtitle frames stream, TTS skipped this turn
+        if msg.get('speak') is False:
+            self.engine.set_muted(snap['id'], True)
         s.jobs.add(snap['id'])
         await self._send(s, {'type': 'ack', 'v': 1, 'job': snap['job'],
                              'text_id': msg.get('job_id')})

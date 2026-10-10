@@ -14,6 +14,7 @@
   (reported, never auto-resumed — PROTOCOL §5)
 """
 import asyncio
+import time
 import os
 from typing import Any, Callable, Dict, List, Optional
 
@@ -60,6 +61,13 @@ class JobEngine:
         # and-job-kinds.md). chat|analysis|simulation|act; parent = fan-out tag.
         self._kinds: Dict[int, str] = {}
         self._parents: Dict[int, str] = {}
+        # Wave 5U task 7 — background task runtime
+        self.task_runner: Optional[Callable] = None   # async (packet, report)
+        self._task_progress: Dict[int, float] = {}    # rowid -> heartbeat ts
+        self._task_surfaces: List[Dict[str, Any]] = []  # surfacing queue
+        self._muted: set = set()     # (G) speak:false per-command jobs
+        self._task_slots = 0         # tasks admitted to a worker (sync!)
+        self._housekeeping: List[asyncio.Task] = []
 
     def _ensure_queue(self) -> "asyncio.PriorityQueue":
         loop = asyncio.get_running_loop()
@@ -83,6 +91,11 @@ class JobEngine:
         self._workers = [asyncio.create_task(self._worker_loop(i), name=f'brain-worker-{i}')
                          for i in range(n)]
         self._running = True
+        # task 7 housekeeping: watchdog (stall/deadline) + idle surfacing
+        self._housekeeping = [
+            asyncio.create_task(self._task_watchdog_loop(), name='task-watchdog'),
+            asyncio.create_task(self._task_surface_loop(), name='task-surface'),
+        ]
 
     def pause(self):
         if self._pause_event is not None:
@@ -136,6 +149,9 @@ class JobEngine:
             t.cancel()
         for t in list(self._parked.values()):
             t.cancel()
+        for t in list(self._housekeeping):
+            t.cancel()
+        self._housekeeping.clear()
         pending = (list(self._tasks.values()) + list(self._workers)
                    + list(self._parked.values()))
         if pending:
@@ -188,7 +204,7 @@ class JobEngine:
     # ---- submission --------------------------------------------------------
     # sanctioned kind values (contract request pending; validated here so a
     # typo never silently becomes a kind)
-    KINDS = ('chat', 'analysis', 'simulation', 'act')
+    KINDS = ('chat', 'analysis', 'simulation', 'act', 'task')
 
     def set_kind(self, ref, kind: Optional[str]) -> bool:
         rowid = store.parse_job_ref(ref)
@@ -263,6 +279,103 @@ class JobEngine:
                         text=(snap.get('text') or '')[:160])
         return snap
 
+    # ---- Wave 5U task 7: background tasks ---------------------------------
+    def _workers_cfg(self) -> tuple:
+        """(max_background, stall_s) — config.d/brain-core.yaml knobs."""
+        try:
+            from brain import config as _cfg
+            cfg = _cfg.get_config()
+            mx = int(_cfg.cfg_get(cfg, 'workers.max_background', 2))
+            stall = float(_cfg.cfg_get(cfg, 'workers.stall_s', 90.0))
+        except Exception:  # noqa: BLE001 — conservative defaults
+            mx, stall = 2, 90.0
+        return max(1, mx), max(5.0, stall)
+
+    def _task_rows(self) -> List[Dict[str, Any]]:
+        return [j for j in store.list_jobs() if self.kind_of(j['id']) == 'task']
+
+    def _task_running(self) -> List[Dict[str, Any]]:
+        return [j for j in self._task_rows() if j['status'] == 'running']
+
+    def _running_task_count(self) -> int:
+        # in-memory kinds only exist this process — after a restart,
+        # interrupted tasks are announced (never auto-resumed), so this
+        # count is exact for every live task.
+        return len(self._task_running())
+
+    async def submit_task(self, packet: Dict[str, Any],
+                          session: Optional[str] = None,
+                          parent: Optional[str] = None) -> Dict[str, Any]:
+        """Background task = job kind 'task' + a persisted packet
+        {goal, specialist, inputs, budget, deadline_s, allow_tools}.
+        The creating conversational turn ends immediately (caller acks)."""
+        goal = str(packet.get('goal') or 'background task').strip()[:160]
+        snap = await self.submit(goal, priority='background', source='task',
+                                 session=session, kind='task', parent=parent)
+        store.set_checkpoint(snap['id'], {'step': 0, 'packet': dict(packet),
+                                          'note': 'queued'})
+        return store.get_job(snap['id']) or snap
+
+    def find_task(self, substr: str) -> Optional[Dict[str, Any]]:
+        """Newest NON-cancelled task whose goal contains substr (ci/literal)."""
+        q = str(substr or '').strip().lower()
+        rows = [j for j in reversed(self._task_rows())
+                if j['status'] != 'cancelled'
+                and (not q or q in (j.get('task') or '').lower())]
+        return rows[0] if rows else None
+
+    def task_status_text(self, ref=None) -> str:
+        job = store.get_job(ref) if ref is not None else None
+        if job is None or self.kind_of(job['id']) != 'task':
+            rows = self._task_rows()
+            job = rows[-1] if rows else None
+        if job is None:
+            return 'No background tasks.'
+        prog = job.get('progress') or 0.0
+        return (f'Task “{(job.get("task") or "")[:60]}” is {job["status"]}: '
+                f'{job.get("stage") or "running"}, {int(prog * 100)}%.')
+
+    def redirect_task(self, ref, new_goal: str) -> Optional[Dict[str, Any]]:
+        """'change it to <y>' = cancel + resubmit the SAME packet with the
+        new goal, correlated under the original. Returns the old job id, or
+        None when there is nothing to redirect."""
+        old = store.get_job(ref)
+        if not old or self.kind_of(old['id']) != 'task' \
+                or old['status'] in store.TERMINAL:
+            return None
+        cp = store.get_checkpoint(old['id']) or {}
+        packet = dict(cp.get('packet') or {})
+        packet['goal'] = str(new_goal).strip()[:160]
+        self.cancel(old['job'])
+        try:
+            # handlers run inside the job's event loop — schedule the
+            # resubmit; the turn ends immediately (ack says 'switching')
+            asyncio.get_running_loop().create_task(
+                self.submit_task(packet, session=old.get('session'),
+                                 parent=old.get('job')))
+        except RuntimeError:      # no running loop (unit-test context)
+            return None
+        return {'old': old['job']}
+
+    def set_muted(self, ref, on: bool = True) -> bool:
+        """(G) speak:false — this job's turn produces NO TTS (subtitles and
+        text frames still stream)."""
+        rowid = store.parse_job_ref(ref)
+        if rowid is None:
+            return False
+        if on:
+            self._muted.add(rowid)
+        else:
+            self._muted.discard(rowid)
+        return True
+
+    def is_muted(self, ref) -> bool:
+        rowid = store.parse_job_ref(ref)
+        return rowid is not None and rowid in self._muted
+
+    def note_task_progress(self, rowid: int) -> None:
+        self._task_progress[int(rowid)] = time.time()
+
     # ---- workers -----------------------------------------------------------
     async def _worker_loop(self, idx: int):
         q = self._ensure_queue()
@@ -286,6 +399,22 @@ class JobEngine:
                 if not job or job['status'] != 'queued':
                     self._queue.task_done()
                     continue
+            # Wave 5U task 7: background-task cap — a task beyond
+            # workers.max_background goes to the BACK of the queue (chat
+            # jobs never skip, so conversation is never delayed by tasks).
+            # The slot is claimed SYNCHRONOUSLY (no await between check and
+            # increment) so a burst can never exceed the cap.
+            is_task = self.kind_of(rowid) == 'task'
+            if is_task:
+                if self._task_slots >= self._workers_cfg()[0]:
+                    self._submit_seq += 1
+                    await q.put((store.PRIORITY_RANK.get(
+                        (store.get_job(rowid) or {}).get('priority_label')
+                        or 'normal', 1), self._submit_seq, rowid))
+                    self._queue.task_done()
+                    await asyncio.sleep(0.1)   # no hot spin on a full pool
+                    continue
+                self._task_slots += 1
             # Wave 5U P0.6 admission-stage lock: a job that DECLARED
             # input_lock parks here WITHOUT a worker while the lock is busy —
             # chat jobs (input_lock=False) keep getting workers instantly,
@@ -316,10 +445,150 @@ class JobEngine:
                     raise
             finally:
                 self._tasks.pop(rowid, None)
+                if is_task:
+                    self._task_slots = max(0, self._task_slots - 1)
                 try:
                     self._queue.task_done()
                 except ValueError:
                     pass
+
+    # ---- task 7: task execution, watchdog, surfacing ----------------------
+    async def _run_task(self, rowid: int, job: Dict[str, Any]) -> None:
+        """Run ONE background task through the task_runner seam. The runner
+        gets (packet, report) where report(progress, stage, note) updates the
+        job (job_event) + heartbeat + checkpoint. Workers NEVER speak —
+        results go to the surfacing queue (idle-gated speak or Notice)."""
+        cp = store.get_checkpoint(rowid) or {}
+        packet = dict(cp.get('packet') or {})
+        cp['started_ts'] = cp.get('started_ts') or time.time()
+        store.set_checkpoint(rowid, cp)
+        self.note_task_progress(rowid)
+
+        async def report(progress: float = None, stage: str = None,
+                         note: str = None, step: int = None) -> None:
+            self.note_task_progress(rowid)
+            snap0 = store.get_job(rowid)
+            if snap0 is not None and snap0.get('status') == 'stalled':
+                # progress resumed -> back to running (watchdog re-arms)
+                store.transition(rowid, 'running', stage=stage or 'running',
+                                 progress=progress)
+            elif snap0 is not None and snap0.get('status') == 'running':
+                # persist stage/progress so status intents read REAL values
+                store.transition(rowid, 'running', stage=stage,
+                                 progress=progress)
+            cur = store.get_checkpoint(rowid) or {'step': 0, 'packet': packet}
+            if step is not None:
+                cur['step'] = int(step)
+            if note is not None:
+                cur['note'] = str(note)[:200]
+            store.set_checkpoint(rowid, cur)
+            snap = store.get_job(rowid)
+            self.emit_event(snap, 'running',
+                            stage=stage or (snap or {}).get('stage'),
+                            progress=progress, text=(str(note)[:160]
+                                                     if note else None))
+
+        if self.task_runner is None:
+            store.transition(rowid, 'failed', stage='done', progress=1.0,
+                             error_code='E_INTERNAL',
+                             result='no specialist runtime configured')
+            self.emit_event(store.get_job(rowid), 'failed', stage='done',
+                            progress=1.0, error_code='E_INTERNAL',
+                            text='No specialist runtime is configured yet.')
+            return
+        result = await self.task_runner(packet, report)
+        final = store.get_job(rowid)
+        if final and final['status'] not in store.TERMINAL:
+            text = str(result or 'Task complete.')
+            store.transition(rowid, 'done', stage='done', progress=1.0,
+                             result=text[:500])
+            self.emit_event(store.get_job(rowid), 'done', stage='done',
+                            progress=1.0, text=text[:160])
+            # surfacing (D): one sentence at idle, else hold; the pump
+            # decides — workers never speak.
+            self._task_surfaces.append(
+                {'job': (final.get('job') or ''), 'summary': text[:160],
+                 'ts': time.time()})
+
+    async def _task_watchdog_loop(self) -> None:
+        """(E) stall + deadline enforcement for running tasks."""
+        while self._running:
+            await asyncio.sleep(5.0)
+            try:
+                await self._task_watchdog_tick()
+            except asyncio.CancelledError:
+                raise
+            except Exception:  # noqa: BLE001 — housekeeping never dies
+                continue
+
+    async def _task_watchdog_tick(self) -> None:
+        """One watchdog pass (extracted for tests)."""
+        try:
+            stall_s = self._workers_cfg()[1]
+            now = time.time()
+            for job in self._task_running():
+                rowid = job['id']
+                cp = store.get_checkpoint(rowid) or {}
+                packet = cp.get('packet') or {}
+                last = self._task_progress.get(rowid, 0.0) or now
+                if (now - last) > stall_s and job['status'] == 'running':
+                    store.transition(rowid, 'stalled', stage='stalled',
+                                     progress=job.get('progress'))
+                    self.emit_event(store.get_job(rowid), 'stalled',
+                                    stage='stalled',
+                                    progress=job.get('progress'),
+                                    text=f'No progress for {int(stall_s)}s')
+                    from brain import notice as _notice
+                    _notice.emit(
+                        f'Task “{(job.get("task") or "")[:50]}” stalled '
+                        f'(no progress {int(stall_s)}s) — say “cancel the '
+                        'task” to stop it.',
+                        level='warn', key=f'task-stall-{rowid}',
+                        cooldown_s=120.0)
+                    self.note_task_progress(rowid)   # one notice per window
+                dl = packet.get('deadline_s')
+                started = cp.get('started_ts') or last
+                if dl and (now - float(started)) > float(dl) \
+                        and job['status'] in ('running', 'stalled'):
+                    self.emit_event(store.get_job(rowid), 'cancelled',
+                                    stage='done', progress=1.0,
+                                    text='Deadline exceeded — cancelled')
+                    self.cancel(job['job'])
+                    from brain import notice as _notice
+                    _notice.emit(
+                        f'Task “{(job.get("task") or "")[:50]}” hit its '
+                        'deadline and was cancelled.',
+                        level='info', key=f'task-deadline-{rowid}',
+                        cooldown_s=60.0)
+        except asyncio.CancelledError:
+            raise
+        except Exception:  # noqa: BLE001 — housekeeping never dies
+            return
+
+    async def _task_surface_loop(self) -> None:
+        """(D) surfacing: speak a held summary ONLY at an idle moment
+        (not speaking, not listening); else keep holding."""
+        while self._running:
+            await asyncio.sleep(3.0)
+            try:
+                if not self._task_surfaces:
+                    continue
+                from brain import orbstate as _orb
+                if not _orb.voice_idle():
+                    continue          # mid-sentence / owner talking: HOLD
+                surf = self._task_surfaces.pop(0)
+                try:
+                    from brain import loop as _loop
+                    from brain.ws import get_hub as _get_hub
+                    _loop.narrate_now(_get_hub(), surf['job'],
+                                      'Done: ' + surf['summary'])
+                except Exception:  # noqa: BLE001 — degrade to a Notice
+                    from brain import notice as _notice
+                    _notice.emit('Done: ' + surf['summary'], level='info')
+            except asyncio.CancelledError:
+                raise
+            except Exception:  # noqa: BLE001
+                continue
 
     async def _requeue_when_free(self, rowid: int) -> None:
         """P0.6: requeue a waiting_lock job once the input lock is fully
@@ -367,7 +636,9 @@ class JobEngine:
         self.emit_event(job, 'running', stage='routing', progress=0.05,
                         text='Working on it')
         try:
-            if self.runner is None:
+            if job is not None and job.get('kind') == 'task':
+                await self._run_task(rowid, job)
+            elif self.runner is None:
                 store.transition(rowid, 'failed', stage='done', progress=1.0,
                                  error_code='E_INTERNAL', result='no runner wired')
                 self.emit_event(store.get_job(rowid), 'failed', stage='done',

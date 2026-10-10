@@ -16,6 +16,70 @@ from brain.memory import get_conn
 TERMINAL = ('done', 'failed', 'cancelled', 'interrupted')
 PRIORITY_RANK = {'user_facing': 0, 'normal': 1, 'background': 2}
 
+_checkpoint_migrated = False
+
+
+def _ensure_checkpoint_column() -> None:
+    """Wave 5U task 7: `checkpoint` (last step + packet) on the jobs row.
+    Idempotent ADDITIVE migration — brain/jobs is this lane's; the schema
+    bootstrap lives in brain/memory (tools-memory lane), so the column is
+    added from the store side without touching their file."""
+    global _checkpoint_migrated
+    if _checkpoint_migrated:
+        return
+    conn = get_conn()
+    try:
+        cols = {r[1] for r in conn.execute('PRAGMA table_info(jobs)')}
+        if 'checkpoint' not in cols:
+            conn.execute('ALTER TABLE jobs ADD COLUMN checkpoint TEXT')
+        conn.commit()
+        _checkpoint_migrated = True
+    finally:
+        conn.close()
+
+
+def set_checkpoint(job_id, data: Optional[Dict[str, Any]]) -> bool:
+    """Persist the task checkpoint (JSON: {step, packet, note}); None clears.
+    Never raises (a checkpoint write must not fail a task)."""
+    rowid = parse_job_ref(job_id)
+    if rowid is None:
+        return False
+    try:
+        _ensure_checkpoint_column()
+        conn = get_conn()
+        try:
+            cur = conn.execute(
+                'UPDATE jobs SET checkpoint=?, updated_at=CURRENT_TIMESTAMP '
+                'WHERE id=? AND status NOT IN (%s)'
+                % ','.join('?' * len(TERMINAL)),
+                (json.dumps(data, ensure_ascii=False) if data is not None
+                 else None, rowid, *TERMINAL))
+            conn.commit()
+            return cur.rowcount > 0
+        finally:
+            conn.close()
+    except Exception:  # noqa: BLE001 — checkpointing is best-effort
+        return False
+
+
+def get_checkpoint(job_id) -> Optional[Dict[str, Any]]:
+    rowid = parse_job_ref(job_id)
+    if rowid is None:
+        return None
+    try:
+        _ensure_checkpoint_column()
+        conn = get_conn()
+        try:
+            row = conn.execute('SELECT checkpoint FROM jobs WHERE id=?',
+                               (rowid,)).fetchone()
+            if row and row['checkpoint']:
+                return json.loads(row['checkpoint'])
+            return None
+        finally:
+            conn.close()
+    except Exception:  # noqa: BLE001
+        return None
+
 
 def now_ms() -> int:
     return int(time.time() * 1000)

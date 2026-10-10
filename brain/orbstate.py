@@ -160,6 +160,12 @@ def _shape_for(kind: str) -> str:
     return 'circle'
 
 
+def voice_idle() -> bool:
+    """Wave 5U task 7 surfacing gate: nobody is speaking AND the owner is
+    not talking — the only moments a held task summary may be spoken."""
+    return (not _listening) and _speaking == 0
+
+
 def reset_transient_for_tests() -> None:
     """Clear per-test transient state (error linger, listening, speaking)
     so one test's failure window can't bleed into the next assertion."""

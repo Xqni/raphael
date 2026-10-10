@@ -289,6 +289,27 @@ async def control(body: ControlIn, auth: bool = Depends(token_auth)) -> Dict[str
     return result
 
 
+# ---- GET /history (Wave 5U task 7G: chat server brain-half) ---------------
+@app.get('/history')
+async def history(limit: int = 50,
+                  auth: bool = Depends(token_auth)) -> Dict[str, Any]:
+    """Read-only recent conversation turns (token-auth like /status).
+    Redacted via logjson.redact_value (privacy.redact categories) and hard
+    capped — untrusted chat text never leaks secrets to a chat client."""
+    from .memory import conversation as _conv
+    from . import logjson as _lj
+    try:
+        lim = max(0, min(int(limit), 100))
+    except (TypeError, ValueError):
+        lim = 50
+    turns = _conv.recent_turns(lim)
+    for t in turns:
+        for k in ('user', 'assistant'):
+            if t.get(k):
+                t[k] = str(_lj.redact_value(t[k]))[:2000]
+    return {'ok': True, 'count': len(turns), 'turns': turns}
+
+
 @app.get('/status')
 async def status(auth: bool = Depends(token_auth)) -> Dict[str, Any]:
     engine = get_engine()

@@ -386,10 +386,13 @@ class _SentenceSpeaker:
 
     def __init__(self, hub, job_id, voice, max_sentences: Optional[int] = None,
                  sanitize=None, batch_size: Optional[int] = None,
-                 batch_wait_s: Optional[float] = None):
+                 batch_wait_s: Optional[float] = None,
+                 muted: bool = False):
         self.hub = hub
         self.job_id = job_id
         self.voice = voice
+        # (G) speak:false — subtitles stream, NO TTS for this turn
+        self.muted = bool(muted)
         self.max_sentences = max_sentences
         # qa privacy contract point 2: Analysis/Simulation sentences are
         # redacted BEFORE subtitle + speech (never spoken unscrubbed)
@@ -439,6 +442,8 @@ class _SentenceSpeaker:
         self._pushed += 1
         if self.max_sentences is not None and self._pushed > self.max_sentences:
             return                            # on screen only (addendum §10)
+        if self.muted:
+            return                            # speak:false — subtitle only
         self.queue.put_nowait(s)
 
     async def _run(self):
@@ -580,6 +585,9 @@ def narrate_now(hub, job_id: str, t: str, state: Optional[str] = None,
     hub.broadcast({'type': 'subtitle', 'v': 1, 'job': job_id,
                    'text': str(t)[:200], 'fade_ms': 4000},
                   roles={'ui', 'cli'})
+    # (G) speak:false — subtitles always stream; TTS only for unmuted jobs
+    if engine is not None and engine.is_muted(job_id):
+        return
     asyncio.create_task(_narrate_voice(hub, job_id, t, state, engine))
 
 
@@ -845,9 +853,10 @@ def build_runner(hub=None):
                 first_token = False
                 final: Optional[Dict[str, Any]] = None
 
-                async with _SentenceSpeaker(hub, jid, voice,
-                                            max_sentences=spoken_max,
-                                            sanitize=sanitize) as spk:
+                async with _SentenceSpeaker(
+                        hub, jid, voice, max_sentences=spoken_max,
+                        sanitize=sanitize,
+                        muted=engine.is_muted(jid)) as spk:
                     async for frame in stream:
                         if not isinstance(frame, dict):
                             continue

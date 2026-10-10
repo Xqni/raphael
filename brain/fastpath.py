@@ -313,6 +313,58 @@ def register_builtin_intents():
                                 needs_lock=True, task_kind='gui')
         return _no_browser_tool('browser_click')
 
+    # ---- Wave 5U task 7: background-task status intents -------------------
+    def _task_status(text, ctx):
+        eng = getattr(ctx, 'engine', None)
+        if eng is None:
+            return None
+        return IntentResult(text=eng.task_status_text(), task_kind='none')
+
+    def _working_on(text, ctx):
+        eng = getattr(ctx, 'engine', None)
+        if eng is None:
+            return None
+        st = eng.stats()
+        head = f"{st['jobs_active']} active, {st['jobs_queued']} queued."
+        task_line = eng.task_status_text()
+        if task_line == 'No background tasks.':
+            return IntentResult(text=head, task_kind='none')
+        return IntentResult(text=f'{head} {task_line}', task_kind='none')
+
+    def _cancel_task(text, ctx):
+        eng = getattr(ctx, 'engine', None)
+        if eng is None:
+            return None
+        substr = re.sub(r'^cancel the\s+', '', text.strip(), flags=re.I)
+        substr = re.sub(r'\s+tasks?$', '', substr, flags=re.I).strip()
+        job = eng.find_task(substr)
+        if job is None:
+            return IntentResult(text=f'No task matches “{substr[:40]}”.',
+                                task_kind='none')
+        eng.cancel(job['job'])
+        return IntentResult(
+            text=f'Cancelled “{(job.get("task") or "")[:60]}”.',
+            task_kind='none')
+
+    def _redirect_task(text, ctx):
+        eng = getattr(ctx, 'engine', None)
+        if eng is None:
+            return None
+        new_goal = re.sub(r'^(?:change|make) (?:it|the task) to\s+', '',
+                          text.strip(), flags=re.I).strip()
+        if not new_goal:
+            return None
+        job = eng.find_task('')
+        if job is None:
+            return IntentResult(text='No background task to change.',
+                                task_kind='none')
+        if eng.redirect_task(job['id'], new_goal) is None:
+            return IntentResult(text='I could not switch that task.',
+                                task_kind='none')
+        return IntentResult(
+            text=f'Switching the task to “{new_goal[:60]}”.',
+            task_kind='none')
+
     def _screenshot(text, ctx):
         return IntentResult(text='Taking a screenshot…', tool='screenshot',
                             tool_args={'max_px': 1280}, task_kind='gui')
@@ -400,6 +452,17 @@ def register_builtin_intents():
     register_intent('what needs confirmation', _confirm_policy_q)
     register_intent('what do you need confirmation for', _confirm_policy_q)
     register_intent('what do you require confirmation for', _confirm_policy_q)
+    # task 7 status intents ('cancel the ' after 'cancel all' — distinct
+    # prefixes, insertion order preserved)
+    for _kw in ("how's that task going", 'how is that task going',
+                "what's that task doing", 'whats that task doing',
+                'task status'):
+        register_intent(_kw, _task_status)
+    for _kw in ('what are you working on', 'what are you doing'):
+        register_intent(_kw, _working_on)
+    register_intent('cancel the ', _cancel_task)
+    for _kw in ('change it to ', 'change the task to '):
+        register_intent(_kw, _redirect_task)
     register_intent('echo ', _echo)
     register_intent('cancel all', _cancel_all)
     register_intent('stop everything', _cancel_all)
