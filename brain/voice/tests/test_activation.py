@@ -262,3 +262,77 @@ def test_wak_stream_wires_continuation_path():
     run_src = src.split("async def run(")[1]
     assert run_src.count("await self.on_end()") == 1
     assert "grace.tick()" in run_src.split("await self.on_end()")[0]
+
+
+def test_wake_stream_has_continuation_grace_constant():
+    """Wake-loop regression (integrator glue 2026-10-09, coord inbox 46).
+
+    The Cut A run loop reads `self.CONTINUATION_GRACE`, which originally
+    lived only on VadSegmenter. WakeStream therefore raised
+    AttributeError('WakeStream' object has no attribute 'CONTINUATION_GRACE')
+    the moment run() reached `EndGrace(self.CONTINUATION_GRACE)`, killing the
+    wake task at startup and leaving the mic DEAF (user-reported live bug).
+    The source-level wiring test above missed it because it never constructs
+    the object. Pin BOTH the shared constant and the live reference."""
+    from body.win.audio_in import VadSegmenter, WakeStream
+    # single source of truth: WakeStream mirrors VadSegmenter's grace
+    assert WakeStream.CONTINUATION_GRACE == VadSegmenter.CONTINUATION_GRACE
+    assert WakeStream.CONTINUATION_GRACE == 13
+    # the run-loop expression must resolve on a REAL instance (this is the
+    # exact line whose AttributeError deafened the mic)
+    ws = WakeStream(on_frame=lambda m: None,
+                    on_start=lambda d: None, on_end=lambda: None)
+    assert ws.CONTINUATION_GRACE == VadSegmenter.CONTINUATION_GRACE
+
+
+def test_wake_stream_run_builds_endgrace_without_attribute_error(monkeypatch):
+    """Drive the top of WakeStream.run() for ONE loop iteration with a
+    stubbed sounddevice InputStream — the earliest point the production
+    `EndGrace(self.CONTINUATION_GRACE)` expression is evaluated. Before the
+    glue fix this raised AttributeError (mic deaf); now it must construct
+    the grace machine and process the fed chunk normally. The stream is fed
+    one silent chunk then _stop flips so run() exits cleanly."""
+    import asyncio
+    import types as _t
+    from body.win.audio_in import WakeStream
+
+    constructed = {}
+    real_grace = audio_in.EndGrace
+
+    def _spy(grace_chunks):
+        constructed["grace"] = grace_chunks
+        return real_grace(grace_chunks)
+
+    monkeypatch.setattr(audio_in, "EndGrace", _spy)
+
+    class _FakeStream:
+        def start(self): pass
+        def stop(self): pass
+        def close(self): pass
+
+    fake_sd = _t.ModuleType("sounddevice")
+    fake_sd.InputStream = lambda **kw: _FakeStream()
+    fake_sd.query_devices = lambda kind=None: {"name": "stub-mic"}
+    monkeypatch.setitem(sys.modules, "sounddevice", fake_sd)
+    monkeypatch.setattr(audio_in, "sd", fake_sd)
+
+    events = {"start": [], "frame": [], "end": []}
+    ws = WakeStream(
+        on_frame=lambda m: events["frame"].append(m),
+        on_start=lambda d: events["start"].append(d),
+        on_end=lambda: events["end"].append(True))
+
+    async def _drive():
+        task = asyncio.create_task(ws.run())
+        await asyncio.sleep(0)                 # let run() reach the queue
+        ws.vad.feed(b"\x00\x00" * 1600)        # pre-prime a silent chunk
+        ws._queue.put_nowait(b"\x00\x00" * 1600)  # one 100ms silent frame
+        await asyncio.sleep(0)                 # process that one iteration
+        ws._stop = True
+        ws._queue.put_nowait(b"\x00\x00" * 1600)  # unblock the await
+        await asyncio.wait_for(task, timeout=2)
+
+    asyncio.run(_drive())
+    # the grace machine was constructed with the shared constant -> the
+    # exact production expression that used to AttributeError now resolves
+    assert constructed.get("grace") == WakeStream.CONTINUATION_GRACE == 13
