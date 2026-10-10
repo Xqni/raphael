@@ -281,3 +281,8 @@ Wave 4 is MERGED + **GATE PASSED** (tag `wave-4-gate`, 10/10 lanes, mock 308 gre
 
 ## Later waves
 - Per docs/WAVES.md — do not start early (AGENT_RULES §11).
+
+## Wave 5P — persona adoption (ACTIVE 2026-10-09; full spec: docs/research/persona/06-CODE-ADOPTION-PLAN.md)
+- [ ] **P5 context slots**: named short-term slots ("work","travel",user-created) scoping memory retrieval; voice-switchable ("switch to travel"); default slot = today's behavior; slots session-persistent.
+- [ ] **P6 spoken memory privacy**: verify wave-4 memory export/delete coverage first; then "what do you remember about X" (scoped recall) + "forget X" (DELETE = confirm-first per safety.confirm_policy) + "memory report" summary.
+- [ ] **P7 journal tool**: append dated entries to her vault journal (`vault/journal.md`, gitignored, repo-root) with a redaction pass (no key-shaped strings, no usernames/paths); "what did you do recently" reads it back. Append-only enforced.

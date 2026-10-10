@@ -98,3 +98,8 @@ Wave 4 is MERGED + **GATE PASSED** (tag `wave-4-gate`, 10/10 lanes, mock 308 gre
 
 ## Later waves
 - Per docs/WAVES.md — do not start early (AGENT_RULES §11).
+
+## Wave 5P — persona adoption (ACTIVE 2026-10-09; full spec: docs/research/persona/06-CODE-ADOPTION-PLAN.md)
+- [ ] **P1 tier prompts**: author `docs/evolution/persona/tier-great-sage.md`, `tier-raphael.md`, `tier-ciel.md` FROM the canon brief (00-CONSOLIDATED-BRIEF.md §1-§5): great_sage = system-voice flat, no opinions; raphael = first-person, dry-warm, formal address, initiative within the autonomy split (§3); ciel = expressive-warm, anticipatory (promotion still gated). NEVER include a refuted claim (§7 register).
+- [ ] **P1 lint test**: test asserting none of the debunked strings (Raziel, Setoguchi, Hollow Mixture, War of the Ten Great Spirits, Angel-Series Authority Ciel, oshieru-as-canon,85% threshold) appear in persona assets/config.
+- [ ] **P1 tier continuity note** in docs/evolution/: tiers are growth not replacement (canon continuity; CIEL-PROMOTION.md unaffected).

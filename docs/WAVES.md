@@ -149,7 +149,7 @@ removal rides the HUMAN-approved history rewrite in ATTENTION).
 **Wave 6 stays HUMAN-GATED** (see ATTENTION: repo visibility, PAT scope, history rewrite,
 branch protection, cloud-vs-RAM, Node-on-Windows). current_wave stays 5 until the user opens it.
 
-## Wave 5P — persona adoption sprint (PROPOSED 2026-10-09; runs INSIDE wave 5; current_wave stays 5)
+## Wave 5P — persona adoption sprint (**ACTIVE 2026-10-09 — user go: "build the things we decided"; runs INSIDE wave 5; current_wave stays 5**)
 
 Codifies Raphael/Ciel from the canon research (`docs/research/persona/`) plus the vetted
 companion takeaways (`docs/research/companions/00-COMPANION-TAKEAWAYS.md`) into the code.

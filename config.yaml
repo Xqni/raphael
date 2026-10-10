@@ -111,11 +111,43 @@ safety:
     - system_settings_change
     - install_software
     - make_public_repo
+    - open_arbitrary_file                   # Wave 5P/P3 + AUD-11 (config-confirm-categories)
+    - gui_submission                        # Wave 5P/P3 + AUD-11 (config-confirm-categories)
+  confirm_policy:                          # Wave 5P P3 — user-editable act/confirm map.
+    # Canon (docs/research/persona/00-CONSOLIDATED-BRIEF.md §3): act-first-and-report
+    # for unambiguous reversible intent; confirm-first for irreversible, destructive,
+    # or personal-domain acts; never destroy a resource silently.
+    default: confirm
+    classes:
+      delete_files: confirm
+      send_message: confirm
+      send_email: confirm
+      purchase: confirm
+      enter_password: confirm
+      system_settings_change: confirm
+      install_software: confirm
+      make_public_repo: confirm
+      open_arbitrary_file: confirm
+      gui_submission: confirm
+      files_write: auto                    # reversible local writes: act-first-and-report
+      web_fetch: auto                      # read-only
+    # edits to this map must go through a confirmed act (self-protecting)
   failsafe_corner: true                    # pyautogui mouse-to-corner
   kill_switch_hotkey: "ctrl+alt+shift+k"
   pause_persist: true
   pause_hotkey: "ctrl+alt+p"               # control: pause/resume toggle (persisted)
   private_hotkey: "ctrl+alt+shift+p"       # control: private_on/off toggle (persisted)
+
+
+# --- Persona (Wave 5P — active 2026-10-09) --------------------------------
+persona:
+  tier: raphael                            # great_sage | raphael | ciel — growth, not replacement
+  # prompts authored by evolution-persona from docs/research/persona/00-CONSOLIDATED-BRIEF.md
+  # (debunk register binding; a lint test forbids refuted strings in persona assets)
+  tiers:
+    great_sage: { warmth: 0.0, address: none,    prompt: docs/evolution/persona/tier-great-sage.md }
+    raphael:    { warmth: 0.3, address: master,  prompt: docs/evolution/persona/tier-raphael.md }
+    ciel:       { warmth: 0.6, address: master,  prompt: docs/evolution/persona/tier-ciel.md }
 
 # --- Privacy -------------------------------------------------------------------
 privacy:

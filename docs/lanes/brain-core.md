@@ -66,3 +66,9 @@ Wave 4 is MERGED + **GATE PASSED** (tag `wave-4-gate`, 10/10 lanes, mock 308 gre
 ## Later waves
 - Per docs/WAVES.md — do not start early (AGENT_RULES §11).
 - Wave 3 (when current_wave=3): job concurrency polish (input-lock fairness, per-job cancel), conversation-memory hooks to tools-memory, proactive Notice events.
+
+## Wave 5P — persona adoption (ACTIVE 2026-10-09; full spec: docs/research/persona/06-CODE-ADOPTION-PLAN.md)
+- [ ] **P1 tier assembly**: read `config.yaml → persona` (tier + tiers map); select the tier's prompt file (`docs/evolution/persona/tier-*.md`) when assembling LLM messages; add a `tier` field to `/control` (set/get persona.tier at runtime; invalid tier = loud error). Tests: tier selection, mid-session switch, missing prompt file = fail-closed to great_sage with a warn Notice.
+- [ ] **P3 confirm policy**: `brain/confirm.py` consults `config.yaml → safety.confirm_policy` (default + classes) BEFORE the risk regex; unclassified tools fall back to the regex (R1 config-driven-risk finding). "what requires your confirmation" answers this map. Tests: policy matrix, fallback, and qa's pinned confirm/act tests stay green.
+- [ ] **P4 clarify-on-ambiguity**: fastpath-miss + weak-intent path emits ONE tier-toned clarifying question (`clarify.max_questions:1` default in config.d); after 1 repeat → best-effort act + report or refusal, never N guesses. Tests: ambiguous fixtures, clarify→answer, no-clarify-when-confident.
+- [ ] **P5 slot-aware injection**: memory retrieval injection respects the active context slot (tools-memory provides the API; default slot = today's behavior byte-for-byte).

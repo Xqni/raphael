@@ -90,3 +90,8 @@ Wave 4 is MERGED + **GATE PASSED** (tag `wave-4-gate`, 10/10 lanes, mock 308 gre
   - Wave 3: natural-conversation polish (utterance-end handling, interruptions, `spoken_reply_max_sentences` short replies).
   - Wave 4: speaker verification for sensitive confirmations, phrase-bank prebuild tool, second voice-reference slot.
   - Wave 5: persona voices (raphael / ciel reference clips selected by persona.tier).
+
+## Wave 5P — persona adoption (ACTIVE 2026-10-09; full spec: docs/research/persona/06-CODE-ADOPTION-PLAN.md)
+- [ ] **P2 tier tone params**: per-tier fish parameters from `config.yaml → persona.tiers[].warmth` (+ pacing/address) — config-driven, no hard-coded values; A/B samples vs `assets/raphael_reference_jp.wav`; P0 drift battery must stay ≥9/10.
+- [ ] **P4 clarifying-question delivery**: speak the brain-core clarify text in the tier register; one question, natural pause, no stutter on follow-up answers.
+- [ ] **P8 notice tone**: `notice_spoken_text` / speak_notice gain the tier register (info/warn tinting unchanged).
