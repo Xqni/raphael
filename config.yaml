@@ -78,6 +78,11 @@ voice:
   ptt_hotkey: "ctrl+alt+space"             # used only when always_listen: false
   always_listen: true                      # wake-word streaming ("Raphael, ..."); false = push-to-talk
   ack_cache: assets/acks/                  # phrase cache is ref-sha1 namespaced (Bug D/H); legacy entries auto-swept
+  tier_fish:                               # P2 (Wave 5P): warmth -> fish sampling (persona.tiers[].warmth)
+    baseline: 0.2                          # warmth 0.0 (great_sage): measured P0 battery 10/10
+    scale: 0.33                            # temperature = baseline + scale * warmth (raphael 0.3 -> ~0.30, ciel 0.6 -> ~0.40)
+    cap: 0.45                              # hard ceiling (P0 drift measured 2/10 at 0.7 pre-fix — never go near)
+    repetition_penalty: 1.2                # A/B'd 2026-10-08 (RP1.3 measured worse); tier-independent for now
 
 voice_personality:
   character: raphael_great_sage            # Tensei Slime's Great Sage — NOT Jarvis (addendum §10)

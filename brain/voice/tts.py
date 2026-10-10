@@ -650,8 +650,13 @@ class FishSpeechServer:
             # 10/10, 9/10, 9/10 across three runs (residual: single-word
             # near-misses 0.846-0.881, e.g. Working->Walking). RP1.3 was
             # tried and measured WORSE overall (9/10, 8/10) — kept RP1.2.
-            "temperature": 0.2,
-            "repetition_penalty": 1.2,
+            # P2 (Wave 5P): these are no longer code constants — the effective
+            # persona tier's warmth derives them in config (voice.tier_fish);
+            # great_sage (warmth 0.0) resolves to exactly these measured
+            # values, warmer tiers get a slightly warmer sampling (A/B'd
+            # against the JP reference; P0 battery must stay >=9/10).
+            "temperature": self.cfg.fish_temperature,
+            "repetition_penalty": self.cfg.fish_repetition_penalty,
             "references": references,
         }
 
@@ -717,8 +722,11 @@ class TTSEngine:
         self.reference_path, self._tier_note = self.cfg.tier_voice_path()
         self.reference_fp = reference_fingerprint(self.reference_path)
         self._tier_notice_shown = False
+        # P2 (Wave 5P): cache namespace = reference fp + tier warmth tag, so
+        # two tiers sharing one reference can never replay each other's wav.
+        self.cache_fp = self.cfg.tier_cache_fingerprint(self.reference_fp)
         self.cache = PhraseCache(self.cfg.ack_cache_path,
-                                 fingerprint=self.reference_fp)
+                                 fingerprint=self.cache_fp)
         self.fish = FishSpeechServer(self.cfg)
         self.stats = SpeakStreamStats()
         self._notice_shown = False      # degraded-mode notice: ONCE per process
@@ -806,13 +814,16 @@ class TTSEngine:
         path, note = self.cfg.tier_voice_path()
         fp = reference_fingerprint(path)     # content-addressed: catches an
         # in-place file swap too (Bug D), not just a path/tier change
-        if path != self.reference_path or fp != self.reference_fp:
+        cache_fp = self.cfg.tier_cache_fingerprint(fp)   # P2: warmth tag
+        if (path != self.reference_path or fp != self.reference_fp
+                or cache_fp != self.cache_fp):
             _log(f"[tts] reference -> {path} (tier '{self.cfg.persona_tier}', "
                  f"fp {fp}); phrase cache re-namespaced")
             self.reference_path = path
             self.reference_fp = fp
+            self.cache_fp = cache_fp
             self.cache = PhraseCache(self.cfg.ack_cache_path,
-                                     fingerprint=fp)
+                                     fingerprint=cache_fp)
         self._tier_note = note
         return fp
 
