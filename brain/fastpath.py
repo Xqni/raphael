@@ -225,6 +225,11 @@ def register_builtin_intents():
                             tool='search_youtube', tool_args={'query': q},
                             task_kind='web')
 
+    def _confirm_policy_q(text, ctx):
+        # P3: the policy map is config-owned; the answer is deterministic.
+        from . import confirm as _confirm
+        return IntentResult(text=_confirm.policy_summary(), task_kind='none')
+
     def _screenshot(text, ctx):
         return IntentResult(text='Taking a screenshot…', tool='screenshot',
                             tool_args={'max_px': 1280}, task_kind='gui')
@@ -288,6 +293,14 @@ def register_builtin_intents():
     register_intent('whats going on with my system', _status)
     register_intent('whats running', _status)
     register_intent('status', _status)
+    # P3 spoken surface: "what requires your confirmation?" answers the
+    # safety.confirm_policy map verbatim (deterministic, no LLM).
+    register_intent('what requires your confirmation', _confirm_policy_q)
+    register_intent('what requires confirmation', _confirm_policy_q)
+    register_intent('what needs your confirmation', _confirm_policy_q)
+    register_intent('what needs confirmation', _confirm_policy_q)
+    register_intent('what do you need confirmation for', _confirm_policy_q)
+    register_intent('what do you require confirmation for', _confirm_policy_q)
     register_intent('echo ', _echo)
     register_intent('cancel all', _cancel_all)
     register_intent('stop everything', _cancel_all)
