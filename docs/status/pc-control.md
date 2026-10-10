@@ -459,3 +459,30 @@ the old windows[1] "change" a dedupe no-op.
 - Tests: specs 13 (charter-table pin + loud-validation negatives), body 204,
   root 271/0 (chain test green after main's [go, zen_free, groq] restore +
   rebase), brain 1129 passed, e2e PASS.
+
+## 2026-10-10 — Wave 5U §5.2 browser worker — DONE (pc-control side)
+
+**Shipped** (`body/win/act_browser.py` + seam in winlayer/fakewin):
+browser{status,tabs,activate,navigate,back,forward,reload,find,click,type,
+press,scroll,read} over raw CDP (socket /json/* + pinned websockets page
+calls; Playwright fallback reserved per [45]); dedicated profile under the
+instance data dir on the instance CDP port (INTERFACES Wave-5U addendum);
+refs from find/read; password-type refusal (activeElement + AX protected);
+http(s)-only navigation; blocklist_apps + sensitive_title_patterns gate
+find/read; capped data-only reads; browser_status pushes (post-op forced +
+2 s watcher) via the shared frame sender; launch_url/search_youtube route
+through the worker when up (same tab; search box typing when on YouTube),
+handler fallback otherwise; 21st tool with gui_input conditional class.
+
+**Tests:** body 226, specs 13, e2e 156 PASS, matrix 67. Brain 1233 passed
+(+1 pre-existing main failure — test_speak_batching, fails on clean main
+too).
+
+**Root-suite integration finding (routed, not mine):** registering the real
+`browser` tool collides with brain/confirm.py's stale RISKY_TOOLS/
+TOOL_ACTION 'browser' placeholders — bisect matrix: main 0 fails/50 s,
+shipped state 3 fails/167 s (40 s mock-reply timeouts, order-dependent).
+Request: pc-control__to__brain-core__browser-placeholder-collision.md.
+Also caught+fixed a router PII-classifier false positive: digit-run strings
+in spec descriptions matched the phone category (combined tools scan now
+clean; descriptions reworded).
