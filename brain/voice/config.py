@@ -114,6 +114,14 @@ class VoiceConfig:
     fish_host: str = "127.0.0.1"
     fish_port: int = field(default_factory=fish_port_for)  # derived, INTERFACES §d
     fish_device: str = "auto"         # auto|cuda|cpu for the fish server
+    # P2-adj (Wave 5P, TODO §6): torch.compile the fish server — eager, so the
+    # one-time warmup is paid at SERVER STARTUP (+~160s over the 22s baseline,
+    # measured once), after which steady-state synthesis is ~3.5x faster
+    # (5.6s -> 1.6s/phrase on the JP reference). The on-disk torch.compile
+    # cache persists across restarts, so repeat startups are cheap again.
+    # Measured in scripts/p2_compile_ab.py. Default ON per the user-spotted
+    # task [coord inbox 45]; set voice.fish_compile false to revert.
+    fish_compile: bool = True
     fish_checkpoint: str = "brain/voice/models/fish-speech-1.5"
     fish_venv: str = "brain/voice/.venv-fish"
     fish_vendor: str = "brain/voice/vendor/fish-speech"
@@ -372,7 +380,7 @@ def load_voice_config(config_path: Optional[Path] = None) -> VoiceConfig:
         "tts_sample_rate", "wake_word",
         "ptt_hotkey", "always_listen", "ack_cache", "chunk_ms",
         "fish_host", "fish_port", "fish_device", "fish_checkpoint",
-        "fish_venv", "fish_vendor",
+        "fish_compile", "fish_venv", "fish_vendor",
     }
     extra = {k: v for k, v in section.items() if k not in known}
     cfg = VoiceConfig(
@@ -400,6 +408,7 @@ def load_voice_config(config_path: Optional[Path] = None) -> VoiceConfig:
         fish_host=str(section.get("fish_host", "127.0.0.1")),
         fish_port=int(section.get("fish_port") or fish_port_for()),
         fish_device=str(section.get("fish_device", "auto")),
+        fish_compile=_as_bool(section.get("fish_compile", True), True),
         chunk_ms=int(section.get("chunk_ms", 250) or 250),
         extra=extra,
     )
@@ -423,6 +432,7 @@ def load_voice_config(config_path: Optional[Path] = None) -> VoiceConfig:
     cfg.fish_host = _env("RAPHAEL_FISH_HOST", cfg.fish_host, str)
     cfg.fish_port = _env("RAPHAEL_FISH_PORT", cfg.fish_port, int)
     cfg.fish_device = _env("RAPHAEL_FISH_DEVICE", cfg.fish_device, str)
+    cfg.fish_compile = _env("RAPHAEL_FISH_COMPILE", cfg.fish_compile, _as_bool_raw)
     cfg.always_listen = _env("RAPHAEL_ALWAYS_LISTEN", cfg.always_listen,
                              _as_bool_raw)
     return cfg

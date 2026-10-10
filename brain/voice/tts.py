@@ -499,6 +499,10 @@ class FishSpeechServer:
                "--device", device]
         if device == "cuda":
             cmd.append("--half")
+        # P2-adj (TODO §6): torch.compile — one-time warmup on the first
+        # synthesis, faster steady state (~2x expected; disk cache persists).
+        if getattr(self.cfg, "fish_compile", False):
+            cmd.append("--compile")
         self.log_dir.mkdir(parents=True, exist_ok=True)
         self._rotate_log_path(self.log_path)    # AUD-32: keep the log bounded
         logf = open(self.log_path, "ab")  # noqa: SIM115 — lives with subprocess
@@ -509,6 +513,16 @@ class FishSpeechServer:
 
     def _alive(self) -> bool:
         return self.proc is not None and self.proc.poll() is None
+
+    def _compile_supported(self) -> bool:
+        """P2-adj (TODO §6): does the vendored server expose --compile?
+        Probed before we rely on it (the flag landed in fish-speech 1.5; an
+        older vendored tree would crash on an unknown arg at spawn)."""
+        utils = self.cfg.fish_vendor_path / "tools" / "server" / "api_utils.py"
+        try:
+            return "--compile" in utils.read_text(encoding="utf-8")
+        except OSError:
+            return False
 
     async def health(self) -> bool:
         try:
