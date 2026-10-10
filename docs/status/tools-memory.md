@@ -1,6 +1,39 @@
 # tools-memory — status
 
-Updated: 2026-10-09 (Wave 5P: P5+P6+P7 COMPLETE — handoff below)
+Updated: 2026-10-10 (Wave 5U Wave A: confirm-class tags DONE — handoff below)
+
+## Wave 5U Wave A (§5.4 P0.1) — confirm-class tags ✅ 2026-10-10
+
+- **Delivered:** every tool in my six namespaces carries an explicit
+  `confirm=<class>` (registry metadata consumed at loop.py:585):
+  `web_*=web_fetch` · `file_read/file_search/shell_list/github_status/mcp_list
+  /timer_list/schedule_list=read_only` · `file_write/file_restore=files_write`
+  · `file_trash=delete_files` · `shell=system_command` · `github_push=web_publish`
+  · `timer_set/timer_cancel/reminder_set/schedule_set/schedule_cancel=schedule`
+  · `mcp_refresh` + dynamic wrapped `=mcp_tool` (charter: wrapped default
+  confirm until config marks a read-only class — Wave-C task 5).
+- **Coordination (P0.2):** class names filed for the integrator's
+  `safety.confirm_policy` (Core Guard): request
+  `tools-memory__to__integrator__wave5u-confirm-classes.md`
+  (new: read_only/schedule auto; system_command/web_publish/mcp_tool confirm).
+  Until it lands: tags fail CLOSED (safe direction, never a loosening).
+- **Tests (5):** coverage derived from package SPECS (an untagged future tool
+  fails by construction — the P0.2 guard), exact charter mapping, vocabulary
+  drift guard, risky⇒tagged (pc rule + risky trio classes), MCP wrapped
+  default `mcp_tool` via fake server.
+- **Battery (fresh base, sequential):** memory **217** | brain **242** |
+  root **270 passed, 1 failed** — the 1 = `contract/test_config_and_tools.py::
+  test_cloud_temp_chain_has_no_local_providers` (**MAIN-SIDE**, evidence:
+  `git log origin/main..HEAD -- config.yaml` = empty — my branch never
+  touched it; config says `chain: [zen_free,...]` (integrator commit
+  13bcfae) while qa's test asserts `chain[0]=='go'` — both on current main,
+  fails on plain origin/main). Same class as the voice tier test
+  (`test_tier_default_is_great_sage_on_the_approved_reference` — also fails
+  on latest main, verified post-rebase; my earlier error post stands).
+  gitleaks+regen **exit 0**; scan_personal my-files **0**; repo FAIL **0**.
+- **PUSH/DISPATCH pending** for the green id (covers wave-5P wave_done too —
+  [31]); branch CI stays red on the two main-side tests until their owners
+  align them.
 
 ## Wave 5P — persona adoption packets P5/P6/P7 (all ✅ 2026-10-09)
 

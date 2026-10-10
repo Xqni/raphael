@@ -279,6 +279,11 @@ Wave 4 is MERGED + **GATE PASSED** (tag `wave-4-gate`, 10/10 lanes, mock 308 gre
 - [x] P0 addendum (coord dispatch 2026-10-08): **AUD-01 CRITICAL** (file tools reached `~/.raphael/token`) + **AUD-07** (MCP child env leak). **✅ DONE 2026-10-08** — roots narrowed to explicit workspace, resolved-path sensitive deny (token/ssh/gnupg/cloud/keys), writes confirm-gated, search never lists denied, symlink escapes closed, restore tamper-proof; MCP children get a minimal allowlisted env (+ `mcp.env_allow`), sentinel-secret e2e proved. 10 new tests (`test_aud01_07.py`); AUD-15/23/25/28 = **UNDEFINED in tree → asked on the bus** (verify-first: never applied unseen).
 - [x] Register addenda (files landed on main): **AUD-15, AUD-23, AUD-25, AUD-28** + **SEC-1/ARCH-4 scrub**. **✅ DONE 2026-10-08** — DB → data-dir + 0600 + `max_rows` retention; web IP-pinned transport (TOCTOU closed, per-hop redirect revalidation); MCP request serialization; schedule atomic claim + stale recovery; my-files scrub **3 → 0**. 14 new tests (`test_aud15_25_28`, `test_aud23_web_pin`); suites 189/232 green; root 213 + 1 stash-proven pre-existing (reported). CI **37723653896**; wave_done posted with it.
 
+## Wave 5U — §5.4 useful-now (ACTIVE; charter: docs/USEFUL-NOW-PLAN.md §5.4)
+
+- [x] **P0 task 1 / Wave A (~2h): confirm-class tags on every owned tool.** **✅ DONE 2026-10-10** — web_*=`web_fetch`; file_read/search, shell_list, github_status, mcp_list, schedule-lists=`read_only`; file_write/file_restore=`files_write`; file_trash=`delete_files`; shell=`system_command`; github_push=`web_publish`; schedule writers=`schedule`; mcp_refresh + dynamic wrapped=`mcp_tool` (charter default). New names requested from integrator (config=Core Guard): `tools-memory__to__integrator__wave5u-confirm-classes.md`. Coverage test derives from package SPECS (future untagged tool = red), risky-always-tagged guard (pc rule), vocabulary drift guard; 5 tests. Battery: memory **217** / brain **242** / root **270 pass + 1 pre-existing main-side** (chain contract), gitleaks 0, SEC-1 my-files 0.
+- [ ] **Wave B+ (P2 memory tools/curator/personal_allowed; P2 MCP configs/classes; P2/P3 research/life/tutor skill sets)** — per charter "starts Wave C": do NOT build until dispatched.
+
 ## Later waves
 - Per docs/WAVES.md — do not start early (AGENT_RULES §11).
 
