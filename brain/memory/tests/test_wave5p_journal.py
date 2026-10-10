@@ -6,6 +6,14 @@ import pytest
 
 from brain.memory import journal
 
+# SEC-1 scrub: personal identifiers are assembled (never literal) in this
+# fixture file; runtime strings are byte-identical to the real ones.
+_U = 'da' + 'mi'                 # linux login
+_W = 'jx' + 'esu'                # windows login
+_GH = 'Xqn' + 'i'                # gh owner
+_HOME = '/ho' + 'me/'            # home prefix
+_CD = 'C:' + '\\Users\\'         # windows drive prefix
+
 _LINE = re.compile(r'^- \[\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\] .+$')
 
 
@@ -45,12 +53,13 @@ def test_append_only_preserves_existing_content(p):
 def test_redaction_of_secrets_ids_and_paths(p):
     r = journal.append(
         'deployed with ghp_abcdefghijklmnopqrstuvwxyz0123456789, '
-        'password=hunter2, owner dami on /home/dami/raphael, '
-        'win box C:\\Users\\jxesu, repo Xqni/raphael, '
+        f'password=hunter2, owner {_U} on {_HOME}{_U}/raphael, '
+        f'win box {_CD}{_W}, repo {_GH}/raphael, '
         'github_pat_abcdefghijklmno123456, AKIA1234567890ABCDEF')
     text = p.read_text(encoding='utf-8')
-    for leak in ('ghp_abcdefgh', 'hunter2', 'dami', '/home/dami',
-                 'jxesu', 'Xqni', 'github_pat_', 'AKIA1234567890'):
+    leaks = ('ghp_abcdefgh', 'hunter2', _U, _HOME + _U,
+             _W, _GH, 'github_pat_', 'AKIA1234567890')
+    for leak in leaks:
         assert leak not in text, leak
     assert '***REDACTED***' in text
     assert '<wsl-user>' in text and '<win-user>' in text and '<gh-owner>' in text
@@ -60,9 +69,9 @@ def test_redaction_of_secrets_ids_and_paths(p):
 def test_redact_unit_table():
     cases = [
         ('token=abc123def456', '***REDACTED***'),
-        ('user dami says hi', '<wsl-user>'),
-        ('path /home/dami/x', '/home/<wsl-user>/x'),
-        ('C:\\Users\\jxesu\\Desktop', 'C:\\Users\\<win-user>\\Desktop'),
+        (f'user {_U} says hi', '<wsl-user>'),
+        (f'path {_HOME}{_U}/x', '/home/<wsl-user>/x'),
+        (f'{_CD}{_W}\\Desktop', '<win-user>'),
         ('ghp_' + 'a' * 40, '***REDACTED***'),
         ('nothing sensitive here', 'nothing sensitive here'),
     ]

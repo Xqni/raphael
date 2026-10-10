@@ -46,6 +46,25 @@ All three are LOCAL sqlite paths (no router import — private-mode safe,
 tested with router.boom). forget is owner-wide by design ('forget it' means
 everywhere), never cross-owner.
 
+## What (P7 — journal as a memory surface; added 2026-10-09 as landed)
+`brain/memory/journal.py` (vault/journal.md, gitignored, APPEND-ONLY mode
+'a' only, redaction pass before every write — secrets/ids/placeholders per
+SEC-1 conventions; 7 tests green incl. prefix-preservation + source-shape
+append-only checks). Intent surface:
+
+```python
+from brain.memory import journal
+journal.append('Milestone: ...')   # -> {'path','entry','redactions'}; single-line
+                                   #    dated entry; fail-silent; never raises
+journal.read_recent(limit=10)      # -> last N entries (spoke on
+                                   #    "what did you do recently"); '' if empty
+```
+
+- fastpath intents: "log <x> to your journal" / "remember this in your
+  journal" → `append` (speak "Logged." + redaction count if >0); "what did you
+  do recently" → `read_recent` → speak/format last few (local, no LLM needed).
+- Journal path is repo-root `vault/journal.md` per §8b of the canon brief.
+
 ## Why
 06-CODE-ADOPTION-PLAN §P5 assigns "(tools-memory + brain-core)"; my half is
 the store/scoping seam, yours is the spoken switch. Session-persistence is
