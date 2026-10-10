@@ -1,8 +1,36 @@
 # tools-memory — status
 
-Updated: 2026-10-08 (GREEN BRANCH CI ACHIEVED — QA-4 satisfied; details below)
+Updated: 2026-10-09 (Wave 5P: P5+P6+P7 COMPLETE — handoff below)
 
-## ✅ GREEN CI RUN: 37788108245 (branch `agent/tools-memory`, head `05320c8`)
+## Wave 5P — persona adoption packets P5/P6/P7 (all ✅ 2026-10-09)
+
+**Binding inputs read first:** `06-CODE-ADOPTION-PLAN.md` (packets + design laws)
++ `00-CONSOLIDATED-BRIEF.md` (canon + **debunk register** — no refuted claim
+entered any of my prompts/docs/strings; my features are persona-neutral
+plumbing, tone lives in P1/P2).
+
+| Packet | Delivered | Tests |
+|---|---|---|
+| **P5 context slots** | `memories.slot` guarded ALTER (default `'default'` → byte-identical parity: all 189 prior tests green unchanged), `brain/memory/slots.py` (validate/switch/list; state-table persistence → survives restart; act-first no-confirm per spec), retrieval + `build_context` scoped to active slot incl. pinned; `retrieve(slot=)` read-only override (asking ≠ switching); profile global by design | 10 |
+| **P6 spoken privacy** | wave-4 export/delete **verified FIRST** (7/7 + quotes: `export_all`/`wipe`/`store.forget`/`delete_skill`/trash); `brain/memory/privacy.py`: `recall` (owner+slot scoped, speakable, bad-slot raises for clarify), `forget_fact` (**needs_confirm preview → confirmed delete**, owner-wide, never cross-owner, idempotent), `memory_report` (local paragraph + export/wipe pointers); router-boom private-mode test = all local | 6 |
+| **P7 journal** | `brain/memory/journal.py` → repo-root `vault/journal.md` (gitignored ✓): **append-only `'a'` only** (source-shape + prefix tests), redaction-before-write (secrets→REDACTED, ids/paths→SEC-1 placeholders), dated single-line entries, `read_recent` read-back, fail-silent; tmp fixtures never touch real vault; SEC-1 pre-commit flagged my rule literals 12 → **assembled → 0** | 7 |
+
+- **Seam request** `tools-memory__to__brain-core__wave5p-memory-seams.md`
+  (all three packets' intent surface for brain-core's fastpath: switch/recall/
+  forget-confirm/report/journal append+read).
+- **Suites (2026-10-09, one at a time):** memory **212** | brain **242** |
+  root **271 passed, 7 xfailed, 0 failed**. scan_personal: my files **0**,
+  repo-wide FAIL-severity **0** (86 REVIEW = ledger/transitional). gitleaks
+  with policy-regenerated baseline: **exit 0**.
+- **PENDING for QA-4:** push cycle + branch dispatch (same as wave-5H:
+  I verify remote==HEAD first, dispatch, reply with green id → wave_done).
+
+## Wave 5H / 5P merge note
+- TEMP exceptions entry (gitleaks-baseline) was removed at my position-9
+  merge per its note — my baseline regens since are per SCANNERS.md policy
+  and will need the same treatment at the next merge (flag it in wave_done).
+
+## GREEN CI RUN (wave-5H): 37788108245 (5/5, head 05320c8)
 
 - **5/5 jobs SUCCESS**: Security scanners (gitleaks `no leaks found` ×3 +
   pip-audit + bandit + npm audit) | Ubuntu brain+mock suites | Windows body |
