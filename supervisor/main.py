@@ -755,6 +755,78 @@ def relay_pipe(src, dst, idle_cap=None):
             pass
 
 
+def _spawn_relay_helper(cfg, log, backend_port, listen_port):
+    """(Re)spawn the WSL helper leg — single spawn path used by bring-up
+    AND the watchdog (design-review finding 3). Duplicate spawns are safe:
+    a bind-conflict exits and logs (see wsl-relay header)."""
+    helper_unc = REPO_ROOT / "scripts" / "wsl-relay.py"
+    helper_wsl = _wsl_path(helper_unc)
+    if not helper_wsl:
+        log.warn("brain relay: cannot derive wsl path for scripts/wsl-relay.py")
+        return None
+    return _spawn(wsl_argv(cfg, "python3", helper_wsl, str(backend_port),
+                           str(listen_port)),
+                  helper_unc, log, "wsl-relay",
+                  inst_mod.log_path("wsl-relay"))
+
+
+def _helper_alive(cfg, backend_port, listen_port):
+    """Exact-argv liveness probe inside the distro — one wsl exec, called
+    ONLY at watchdog cadence (never per health tick, Rule 14)."""
+    shell = (
+        'for p in $(pgrep -f "wsl-relay.py" 2>/dev/null); do '
+        'cmd=$(tr "\\0" " " < /proc/$p/cmdline 2>/dev/null); '
+        'case "$cmd" in *"wsl-relay.py %d %d"*) echo found; exit 0;; esac; '
+        'done; exit 1' % (backend_port, listen_port))
+    rc, _out = wsl_run(cfg, "sh", "-c", shell, timeout=15)
+    return rc == 0
+
+
+def _relay_watchdog_interval():
+    try:
+        return float(os.environ.get("RAPHAEL_RELAY_WATCHDOG_INTERVAL", "60"))
+    except ValueError:
+        return 60.0
+
+
+def _relay_watchdog_loop(log, is_alive, respawn, stop=None, nap=None,
+                         interval=None):
+    """Supervise the WSL helper leg (design-review finding 3): it used to be
+    spawned exactly once per bring-up with NO supervision — a silent helper
+    death wedged the chain until the next supervisor start (incidents
+    2026-10-08 AND 2026-10-09).
+
+    Sleep FIRST (a fresh spawn is presumed alive), then probe every
+    `interval` (RAPHAEL_RELAY_WATCHDOG_INTERVAL, default 60 s); on death ->
+    log + respawn. Sleeps in <=1 s slices so shutdown/stop stays responsive.
+    A raising probe counts as dead (best effort); a raising respawn is
+    logged, never fatal to the loop."""
+    stop = stop or (lambda: False)
+    nap = nap or time.sleep
+    interval = _relay_watchdog_interval() if interval is None else float(interval)
+    while True:
+        waited = 0.0
+        while waited < interval and not stop():
+            step = min(1.0, interval - waited)
+            nap(step)
+            waited += step
+        if stop():
+            return
+        try:
+            alive = is_alive()
+        except Exception as exc:      # noqa: BLE001 — probe errors = dead
+            log.warn("brain relay: helper probe error (%s) — treating as dead"
+                     % exc)
+            alive = False
+        if not alive:
+            log.warn("brain relay: helper NOT alive — watchdog respawning "
+                     "(design-review finding 3)")
+            try:
+                respawn()
+            except Exception as exc:      # noqa: BLE001 — never kill watchdog
+                log.error("brain relay: helper respawn failed: %s" % exc)
+
+
 # SEC-6 idle cap: >= 3x the PROTOCOL 10 s WS ping (default 90 s).
 # Override: RAPHAEL_RELAY_IDLE_CAP (seconds; tests use small values).
 def _relay_idle_cap():
@@ -1606,15 +1678,26 @@ def start_brain_relay(cfg, log, listen_port=None, backend_port=None):
                  "forwarding is verified (scripts/win/allow-brain-"
                  "localhost.ps1)" % backend_port)
     else:
-        helper_unc = REPO_ROOT / "scripts" / "wsl-relay.py"
-        helper_wsl = _wsl_path(helper_unc)
-        if helper_wsl:
-            _spawn(wsl_argv(cfg, "python3", helper_wsl, str(backend_port),
-                            str(listen_port)),
-                   helper_unc, log, "wsl-relay",
-                   inst_mod.log_path("wsl-relay"))
-        else:
-            log.warn("brain relay: cannot derive wsl path for scripts/wsl-relay.py")
+        _spawn_relay_helper(cfg, log, backend_port, listen_port)
+        # Watchdog (design-review finding 3): the helper used to get ONE
+        # spawn per bring-up and no supervision — a silent death wedged the
+        # chain until a manual rescue. Sleep-first probe every
+        # RAPHAEL_RELAY_WATCHDOG_INTERVAL (default 60 s), respawn on death.
+        iv = _relay_watchdog_interval()
+        threading.Thread(
+            target=_relay_watchdog_loop,
+            kwargs={
+                "log": log,
+                "is_alive": lambda: _helper_alive(cfg, backend_port,
+                                                  listen_port),
+                "respawn": lambda: _spawn_relay_helper(cfg, log,
+                                                        backend_port,
+                                                        listen_port),
+                "interval": iv,
+            },
+            daemon=True).start()
+        log.info("brain relay: helper watchdog armed (probe every %.0fs)"
+                 % iv)
 
     threading.Thread(target=accept_loop, daemon=True).start()
     return "relay"

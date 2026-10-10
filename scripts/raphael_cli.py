@@ -63,6 +63,14 @@ if str(ROOT) not in sys.path:
 
 from supervisor import instance as inst_mod      # noqa: E402
 from supervisor import main as sup               # noqa: E402
+try:
+    import scripts.raphael_ws as rws             # stdlib WS client (confirm/chat)
+except ImportError:                              # script-mode fallback
+    import importlib.util as _ilu
+    _spec = _ilu.spec_from_file_location(
+        "raphael_ws", str(ROOT / "scripts" / "raphael_ws.py"))
+    rws = _ilu.module_from_spec(_spec)
+    _spec.loader.exec_module(rws)
 
 EXIT_OK, EXIT_FAIL, EXIT_DOWN = 0, 1, 2
 IS_WINDOWS = os.name == "nt"
@@ -80,6 +88,10 @@ class Ctx:
         self.port = int(cfg["paths"].get("brain_port") or 8765)
         health = str(cfg["supervisor"].get("health_url", sup.HEALTH_URL))
         self.base = health.rsplit("/health", 1)[0]
+        # http://127.0.0.1:8765 -> host/port for the stdlib WS client
+        _net = self.base.split("://", 1)[-1]
+        self.host, _, self.port_s = _net.partition(":")
+        self.port_s = self.port_s or "80"
         self.token_path, self.token = sup.resolve_token(cfg)
         # test hooks (defaults = production values)
         self.poll_tries = 12
@@ -158,6 +170,7 @@ def cmd_status(ctx, args):
         return EXIT_FAIL
     print("brain: ok @ %s  instance=%s port=%d"
           % (ctx.base, ctx.instance, ctx.port))
+    print("chat:  %s" % _chat_url(ctx))
     code, st = api(ctx, "GET", "/status")
     early = _auth_or_down(ctx, code, st)
     if early:
@@ -174,40 +187,6 @@ def cmd_status(ctx, args):
     return EXIT_OK
 
 
-def cmd_latency(ctx, args):
-    """P0.8 derived-latency snapshot (Wave 5U): stages from /status.latency.
-    Read-only slice — the demo's 'how fast is she now' verifier."""
-    code, payload = api(ctx, "GET", "/health")
-    early = _auth_or_down(ctx, code, payload)
-    if early:
-        _print(early[0])
-        return early[1]
-    if code != 200:
-        where = ("not reachable (no connection)" if code is None
-                 else "unreachable (HTTP %s)" % code)
-        print("brain: %s — try `raphael start`" % where)
-        return EXIT_DOWN
-    code, st = api(ctx, "GET", "/status")
-    if code in (401, 403):
-        out = _auth_or_down(ctx, code, st)
-        if out:
-            _print(out[0])
-            return out[1]
-    if code != 200 or not isinstance(st, dict):
-        print("brain: /status unavailable (HTTP %s)" % code)
-        return EXIT_FAIL
-    lat = st.get("latency")
-    if not isinstance(lat, dict) or not lat:
-        print("latency: no samples yet (ask her something first)")
-        return EXIT_OK
-    for key in sorted(lat):
-        val = lat[key]
-        if isinstance(val, dict):
-            inner = "  ".join("%s=%s" % (k, v) for k, v in sorted(val.items()))
-            print("%-22s %s" % (key, inner))
-        else:
-            print("%-22s %s" % (key, val))
-    return EXIT_OK
 
 
 def cmd_pause(ctx, args):
@@ -828,7 +807,62 @@ def _wait_health(ctx, want):
     return code if want == "up" else (None if code is None else code)
 
 
+def _chat_url(ctx):
+    """Raphael Chat (DoU line 1) — brain mounts web/chat at /chat
+    (USEFUL-NOW-PLAN §4b; same origin as /ws, token-gated)."""
+    return ctx.base + "/chat"
+
+
+def _open_browser(url):
+    """Best-effort link opener (owner-facing --web). Never raises; the URL
+    is ALWAYS printed so a failed open degrades to copy-paste."""
+    if IS_WINDOWS:
+        try:
+            os.startfile(url)                    # noqa: S606 — intentional
+            return True
+        except OSError:
+            return False
+    for cmd in (["wslview", url], ["cmd.exe", "/c", "start", "", url],
+                ["xdg-open", url]):
+        try:
+            r = subprocess.run(cmd, stdout=subprocess.DEVNULL,
+                               stderr=subprocess.DEVNULL, timeout=10)
+            if r.returncode == 0:
+                return True
+        except (OSError, subprocess.SubprocessError):
+            continue
+    return False
+
+
 def cmd_start(ctx, args):
+    if getattr(args, "dry_run", False):
+        # One-command start, dry plan (acceptance: lists every component,
+        # exits 0, spawns NOTHING — stack stays down).
+        relay_on = bool(ctx.cfg["paths"].get("brain_relay", True))
+        body_cmd = str(ctx.cfg["paths"].get("body_cmd") or "")
+        print("raphael start --dry-run — components brought up together "
+              "(one command, DoU line 1):")
+        rows = [
+            ("supervisor", "detached bring-up + health/watchdog loops "
+                           "(single-instance mutex %s)"
+                           % inst_mod.mutex_name(ctx.instance)),
+            ("brain", "uvicorn 127.0.0.1:%d (process mode; systemd unit "
+                      "only if installed)" % ctx.port),
+            ("body", "Windows Body via paths.body_cmd: %s"
+                     % (body_cmd or "not configured")),
+            ("orb", "Electron orb via WSLg (adopted if already running)"),
+            ("relay", ("win 127.0.0.1:%d splice + WSL helper + watchdog "
+                       "(%.0fs probes)" % (ctx.port,
+                                           sup._relay_watchdog_interval()))
+             if relay_on else "disabled (paths.brain_relay=false)"),
+            ("TTS", "Fish-Speech 127.0.0.1:8777 — started by the brain's "
+                    "voice warmup, never by the supervisor"),
+        ]
+        for name, what in rows:
+            print("  %-11s %s" % (name + ":", what))
+        print("chat:  %s" % _chat_url(ctx))
+        print("dry-run: nothing spawned; run `raphael start` to bring it up")
+        return EXIT_OK
     code, payload = api(ctx, "GET", "/health", timeout=3.0)
     if code in (200, 401):
         note = " (note: token rejected)" if code == 401 else ""
@@ -842,6 +876,7 @@ def cmd_start(ctx, args):
     final = _wait_health(ctx, "up")
     if final == 200:
         print("healthy @ %s" % ctx.base)
+        print("chat:  %s" % _chat_url(ctx))
         return EXIT_OK
     if final == 401:
         print("started but TOKEN REJECTED (HTTP 401) — token file: %s"
@@ -1130,8 +1165,12 @@ def build_parser():
     sub = p.add_subparsers(dest="cmd", required=True)
 
     sub.add_parser("status", help="health + /status snapshot")
-    sub.add_parser("latency", help="derived latency stages (P0.8) from /status")
-    sub.add_parser("start", help="start supervisor (Windows) / brain (WSL)")
+    stp = sub.add_parser("start", help="start supervisor (Windows) / brain "
+                         "(WSL) — one command brings up brain+body+orb+relay"
+                         "+TTS, prints the chat URL")
+    stp.add_argument("--dry-run", action="store_true",
+                     help="list every component the start would bring up, "
+                          "print the chat URL, spawn nothing (DoU line 1)")
     sub.add_parser("stop", help="stop supervisor+brain(+body), verify down")
     sub.add_parser("restart", help="stop then start")
     sub.add_parser("pause", help="POST /control pause")
@@ -1177,6 +1216,23 @@ def build_parser():
 
     sub.add_parser("selftest", help="supervisor environment self-check")
 
+    cfm = sub.add_parser("confirm", help="answer a pending confirm card "
+                         "(WS confirm_resp, role cli)")
+    cfm.add_argument("job_id")
+    cfm.add_argument("answer", choices=("yes", "no"))
+
+    tsk = sub.add_parser("tasks", help="list/show tasks ([id]) and cancel "
+                         "(<id> --cancel)")
+    tsk.add_argument("job_id", nargs="?")
+    tsk.add_argument("--cancel", action="store_true")
+
+    cht = sub.add_parser("chat", help="interactive terminal chat "
+                         "(answers stream as frames)")
+    cht.add_argument("--web", action="store_true",
+                     help="open the browser chat UI (/chat) instead")
+
+    sub.add_parser("latency", help="print /status.latency p50/p95 per stage")
+
     doc = sub.add_parser(
         "doctor",
         help="whole-stack triage: token/.env/brain/bind/relay/orb/fish/"
@@ -1186,12 +1242,203 @@ def build_parser():
     return p
 
 
+
+
+# --------------------------------------------------------------------------
+# Wave 5U CLI verbs: confirm (WS), tasks, chat, latency (§5.7)
+# --------------------------------------------------------------------------
+def _ws_connect(ctx):
+    """Authenticated role=cli session (PROTOCOL §2) — WSError on failure."""
+    return rws.WSSession.connect(ctx.host, ctx.port_s, ctx.token)
+
+
+def cmd_confirm(ctx, args):
+    """raphael confirm <job> yes|no — WS confirm_resp as role cli
+    (channel derived server-side as 'text' — PROTOCOL §3/AUD-08)."""
+    try:
+        sess = _ws_connect(ctx)
+    except rws.WSError as exc:
+        print("confirm: cannot reach brain (%s)" % exc)
+        return EXIT_DOWN
+    try:
+        sess.send_json({"type": "confirm_resp", "job": args.job_id,
+                        "answer": args.answer})
+        deadline = time.monotonic() + 15.0
+        while True:
+            frame = sess.recv_json(timeout=max(0.5, deadline - time.monotonic()))
+            if frame is None:
+                print("confirm: connection closed by brain")
+                return EXIT_DOWN
+            if frame.get("type") == "ack" and frame.get("job") == args.job_id:
+                if frame.get("accepted"):
+                    print("confirmed %s — answer=%s (accepted)"
+                          % (args.job_id, frame.get("answer")))
+                    return EXIT_OK
+                print("NOT accepted: %s"
+                      % (frame.get("hint") or "rejected — use the orb or "
+                         "keyboard for this action"))
+                return EXIT_FAIL
+            if frame.get("type") == "error":
+                print("confirm error: %s — %s" % (frame.get("code"),
+                                                   frame.get("detail", "")))
+                return EXIT_FAIL
+            # interleaved broadcasts (subtitle/notice/job_event) — keep waiting
+            if time.monotonic() >= deadline:
+                print("confirm: no reply within 15s")
+                return EXIT_DOWN
+    except (TimeoutError, rws.WSError) as exc:
+        print("confirm: %s" % exc)
+        return EXIT_DOWN
+    finally:
+        sess.close()
+
+
+def cmd_tasks(ctx, args):
+    """raphael tasks [id] [--cancel] — friendly alias over /jobs."""
+    if args.cancel:
+        if not args.job_id:
+            print("tasks --cancel needs a task id: raphael tasks <id> --cancel")
+            return EXIT_FAIL
+        return cmd_cancel(ctx, type("A", (), {"job_id": args.job_id,
+                                              "gui": False})())
+    shim = type("A", (), {"job_id": args.job_id, "raw": False, "wait": False,
+                          "timeout": 300.0})()
+    return cmd_jobs(ctx, shim)
+
+
+def cmd_latency(ctx, args):
+    """raphael latency — prints /status.latency p50/p95 per stage
+    (value-blind: stage names + numbers only)."""
+    code, st = api(ctx, "GET", "/status")
+    early = _auth_or_down(ctx, code, st)
+    if early:
+        _print(early[0])
+        return early[1]
+    if code != 200 or not isinstance(st, dict):
+        print("latency: GET /status -> HTTP %s" % code)
+        return EXIT_FAIL
+    lat = st.get("latency")
+    if not isinstance(lat, dict):
+        print("latency: no data on /status yet (value-blind endpoint)")
+        return EXIT_OK
+    hist = lat.get("hist") or {}
+    stages = lat.get("stages") or {}
+    if not hist and not stages:
+        print("latency: no samples yet — ask something, then re-run")
+        return EXIT_OK
+    if hist:
+        print("%-26s %7s %7s %7s %6s" % ("stage", "p50", "p95", "max", "n"))
+        for stage in sorted(hist):
+            h = hist[stage]
+            print("%-26s %7s %7s %7s %6s"
+                  % (stage, h.get("p50"), h.get("p95"), h.get("max"),
+                     h.get("count")))
+    if stages:
+        print("last: " + ", ".join("%s=%s" % (k, v)
+                                   for k, v in sorted(stages.items())))
+    if lat.get("job"):
+        print("sampled during job: %s" % lat["job"])
+    if lat.get("updated_at"):
+        print("updated_at: %s" % lat["updated_at"])
+    return EXIT_OK
+
+
+def cmd_chat(ctx, args):
+    """raphael chat — interactive terminal chat (role=cli over /ws):
+    sends `command` frames, prints `answer`/`report`/`notice` frames.
+    --web just opens the browser chat UI (DoU line 1)."""
+    url = _chat_url(ctx)
+    if args.web:
+        print("chat web UI: %s" % url)
+        ok = _open_browser(url)
+        print("(opened in the browser)" if ok else
+              "(could not auto-open — paste the URL; web UI mounts when "
+              "brain-core's web/chat lands)")
+        return EXIT_OK
+    try:
+        sess = _ws_connect(ctx)
+    except rws.WSError as exc:
+        print("chat: cannot reach brain (%s)" % exc)
+        return EXIT_DOWN
+    print("connected as role=cli — type to talk, 'exit' or Ctrl+D quits")
+    print("web UI: %s" % url)
+    rc = EXIT_OK
+    try:
+        while True:
+            try:
+                line = input("> ").strip()
+            except EOFError:
+                break
+            if not line:
+                continue
+            if line.lower() in ("exit", "quit"):
+                break
+            try:
+                sess.send_json({"type": "command", "text": line,
+                                "source": "text"})
+            except (OSError, rws.WSError) as exc:
+                print("send failed: %s" % exc)
+                rc = EXIT_DOWN
+                break
+            # read frames until this turn's `answer` (print intermediates)
+            deadline = time.monotonic() + 180.0
+            while True:
+                try:
+                    frame = sess.recv_json(timeout=max(0.5,
+                                                       deadline - time.monotonic()))
+                except TimeoutError:
+                    print("(still thinking — frames paused 180s; Ctrl+C to "
+                          "abort waiting)")
+                    rc = EXIT_FAIL
+                    break
+                if frame is None:
+                    print("brain closed the connection")
+                    rc = EXIT_DOWN
+                    break
+                ftype = frame.get("type")
+                if ftype == "answer":
+                    print(frame.get("text", ""))
+                    meta = ", ".join(x for x in (
+                        frame.get("provider"), frame.get("model")) if x)
+                    if meta:
+                        print("  [%s]" % meta)
+                    break
+                if ftype == "report":
+                    print("%s — %s" % (frame.get("title", "report"),
+                                       frame.get("summary", "")))
+                    break
+                if ftype == "ack":
+                    print("  … job %s" % frame.get("job"))
+                elif ftype == "job_event":
+                    print("  · %s%s" % (frame.get("status", ""),
+                                        ("/" + frame["stage"])
+                                        if frame.get("stage") else ""))
+                elif ftype == "notice":
+                    print("! %s" % frame.get("text", ""))
+                elif ftype == "error":
+                    print("error: %s — %s" % (frame.get("code"),
+                                               frame.get("detail", "")))
+                    rc = EXIT_FAIL
+                    break
+                # subtitle/other frames: silently skipped for cli
+    except (KeyboardInterrupt, EOFError):
+        print()
+    except (rws.WSError, OSError) as exc:
+        print("chat: %s" % exc)
+        rc = EXIT_DOWN
+    finally:
+        sess.close()
+    return rc
+
+
 HANDLERS = {
-    "status": cmd_status, "latency": cmd_latency, "start": cmd_start, "stop": cmd_stop,
+    "status": cmd_status, "start": cmd_start, "stop": cmd_stop,
     "restart": cmd_restart, "pause": cmd_pause, "resume": cmd_resume,
     "private": cmd_private, "logs": cmd_logs, "jobs": cmd_jobs,
     "cancel": cmd_cancel, "say": cmd_say, "selftest": cmd_selftest,
     "tier": cmd_tier, "doctor": cmd_doctor,
+    "confirm": cmd_confirm, "tasks": cmd_tasks,
+    "chat": cmd_chat, "latency": cmd_latency,
 }
 
 

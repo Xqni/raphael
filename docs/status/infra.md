@@ -1,6 +1,6 @@
 # infra — status
 
-Updated: 2026-10-07 (Wave 5H audit packet COMPLETE — verify-first table above; coord rule §13)
+Updated: 2026-10-10 (Wave 5U §5.7 complete — see section below; coord rule §13)
 
 ## Done (Wave 2 — all tasks, commits `0451dba..737e216` on `agent/infra`)
 
@@ -334,6 +334,52 @@ class on the next `raphael stop`). No orphans from this session (Rule 14).
 - live doctor smoke (stack down): PASS=6 WARN=4 FAIL=0 exit0
 - no elevated commands run by this lane; stack spawned once for the ss
   proof and torn down (policy 2026-10-07).
+
+
+## Wave 5U §5.7 (complete — 2026-10-10, head c4d1aa8 on top of origin/main 0684b3e)
+
+16. **Finding 3 + watchdog** (decision [49]/charter): helper accept loop
+    now has the Windows leg's guard (transient OSError -> continue;
+    `fileno()==-1` -> exit) — commit `9062703`; supervisor watchdog:
+    `_spawn_relay_helper` + `_helper_alive` (exact-argv, watchdog cadence
+    only) + `_relay_watchdog_loop` (sleep-first, 60 s default,
+    `RAPHAEL_RELAY_WATCHDOG_INTERVAL`, exceptions logged never fatal).
+17. **Finding 12**: `bind_watch_loop` re-resolves `hostname -I`
+    (`RAPHAEL_RELAY_BIND_CHECK`, 300 s) and closes the listener when the
+    address vanished -> zombie guard exits -> watchdog respawns fresh
+    (the review's required ordering).
+18. **One-command start (DoU line 1)**: `raphael start --dry-run` lists
+    supervisor/brain/body/orb/relay/TTS + chat URL, exit 0, spawns nothing
+    (live-verified); `start`/`status` print `chat: http://127.0.0.1:PORT/chat`.
+19. **CLI verbs**: `confirm <job> yes|no` (WS confirm_resp role=cli ->
+    ack, token value never printed on auth failure), `tasks [id] [--cancel]`,
+    `chat` (interactive; prints answer/report/notice/job_event frames;
+    `--web` opens /chat), `latency` (/status.latency p50/p95/max table,
+    value-blind). New `scripts/raphael_ws.py` — minimal stdlib WS client
+    (handshake+Sec-WebSocket verify, masked frames, auto-pong, auth role cli).
+20. **P3 docs**: `scripts/NETWORK-SECURITY.md` "Mini-PC / LAN move" table
+    (loopback default, TLS required off-box, token unchanged, narrow
+    firewall) + `brain.url` key request to integrator. **Task 4**
+    (conductor ensure-running hook in setup-startup.ps1) = request only:
+    tools/conductor semantics are integrator-owned (routed in task_done).
+21. **Guard**: re-pin from a CLEAN tree per charter (commit `c4d1aa8`,
+    approval = `infra__to__integrator__5u-supervisor-relay-watchdog.md`,
+    1-line diff, byte-stable after).
+
+### Wave 5U test output (sequential battery, Rule 14)
+
+- `pytest supervisor/tests -q` → **153 passed, 2 skipped** (+19 this batch:
+  10 finding-12/accept-loop, 9 wave5u CLI incl. mock-WS handshake)
+- `pytest tests -q` → 270 passed + 1 FAILED —
+  `test_cloud_temp_chain_has_no_local_providers` (chain[0]=='go' vs config
+  zen_free): **reproduced on pristine origin/main 0684b3e** (worktree run)
+  → pre-existing, routed to qa/integrator, NOT mine
+- `pytest body -q` → **194 passed**
+- `brain suite` → 7 errors, **identical on pristine origin/main 0684b3e**
+  (`brain/evolution/tests`: `No module named 'brain'` — missing path setup)
+  → pre-existing, routed to evolution-persona, NOT mine
+- guard byte-stable; personal-scan advisory clean for FAIL class
+  (REVIEW-only: 7 synthetic test-IP fixtures, advisory by design)
 
 ## Next
 
