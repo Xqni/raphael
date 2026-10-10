@@ -90,12 +90,38 @@ zero split regressions proven by construction); Cut B landed neutral
 | metric | value | definition |
 |---|---|---|
 | audio_end → subtitle | **554 ms median** (477–793; floor 396) | probe S2+S3 — the decided floor |
-| VAD-close → subtitle | **≈1.85 s** | 1.2 s close + 1.3 s grace + 0.55 s STT |
-| stop-speaking → subtitle | **≈3.05 s** (was 3.08 s) | close fires1.2 s after last speech, audio_end fires at close+grace (2.5 s — unchanged worst case, by design) |
+| VAD-close → subtitle | **≈1.60 s** (was ≈1.85 s) | 1.2 s close + **0.8 s grace** + 0.55 s STT |
+| stop-speaking → subtitle | **≈2.55 s** (was ≈3.05 s, grace=13) | close fires 1.2 s after last speech, audio_end fires at close+grace (2.0 s — was 2.5 s at grace=13) |
+
+**P0-URGENT (coord inbox 47, user: 'huge delay'):** `CONTINUATION_GRACE`
+13 → **8** (0.8 s hold, was 1.3 s). Perceived stop→subtitle drops ~0.5 s
+(≈3.05 s → ≈2.55 s). Both `SILENCE_CLOSE` and `CONTINUATION_GRACE` are now
+**config-driven** via `RAPHAEL_SILENCE_CLOSE` / `RAPHAEL_CONTINUATION_GRACE`
+(env, body-side `audio_in.py`; out-of-range/typo fails CLOSED to the default
+— a bad value can never deafen the mic or split every clause). Main default
+is `close=12, grace=8`; set `RAPHAEL_CONTINUATION_GRACE=13` to restore the
+old 1.3 s window without a rebuild.
+
+**Honest split-risk tradeoff (grace=8):** the no-split merge window shrinks
+1.3 s → 0.8 s. A resume gap longer than 0.8 s now **splits** into a second
+utterance instead of appending (the brain merges only within the window).
+Real human inter-clause pauses and barge-in resumes stay well under 0.8 s,
+so normal speech still merges — only a >0.8 s hesitation can split. If splits
+show up in the live `wake_drop` / continuation logs, bump the grace back
+toward 13 (each +1 chunk = +100 ms of split-safety at +100 ms of perceived
+latency). This is a tunable knob, not a fixed constant, so the latency/split
+trade can be re-balanced against real usage without a code change.
+
+### Metric precision (so the numbers cannot be misread later)
+| metric | value | definition |
+|---|---|---|
+| audio_end → subtitle | **554 ms median** (477–793; floor 396) | probe S2+S3 — the decided floor |
+| VAD-close → subtitle | **≈1.60 s** | 1.2 s close + 0.8 s grace + 0.55 s STT |
+| stop-speaking → subtitle | **≈2.55 s** (grace=8; was ≈3.05 s at grace=13) | close fires 1.2 s after last speech, audio_end fires at close+grace (2.0 s) |
 
 **Arithmetic tension flagged (conductor's "~1.8 s perceived, ~45% better"):**
 1.2 + 0.55 ≈ 1.8 assumes `audio_end` fires AT the 1.2 s close; the grace hold
-(13 chunks) defers it to 2.5 s — which is exactly what keeps the merge
+defers it to close+grace — which is exactly what keeps the merge
 contract (`brain/tests/test_sec3_cloud_stt_gate.py`: no end between parts)
 and the zero-split-regression proof intact. **Reaching stop→subtitle ≈1.8 s
 WITH zero splits** requires the end-at-close variant where the brain's
@@ -104,4 +130,4 @@ the merge window (discard the partial if a continuation arrives, else submit) �
 that is brain-core's file; offered here as an optional follow-up (their call,
 not started). With the accepted floor and the landed grace design, the honest
 end-to-end numbers are: **audio_end→subtitle 0.55 s (floor accepted), stop→
-subtitle ≈3.05 s (split-safe by construction)**.
+subtitle ≈2.55 s at grace=8 (split window 0.8 s, tunable)**.

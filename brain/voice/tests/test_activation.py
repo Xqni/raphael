@@ -240,14 +240,49 @@ def test_end_grace_without_hold_is_plain_wake():
     assert g.tick() is False                   # nothing to fire
 
 
-def test_close_and_grace_keep_the_old_25_slot():
-    """close(12) + grace(13) == the OLD SILENCE_CLOSE(25): identical
-    worst-case audio_end latency and no-split coverage (accepted target:
-    ZERO split regressions) — only the merge structure is new."""
+def test_close_and_grace_are_config_driven_and_sum_to_the_old_slot():
+    """P0-URGENT (coord inbox 47): close/grace are config-driven (env), so
+    the old 12+13==25 invariant becomes PER-CONFIG: whatever the two resolve
+    to, close+grace is what bounds worst-case end latency. Main default is
+    now close=12, grace=8 (0.8s hold, trims perceived latency ~0.5-0.7s).
+    An explicit override reconstructs the old 12+13==25 slot exactly."""
     from body.win.audio_in import VadSegmenter
+    # config-driven defaults: close=12, grace=8 (was 13)
     assert VadSegmenter.SILENCE_CLOSE == 12
-    assert VadSegmenter.CONTINUATION_GRACE == 13
-    assert VadSegmenter.SILENCE_CLOSE + VadSegmenter.CONTINUATION_GRACE == 25
+    assert VadSegmenter.CONTINUATION_GRACE == 8
+    # per-config invariant: close+grace is the worst-case end-latency bound
+    v_default = VadSegmenter()
+    assert (v_default.SILENCE_CLOSE + v_default.CONTINUATION_GRACE) == 20
+    # an explicit override reconstructs the ORIGINAL 25-chunk (2.5s) slot
+    v_old = VadSegmenter(silence_close=12, continuation_grace=13)
+    assert v_old.SILENCE_CLOSE + v_old.CONTINUATION_GRACE == 25
+
+
+def test_continuation_grace_env_override(monkeypatch):
+    """RAPHAEL_CONTINUATION_GRACE / RAPHAEL_SILENCE_CLOSE are honored; out of
+    range / non-integer FAIL-CLOSED to the default (a typo must never deafen
+    the mic or split every clause)."""
+    from body.win import audio_in
+
+    monkeypatch.setenv("RAPHAEL_CONTINUATION_GRACE", "13")
+    monkeypatch.setenv("RAPHAEL_SILENCE_CLOSE", "12")
+    import importlib
+    importlib.reload(audio_in)
+    try:
+        assert audio_in.VadSegmenter.CONTINUATION_GRACE == 13
+        assert audio_in.VadSegmenter.SILENCE_CLOSE == 12
+        # out-of-range clamps into [1,100]
+        monkeypatch.setenv("RAPHAEL_CONTINUATION_GRACE", "9999")
+        importlib.reload(audio_in)
+        assert audio_in.VadSegmenter.CONTINUATION_GRACE == 100
+        # non-integer fails closed to the default (8)
+        monkeypatch.setenv("RAPHAEL_CONTINUATION_GRACE", "not-a-number")
+        importlib.reload(audio_in)
+        assert audio_in.VadSegmenter.CONTINUATION_GRACE == 8
+    finally:
+        monkeypatch.delenv("RAPHAEL_CONTINUATION_GRACE", raising=False)
+        monkeypatch.delenv("RAPHAEL_SILENCE_CLOSE", raising=False)
+        importlib.reload(audio_in)   # restore production defaults
 
 
 def test_wak_stream_wires_continuation_path():
@@ -277,12 +312,13 @@ def test_wake_stream_has_continuation_grace_constant():
     from body.win.audio_in import VadSegmenter, WakeStream
     # single source of truth: WakeStream mirrors VadSegmenter's grace
     assert WakeStream.CONTINUATION_GRACE == VadSegmenter.CONTINUATION_GRACE
-    assert WakeStream.CONTINUATION_GRACE == 13
     # the run-loop expression must resolve on a REAL instance (this is the
-    # exact line whose AttributeError deafened the mic)
+    # exact line whose AttributeError deafened the mic); the instance grace
+    # mirrors its vad (P0: config-driven, default 8)
     ws = WakeStream(on_frame=lambda m: None,
                     on_start=lambda d: None, on_end=lambda: None)
     assert ws.CONTINUATION_GRACE == VadSegmenter.CONTINUATION_GRACE
+    assert ws.CONTINUATION_GRACE == ws.vad.CONTINUATION_GRACE
 
 
 def test_wake_stream_run_builds_endgrace_without_attribute_error(monkeypatch):
@@ -334,5 +370,9 @@ def test_wake_stream_run_builds_endgrace_without_attribute_error(monkeypatch):
 
     asyncio.run(_drive())
     # the grace machine was constructed with the shared constant -> the
-    # exact production expression that used to AttributeError now resolves
-    assert constructed.get("grace") == WakeStream.CONTINUATION_GRACE == 13
+    # exact production expression that used to AttributeError now resolves.
+    # P0 (coord inbox 47): the default grace is now 8 (config-driven); the
+    # important property is that EndGrace got the SAME value the wake stream
+    # resolved, not any specific number.
+    assert constructed.get("grace") == WakeStream.CONTINUATION_GRACE
+    assert constructed.get("grace") == ws.CONTINUATION_GRACE
