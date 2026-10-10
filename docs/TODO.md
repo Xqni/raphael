@@ -48,6 +48,12 @@ Priority order after Phase 3 completes. Do not let these silently vanish.
 - config.yaml providers.chain = [zen_free, go, ollama] already configured (allow_go_runtime/allow_paid_runtime false per user directive).
 - Needed (router-dev phase): real HTTP calls to zen free-tier + local ollama via the existing discovery/circuit-breaker/rate-limit scaffolding; fastpath commands unaffected (they act for real).
 
+> **Wave 5U pointer (2026-10-10):** §3e/§6 below are superseded in scope by
+> `docs/USEFUL-NOW-PLAN.md` — typed input is mostly shipped (missing: raphael confirm/
+> tasks/chat CLI verbs, Wave A infra burst); fish TTS steps down to the optional
+> JP-clone tier with Kokoro as default (P1 voice), latency acceptance = ask→first
+> audio p50 ≤ 2.5s via `raphael latency`.
+
 ## 3e. Voice phase-2 (post-user-test)
 - Wake word "Raphael" always-listening — DONE 2026-10-05 (user made the privacy call: always_listen: true default; VAD segmenter + phonetic wake gate + pre-roll built; PTT remains the fallback when off).
 - Typed input channel: orb menu has no text entry (protocol submit_text exists); needs an orb UI affordance or the CLI (raphael/raphael.cmd not built).

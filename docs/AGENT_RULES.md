@@ -37,6 +37,13 @@ task genuinely needs it. Keep chains short, avoid gratuitous retries/backoff wai
 and never block on free-tier scarcity — the paid pool is open within its logged
 caps. Fish-Speech remains the only local model (TTS, RAM rule 14 still binds).
 
+### 16. WAVE 5U pre-approval overrides (owner, 2026-10-10 — see docs/USEFUL-NOW-PLAN.md)
+
+The following standing constraints are LIFTED for the named scope only (all other rules stand):
+- The cloud-only mandate and the no-latency-work clause: local **Kokoro TTS + faster-whisper STT** on the laptop are approved (RAM rule 14 still binds; one server max; kill what you spawn; Laya stays parked for the server).
+- The JP clone voice becomes an optional tier (`voice.tts_engine: fish`); Kokoro is the default voice.
+- Confirm cards are permitted in the chat UI and on the orb (orb only in the confirm state; the no-text rule holds otherwise).
+
 (Rule 13 added 2026-10-06 with the coord bus — mechanics in `docs/COORD_PROTOCOL.md`;
 adoption/continuation texts in `~/.raphael-coord/prompts/`.)
 

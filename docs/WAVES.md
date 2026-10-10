@@ -164,6 +164,28 @@ mouth-anthropomorphism, wave-6 local models (RAM gate).
 
 **Lanes remain PAUSED; this wave starts only on the user's go.**
 
+## Wave 5U — useful-now sprint (INSIDE wave 5; current_wave stays 5)
+
+**ACTIVE 2026-10-10 — owner order. Full plan, phase tables, per-lane paste-ready prompts:
+`docs/USEFUL-NOW-PLAN.md` (owner-authored; committed as the sprint's charter).**
+
+Owner pre-approvals (do NOT re-ask; they replace the conflicting global constraints below):
+1. Local **Kokoro TTS + faster-whisper STT** on the laptop are APPROVED (cloud-only and
+   no-latency-work rules lifted for these, within RAM rule 14). Laya stays parked (server-only).
+2. The **Japanese clone voice becomes an optional tier** (`voice.tts_engine: fish`); Kokoro is the default.
+3. **Confirm cards allowed** in the chat UI and on the orb (orb only while in confirm state; no-text rule holds otherwise).
+
+Waves (each ends a usable demo the owner can run; integrator runs it live first):
+**Wave A** — P0 safety+reliability (parallel): confirm policy+classes+typed/click confirms, admission input-lock, foreground-unknown legibility, latency metrics, relay watchdog + CLI (confirm/tasks/chat/latency) + one-command start, orb confirm card, qa gate tests, pc-control+tools-memory class tags, voice starts Kokoro interface. Demo A: one-command start; voice "delete notes.txt" → voice "yes" refused, card click approves; `raphael latency` prints stages.
+**Wave B** — P1 control/workers/voice/chat: CDP browser worker (same-tab follow-ups), world state, background tasks (non-blocking loop), Kokoro+local STT, Raphael Chat UI, infra tasks/chat verbs. Demo B: YouTube→"search pewdiepie" same tab, scroll, back; 60s background task with normal chat latency + status + cancel; reminder fires; ask→first audio p50 ≤2.5s.
+**Wave C** — P2 mind/memory/integrations: memory tools+curator+MCP (vault/calendar/mail in gitignored zz-local overlay), provider-aware personal data + chat spend cap + private local LLM, tier prompts+persona wiring, persistent history. Demo C: remember→recall across restart; calendar read; email draft that cannot send without typed/card confirm; persona speaks in tier.
+**Wave D** — P2/P3 fleet+partner: fleet runtime (specialists = her sub-skills, allowlist+budget, proposes never sends), research/life/tutor skills, morning briefing/evening check-in, mini-PC endpoint seams. Demo D: briefing fires; tutor session; research task while chatting.
+
+DEPENDENCIES: confirm policy before any outbound MCP/browser-submit/email · admission lock before background tasks · PROTOCOL `browser` act before pc-control merges worker · `chat` role + needs_confirm fields before orb merges Raphael Chat · Kokoro merge before speak-batching removal · fleet runtime before any specialist.
+MERGE: fixed order router → brain-core → pc-control → voice → computer-use → orb → infra → qa-security → tools-memory → evolution-persona; per-merge gate = ownership check + battery + Core Guard OK + strict scan PASS + gitleaks clean + linked green CI (QA-4); merge on green, never batch to wave end.
+PAUSED for5U: doc-only/audit/research work; computer-use (fallback stays); router + evolution-persona burst later (P2).
+DONE = the **Definition of Usable** (`docs/USEFUL-NOW-PLAN.md` §4b) passes live, run by the integrator then the owner. Report per wave: demo result per line, credit used, next wave.
+
 ## Wave 6 — NOT NOW
 
 **WAVE-5 GATE PASSED 2026-10-07 — tag `wave-5-gate`:** all 10 lanes merged; mock sweep

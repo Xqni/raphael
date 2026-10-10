@@ -52,3 +52,6 @@ brain/voice/vendor
 
 # Raphael vault — her living memory (persona canon is pushed under docs/research/persona; journal is local-first)
 vault/
+
+# Wave 5U: personal MCP server entries (vault/calendar/mail) — never tracked
+config.d/zz-local.yaml
