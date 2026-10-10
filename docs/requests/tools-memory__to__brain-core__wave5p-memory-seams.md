@@ -24,6 +24,28 @@ slots.switch_slot('travel')   # act-first (no confirm per plan §P5), normalizes
   pre-existing memory row is `slot='default'` (schema default), so today's
   answers are byte-identical until the user switches.
 
+## What (P6 — spoken memory privacy; added 2026-10-09 as landed)
+`brain/memory/privacy.py` is built + tested (6 tests; suite 205 green; wave-4
+export/delete coverage re-verified first: `export_all`/`wipe`/`store.forget`/
+`delete_skill`/trash-restore — 7/7). Intent surface for fastpath:
+
+```python
+from brain.memory import privacy
+r = privacy.recall('X')            # -> {'count','rows','text','slot'}; text is
+                                   #    speakable ('Nothing remembered.' when empty);
+                                   #    slot= optional READ-ONLY override (bad name -> ValueError -> clarify)
+d = privacy.forget_fact('X')       # -> {'status':'needs_confirm','matches','preview'}
+                                   #    speak preview + confirm question (P3 confirm_policy
+                                   #    class: destructive -> confirm-first)
+if approved:
+    d = privacy.forget_fact('X', confirmed=True)   # -> {'status':'done','deleted':n}; idempotent
+txt = privacy.memory_report()      # one speakable paragraph (counts/slots/export pointers)
+```
+
+All three are LOCAL sqlite paths (no router import — private-mode safe,
+tested with router.boom). forget is owner-wide by design ('forget it' means
+everywhere), never cross-owner.
+
 ## Why
 06-CODE-ADOPTION-PLAN §P5 assigns "(tools-memory + brain-core)"; my half is
 the store/scoping seam, yours is the spoken switch. Session-persistence is

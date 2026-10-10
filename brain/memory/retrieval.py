@@ -94,10 +94,13 @@ def _keyword_matches(conn, toks: List[str], owner: str, slot: str,
 
 
 def retrieve(query: Any, k: Optional[int] = None, *,
-             owner: Optional[str] = None) -> List[Dict[str, Any]]:
+             owner: Optional[str] = None,
+             slot: Optional[str] = None) -> List[Dict[str, Any]]:
     """Pinned always + top-k matches. Returns [{id, text, ts, source,
-    category, pinned, score}] — DATA ONLY (wrap with block.py before any
-    model sees it). Fail-silent: errors -> []."""
+    category, pinned, slot, score}] — DATA ONLY (wrap with block.py before any
+    model sees it). Fail-silent: errors -> [].
+    P5: scoped to `slot` if given (read-only override — asking about another
+    slot must NOT switch the active context), else the active slot."""
     conn = None
     try:
         k = int(k if k is not None else (_cfg('memory.top_k', 5) or 5))
@@ -105,7 +108,8 @@ def retrieve(query: Any, k: Optional[int] = None, *,
             return []
         owner = owner or default_owner()
         from . import get_conn, slots
-        slot = slots.active_slot()          # P5: retrieval scoped to active slot
+        slot = slots.validate(slot) if slot is not None \
+            else slots.active_slot()      # P5: scoped to active (or override)
         conn = get_conn()
 
         pinned_rows = [dict(r) for r in conn.execute(
