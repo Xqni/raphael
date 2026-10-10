@@ -303,14 +303,19 @@ def _start_ws_brain(state):
 
 @pytest.fixture
 def ws_brain(tmp_path):
-    resolved = sup.resolve_token(sup.load_config()[0])[1] or "unit-test-token"
-    state = {"token": resolved, "frames": []}
+    # deterministic token file: CI runners have no ~/.raphael/token, and the
+    # mock must validate exactly what Ctx resolves (token_win wins)
+    token_file = tmp_path / "token"
+    token_file.write_text("ws-unit-token")
+    state = {"token": "ws-unit-token", "frames": [], "token_file": token_file}
     port = _start_ws_brain(state)
     yield state, port
 
 
-def _ws_ctx(port):
+def _ws_ctx(port, token_file=None):
     cfg, _ = sup.load_config()
+    if token_file is not None:
+        cfg["paths"]["token_win"] = str(token_file)
     cfg["supervisor"]["health_url"] = "http://127.0.0.1:%d/health" % port
     ctx = cli.Ctx(cfg)
     return ctx
@@ -321,7 +326,7 @@ def _ws_ctx(port):
 # --------------------------------------------------------------------------
 def test_confirm_sends_exact_frame_and_prints_result(ws_brain, capsys):
     state, port = ws_brain
-    ctx = _ws_ctx(port)
+    ctx = _ws_ctx(port, state.get("token_file"))
     rc = cli.cmd_confirm(ctx, parse(["confirm", "j_42", "yes"]))
     out = capsys.readouterr().out
     assert rc == cli.EXIT_OK
@@ -338,7 +343,7 @@ def test_confirm_sends_exact_frame_and_prints_result(ws_brain, capsys):
 def test_confirm_auth_failure_is_value_blind(ws_brain, capsys):
     state, port = ws_brain
     state["token"] = "rotated-token"             # ctx still has old token
-    ctx = _ws_ctx(port)
+    ctx = _ws_ctx(port, state.get("token_file"))
     rc = cli.cmd_confirm(ctx, parse(["confirm", "j_1", "no"]))
     out = capsys.readouterr().out
     assert rc == cli.EXIT_DOWN
@@ -351,7 +356,7 @@ def test_confirm_auth_failure_is_value_blind(ws_brain, capsys):
 # --------------------------------------------------------------------------
 def test_chat_prints_answer_frames(ws_brain, capsys, monkeypatch):
     state, port = ws_brain
-    ctx = _ws_ctx(port)
+    ctx = _ws_ctx(port, state.get("token_file"))
     inputs = iter(["open youtube", "exit"])
 
     def fake_input(_prompt=""):
@@ -374,7 +379,7 @@ def test_chat_prints_answer_frames(ws_brain, capsys, monkeypatch):
 
 def test_chat_web_prints_url_and_opens(ws_brain, capsys, monkeypatch):
     state, port = ws_brain
-    ctx = _ws_ctx(port)
+    ctx = _ws_ctx(port, state.get("token_file"))
     opened = {}
     monkeypatch.setattr(cli, "_open_browser",
                         lambda u: opened.setdefault("url", u) or True)
