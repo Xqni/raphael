@@ -61,6 +61,24 @@ arrived mid-turn (it happened: set --set to your review-start capture, never to 
   4. after a merged wave_done the lane has no further work this wave — send the WAIT reply
      (wording from task_done step 5); it idles until wave_open wakes everyone.
 
+## Operational hardening (learned the hard way, 2026-10-08/09)
+
+- **Delivery-proof stop-work.** Posting a `pause`/notice to an inbox is NOT delivery —
+  sleeping sessions never read inboxes. Pair every stop-work instruction with
+  `coord ping` (live session delivery) and treat "no lane acknowledged" as failure
+  (2026-10-08: all10 lanes never received a pause that sat in their inboxes).
+- **Remote-sync discipline.** Before force-pushing a lane branch: `git fetch`, verify
+  the expected ancestry (`git merge-base --is-ancestor`), push, then confirm SERVER-SIDE
+  with `git ls-remote origin refs/heads/agent/<lane>` (2026-10-08: stale local refs were
+  pushed twice, producing avoidable red CI).
+- **Battery-gate before every push.** Never push while any battery line is unverified:
+  affected suites green + `Core Guard OK` + `scan_personal --strict` PASS + gitleaks
+  against the baseline clean. An interrupted battery = re-run it, never commit on
+  partial output (2026-10-08: conflict markers reached main precisely this way).
+- **Persona guard.** Anything persona-affecting (prompts, tier docs, config persona
+  blocks) must trace to `docs/research/persona/00-CONSOLIDATED-BRIEF.md`; never assert
+  a claim from its §7 debunked register.
+
 ## Citation & authority rules (hard)
 
 - **Cite only files you have verified exist** (`ls` in main, or `git show agent/<lane>:<path>`).

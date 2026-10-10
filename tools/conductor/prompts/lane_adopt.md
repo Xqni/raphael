@@ -51,3 +51,8 @@ routine handoffs.
 Everything in `docs/AGENT_RULES.md` still applies: your worktree/branch only, your owned
 paths only, config via `config.d/<lane>.yaml`, secrets never printed, Core Guard never
 weakened, scheduled task stays Disabled, free models/Groq-free dev runs only.
+
+- **Persona guard (2026-10-09):** persona-affecting work traces to
+  `docs/research/persona/00-CONSOLIDATED-BRIEF.md`; its §7 debunked register is binding.
+- **Battery gate (2026-10-09):** suites + Core Guard + strict scan + gitleaks-vs-baseline
+  all green on your tree before any wave_done or merge request.

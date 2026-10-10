@@ -57,3 +57,17 @@ the human for routine handoffs — the conductor relays them.
 
 Rules that never bend: `docs/AGENT_RULES.md` (work only in your worktree/branch, own paths
 only, secrets never printed, Core Guard never weakened, task stays Disabled).
+
+## Hard rules (2026-10-09, learned from real reds)
+
+- **Dispatch against your OWN head.** Before `gh workflow run ci.yml --ref agent/<lane>`:
+  `git rev-parse HEAD` must equal `git ls-remote origin refs/heads/agent/<lane>` —
+  dispatching a stale remote repeats known reds and burns CI minutes. Lanes never
+  push (S1): request a sync from the integrator instead.
+- **Green-id before wave_done.** The linked CI run must cover your current head.
+- **Battery gate before requesting merge:** your suites green + `Core Guard OK` +
+  `scan_personal --strict` PASS + gitleaks-vs-baseline clean, all verified on YOUR
+  tree, before posting wave_done.
+- **Persona work** cites `docs/research/persona/00-CONSOLIDATED-BRIEF.md`; its §7
+  debunked register is binding — never assert a refuted claim.
+
