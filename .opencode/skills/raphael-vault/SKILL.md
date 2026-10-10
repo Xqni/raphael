@@ -5,15 +5,15 @@ description: Raphael's own Obsidian vault — her persona canon, memory journal,
 
 # raphael-vault skill
 
-Raphael's personal Obsidian vault: persona canon + memory journal. The REPO
+Raphael's personal Obsidian vault: the `vault/` directory at the REPO ROOT (gitignored — her living memory; the persona canon is pushed under `docs/research/persona/`). The REPO
 (`<repo-root>`) stays the source of truth for code and process; the VAULT is the
 source of truth for persona and memory. This is separate from the damianqt pipeline vault
 (`C:\<win-user>\damianqt-vault` — YouTube/comics sessions own that; never cross-write).
 
 ## Paths (recorded once — never guess again)
 
-- Obsidian (Windows): `C:\<win-user>\raphael-vault`
-- WSL (tools live here): `/mnt/c/<win-user>/raphael-vault`
+- Vault location: `<repo-root>/vault` (untracked by git on purpose)
+- Open in Obsidian (Windows) via the `\wsl.localhost\Ubuntu-26.04` share, or any editor on the WSL side.
 
 ## Layout
 

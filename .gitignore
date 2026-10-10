@@ -49,3 +49,6 @@ brain/voice/models
 screenshot_test.jpg
 assets/acks/
 brain/voice/vendor
+
+# Raphael vault — her living memory (persona canon is pushed under docs/research/persona; journal is local-first)
+vault/
