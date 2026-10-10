@@ -8,7 +8,7 @@
   "brain/evolution/**": "ea79a8c71c2f606e2eda795bd6ea0611aff24c63ef4586a67e477c4cf3c37b64",
   "brain/mode.py": "9137e5e8e34201f9ecbb7bb9fb7daddfc0db8793972fe2d18f501bcd6687d03c",
   "brain/raphael-brain.service": "39dd34988a79da0c2b3e5d695e785adc2ce74f744a1bd36a02795cbe71877432",
-  "docs/OWNERSHIP.md": "a2e4e1cdff47e65558d27f7b7dc3ec835eabe5372783a7420a849c7209551f43",
+  "docs/OWNERSHIP.md": "bddd35a7c103abc81c18d0cf110b52fce02a2e638a797d5bd26e6ba7710aac5a",
   "scripts/install-brain-unit.sh": "56d8b3cacc47c5cf5a283fa147834e14fa7bdc4691d7521c545f9c694c6789de",
   "scripts/setup.ps1": "86246033646b4441ea7bbddd932802ddf3cf3298622803a561ec0cdbd5f03e5d",
   "scripts/setup.sh": "4b30e3e82013486e0fa15a035b9fc6e9ba5f7769f1c9b0dc60917996f58ca9ef",

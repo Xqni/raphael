@@ -29,7 +29,7 @@ supervisor:
   ws_url: ws://127.0.0.1:8765/ws
 
 runtime_opencode:
-  auto_permit: true                       # Raphael grants her workers permissions (addendum §8)
+  auto_permit: true                       # DEPRECATED by Wave 5U: becomes a per-skill allowlist before the coding skill ships (brain-core fleet runtime, P3)
   config_dir: ~/.raphael/runtime-opencode
 
 # --- LLM chain / providers --------------------------------------------------
@@ -47,7 +47,9 @@ providers:
   allow_paid_runtime: true                 # USER 2026-10-07 — opencode paid models own chat/tools; cost no longer a factor
   allow_vision_paid: true                  # USER APPROVAL 2026-10-06 "use the opencode go paid models for vision for now" — vision purpose; owner router lane
   vision_paid_daily_cap_usd: 1.00          # hard stop -> vision() refuses E_OFFLINE + coord attention (bookkeeping)
-  allow_free_models_for_personal_data: false  # personal/sensitive-flagged content -> local model only (Wave 6)
+  allow_free_models_for_personal_data: false
+  personal_ok: [go, ollama]                # Wave 5U P2: personal memory categories may enter prompts ONLY for these providers (never zen_free); redaction always on
+  chat_daily_cap_usd: 0.50                 # Wave 5U runtime chat spend cap (owner-approved 2026-10-10); over cap -> zen_free/local + Notice once (router implements, P2)  # personal/sensitive-flagged content -> local model only (Wave 6)
   discovery_interval_s: 3600               # re-query /v1/models; vanishing model = re-select, never an error
   max_calls_per_minute: 12                 # concurrent-job guard
   benchmark_ranking_path: brain/router/benchmark_ranking.json
@@ -113,6 +115,18 @@ safety:
     - make_public_repo
     - open_arbitrary_file                   # Wave 5P/P3 + AUD-11 (config-confirm-categories)
     - gui_submission                        # Wave 5P/P3 + AUD-11 (config-confirm-categories)
+    - send_email                            # Wave 5U P0.3: typed/click confirm class
+    - account_login
+    - enter_password                        # already present historically; kept explicit
+    - purchase
+    - delete_files                          # (dup of list head — kept as the named class anchor)
+  typed_confirm:                            # Wave 5U P0.3: voice YES rejected for these classes;
+                                           # typed text or an on-screen card click required
+    - send_email
+    - account_login
+    - enter_password
+    - purchase
+    - make_public_repo
   confirm_policy:                          # Wave 5P P3 — user-editable act/confirm map.
     # Canon (docs/research/persona/00-CONSOLIDATED-BRIEF.md §3): act-first-and-report
     # for unambiguous reversible intent; confirm-first for irreversible, destructive,

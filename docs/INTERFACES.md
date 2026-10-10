@@ -108,3 +108,12 @@ Hard restrictions for lanes (AGENT_RULES §5):
 - `shape_hint` mapping = `config.yaml → orb.shape_map` (`task_kind` from fastpath/loop; the Laya advisory tier is NOT wired yet — TODO §5).
 - The orb only renders (crossfade ~300 ms, morph ~600 ms); it never invents states beyond the three client-owned connection states above.
 - Wave 2 exit evidence (per-state screenshots) is produced against this table.
+
+## (Wave 5U addendum, 2026-10-10) — Browser CDP ports (owner: pc-control)
+
+Her dedicated browser profile listens on a loopback-only CDP port:
+main instance **9500**; lane instances **9500 + lane index**; the ORB's test CDP stays
+**9333** (do not collide). Body launches Chrome/Edge with
+`--remote-debugging-port=<cdp port>` bound to 127.0.0.1 and `--user-data-dir` under the
+instance data dir. Nothing else may hard-code a CDP port.
+

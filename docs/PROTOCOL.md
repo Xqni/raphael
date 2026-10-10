@@ -29,15 +29,15 @@ Status: **authoritative** — every builder works against this file. Orchestrato
 
 Every JSON frame: `{"type": str, "v": 1, ...fields}`. Optional correlation: `"job"`, `"seq"` (per-connection monotonic int), `"ts"` (ms epoch). Unknown `type` → `E_UNSUPPORTED` (non-fatal warning frame).
 
-**Client → Brain (all roles unless noted):**
+**Client → Brain (all roles unless noted):** Roles: `cli ui body chat worker` — `chat` = Raphael Chat web UI (no act_res/audio caps; Wave 5U); `worker` = RESERVED for the fleet runtime (Wave 5U P3, packet-in/events/result-out; specialists never resolve confirms).
 
 | type | role | fields | meaning |
 |---|---|---|---|
 | `auth` | all | §2 | handshake |
-| `command` | cli, ui | `text`, `source: text\|voice\|orb`, `job_id?` (pre-allocated ack) | new user request → becomes a Job |
+| `command` | cli, ui, chat | `text`, `source: text\|voice\|orb\|chat`, `job_id?` (pre-allocated ack), `speak?: bool` (default true; `false` = no TTS for this turn — chat-UI voice toggle, Wave 5U) | new user request → becomes a Job |
 | `audio_start` | body | `sample_rate: 16000`, `channels: 1`, `encoding: pcm_s16le`, `reason: ptt\|wake\|continuation` | mic utterance begins (binary frames follow); `continuation` = resume inside the voice grace window → APPEND to the open utterance (additive, granted 2026-10-08) |
 | `audio_end` | body | — | utterance ends → Brain runs VAD-final + STT |
-| `confirm_resp` | ui, cli, body | `job`, `answer: yes\|no\|free_text` | answer to a `needs_confirm` (from speech STT or text) |
+| `confirm_resp` | ui, cli, body, chat | `job`, `answer: yes\|no\|free_text`, `channel?` (voice\|text\|click, default text) | answer to a `needs_confirm` (from speech STT, text, or an on-screen card click — Wave 5U confirm cards; voice `yes` stays rejected for high-risk classes, §9) |
 | `job_list` / `job_get` | all | `job?` | request job snapshot(s) |
 | `cancel` | all | `job: id\|all`, `scope: gui\|full` | cancel job(s); `gui` releases input lock only |
 | `control` | cli, ui, body | `action: pause\|resume\|private_on\|private_off\|kill_gui\|watch_on\|watch_off`, `persist: bool` | global controls (kill = halt GUI-driving jobs now; pause persists across restarts) |
@@ -61,7 +61,7 @@ Every JSON frame: `{"type": str, "v": 1, ...fields}`. Optional correlation: `"jo
 | `stt_final` | body, ui | `job?`, `text`, `lang`, `rtf` | final transcript of an utterance |
 | `orb_state` | ui | `state`, `jobs_active`, `mode: normal\|private\|paused`, `subtitle?`, `provider?`, `model?` | authoritative orb display state (§8) |
 | `subtitle` | ui | `job?`, `text`, `fade_ms` | fading subtitle/status line |
-| `needs_confirm` | all | `job`, `question`, `actions[]`, `expires_at` | voice/screen confirmation request (§9) |
+| `needs_confirm` | all | `job`, `question`, `actions[]`, `expires_at`, `action?`, `target?`, `risk?`, `detail?` (≤200 chars, redacted — what/where/why, for confirm cards; Wave 5U P0.3) | voice/screen confirmation request (§9) |
 | `error` | all | `code` (§10), `job?`, `detail?` | error (detail never contains secrets/raw screen content) |
 | `pong` | all | — | heartbeat reply |
 
@@ -107,7 +107,7 @@ Text transcription of audio always travels as JSON (`stt_final`); binary audio i
 ## 7. Body action API (`act_req`)
 
 `action` enum (allow-list; server never sends free-form shell strings — structured args only):
-`launch_url{url}`, `search_youtube{query}`, `open_app{name}`, `open_path{path}`, `powershell{script_id, args}` (script_id must exist in a fixed registry — NOT arbitrary strings), `screenshot{max_px:1280, quality:70}`, `uia{op, element, args}` (structured UI Automation ops), `input{keys|mouse, dx, dy}`, `window{op}`, `clipboard{op}`, `media{op}`, `volume{level}`, `brightness{level}`, `notify{text}`, `list_windows{}`, `foreground_info{}`, `list_running_apps{}`, `report{op, title, body, format}` (Report-format delivery: save into `Documents\Raphael\reports` / list saved reports — fixed directory only, never an arbitrary path, `lock:false`; added 2026-10-07 integrator-approved, request pc-control__to__integrator__protocol-report-act) (read-only inspection: window/app enumeration — all three `lock:false` and non-destructive, returning structured JSON; `foreground_info` feeds the `privacy.blocklist_apps` check before any screenshot leaves the machine). Added 2026-10-06 by integrator decision on `pc-control__to__integrator__protocol-act-req-enum.md` (branch: agent/pc-control, not yet in main; the three handlers live in `body/win/actions.py` there — **land at agent/pc-control's merge**).
+`launch_url{url}`, `search_youtube{query}`, `open_app{name}`, `open_path{path}`, `powershell{script_id, args}` (script_id must exist in a fixed registry — NOT arbitrary strings), `screenshot{max_px:1280, quality:70}`, `uia{op, element, args}` (structured UI Automation ops), `input{keys|mouse, dx, dy}`, `window{op}`, `clipboard{op}`, `media{op}`, `volume{level}`, `brightness{level}`, `notify{text}`, `list_windows{}`, `foreground_info{}`, `list_running_apps{}`, `report{op, title, body, format}`, `browser{op, ...}` (Wave 5U P1: structured CDP ops — status\|tabs\|activate\|navigate\|back\|forward\|reload\|find\|click\|type\|press\|scroll\|read; dedicated profile, CDP bound 127.0.0.1, password-field typing and javascript:/file:/data: navigation refused; request pc-control__to__integrator__protocol-browser-act) (Report-format delivery: save into `Documents\Raphael\reports` / list saved reports — fixed directory only, never an arbitrary path, `lock:false`; added 2026-10-07 integrator-approved, request pc-control__to__integrator__protocol-report-act) (read-only inspection: window/app enumeration — all three `lock:false` and non-destructive, returning structured JSON; `foreground_info` feeds the `privacy.blocklist_apps` check before any screenshot leaves the machine). Added 2026-10-06 by integrator decision on `pc-control__to__integrator__protocol-act-req-enum.md` (branch: agent/pc-control, not yet in main; the three handlers live in `body/win/actions.py` there — **land at agent/pc-control's merge**).
 - `lock:true` actions (anything touching mouse/keyboard/foreground): Body **queues** the request if another job holds the input lock → `act_res{ok:false, error:"E_LOCK_BUSY", queued:true}`; Brain handles queuing at job level anyway (input lock is Brain-arbitrated; Body is last-line enforcement).
 - Every executed action is logged locally `logs/actions.log` with `job`, `action`, args-summary (no secrets), result.
 - Mouse failsafe (pyautogui corner) applies to `input` actions.
