@@ -114,14 +114,17 @@ def test_base_profile_is_cloud_temp():
 
 def test_cloud_temp_chain_has_no_local_providers():
     """USER 2026-10-07 (PAID_USAGE): opencode models own the LLM chain;
-    ollama stays OFF under cloud_temp; groq = STT-only tail (caps={'stt'})."""
+    ollama stays OFF under cloud_temp; groq = STT-only tail (caps={'stt'}).
+    OWNER-DECIDED 2026-10-10 (charter Q1 'Go first, cloud profile',
+    config.yaml:42): go FIRST, zen_free fallback, groq tail — the 2026-10-09
+    zen-first reorder was superseded; this assertion is the pin."""
     text = (REPO / 'config.yaml').read_text(encoding='utf-8')
     m = re.search(r'^\s*chain:\s*\[([^\]]+)\]', text, re.M)
     assert m, 'providers.chain not found'
     chain = [c.strip() for c in m.group(1).split(',')]
     assert 'ollama' not in chain
-    assert chain[0] == 'go'            # opencode-go paid fast serves first
-    assert 'zen_free' in chain         # opencode free second
+    assert chain[0] == 'go'            # OWNER-DECIDED 2026-10-10 go-first
+    assert 'zen_free' in chain         # free fallback never dropped
     assert chain[-1] == 'groq'         # groq last: STT home + last resort only
 
 
