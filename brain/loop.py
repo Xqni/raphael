@@ -630,11 +630,19 @@ def build_runner(hub=None):
                  t=decision.question)
             narrate(decision.question)
             if hub is not None:
+                # Wave 5U P0.3 (charter): the confirm frame carries what is
+                # being approved — action/target/risk + a <=200-char REDACTED
+                # detail — so orb/CLI confirm cards can show it (rule 16
+                # permits confirm cards; text-free orb otherwise holds).
+                from . import logjson as _lj
                 hub.broadcast({
                     'type': 'needs_confirm', 'v': 1, 'job': jid,
                     'question': decision.question,
                     'actions': decision.actions,
                     'risk': decision.risk,
+                    'action': decision.action,
+                    'target': str(decision.target or '')[:200],
+                    'detail': str(_lj.redact_value(decision.reason or ''))[:200],
                     'expires_at': int(time.time() * 1000)
                     + int(engine.confirmer.timeout_s * 1000),
                 })

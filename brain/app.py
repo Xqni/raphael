@@ -304,10 +304,11 @@ async def status(auth: bool = Depends(token_auth)) -> Dict[str, Any]:
         router_block = {}
     except Exception:  # noqa: BLE001 — /status must stay up
         router_block = {'error': 'unavailable'}
-    from . import coreguard, latency
+    from . import coreguard, foreground, latency
     return {'ok': True, 'server_v': SERVER_V, 'mode': get_mode().label(),
             'sessions': get_hub().session_counts(), 'router': router_block,
             'latency': latency.snapshot(), 'core_guard': coreguard.status(),
+            'foreground': foreground.status_block(),
             **engine.stats()}
 
 

@@ -110,6 +110,24 @@ def run_intent(command: str, ctx: IntentCtx) -> Optional[IntentResult]:
         return handler(command)      # legacy single-arg handlers
 
 
+def needs_lock_hint(text: str) -> bool:
+    """Wave 5U P0.6 admission hint: True when this text's fastpath intent
+    dispatches a tool whose registry meta needs the input lock. Mirrors the
+    runtime condition (`lock_hint or meta.needs_lock`); handlers are
+    deterministic and ctx-guarded, so probing with an empty ctx is pure.
+    Fastpath miss / chat -> False (a chat job NEVER parks behind GUI work)."""
+    res = run_intent(text, IntentCtx())
+    if res is None or not res.tool:
+        return False
+    if getattr(res, 'needs_lock', False):
+        return True
+    try:
+        from . import tools as tool_reg
+        return bool(tool_reg.describe(res.tool).get('needs_lock'))
+    except Exception:  # noqa: BLE001 — hint must never raise
+        return False
+
+
 def register_builtin_intents():
     """Built-in deterministic intents (no LLM). Wired by loop.py at import."""
 

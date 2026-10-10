@@ -114,6 +114,9 @@ class RiskDecision:
     risk: str = 'low'         # 'high' -> NON-voice confirmation required
     refused: bool = False     # P3 policy 'never': refuse outright, don't ask
     by_policy: bool = False   # decided by safety.confirm_policy (P3)
+    target: str = ''          # Wave 5U P0.3: WHAT is acted on (shown by
+                              # orb/CLI confirm cards; <=200 chars, redacted
+                              # at the frame boundary — never a secret store)
 
 
 # ---- P3: user-editable confirmation policy (Wave 5P) -----------------------
@@ -176,11 +179,15 @@ def policy_summary() -> str:
 
 
 def high_risk_actions() -> set:
-    """The config authority for HIGH risk (Wave 2 task 3)."""
+    """The config authority for HIGH risk (Wave 2 task 3). Wave 5U P0.1:
+    HIGH = safety.confirm_actions OR safety.typed_confirm (absent list =
+    today's behavior)."""
     try:
         from brain import config as _cfg
-        actions = _cfg.cfg_get(_cfg.get_config(), 'safety.confirm_actions', []) or []
-        return {str(a) for a in actions}
+        cfg = _cfg.get_config()
+        actions = _cfg.cfg_get(cfg, 'safety.confirm_actions', []) or []
+        typed = _cfg.cfg_get(cfg, 'safety.typed_confirm', []) or []
+        return {str(a) for a in list(actions) + list(typed)}
     except Exception:  # noqa: BLE001 — config unavailable -> conservative default
         return {'delete_files', 'send_message', 'send_email', 'purchase',
                 'enter_password', 'system_settings_change', 'install_software',
@@ -249,7 +256,7 @@ def classify(text: str, tool: Optional[str] = None,
             return RiskDecision(needs=True, question=question,
                                 actions=['yes', 'no'],
                                 reason=f'tool `{name}` (policy default)',
-                                action=action, risk='high')
+                                action=action, risk='high', target=name)
         return RiskDecision(needs=False)
     by_policy = any(aid in classes for aid in candidates)
     high = high_risk_actions()
@@ -268,7 +275,8 @@ def classify(text: str, tool: Optional[str] = None,
     return RiskDecision(needs=True, question=question, actions=['yes', 'no'],
                         reason=reason, action=action,
                         risk='high' if is_high else 'low',
-                        by_policy=by_policy)
+                        by_policy=by_policy,
+                        target=(snippet or (str(tool) if tool else '')))
 
 
 def voice_safe(job_id) -> bool:
@@ -308,7 +316,7 @@ def tool_decision(tool: str, text: str = '') -> RiskDecision:
                 if snippet else f"About to run tool `{name}`. Confirm?")
     return RiskDecision(needs=True, question=question, actions=['yes', 'no'],
                         reason=f'tool `{name}` (risky metadata)',
-                        action=action, risk=risk)
+                        action=action, risk=risk, target=name)
 
 
 def parse_free_text(answer: str) -> str:
