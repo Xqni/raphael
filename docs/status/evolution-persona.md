@@ -3,6 +3,13 @@
 Updated: 2026-10-08 (Wave 5H + AUD-26)
 
 ## Done
+- **Wave 5P CI chain (2026-10-10):** branch reds resolved one by one — gitleaks baseline (qa, fixed
+  on main), voice tier-default (fixed on main), my rebase-artifact `config.yaml` restore (`fb679de`).
+  Integrator pushed+dispatched `a231662`/run `38064061518`: **4/5 green** (scanners/conformance×2/
+  windows) with ONE deterministic red `test_act_pipeline.py::test_llm_tool_call_with_args_dispatches_to_body`
+  — **proven ON PURE ORIGIN/MAIN (`838fb61`) as well** (rerun + 2 worktree probes) → main-wide
+  regression, qa-security/brain-core to fix; reported on the bus. My suites stay green locally
+  (persona 80, evolution 93, qa contract 13, guard OK). Wave_done with green id pending that fix.
 - **Wave 5P CI dispatch (2026-10-10): red at 2 MAIN-lineage blockers (0 findings from my commits)** —
   reproduced locally: gitleaks 19 leaks all in 4 integrator main commits (vault skill 7, research
   brief 6, .opencode/research 3, PROGRESS 2, R3 1; commits 2e6c6fcf/6b304ac7/db9022ae/990780d9) →
