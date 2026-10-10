@@ -182,7 +182,7 @@
         "acting",
         "starting"
       ],
-      "diff": 18.136020408163265,
+      "diff": 18.129953231292518,
       "bg": "dark",
       "changed": 0.2769132653061224,
       "pass": true
@@ -312,7 +312,7 @@
         "confirm",
         "starting"
       ],
-      "diff": 8.656041666666667,
+      "diff": 8.653801020408164,
       "bg": "dark",
       "changed": 0.19829081632653062,
       "pass": true
@@ -432,7 +432,7 @@
         "error",
         "starting"
       ],
-      "diff": 15.432261904761905,
+      "diff": 15.423337585034014,
       "bg": "dark",
       "changed": 0.18692602040816325,
       "pass": true
@@ -542,9 +542,9 @@
         "idle",
         "starting"
       ],
-      "diff": 11.660901360544218,
+      "diff": 11.675905612244899,
       "bg": "dark",
-      "changed": 0.2178316326530612,
+      "changed": 0.21790816326530613,
       "pass": true
     },
     {
@@ -642,9 +642,9 @@
         "jobs",
         "starting"
       ],
-      "diff": 18.91048044217687,
+      "diff": 18.90142006802721,
       "bg": "dark",
-      "changed": 0.2853826530612245,
+      "changed": 0.2853954081632653,
       "pass": true
     },
     {
@@ -732,9 +732,9 @@
         "listening",
         "starting"
       ],
-      "diff": 29.663384353741495,
+      "diff": 29.66545493197279,
       "bg": "dark",
-      "changed": 0.3381887755102041,
+      "changed": 0.3382142857142857,
       "pass": true
     },
     {
@@ -812,7 +812,7 @@
         "offline",
         "starting"
       ],
-      "diff": 7.002100340136054,
+      "diff": 6.985182823129252,
       "bg": "dark",
       "changed": 0.12267857142857143,
       "pass": true
@@ -882,7 +882,7 @@
         "paused",
         "starting"
       ],
-      "diff": 9.027147108843538,
+      "diff": 9.012125850340135,
       "bg": "dark",
       "changed": 0.14716836734693878,
       "pass": true
@@ -932,9 +932,9 @@
         "private",
         "starting"
       ],
-      "diff": 12.286802721088435,
+      "diff": 12.301806972789116,
       "bg": "dark",
-      "changed": 0.2421811224489796,
+      "changed": 0.2422576530612245,
       "pass": true
     },
     {
@@ -982,9 +982,9 @@
         "private_overlay",
         "starting"
       ],
-      "diff": 12.286802721088435,
+      "diff": 12.301806972789116,
       "bg": "dark",
-      "changed": 0.2421811224489796,
+      "changed": 0.2422576530612245,
       "pass": true
     },
     {
@@ -1022,7 +1022,7 @@
         "private_speaking",
         "starting"
       ],
-      "diff": 20.890548469387756,
+      "diff": 20.88497448979592,
       "bg": "dark",
       "changed": 0.2925765306122449,
       "pass": true
@@ -1052,7 +1052,7 @@
         "reconnecting",
         "starting"
       ],
-      "diff": 6.811160714285714,
+      "diff": 6.801887755102041,
       "bg": "dark",
       "changed": 0.175,
       "pass": true
@@ -1072,7 +1072,7 @@
         "speaking",
         "starting"
       ],
-      "diff": 23.937300170068028,
+      "diff": 23.934090136054422,
       "bg": "dark",
       "changed": 0.31723214285714285,
       "pass": true
@@ -1092,9 +1092,9 @@
         "starting",
         "thinking"
       ],
-      "diff": 18.521113945578232,
+      "diff": 18.51205357142857,
       "bg": "dark",
-      "changed": 0.27579081632653063,
+      "changed": 0.2758035714285714,
       "pass": true
     }
   ],

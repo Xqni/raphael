@@ -252,7 +252,24 @@ class MockBrain {
         return this.broadcast({ type: 'notice', ...base, text: 'Notice: disk almost full',
                                 level: 'warn', ts: Date.now() });
       case 'needs_confirm':
-        return this.broadcast({ type: 'needs_confirm', ...base, job: 'j_mock_1', question: 'Open YouTube?', actions: ['yes', 'no'], expires_at: Date.now() + 30000 });
+        // Faithful to what brain/loop.py:531-537 emits TODAY (question, actions,
+        // risk, expires_at, job) — `risk` was missing from the mock and the orb
+        // confirm card renders it, so the gate needs it.
+        return this.broadcast({ type: 'needs_confirm', ...base, job: 'j_mock_1',
+                                question: 'Open YouTube and play lo-fi?',
+                                actions: ['yes', 'no'], risk: 'high',
+                                expires_at: Date.now() + 30000 });
+      case 'needs_confirm_p03':
+        // WAVE 5U §5.6 task 1 names {action, target, risk, detail, job}, which
+        // brain-core's P0.3 adds. Not on main yet — this variant exists purely so
+        // the card is PROVEN to use them the moment they land, without blocking
+        // the card on that lane.
+        return this.broadcast({ type: 'needs_confirm', ...base, job: 'j_mock_2',
+                                question: 'Launch Firefox?',
+                                action: 'launch_url', target: 'https://example.test',
+                                detail: 'Opens the default browser to that URL.',
+                                risk: 'medium',
+                                actions: ['yes', 'no'], expires_at: Date.now() + 30000 });
       default:
         throw new Error('unknown mock-brain step: ' + name);
     }

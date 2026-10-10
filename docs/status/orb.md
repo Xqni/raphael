@@ -1857,3 +1857,193 @@ the bump's clean result reproduces there.
 - **Closure — `qa-security__to__orb__electron-audit-highs.md`**: the "ball is in qa's court" section is resolved — the file is now Status **ANSWERED** (qa-security verified on current main 2026-10-08; electron 44.5.1, `npm audit` 0 highs), and per qa's commit `83652aa` the npm gate was tightened back to `--audit-level=high` and the SCANNERS.md allow-list note retired. This lane's follow-up item #4 (ask qa to retire those) is complete.
 - **Confirmed accurate — `infra__to__orb__npm-safetycli-lock.md`**: Status **ANSWERED** (closed by requester 2026-10-08, commit `02e98c3`) — matches this doc's record.
 - **Still genuinely open (checked, unchanged):** `orb__to__brain-core__orb-state-transitions.md` and `orb__to__integrator__backing-disc-default-zero.md` are both still Status OPEN in their files — this doc's statements about them remain correct, including the note that the orb-state-transitions substance was answered in coord while the file flip stays with brain-core.
+
+---
+
+# WAVE 5U — Wave A: ORB CONFIRM CARD (§5.6 task 1, ~2h timebox)
+
+Charter `docs/USEFUL-NOW-PLAN.md` §5.6; **owner pre-approval 3** explicitly allows
+confirm cards *"in the chat UI and on the orb (orb only in confirm state)"* — so
+this is the **single documented exception** to AMENDMENT 3 (no on-screen text).
+Every other text path stays behind `ORB_TEXT_ENABLED = false`, untouched.
+
+## Verify-first: what already existed vs what I had to build
+
+| piece | state on main (verified) | verdict |
+|---|---|---|
+| `ws.py` confirm path | `brain/ws.py:664` — `if kind in ('menu','click','confirm') … resolve_oldest_pending(value, via='click')` | **ALREADY-DONE** — `orb_input{kind:'confirm', value:'yes'\|'no'}` works today |
+| `needs_confirm` emission | `brain/loop.py:531-537` — emits `question`, `actions`, `risk`, `expires_at`, `job` | **PARTIAL** — the `{action, target, detail}` fields in §5.6 are **brain-core P0.3 and are NOT on main yet** |
+| main→renderer plumbing | `ws-status.js:240` `needs_confirm` → `updateOrbState('confirm')` + `emit('confirm', msg)`; `main.js:853` → `webContents.send('confirm', …)`; `preload.js:7 onConfirm` | **ALREADY-DONE** |
+| renderer consumer | **none** — `grep onConfirm body/orb/src/renderer/renderer.js` → **0** | **THE GAP — this task** |
+
+So the transport and the state machine were complete; only the render half was
+missing. Nothing upstream was blocked on.
+
+## What shipped
+
+- `src/renderer/index.html` — `#confirmcard` panel (head / risk badge / detail /
+  job / Approve·Deny), amber to match the `confirm` tint `0xffb000`
+  (`renderer.js:736`). Hidden with **`display:none`**, not opacity, so
+  `document.body.innerText` is genuinely 0 outside the confirm state.
+- `src/renderer/renderer.js` — `onConfirm` handler + `renderConfirmCard()` +
+  `updateConfirmCard()` (also ticked from `animate()` so a state change from
+  anywhere hides it). Card is visible **only** when
+  `orbState.orbState === 'confirm' && pending && now < expires_at` — the STATE is
+  the single authority (PROTOCOL §9: the orb renders, it never decides).
+- **Approve/Deny → `orb_input{kind:'confirm', value:'yes'|'no'}`**. The card
+  deliberately does **not** hide on click: it hides when the Brain moves the state
+  off `confirm`, so a **rejected** confirmation keeps the card up instead of
+  silently vanishing.
+- **Untrusted input:** every field is written with `textContent` — never
+  `innerHTML` — per the charter constraint ("treat all message text as untrusted").
+- **Graceful degradation:** `action`/`target`/`detail` do not exist yet, so the
+  card renders the guaranteed `question` + `risk` + `job` and no placeholder that
+  would lie. A `needs_confirm_p03` mock variant proves it uses the P0.3 fields
+  the moment they land.
+
+## Evidence
+
+- `npm run test:unit` — **7/7** suites (boot-sequence 13/13).
+- `npm run orb:trace -- --only=interaction` — **PASS 40/40** (was 34/34), incl.
+  `confirm_card_shows_only_in_confirm_state`,
+  `confirm_card_uses_available_fields` (head="Open YouTube and play lo-fi?",
+  risk="high", job="job j_mock_1"), `confirm_card_makes_text_appear`
+  (innerText 59), `confirm_approve_sends_orb_input` (orb_input `["yes"]`),
+  `confirm_card_hides_and_text_returns_to_zero` (shown=false, **innerText.length=0**,
+  state=idle — the charter's acceptance line verbatim), and
+  `confirm_card_prefers_p03_action_target` ("launch_url → https://example.test").
+- `npm audit --audit-level=high --registry=npmjs` — **found 0 vulnerabilities**, exit 0.
+- `scan_personal --strict` — **STRICT PASS (0 FAIL-severity)**; orb-owned files clean.
+- Full `orb:trace` + `orb:size` + `orb:diff` — recorded below once the run lands.
+
+Mock: `brain.step('needs_confirm')` now carries the `risk` field brain already
+emits (it was missing from the mock), plus a `needs_confirm_p03` variant carrying
+`action`/`target`/`detail` for forward-compat proof.
+
+### Card visual — vision QC raised a defect; measurement disproved it (kept the card)
+
+Blind vision on `docs/orb/confirm-card.png` reported a "MAJOR" defect: *"two
+thick, hard-edged amber bands running corner-to-corner … forming a large X …
+overlapping the button row"*, rating 5/10.
+
+I did not take that on faith, and measured instead:
+
+| test | result |
+|---|---|
+| amber pixels in card region, **with** the orb canvas | 3231 (9.8%) |
+| same, **canvas hidden** (`#webgl {display:none}`) | **3465 (10.5%) — more, not less** |
+| per-row amber, canvas hidden | `y=162` n=**250** x[15..264] and `y=271` n=**250** x[15..264] = full-width = the **card's 1px top/bottom borders**; every interior row x[8..271] = the **side borders**; local bumps at the **risk badge** and the **amber Approve button** |
+
+So **100% of the amber is the card's own chrome** (border + badge + Approve) and
+**none of it is the orb bleeding through** — hiding the canvas *increased* amber,
+which is the opposite of what a bleed-through would do. There is no diagonal band;
+the "X" was the amber-bordered frame read at 280 px. **No change made.**
+
+Genuine observation kept for the record: the card occupies the **bottom ~40%** of
+the 280 px window while shown. That is deliberate — it is a transient, owner-
+pre-approved confirmation prompt and it is the focus of the state; it never
+appears outside `confirm`.
+
+Evidence: `docs/orb/confirm-card.png` (280×280, captured with `__orbLockPose`
+so it is deterministic) — DOM probe alongside it: `shown=true`,
+head="Open YouTube and play lo-fi?", risk="high", job="job j_mock_1",
+innerText=59, state=confirm.
+
+### Final gate record (Wave A, run on the shipped code)
+
+```
+npm run test:unit        PASS — 7 suites (7 morph, 4 gl-recovery, 5 morph-clock,
+                           8 palette, 8 port-safety, state-machine, 13 boot-sequence)
+npm run orb:trace        PASS — boot 5/5 · cage 4/4 · startup 7/7 (peak 2.042,
+                           rest 0.193, governor acted 0x) · transparency
+                           borderA0/rgb0 · BugC 6/6 · wave5 9/9 ·
+                           interaction **40/40** (was 34/34) · DISTINCTNESS
+                           pass=true 104 pairs failures 0 (weakest jobs vs
+                           thinking = 0.52) · shape directive ["circle"]
+npm run orb:size         PASS — 12 combos, worst drift 4.8% of 12%, edge gap 3px,
+                           min coverage 59.5%
+node test/orb-diff.cjs   PASS — noise floor 0.000 → threshold 0.300
+npm audit --audit-level=high --registry=npmjs   found 0 vulnerabilities, exit 0
+python3 scripts/scan_personal.py --strict        STRICT PASS (0 FAIL-severity)
+```
+
+CI (branch, after rebasing onto main): **38031429376 — success, 5/5 jobs**.
+
+### Two CI failures that were NOT mine (recorded, both resolved by rebasing)
+
+The first branch run (**38031023602**) failed on `Security scanners` + `Ubuntu —
+brain + mock suites`. Investigated rather than re-run blind:
+
+- **gitleaks** flagged 19 findings — **all in other lanes' files** (`PROGRESS.md`,
+  `docs/research/persona/*`, `.opencode/skills/raphael-vault/*`,
+  `.opencode/research/*`); **zero** in `body/orb/**`, `docs/orb/**` or my status
+  doc.
+- `git show --stat HEAD` proved my commit touched **only** my own files; the
+  other-lane files showed up in `origin/main..HEAD` purely because the branch was
+  **7 commits behind**, and main had grown the gitleaks baseline **160 → 179**
+  entries in the meantime.
+- Fixed by rebasing (not by touching anyone's file): baseline 179, gitleaks
+  *"no leaks found"*, `ownership_check` **OK (30 files)**, delta orb-only.
+
+---
+
+# GATE WINDOWS OFF-SCREEN (user: "the orb flashed") — WAVE 5U
+
+The gate harness (`orb:trace`, `orb:size`) opens a real Electron window, and the
+user saw it **flash across their screen** during a ~9-minute run. Three
+approaches were tried; **two failed by measurement** and one was adopted.
+Recorded in full because the failures are the useful part.
+
+## 1. Off-screen coordinates — **FAIL (compositor clamps)**
+
+`RAPHAEL_ORB_OFFSCREEN=x,y` (precedent: the existing `RAPHAEL_ORB_SIZE_PX`
+"Test hook only" in `config.js`), launched with `-5000,-5000`. Read back from
+the renderer: `{"screenX":1616,"screenY":24}`.
+
+The WSLg/Weston compositor **clamped it straight back on-screen**. Negative
+coordinates do not work here.
+
+## 2. `show: false` (hide the window) — **FAIL (throttles rAF)**
+
+My first check said this worked: renderer alive, `frame=21`, screenshot
+"25.5% lit, core r40 = 149,156,157 → RENDERS". **That check was too shallow** —
+it proved *one frame* appears, not that the loop runs at rate. The full gate
+caught it immediately:
+
+| gate | with normal window | with `show:false` |
+|---|---|---|
+| startup samples | 148 | **7** (7930 ms) |
+| `confirm_card_hides_and_text_returns_to_zero` | ok | **FAIL** — the tick lives in `animate()`, which was throttled |
+| distinctness noise floor | 0.000 | **8.072** → threshold 12.109, **4 pairs fail** |
+
+A hidden window can render *a* frame but does not run the loop. Hook removed.
+
+**Lesson recorded:** a single screenshot is not evidence that an animation-gated
+gate still works. This is exactly the class of mistake that costs a full re-run.
+
+## 3. Electron offscreen rendering — **ADOPTED (verified on both axes)**
+
+`webPreferences.offscreen: true` behind `RAPHAEL_ORB_OFFSCREEN_RENDER='1'`
+(same test-hook precedent). Measured before adopting — deliberately on **both**
+axes this time:
+
+| check | result |
+|---|---|
+| frame rate over 2 s | **43.0 FPS** (frames 336 → 422) — no throttling |
+| startup-style spin probe, polled at 50 ms | **40 / 40 samples** |
+| `Page.captureScreenshot` | 23.0% lit, core r40 = `76,98,89` |
+
+The window is never presented, so it cannot flash, yet the render loop runs at
+full rate — which is what gates 1 and 2 both needed.
+
+Wired into `test/orb-trace.cjs` and `test/orb-size.cjs`; `orb-diff` needs no
+change (it only reads the PNGs the other two write). **Production is unchanged**
+when the env var is absent — `offscreen: false` — same contract as
+`RAPHAEL_ORB_SIZE_PX`.
+
+## Not used: Xvfb
+
+The standard CI answer is a virtual display, but `Xvfb`/`xvfb-run` are **not
+installed** on this box (`which Xvfb` → nothing), and installing system packages
+is out of scope for a lane task. If infra wants it, that is the most idiomatic
+long-term fix and would supersede the hook.
