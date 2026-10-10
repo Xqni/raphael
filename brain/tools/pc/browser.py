@@ -32,15 +32,15 @@ SPECS = (
          'role': prop_string('find: AX role filter, e.g. "link", "button", '
                              '"textbox", "searchbox".'),
          'name': prop_string('find: element name/label substring.'),
-         'ref': prop_int('click/type: node ref from find/read (0-9999).',
-                         0, 9999),
+         'ref': prop_int('click/type: node ref returned by find/read '
+                         '(bounds enforced by the schema).', 0, 9999),
          'submit': prop_bool('type: press Enter after inserting the text.'),
          'key': prop_string('press: single key or chord, e.g. "enter", '
                             '"ctrl+l".'),
-         'dy': prop_int('scroll: vertical scroll amount (-5000..5000).',
-                        -5000, 5000),
-         'max_chars': prop_int('read: text cap (100-20000, default 8000).',
-                               100, 20000)},
+         'dy': prop_int('scroll: vertical scroll amount (bounded by the '
+                        'schema; negative scrolls down).', -5000, 5000),
+         'max_chars': prop_int('read: text cap (bounded by the schema; '
+                               'defaults to a screenful).', 100, 20000)},
         ('op',),
         # CDP input events are SYNTHETIC (no user devices/foreground touched)
         # -> needs_lock False; confirm classes handle the safety escalation.
