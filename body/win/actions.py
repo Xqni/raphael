@@ -59,7 +59,7 @@ LOG_MAX_BYTES = 5 * 1024 * 1024  # rotate the action log (1 backup)
 # test subtracts DOC_PENDING_IMPLEMENTATION from the missing set so §7 and
 # the registry can drift ONLY in this one documented direction.
 PENDING_PROTO_ADDITIONS = ('activity',)
-DOC_PENDING_IMPLEMENTATION = ('browser',)
+DOC_PENDING_IMPLEMENTATION = ()   # browser landed (Wave 5U §5.2 P1)
 
 
 class ActionError(Exception):
@@ -86,7 +86,7 @@ class Action:
 ACTIONS: Dict[str, Action] = {}
 _GROUPS = ('act_launch', 'act_powershell', 'act_capture', 'act_uia',
            'act_input', 'act_window', 'act_system', 'act_report',
-           'act_activity')
+           'act_activity', 'act_browser')
 _groups_loaded = False
 
 

@@ -60,6 +60,19 @@ def _sibling(name: str):
     return importlib.import_module(name)
 
 
+def _json_dumps(obj) -> str:
+    import json
+    return json.dumps(obj)
+
+
+def _resolve_app_exec(name: str):
+    """Resolve a browser executable through act_launch's staged resolution
+    (PATH -> Start Menu -> App Paths -> UWP); raises ActionError if absent.
+    Kept lazy to avoid an import cycle."""
+    act_launch = _sibling('act_launch')
+    return act_launch.resolve_app(name, get_backend())
+
+
 def uia_flags(element) -> Dict[str, Any]:
     """Optional UIA state booleans for element descriptors (computer-use
     focused-password-flag request): ONLY true values are emitted — absent
@@ -731,6 +744,95 @@ class WindowsBackend:
     def capture(self, max_px: int, quality: int) -> bytes:
         capture = _sibling('capture')  # lazy: mss + Pillow installs
         return capture.capture_screenshot(int(max_px), int(quality))
+
+    # ---- browser CDP (Wave 5U §5.2 P1; loopback only) --------------------
+    def cdp_http(self, port: int, path: str, method: str = 'GET'):
+        """Minimal loopback HTTP GET/PUT -> parsed JSON (Chrome's /json/*
+        endpoints). stdlib socket only (SEC-9: no urllib/requests)."""
+        import socket
+        req = ('%s %s HTTP/1.1\r\nHost: 127.0.0.1:%d\r\n'
+               'Connection: close\r\nAccept: application/json\r\n\r\n'
+               % (method, path, int(port)))
+        try:
+            with socket.create_connection(('127.0.0.1', int(port)),
+                                          timeout=2.0) as sock:
+                sock.sendall(req.encode('ascii'))
+                chunks = []
+                while True:
+                    buf = sock.recv(65536)
+                    if not buf:
+                        break
+                    chunks.append(buf)
+        except (OSError, socket.timeout) as e:
+            raise BackendError('cdp http %s failed: %s' % (path, e))
+        raw = b''.join(chunks)
+        _, _, body = raw.partition(b'\r\n\r\n')
+        import json as _json
+        try:
+            return _json.loads(body.decode('utf-8', 'replace') or 'null')
+        except ValueError:
+            raise BackendError('cdp http %s: bad JSON (%d bytes)'
+                               % (path, len(body)))
+
+    async def cdp_page(self, ws_url: str, payloads, timeout: float = 8.0):
+        """Send raw CDP payloads to one page target; return matching replies
+        (events ignored, errors surfaced). Pinned `websockets` only (SEC-9).
+        Playwright connect_over_cdp is the documented fallback ONLY after
+        2 raw failures (charter [45]) — not wired yet."""
+        _sibling('depfail').require('websockets')
+        import asyncio as _a
+        import json as _json
+        import time as _t
+        import websockets
+        replies = []
+        want = {int(p['id']) for p in payloads}
+        try:
+            async with websockets.connect(ws_url, open_timeout=3,
+                                          close_timeout=1) as ws:
+                for payload in payloads:
+                    await ws.send(_json.dumps(payload))
+                end = _t.monotonic() + timeout
+                while want and _t.monotonic() < end:
+                    msg = await _a.wait_for(
+                        ws.recv(), timeout=max(0.1, end - _t.monotonic()))
+                    if not isinstance(msg, str):
+                        continue
+                    try:
+                        data = _json.loads(msg)
+                    except ValueError:
+                        continue
+                    if data.get('id') in want:
+                        want.discard(data['id'])
+                        if 'error' in data:
+                            raise BackendError('cdp id %s: %s' % (
+                                data.get('id'), data['error']))
+                        replies.append(data)
+        except BackendError:
+            raise
+        except Exception as e:  # noqa: BLE001 — connection/protocol issues
+            raise BackendError('cdp page call failed: %s' % e)
+        if want:
+            raise BackendError('cdp timeout waiting for ids %s' % sorted(want))
+        return replies
+
+    def launch_browser(self, profile_dir: str, port: int) -> None:
+        """Start the dedicated Chrome/Edge profile (loopback CDP)."""
+        import subprocess
+        exe = None
+        for name in ('chrome', 'msedge'):
+            try:
+                _kind, payload = _resolve_app_exec(name)
+                exe = payload
+                break
+            except Exception:  # noqa: BLE001 — try the next browser
+                continue
+        if not exe:
+            raise BackendError('no Chrome/Edge found for the browser worker')
+        argv = [exe, '--user-data-dir=%s' % profile_dir,
+                '--remote-debugging-port=%d' % int(port),
+                '--no-first-run', '--no-default-browser-check']
+        subprocess.Popen(argv, cwd=str(profile_dir),
+                         **hidden_popen_kwargs())
 
     # ---- report delivery (Wave 5) ---------------------------------------
     def reports_dir(self) -> str:

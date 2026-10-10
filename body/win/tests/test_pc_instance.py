@@ -89,6 +89,22 @@ def test_invalid_instance_name_rejected(main_instance, monkeypatch):
         instance.instance_name()
 
 
+def test_cdp_port_derivation(lane_instance, monkeypatch):
+    """INTERFACES Wave-5U addendum: browser CDP main 9500, lanes 9500+idx;
+    nothing hard-codes a port."""
+    assert instance.cdp_port() == 9503            # pc-control = index 3
+    monkeypatch.delenv('RAPHAEL_INSTANCE', raising=False)
+    assert instance.cdp_port() == 9500            # main
+    monkeypatch.setenv('RAPHAEL_INSTANCE', 'router')
+    assert instance.cdp_port() == 9501
+    monkeypatch.setenv('RAPHAEL_CDP_PORT', '9777')
+    assert instance.cdp_port() == 9777
+    monkeypatch.delenv('RAPHAEL_INSTANCE', raising=False)
+    monkeypatch.delenv('RAPHAEL_CDP_PORT', raising=False)
+    assert instance.browser_profile_dir().name == 'browser-profile'
+    assert str(instance.browser_profile_dir()).endswith('browser-profile')
+
+
 def test_action_log_env_override(main_instance, monkeypatch, tmp_path):
     monkeypatch.setenv('RAPHAEL_ACTION_LOG', str(tmp_path / 'x.jsonl'))
     assert instance.action_log_path() == tmp_path / 'x.jsonl'

@@ -53,7 +53,7 @@ async def test_backend_crash_truthful_then_recovers(action, actlog, fake,
                                                     tmp_path):
     """crash: E_INTERNAL (never a hang, never a false ok), lock released,
     failing call observable, and the NEXT dispatch succeeds."""
-    method, args = crash_args(action, tmp_path)
+    method, args = crash_args(action, tmp_path, fake)
     fake.fail_methods.add(method)
     needs_lock = actions.get_action(action).needs_lock
     try:

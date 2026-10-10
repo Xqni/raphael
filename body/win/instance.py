@@ -143,6 +143,35 @@ def activity_log_path() -> pathlib.Path:
     return repo_root / "logs" / name
 
 
+def cdp_port() -> int:
+    """Browser CDP port (INTERFACES §d Wave-5U addendum): main 9500,
+    lane instances 9500 + lane index; RAPHAEL_CDP_PORT overrides.
+    Loopback-only — nothing may hard-code a CDP port (addendum)."""
+    env = os.environ.get("RAPHAEL_CDP_PORT", "").strip()
+    if env:
+        try:
+            p_ = int(env)
+        except ValueError:
+            raise ValueError("RAPHAEL_CDP_PORT must be an integer, got %r" % env)
+        if not (1 <= p_ <= 65535):
+            raise ValueError("RAPHAEL_CDP_PORT out of range: %d" % p_)
+        return p_
+    name = instance_name()
+    if name == _MAIN:
+        return 9500
+    if name not in _LANE_PORTS:
+        raise ValueError(
+            "unknown RAPHAEL_INSTANCE %r — set RAPHAEL_CDP_PORT explicitly "
+            "(INTERFACES §d Wave-5U addendum)" % name)
+    return 9500 + list(_LANE_PORTS).index(name) + 1
+
+
+def browser_profile_dir() -> pathlib.Path:
+    """Dedicated browser profile dir under the instance data dir
+    (--user-data-dir)."""
+    return data_dir() / "browser-profile"
+
+
 def supervisor_mutex() -> str:
     """Named mutex for the supervisor (INTERFACES §d table). The supervisor
     lane owns the actual CreateMutex call; this is the shared derivation."""

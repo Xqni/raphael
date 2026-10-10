@@ -101,6 +101,9 @@ POSITIVE_MATRIX = [
     ('activity', {'op': 'undo'}, False, True),   # undo newest (media/volume)
     ('navigate_url', {'url': 'https://www.youtube.com/watch?v=dQw4w9WgXcQ'},
      True, True),                                # P0 [42]: reuse the chrome tab
+    ('browser', {'op': 'status'}, False, True),      # Wave 5U §5.2: worker
+    ('browser', {'op': 'tabs'}, False, True),        # auto-starts on tabs,
+    ('browser', {'op': 'navigate', 'url': 'https://example.com/'}, False, True),
     ('report', {'op': 'save', 'title': 'E2E Wave 5 Report',
                 'body': '# Findings\n- none\nconfidence: high'}, False, True),
     ('report', {'op': 'save', 'title': 'Second', 'body': '{"ok": true}',
@@ -234,7 +237,7 @@ async def mock_suite() -> int:
             assert await automation.acquire_input_lock(0.05)
             try:
                 for i, action in enumerate(sorted(INVALID_ARGS)):
-                    _, args = crash_args(action, crash_dir)
+                    _, args = crash_args(action, crash_dir, fake)
                     before = len(fake.events)
                     res = await _act(ws, action, args, True, 'e2e_lock_%d' % i)
                     check('inject:locked:%-16s' % action,
@@ -246,7 +249,7 @@ async def mock_suite() -> int:
                 automation.release_input_lock()
 
             for i, action in enumerate(sorted(CRASH_CASES)):
-                method, args = crash_args(action, crash_dir)
+                method, args = crash_args(action, crash_dir, fake)
                 fake.fail_methods.add(method)
                 lock = actions.get_action(action).needs_lock
                 try:

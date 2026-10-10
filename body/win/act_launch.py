@@ -52,8 +52,21 @@ def _validate_launch_url(args: Dict[str, Any]) -> Dict[str, Any]:
 
 
 async def _run_launch_url(args: Dict[str, Any], backend) -> Dict[str, Any]:
-    await offload(backend.open_url, args['url'])
-    return {'opened': args['url']}
+    url = args['url']
+    # Wave 5U §5.2 task5: reuse the SAME tab when the browser worker is up
+    # (never starts it); handler open_url is the fallback — truthful 'via'.
+    try:
+        from . import act_browser
+    except ImportError:  # script mode
+        import act_browser
+    if await act_browser.is_up(backend):
+        try:
+            return await act_browser.reuse_navigate(backend, url)
+        except Exception as e:  # noqa: BLE001 — never lose the user's open
+            print('[launch_url] browser reuse failed (%s) -> handler' % e,
+                  flush=True)
+    await offload(backend.open_url, url)
+    return {'opened': url, 'via': 'handler'}
 
 
 # ----------------------------------------------------------- search_youtube
@@ -64,10 +77,23 @@ def _validate_search_youtube(args: Dict[str, Any]) -> Dict[str, Any]:
 
 
 async def _run_search_youtube(args: Dict[str, Any], backend) -> Dict[str, Any]:
+    query = args['query']
     url = ('https://www.youtube.com/results?search_query='
-           + quote_plus(args['query']))
+           + quote_plus(query))
+    # Wave 5U §5.2 task5: same-tab when the worker is up — already on
+    # YouTube -> type into the search box; elsewhere -> navigate this tab.
+    try:
+        from . import act_browser
+    except ImportError:  # script mode
+        import act_browser
+    if await act_browser.is_up(backend):
+        try:
+            return await act_browser.reuse_youtube_search(backend, query)
+        except Exception as e:  # noqa: BLE001 — never lose the user's search
+            print('[search_youtube] browser reuse failed (%s) -> handler' % e,
+                  flush=True)
     await offload(backend.open_url, url)
-    return {'opened': url, 'query': args['query']}
+    return {'opened': url, 'query': query, 'via': 'handler'}
 
 
 # ----------------------------------------------------------------- open_app

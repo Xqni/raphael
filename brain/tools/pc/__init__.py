@@ -32,6 +32,7 @@ from typing import Any, Dict, List, Optional
 from ._spec import SpecError, ToolSpec
 from .activity import SPECS as _ACTIVITY
 from .automation import SPECS as _AUTOMATION
+from .browser import SPECS as _BROWSER
 from .launch import SPECS as _LAUNCH
 from .powershell import SPECS as _POWERSHELL
 from .report import SPECS as _REPORT
@@ -46,6 +47,7 @@ _GROUPS = {
     'powershell': _POWERSHELL,
     'report': _REPORT,
     'activity': _ACTIVITY,
+    'browser': _BROWSER,
 }
 
 SPECS: Dict[str, ToolSpec] = {}

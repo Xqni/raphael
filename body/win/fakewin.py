@@ -66,6 +66,18 @@ class FakeWin:
         self.brightness = overrides.pop('brightness', 70)  # has a 'previous'
         self.focused_is_password_value = overrides.pop(
             'focused_is_password', False)             # focused-password-flag
+        self.cdp_up = overrides.pop('cdp_up', False)  # worker down by default (fresh box)
+        self.cdp_version = overrides.pop('cdp_version', {'Browser': 'Fake/1.0'})
+        self.cdp_targets = overrides.pop('cdp_targets', [
+            {'id': 'T-active', 'type': 'page', 'title': 'New Tab',
+             'url': 'about:blank',
+             'webSocketDebuggerUrl': 'ws://127.0.0.1:9/devtools/page/T-active'},
+            {'id': 'T-other', 'type': 'page', 'title': 'Other',
+             'url': 'https://example.com/',
+             'webSocketDebuggerUrl': 'ws://127.0.0.1:9/devtools/page/T-other'},
+        ])
+        self.cdp_page_results = overrides.pop('cdp_page_results', {})
+        self.launched_browsers: list = []
         self.placements: Dict[int, Dict[str, Any]] = {}
         self.cursor: Tuple[int, int] = overrides.pop('cursor', (100, 100))
         self.powershell_result: Dict[str, Any] = overrides.pop(
@@ -327,6 +339,43 @@ class FakeWin:
         return b'\xff\xd8' + b'FAKEJPEG' * 32 + b'\xff\xd9'
 
     # -- report delivery --------------------------------------------------
+    # -- browser CDP (Wave 5U browser worker) -----------------------------
+    def cdp_http(self, port, path, method='GET'):
+        self._rec('cdp_http', port, path, method)
+        self._maybe_fail('cdp_http')
+        if not self.cdp_up:
+            raise BackendError('cdp down (connection refused)')
+        if path == '/json/version':
+            return dict(self.cdp_version)
+        if path == '/json/list':
+            return [dict(t) for t in self.cdp_targets]
+        if path.startswith('/json/activate/'):
+            tid = path.rsplit('/', 1)[-1]
+            if tid not in {t.get('id') for t in self.cdp_targets}:
+                return {'error': 'no such target id %s' % tid}
+            return 'Target activated'
+        if path.startswith('/json/new'):
+            return dict(self.cdp_targets[0]) if self.cdp_targets else {}
+        raise BackendError('unknown cdp endpoint %s' % path)
+
+    async def cdp_page(self, ws_url, payloads, timeout=8.0):
+        self._rec('cdp_page', ws_url, [p.get('method') for p in payloads])
+        self._maybe_fail('cdp_page')
+        out = []
+        for payload in payloads:
+            method = payload.get('method')
+            scripted = self.cdp_page_results.get(method)
+            result = scripted(payload) if callable(scripted) else (
+                dict(scripted) if scripted is not None else {})
+            out.append({'id': payload.get('id'), 'result': result})
+        return out
+
+    def launch_browser(self, profile_dir, port):
+        self._rec('launch_browser', profile_dir, port)
+        self._maybe_fail('launch_browser')
+        self.launched_browsers.append((profile_dir, int(port)))
+        self.cdp_up = True
+
     def focused_is_password(self):
         """focused-password-flag: configurable True/False/None for tests."""
         self._rec('focused_is_password')

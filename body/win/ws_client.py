@@ -240,6 +240,12 @@ async def start_client():
     print(f"[body-win] foreground push: hook={diag['hook']} "
           f"poll={diag['poll']}", flush=True)
 
+    # Wave 5U browser worker: browser_status pushes (post-op + 2s tab
+    # watcher) reuse the same frame sender; never raises into the loop.
+    br = _import_late('act_browser')
+    br.set_status_sender(_send_frame)
+    br.start(asyncio.get_running_loop())
+
     hotkeys.set_loop(asyncio.get_running_loop())
     try:
         hotkeys.register_hotkeys(_load_config())

@@ -187,8 +187,8 @@ def test_confirm_class_tags_match_charter():
     assert set(pc.SPECS) == {
         'activity', 'brightness', 'clipboard', 'foreground_info', 'input',
         'launch_url', 'list_running_apps', 'list_windows', 'media', 'navigate_url',
-        'notify', 'open_app', 'open_path', 'powershell', 'report',
-        'screenshot', 'search_youtube', 'uia', 'volume', 'window'}, set(pc.SPECS)
+        'notify', 'open_app', 'open_path', 'powershell', 'report', 'screenshot',
+        'search_youtube', 'uia', 'volume', 'window', 'browser'}, set(pc.SPECS)
     expected_auto = {
         'launch_url', 'navigate_url', 'search_youtube', 'open_app',
         'list_running_apps', 'volume', 'brightness', 'media', 'window',
@@ -204,6 +204,12 @@ def test_confirm_class_tags_match_charter():
     assert uia['default'] == 'auto', uia
     gated = {(w['args']['op']['in'][0], w['class']) for w in uia['when']}
     assert gated == {('click', 'gui_input'), ('type', 'gui_input')}, uia
+    # Wave 5U browser worker (§5.2 P1): same conditional shape on click/type
+    br = pc.SPECS['browser'].confirm
+    assert br['default'] == 'auto', br
+    assert {(w['args']['op']['in'][0], w['class']) for w in br['when']} == \
+        {('click', 'gui_input'), ('type', 'gui_input')}, br
+    assert pc.SPECS['browser'].needs_lock is False   # synthetic CDP input
 
 
 def test_confirm_tag_validation_is_loud():

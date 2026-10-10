@@ -41,6 +41,7 @@ INVALID_ARGS = {
     'list_running_apps': {'bogus': 1},
     'report': {'op': 'save', 'title': 't', 'body': 'not json', 'format': 'json'},
     'activity': {'op': 'teleport'},
+    'browser': {'op': 'teleport'},
     'navigate_url': {'url': 'javascript:alert(1)'},   # same scheme guard
 }
 
@@ -66,11 +67,12 @@ CRASH_CASES = {
     'report': ('reports_dir', {'op': 'save', 'title': 'Crash',
                                'body': 'crash body'}),
     'activity': ('set_volume', {'op': 'undo'}),
+    'browser': ('launch_browser', {'op': 'tabs'}),
     'navigate_url': ('list_windows', {'url': 'https://crash.test'}),
 }
 
 
-def crash_args(action: str, tmp_path=None):
+def crash_args(action: str, tmp_path=None, backend=None):
     """Args for the crash case (open_path needs a REAL existing path —
     existence is validated before the backend call; activity needs a
     JOURNALED entry so its undo path actually reaches the backend)."""
@@ -86,4 +88,8 @@ def crash_args(action: str, tmp_path=None):
         from body.win import journal
         journal.record('volume', 'volume', 'crash-drill seed',
                        {'level': 40})
+    if action == 'browser' and backend is not None:
+        # force the ensure-launch path so the injected launch_browser
+        # failure is deterministic (probe succeeds only when cdp_up)
+        backend.cdp_up = False
     return method, dict(args)

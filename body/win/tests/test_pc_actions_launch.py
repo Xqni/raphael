@@ -12,7 +12,8 @@ pytestmark = pytest.mark.asyncio
 async def test_launch_url_accepts_http_https(actlog, fake):
     res = await actions.dispatch('launch_url',
                                  {'url': 'https://example.com/x'}, job='j1')
-    assert res['ok'] and res['result'] == {'opened': 'https://example.com/x'}
+    assert res['ok'] and res['result'] == {'opened': 'https://example.com/x',
+                                           'via': 'handler'}
     assert fake.calls('open_url') == [('https://example.com/x',)]
 
 
@@ -190,3 +191,51 @@ async def test_confirm_metadata_on_boundary_acts(actlog, fake):
     assert acts.get_action('uia').confirm == 'gui_submission'
     assert acts.get_action('open_app').confirm is None   # curated stays free
     assert acts.get_action('launch_url').confirm is None
+
+
+# ------------------------------------------------- Wave 5U task5 routing ---
+async def test_launch_url_routes_through_up_worker(actlog, fake):
+    """Worker up -> SAME tab via CDP; handler open_url untouched."""
+    fake.cdp_up = True
+    res = await actions.dispatch('launch_url',
+                                 {'url': 'https://example.com/in-tab'},
+                                 job='j_r1')
+    assert res['ok'] and res['result']['via'] == 'browser', res
+    assert fake.calls('open_url') == []
+    assert any(m == 'Page.navigate' for calls in fake.calls('cdp_page')
+               for m in calls[1])
+
+
+async def test_search_youtube_types_into_searchbox_when_on_youtube(actlog, fake):
+    """Worker up + already on YouTube -> type the query + submit (ONE tab)."""
+    fake.cdp_up = True
+    fake.cdp_targets[0]['url'] = 'https://www.youtube.com/'
+    fake.cdp_page_results['Accessibility.getFullAXTree'] = {'nodes': [
+        {'backendDOMNodeId': 7, 'role': {'name': 'searchbox'},
+         'name': 'Search', 'properties': []}]}
+    fake.cdp_page_results['DOM.getBoxModel'] = {
+        'model': {'content': [10, 10, 110, 10, 110, 40, 10, 40]}}
+    res = await actions.dispatch('search_youtube', {'query': 'pewdiepie'},
+                                 job='j_r2')
+    assert res['ok'] and res['result']['via'] == 'browser-searchbox', res
+    methods = [m for calls in fake.calls('cdp_page') for m in calls[1]]
+    assert 'Input.insertText' in methods and 'Page.navigate' not in methods
+    assert fake.calls('open_url') == []
+
+
+async def test_search_youtube_navigates_same_tab_when_elsewhere(actlog, fake):
+    fake.cdp_up = True
+    fake.cdp_targets[0]['url'] = 'https://example.com/'
+    res = await actions.dispatch('search_youtube', {'query': 'lofi'},
+                                 job='j_r3')
+    assert res['ok'] and res['result']['via'] == 'browser-navigate', res
+    methods = [m for calls in fake.calls('cdp_page') for m in calls[1]]
+    assert 'Page.navigate' in methods and 'Input.insertText' not in methods
+
+
+async def test_worker_down_falls_back_to_handler(actlog, fake):
+    fake.cdp_up = False                       # fresh box default
+    res = await actions.dispatch('search_youtube', {'query': 'x'}, job='j_r4')
+    assert res['ok'] and res['result']['via'] == 'handler'
+    assert fake.calls('open_url'), 'handler fallback must open'
+    assert fake.calls('launch_browser') == [], 'routing must NOT start the worker'
