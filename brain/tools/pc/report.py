@@ -29,5 +29,6 @@ SPECS = (
          'format': prop_enum('File extension/format for op=save (default md).',
                              ['md', 'txt', 'json'])},
         ('op',),
+        confirm='auto',
     ),
 )

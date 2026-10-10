@@ -8,8 +8,8 @@ user asked for, not in the tool itself.
 """
 from __future__ import annotations
 
-from ._spec import (ToolSpec, prop_bool, prop_enum, prop_int, prop_string,
-                    spec)
+from ._spec import (ToolSpec, op_classes, prop_bool, prop_enum,
+                    prop_int, prop_string, spec)
 
 _UA_OPS = ['find', 'click', 'type', 'read', 'tree']
 _CONTROL_TYPES = ['button', 'checkbox', 'combobox', 'edit', 'group',
@@ -97,7 +97,7 @@ SPECS = (
         ('op', 'element'),
         needs_lock=True,
         risky=True,
-        confirm='gui_submission',
+        confirm=op_classes('auto', {'click': 'gui_input', 'type': 'gui_input'}),
     ),
     spec(
         'input',
@@ -120,6 +120,7 @@ SPECS = (
          'mouse': MOUSE},
         (),
         needs_lock=True,
+        confirm='gui_input',
     ),
     spec(
         'screenshot',
@@ -131,5 +132,6 @@ SPECS = (
                             '(64-4096, default 1280).', 64, 4096),
          'quality': prop_int('JPEG quality 10-95 (default 70).', 10, 95)},
         (),
+        confirm='auto',
     ),
 )

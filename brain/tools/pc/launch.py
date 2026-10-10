@@ -14,6 +14,7 @@ SPECS = (
         {'url': prop_string('Absolute http(s) URL to open, e.g. '
                             '"https://www.example.com/page".')},
         ('url',),
+        confirm='auto',
     ),
     spec(
         'search_youtube',
@@ -23,6 +24,7 @@ SPECS = (
         {'query': prop_string('Search terms (max 200 chars), e.g. '
                               '"lo-fi hip hop".')},
         ('query',),
+        confirm='auto',
     ),
     spec(
         'navigate_url',
@@ -39,6 +41,7 @@ SPECS = (
                             'search_query=pewdiepie".')},
         ('url',),
         needs_lock=True,
+        confirm='auto',
     ),
     spec(
         'open_app',
@@ -53,6 +56,7 @@ SPECS = (
         {'name': prop_string('Installed app name or executable stem, e.g. '
                              '"notepad", "chrome", "Calculator".')},
         ('name',),
+        confirm='auto',
     ),
     spec(
         'open_path',
@@ -75,5 +79,6 @@ SPECS = (
         'need to know what is open.',
         {},
         (),
+        confirm='auto',
     ),
 )

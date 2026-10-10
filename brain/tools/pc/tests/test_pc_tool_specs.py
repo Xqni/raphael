@@ -61,9 +61,12 @@ def test_needs_lock_mirrors_body_actions():
         action = actions.get_action(name)
         assert spec.needs_lock == action.needs_lock, name
         assert registry.describe(name)['needs_lock'] == action.needs_lock, name
-        # AUD-11: act and spec confirm categories must not drift.
-        assert spec.confirm == action.confirm, \
-            (name, spec.confirm, action.confirm)
+        # Wave 5U: SPEC confirm classes are the gate contract (brain-core
+        # P0.2 policy map). The act-layer confirm stays informational legacy
+        # metadata (AUD-11) — when present it must be a documented class.
+        if action.confirm is not None:
+            from brain.tools.pc._spec import CONFIRM_CLASSES
+            assert action.confirm in CONFIRM_CLASSES, (name, action.confirm)
 
 
 def test_strict_schema_shape():
@@ -102,13 +105,22 @@ def test_risky_tools_declare_config_confirm_category():
     if pending_req.is_file():
         allowed |= set(re.findall(r'^\s+- ([a-z_]+)\s+# AUD-11',
                                   pending_req.read_text(), re.M))
+    from brain.tools.pc._spec import CONFIRM_CLASSES
     for name, spec in pc.SPECS.items():
         meta = registry.describe(name)
         assert meta['risky'] == spec.risky, name
+        assert spec.confirm is not None, name   # Wave 5U: every tool tagged
         if spec.risky:
-            assert spec.confirm in allowed, (name, spec.confirm)
+            # risky drives the CURRENT registry gate: a str class must be a
+            # config/pending id; a conditional (uia) gates click/type.
+            if isinstance(spec.confirm, str):
+                assert spec.confirm != 'auto', name
+                if spec.confirm != 'gui_input':
+                    assert spec.confirm in allowed, (name, spec.confirm)
         else:
-            assert spec.confirm is None, name
+            # non-risky: any documented class or conditional tag is fine
+            from brain.tools.pc._spec import CONFIRM_CLASSES as _CC
+            assert isinstance(spec.confirm, dict) or spec.confirm in _CC, name
     risky = {n for n, s in pc.SPECS.items() if s.risky}
     assert risky == {'powershell', 'open_path', 'uia'}, risky   # AUD-11 set
 
@@ -164,3 +176,55 @@ def test_descriptions_carry_usage_rules():
     assert 'list_windows' in pc.SPECS['window'].description
     assert 'foreground_info' in pc.SPECS['screenshot'].description
     assert 'input lock' in pc.SPECS['media'].description
+
+
+# ------------------------------------------------- Wave 5U Wave-A tags ----
+def test_confirm_class_tags_match_charter():
+    """docs/USEFUL-NOW-PLAN.md §5.2 task 1 — the EXACT tag table. Charter
+    list + documented extrapolations (tools the charter predates/silences):
+    navigate_url = launch-class auto; notify/report/activity = auto;
+    clipboard auto (flagged to brain-core P0.2 in the tags request)."""
+    assert set(pc.SPECS) == {
+        'activity', 'brightness', 'clipboard', 'foreground_info', 'input',
+        'launch_url', 'list_running_apps', 'list_windows', 'media', 'navigate_url',
+        'notify', 'open_app', 'open_path', 'powershell', 'report',
+        'screenshot', 'search_youtube', 'uia', 'volume', 'window'}, set(pc.SPECS)
+    expected_auto = {
+        'launch_url', 'navigate_url', 'search_youtube', 'open_app',
+        'list_running_apps', 'volume', 'brightness', 'media', 'window',
+        'list_windows', 'foreground_info', 'screenshot', 'notify',
+        'clipboard', 'report', 'activity',
+    }
+    for name in expected_auto:
+        assert pc.SPECS[name].confirm == 'auto', (name, pc.SPECS[name].confirm)
+    assert pc.SPECS['open_path'].confirm == 'open_arbitrary_file'
+    assert pc.SPECS['powershell'].confirm == 'system_settings_change'
+    assert pc.SPECS['input'].confirm == 'gui_input'
+    uia = pc.SPECS['uia'].confirm
+    assert uia['default'] == 'auto', uia
+    gated = {(w['args']['op']['in'][0], w['class']) for w in uia['when']}
+    assert gated == {('click', 'gui_input'), ('type', 'gui_input')}, uia
+
+
+def test_confirm_tag_validation_is_loud():
+    from brain.tools.pc._spec import (CONFIRM_CLASSES, SpecError, ToolSpec,
+                                      op_classes)
+    base = dict(properties=pc.SPECS['volume'].properties, required=(),
+                description='x' * 25)
+    bad = [
+        {'confirm': 'nope'},                                     # unknown class
+        {'confirm': {'default': 'auto'}},                        # missing when
+        {'confirm': op_classes('auto', {'not_an_op': 'gui_input'})},  # op not in enum
+        {'confirm': None},                                       # missing tag
+        {'risky': True, 'confirm': 'auto'},                      # risky+auto
+    ]
+    for over in bad:
+        with pytest.raises(SpecError):
+            ToolSpec(name='t_bad', **{**base, **over}).validate()
+    # conditional builder output validates (tool must HAVE an op enum)
+    with_op = {'description': 'x' * 25, 'required': (), 'properties': {
+        'op': {'type': 'string', 'description': 'operation to run.',
+               'enum': ['read', 'click', 'type']}}}
+    ToolSpec(name='t_ok', confirm=op_classes(
+        'auto', {'click': 'gui_input'}), **with_op).validate()
+    assert 'gui_input' in CONFIRM_CLASSES

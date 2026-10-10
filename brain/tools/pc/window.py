@@ -24,6 +24,7 @@ SPECS = (
          'zone': prop_enum('Screen zone — required when op=snap.', _ZONES)},
         ('op',),
         needs_lock=True,
+        confirm='auto',
     ),
     spec(
         'list_windows',
@@ -32,6 +33,7 @@ SPECS = (
         'hwnd for window operations.',
         {},
         (),
+        confirm='auto',
     ),
     spec(
         'foreground_info',
@@ -41,5 +43,6 @@ SPECS = (
         'must not leave the machine.',
         {},
         (),
+        confirm='auto',
     ),
 )

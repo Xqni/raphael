@@ -34,5 +34,6 @@ SPECS = (
                            'alternative undo target. Mutually exclusive with '
                            'seq.')},
         ('op',),
+        confirm='auto',
     ),
 )
