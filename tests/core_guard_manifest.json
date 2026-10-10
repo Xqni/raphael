@@ -17,6 +17,6 @@
   "scripts/win/allow-brain-localhost.ps1": "630faa699eee95088f485f690aae25a823ba1cf53788ca2f08d9c74bf5854f48",
   "scripts/win/make-ref-voice.ps1": "60fb334719cab6f756cf1e538b350c13572fcec433a7de7688b17644dff667d1",
   "scripts/win/mute.ps1": "4afa81ae0537901e0533809d9ad32c2cc861a15e03a0677e14b2fd9581c9c1d3",
-  "supervisor/**": "76b7db5a956025a35e90c3a3d8bed41c3ac6b026a9d3d6f9c9d8d9efc0f512be",
+  "supervisor/**": "51bfebff67a9154090a55e503f23123126ef67da93035c4dfd7342dc7f7f8355",
   "tools/conductor/**": "baf736398019ba32dd0ae4895f88da9401d6e47551acea9d50e41c8d1afbb1f8"
 }
