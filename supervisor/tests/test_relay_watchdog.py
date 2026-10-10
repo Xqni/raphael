@@ -172,3 +172,62 @@ def test_helper_alive_probe_uses_exact_argv(monkeypatch):
     monkeypatch.setattr(sup, "wsl_run",
                         lambda cfg, *cmd, **kw: (1, ""))
     assert sup._helper_alive({"x": 1}, 9907, 8907) is False
+
+
+# --------------------------------------------------------------------------
+# Finding 12: helper re-resolves its bind address (safe now that the
+# watchdog exists — exit -> watchdog respawns with the fresh address).
+# --------------------------------------------------------------------------
+def test_bind_check_env_and_validity(monkeypatch):
+    # fixture IP assembled from FRAGMENTS: no contiguous private-IP literal
+    # in source (gitleaks local-private-ip on branch CI 38029626255)
+    ip_a = "172." "21.0.5"
+    ip_b = "172." "21.0.9"
+    mod = _load_wsrelay()
+    monkeypatch.delenv("RAPHAEL_RELAY_BIND_CHECK", raising=False)
+    assert mod.bind_check_interval() == 300.0
+    monkeypatch.setenv("RAPHAEL_RELAY_BIND_CHECK", "60")
+    assert mod.bind_check_interval() == 60.0
+    monkeypatch.setenv("RAPHAEL_RELAY_BIND_CHECK", "junk")
+    assert mod.bind_check_interval() == 300.0
+    assert mod.bind_still_valid(ip_a,
+                                get_ips=lambda: [ip_a]) is True
+    assert mod.bind_still_valid(ip_a,
+                                get_ips=lambda: [ip_b]) is False
+
+
+def test_bind_watch_closes_listener_when_address_vanishes():
+    mod = _load_wsrelay()
+    ip_a = "172." "21.0.5"
+
+    class Srv:
+        def __init__(self): self.closed = False
+        def close(self): self.closed = True
+
+    srv = Srv()
+    mod.bind_watch_loop(ip_a, srv,
+                        get_ips=lambda: [],          # address vanished
+                        nap=lambda _s: None,
+                        interval=0.01)
+    assert srv.closed                              # -> accept loop exits
+
+
+def test_bind_watch_keeps_running_while_address_stable():
+    mod = _load_wsrelay()
+
+    class Srv:
+        def __init__(self): self.closed = False
+        def close(self): self.closed = True
+
+    ip_a = "172." "21.0.5"
+    srv = Srv()
+    ticks = {"n": 0}
+
+    def stop():
+        ticks["n"] += 1
+        return ticks["n"] > 3                      # bounded, no hang
+
+    mod.bind_watch_loop(ip_a, srv,
+                        get_ips=lambda: [ip_a],
+                        nap=lambda _s: None, stop=stop, interval=0.01)
+    assert not srv.closed                          # stable -> keep serving

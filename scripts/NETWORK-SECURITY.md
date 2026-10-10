@@ -120,3 +120,23 @@ working) and report it.
   INTERFACES §d pidfile column: `~/.raphael[/instance]/brain.pid`.
 - `docs/requests/infra__to__brain-core__pidfile-location.md` —
   `brain/app.py` honors `RAPHAEL_PIDFILE` (exported by the supervisor).
+
+## Mini-PC / LAN move — service endpoints (Wave 5U §5.7, task 5, P3)
+
+Goal: one Brain on a small always-on box, Body/Orb/chat on other devices —
+**without weakening today's posture.**
+
+| surface | today (laptop, loopback) | on the move |
+|---|---|---|
+| Brain HTTP/WS | `server.host: 127.0.0.1` (`config.yaml:21`) + `supervisor.ws_url: ws://127.0.0.1:8765/ws` | Brain stays `127.0.0.1` on the mini-PC **by default**; exposing it = explicit `RAPHAEL_BIND`/`server.host` change on a PRIVATE LAN only, never 0.0.0.0 on shared networks |
+| Body → Brain | `body/win/instance.py::ws_url()` derives `ws://127.0.0.1:<port>/ws` (loopback, instance-derived) | needs a host: proposed config key **`brain.url`** (single source for body + orb; integrator key — proposal in `docs/requests/infra__to__integrator__brain-url-key.md`) until it exists: per-host `RAPHAEL_...` env on that device |
+| Orb → Brain | same ws_url derivation (WSL side) | same `brain.url` story |
+| Chat UI | `http://127.0.0.1:<port>/chat` (same origin as `/ws`) | `http(s)://<brain-host>:<port>/chat` — token-gated like everything else |
+| Transport | plain HTTP/WS on loopback (no TLS needed) | **TLS required off-box**: terminate at a reverse proxy (caddy/nginx, local CA or real cert) or tailscale/wireguard mesh — plaintext WS on a LAN carries the token in the clear |
+| Token | `%APPDATA%\Raphael\token` / `~/.raphael/token`, header `X-Raphael-Token` (or Bearer) | unchanged: every endpoint (REST + WS `auth` frame) still demands it; keep files mode 600 per device |
+| Firewall | narrow Hyper-V rule `scripts/win/allow-brain-localhost.ps1` (TCP 8765, WSL creator only) | OS firewall: allow TCP 8765 **only** from the trusted LAN range / tunnel interface — never a profile-wide allow |
+
+Rules that do not change: loopback default (`server.host: 127.0.0.1`),
+fail-closed privacy gates, token-on-every-endpoint, value-blind logs.
+Moving to the mini-PC is a *documented opt-in* per line above — each row
+says what flips and what never does.
