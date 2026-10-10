@@ -1,5 +1,28 @@
 # MODEL_POLICY.md — Raphael build-time model tiering (DRAFT, Phase 0)
 
+## VALUE MODEL LADDER — 2026-10-09 catalog audit (200 unique models priced; user: "good but also cheap")
+
+Full-catalog dedupe done via the models API; picks below are the cost-per-quality winners,
+with the cache-read price called out because long sessions are cache-dominated (today's
+Sol burn was cache+output on a 1M-token session, not the per-call price).
+
+| Role | Pick | Price in/out per 1M (cache read) | Why |
+|---|---|---|---|
+| Integrator default | opencode/mimo-v2.6-flash-free | $0 (free) | policy #1; paid only per-turn by request |
+| Lane routine default | opencode-go/mimo-v2.5 | $0.14/$0.28 ($0.0028) | proven all-wave workhorse; best cache economics of any paid model |
+| Lane quality-value (brain-core, evolution-persona) | opencode-go/claude-haiku-5-5 | $0.10/$0.50 ($0.01) | Claude-family judgment at luna pricing; assigned 2026-10-09 |
+| Deep research / hard debug | opencode-go/deepseek-v4-pro | $0.66/$1.98 ($0.022) | proven on today's canon re-runs |
+| Big-context tasks (>200k) | opencode-go/minimax-m3 | $0.30/$1.20 ($0.06) | 512k context — cheapest big-brain |
+| Code-specialist escalations | opencode-go/kimi-k2.7-code | $0.95/$4.00 ($0.19) | named-task only |
+| Cheap strong alternates | gpt-6-luna ($0.10/$0.50), qwen3.8-flash ($0.15/$0.47), deepseek-v4.1-flash ($0.15/$0.60, $0.003 cache), glm-5.3-flash ($0.15/$0.50) | | substitution pool when a primary is rate-limited |
+| Flagship on user's named task only | qwen3.8-max / grok-4.7 ($2/$6), sonnet-5.5 / sol ($2/$10), glm-5.3 ($1.4/$4.4) | | requires the user to name the task |
+| Never | muse-spark (trains on prompts), gpt-5.5-pro ($30/$180), o3-pro ($20/$80), daybreak ($12.5/$75), astra/fable/opus as defaults | | matrix bans + runaway cost |
+
+Notable bargains found in the audit: gpt-6-luna and claude-haiku-5.5 both at $0.10 input
+(the cheapest capable inputs); minimax-m3 buys 512k context for $1.20/M out. Notable
+trap: openrouter mirrors exist for most models at identical prices — no arbitrage, so
+pick by provider reliability, not price.
+
 ## CURRENT SPENDING POLICY — 2026-10-09 (overrides historical tier advice below)
 
 Incident record: switching the long-context integrator session to Sol burned
