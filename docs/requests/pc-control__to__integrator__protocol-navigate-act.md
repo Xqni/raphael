@@ -1,5 +1,10 @@
 # pc-control → integrator: protocol-navigate-act
-Status: OPEN
+Status: DONE — landed in §7 by the integrator (Wave 5U grant, coord [44]:
+"navigate_url{url} (Wave 5U: navigate-PLACE in the foreground/first browser
+tab via Ctrl+L+type+Enter under the input lock; no browser anywhere -> first
+launch, http/https only; never double-opens)"). PENDING cleared; the enum
+also pre-added `browser{op,...}` for Wave B (tracked in
+actions.DOC_PENDING_IMPLEMENTATION).
 
 ## What
 Add one act to the `docs/PROTOCOL.md` §7 allow-list (P0 UX, coord inbox

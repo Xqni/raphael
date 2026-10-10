@@ -439,3 +439,23 @@ the old windows[1] "change" a dedupe no-op.
 
 **Tests (real, sequential):** navigate 7; body 204; specs 11; e2e
 149 PASS/0 FAIL; root 241 (6 xfail/1 xpass); brain 1104 passed.
+
+## 2026-10-10 — Wave 5U Wave A: confirm-class tags — DONE
+
+- `_spec.py`: `CONFIRM_CLASSES` {auto, open_arbitrary_file,
+  system_settings_change, gui_input (NEW, escalates to gui_submission on
+  password-field/submit-control conditions), gui_submission}; `confirm=`
+  accepts a class string or op-conditional `{default, when}` (loudly
+  validated: unknown class, ops outside the tool's enum, non-op conditions,
+  risky+auto all SpecError).
+- All 20 spec tags per charter §5.2 task1 (+ documented extrapolations:
+  navigate_url/notify/clipboard/report/activity = auto — clipboard flagged
+  for brain-core P0.2 review). risky values UNCHANGED (zero gate regression
+  until P0.2's class evaluator lands).
+- navigate_url: §7 GRANTED+landed by the integrator (grant [44]); request
+  flipped DONE, PENDING=('activity',); `browser{op,...}` pre-added to §7 by
+  the integrator for Wave B — tracked via `DOC_PENDING_IMPLEMENTATION` so
+  conformance stays exact in ONE documented direction.
+- Tests: specs 13 (charter-table pin + loud-validation negatives), body 204,
+  root 271/0 (chain test green after main's [go, zen_free, groq] restore +
+  rebase), brain 1129 passed, e2e PASS.
