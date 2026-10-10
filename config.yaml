@@ -78,8 +78,8 @@ voice:
   ptt_hotkey: "ctrl+alt+space"             # used only when always_listen: false
   always_listen: true                      # wake-word streaming ("Raphael, ..."); false = push-to-talk
   ack_cache: assets/acks/                  # phrase cache is ref-sha1 namespaced (Bug D/H); legacy entries auto-swept
-  tts_engine: fish                         # Wave 5U §5.3: fish (JP-clone tier, server) | kokoro (local 82M, in-process). fish stays default until the owner picks a Kokoro voice from the rendered samples. Cache is namespaced per engine+voice.
-  kokoro_voice: af_heart                   # owner pick pending — candidates af_nicole / af_heart / af_bella rendered to ~/.raphael/voice/eval/kokoro_samples/
+  tts_engine: kokoro                       # OWNER CALL 2026-10-10 (pre-approval updated): kokoro (local 82M, in-process) = DEFAULT; fish = optional JP-clone tier (voice.tiers) only. Cache namespaced per engine+voice.
+  kokoro_voice: af_heart                   # default preset (calmest female per pre-approval); samples af_nicole/af_heart/af_bella in ~/.raphael/voice/eval/kokoro_samples/ — owner may switch by name
   kokoro_speed: 1.0                        # kokoro create() speed (0.5-2.0); CPU RTF ~0.3
   kokoro_model: brain/voice/models/kokoro/kokoro-v1.0.onnx    # gitignored (~310MB) — download_kokoro_weights.sh
   kokoro_voices: brain/voice/models/kokoro/voices-v1.0.bin    # gitignored (~27MB)  — download_kokoro_weights.sh

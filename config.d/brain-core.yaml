@@ -5,9 +5,9 @@ agent:
   history_max_messages: 24     # multi-turn context: oldest user/assistant turns dropped first
   history_max_chars: 8000      # ...once the char budget is exceeded
   tool_result_max_chars: 4000  # single tool output fed back to the model (untrusted wrap on top)
-  # streamed-sentence batching (voice request APPROVED 2026-10-07): hold
-  # speech until this many sentences are queued OR the wait expires, then
-  # ONE voice.speak() per batch (pre-roll keeps it gapless). Subtitles stay
-  # per-sentence. Set sentences=1 + wait=0 to restore per-sentence behavior.
-  speak_batch_sentences: 2
-  speak_batch_wait_s: 1.5
+  # streamed-sentence batching: OWNER CALL 2026-10-10 (Wave 5U P1) — kokoro
+  # is the default engine and speaks the FIRST sentence as soon as it
+  # completes; fish (clone tier) needed batching=2/1.5s (approved 2026-10-07)
+  # — raise these again only when fish is the active engine.
+  speak_batch_sentences: 1
+  speak_batch_wait_s: 0
