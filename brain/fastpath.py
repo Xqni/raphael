@@ -5,12 +5,68 @@ window ops, job status/cancel, mode toggles → instant dispatch, target <300 ms
 Handler signature: callable(text, ctx) -> IntentResult | None.
 `register_intent(keyword, handler)` and `match_intent(command)` keep their
 phase-1 signatures for external callers; `run_intent` is the loop entry.
+
+REUSE preference (Wave-5P UX pairing 2026-10-10, with pc-control P0): when
+the freshly-pushed foreground window IS a browser, "open <site>" and
+"search <q>" map to pc-control's `navigate_url` (foreground Ctrl+L+URL+Enter
+through the input lock — the existing tab is reused). First-open — no
+browser foreground, or navigate_url not yet registered — keeps
+launch_url/search_youtube/open_app unchanged.
 """
 import re
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, Optional
+from urllib.parse import quote_plus
 
 _intents: Dict[str, Callable] = {}
+
+# ---- browser-reuse detection (Wave-5P UX pairing, coord decision 2026-10-10)
+# A repeat "open <site>"/"search <q>" must REUSE a running browser via
+# pc-control's navigate-in-place (Ctrl+L through the input lock) instead of
+# spawning a fresh window. First-open keeps launch_url/open_app.
+# The foreground identity is "title | process" (ws foreground consumer);
+# the process half is exact, the title half is suffix-matched ("… - Google
+# Chrome"). Unknown/stale foreground = no reuse (launch — always safe).
+_BROWSER_PROCESSES = ('chrome', 'msedge', 'firefox', 'brave', 'opera',
+                      'vivaldi', 'chromium')
+# full names are unambiguous as bare suffixes; short/ambiguous ones ("opera",
+# "brave") only count after the title separator ("… - Opera"), so a media
+# player showing "Grand Opera" can never fake a browser
+_BROWSER_TITLE_SUFFIXES = ('google chrome', 'microsoft edge',
+                           'mozilla firefox', 'chromium')
+_BROWSER_TITLE_DASHED = ('brave', 'opera gx', 'opera', 'vivaldi', 'firefox')
+
+
+def _browser_reuse_available() -> bool:
+    """True when the freshly-pushed foreground window IS a browser tab."""
+    try:
+        from . import foreground
+        ident = (foreground.provider() or '').lower()
+    except Exception:  # noqa: BLE001 — fastpath never dies on cache state
+        return False
+    if not ident:
+        return False
+    if '|' in ident:
+        proc = ident.rsplit('|', 1)[-1].strip()
+        title = ident.split('|', 1)[0].strip()
+        if any(proc.startswith(p) for p in _BROWSER_PROCESSES):
+            return True
+    else:
+        title = ident
+    if any(title.endswith(s) for s in _BROWSER_TITLE_SUFFIXES):
+        return True
+    return any(title.endswith(' - ' + s) or title.endswith(' — ' + s)
+               for s in _BROWSER_TITLE_DASHED)
+
+
+def _have_tool(name: str) -> bool:
+    """Registry probe: the navigate tool is pc-control's half of the pairing
+    — until it lands, the mapping safely falls back to launch_url."""
+    try:
+        from . import tools as tool_reg
+        return name in tool_reg.names()
+    except Exception:  # noqa: BLE001
+        return False
 
 
 def register_intent(keyword: str, handler: Callable):
@@ -52,6 +108,24 @@ def run_intent(command: str, ctx: IntentCtx) -> Optional[IntentResult]:
         return handler(command, ctx)
     except TypeError:
         return handler(command)      # legacy single-arg handlers
+
+
+def needs_lock_hint(text: str) -> bool:
+    """Wave 5U P0.6 admission hint: True when this text's fastpath intent
+    dispatches a tool whose registry meta needs the input lock. Mirrors the
+    runtime condition (`lock_hint or meta.needs_lock`); handlers are
+    deterministic and ctx-guarded, so probing with an empty ctx is pure.
+    Fastpath miss / chat -> False (a chat job NEVER parks behind GUI work)."""
+    res = run_intent(text, IntentCtx())
+    if res is None or not res.tool:
+        return False
+    if getattr(res, 'needs_lock', False):
+        return True
+    try:
+        from . import tools as tool_reg
+        return bool(tool_reg.describe(res.tool).get('needs_lock'))
+    except Exception:  # noqa: BLE001 — hint must never raise
+        return False
 
 
 def register_builtin_intents():
@@ -119,12 +193,29 @@ def register_builtin_intents():
                      re.IGNORECASE)
         if m and 'youtube' in m.group('site').lower():
             query = m.group('query').strip()
+            if _browser_reuse_available() and _have_tool('navigate_url'):
+                return IntentResult(
+                    text=f'Searching YouTube for {query}…',
+                    tool='navigate_url',
+                    tool_args={'url': 'https://www.youtube.com/results'
+                                      '?search_query=' + quote_plus(query)},
+                    task_kind='web')
             return IntentResult(text=f'Searching YouTube for {query}…',
                                 tool='search_youtube',
                                 tool_args={'query': query},
                                 task_kind='web')
         if ' ' not in arg and '.' in arg:
             url = arg if '://' in arg else 'https://' + arg
+            # UX pairing (coord decision 2026-10-10, with pc-control P0):
+            # repeat open with a browser already up REUSES it —
+            # navigate_url = foreground Ctrl+L+URL+Enter through the input
+            # lock. First-open (no browser foreground, or the tool not yet
+            # registered during the pairing window) keeps launch_url.
+            if _browser_reuse_available() and _have_tool('navigate_url'):
+                return IntentResult(text=f'Navigating to {arg}…',
+                                    tool='navigate_url',
+                                    tool_args={'url': url},
+                                    task_kind='web')
             return IntentResult(text=f'Opening {arg}…',
                                 tool='launch_url', tool_args={'url': url},
                                 task_kind='web')
@@ -139,9 +230,23 @@ def register_builtin_intents():
         q = re.sub(r'\s+on\s+youtube\.?$', '', q, flags=re.IGNORECASE).strip()
         if not q:
             return None
+        # UX pairing (coord decision 2026-10-10): repeat search with a
+        # browser up navigates the EXISTING tab to the results page.
+        if _browser_reuse_available() and _have_tool('navigate_url'):
+            return IntentResult(
+                text=f'Searching YouTube for {q}…',
+                tool='navigate_url',
+                tool_args={'url': 'https://www.youtube.com/results'
+                                  '?search_query=' + quote_plus(q)},
+                task_kind='web')
         return IntentResult(text=f'Searching YouTube for {q}…',
                             tool='search_youtube', tool_args={'query': q},
                             task_kind='web')
+
+    def _confirm_policy_q(text, ctx):
+        # P3: the policy map is config-owned; the answer is deterministic.
+        from . import confirm as _confirm
+        return IntentResult(text=_confirm.policy_summary(), task_kind='none')
 
     def _screenshot(text, ctx):
         return IntentResult(text='Taking a screenshot…', tool='screenshot',
@@ -206,6 +311,14 @@ def register_builtin_intents():
     register_intent('whats going on with my system', _status)
     register_intent('whats running', _status)
     register_intent('status', _status)
+    # P3 spoken surface: "what requires your confirmation?" answers the
+    # safety.confirm_policy map verbatim (deterministic, no LLM).
+    register_intent('what requires your confirmation', _confirm_policy_q)
+    register_intent('what requires confirmation', _confirm_policy_q)
+    register_intent('what needs your confirmation', _confirm_policy_q)
+    register_intent('what needs confirmation', _confirm_policy_q)
+    register_intent('what do you need confirmation for', _confirm_policy_q)
+    register_intent('what do you require confirmation for', _confirm_policy_q)
     register_intent('echo ', _echo)
     register_intent('cancel all', _cancel_all)
     register_intent('stop everything', _cancel_all)

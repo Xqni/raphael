@@ -116,7 +116,10 @@
             "yes",
             "no"
           ],
-          "risk": "high"
+          "risk": "high",
+          "action": "delete_files",
+          "target": "delete golden files now",
+          "detail": "delete files or data"
         },
         {
           "type": "orb_state",
@@ -336,7 +339,10 @@
             "yes",
             "no"
           ],
-          "risk": "high"
+          "risk": "high",
+          "action": "delete_files",
+          "target": "delete golden files now",
+          "detail": "delete files or data"
         },
         {
           "type": "ack",

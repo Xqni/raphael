@@ -19,6 +19,8 @@ _anchors: Dict[int, Dict[str, float]] = {}     # rowid -> {submit, running}
 _marks: Dict[int, Dict[str, bool]] = {}        # rowid -> once-flags
 _job: Optional[str] = None                     # last running external id
 _speak_anchor: Dict[str, float] = {}           # jid -> speak start (mono)
+_last_submit: float = 0.0        # Wave 5U P0.8: last job submit (derived)
+_last_audio_end: float = 0.0     # Wave 5U P0.8: last STT audio_end (derived)
 _updated_at: int = 0
 
 
@@ -53,15 +55,18 @@ def _prune() -> None:
 
 
 def reset_for_tests() -> None:
-    global _job, _updated_at
+    global _job, _updated_at, _last_submit, _last_audio_end
     _last.clear(); _anchors.clear(); _marks.clear(); _speak_anchor.clear()
     _hist.clear()
     _job = None; _updated_at = 0
+    _last_submit = 0.0; _last_audio_end = 0.0
 
 
 # ---- anchors ---------------------------------------------------------------
 def note_submit(rowid: int) -> None:
+    global _last_submit
     _anchors.setdefault(int(rowid), {})['submit'] = _now()
+    _last_submit = _anchors[int(rowid)]['submit']   # P0.8 derived anchor
     _prune()
 
 
@@ -104,10 +109,28 @@ def note_speak_start(jid: str) -> None:
     _speak_anchor[str(jid)] = _now()
 
 
+def note_audio_end() -> None:
+    """Wave 5U P0.8: anchor for the audio_end->tts_first_audio derived
+    metric (voice round-trip legibility; called from the ws audio_end
+    handler)."""
+    global _last_audio_end
+    _last_audio_end = _now()
+
+
 def note_tts_first_audio(jid: str) -> None:
+    global _last_submit, _last_audio_end
     t0 = _speak_anchor.pop(str(jid), None)
-    if t0 is not None:
-        _stamp('tts_first_audio', (_now() - t0) * 1000.0)
+    if t0 is None:
+        return
+    now = _now()
+    _stamp('tts_first_audio', (now - t0) * 1000.0)
+    # Wave 5U P0.8: derived spans — command->speech and speech->speech
+    # (anchors are the latest ones; >120 s old = unrelated turn, skip).
+    if _last_submit and now >= _last_submit and (now - _last_submit) <= 120.0:
+        _stamp('command_to_tts_audio', (now - _last_submit) * 1000.0)
+    if _last_audio_end and now >= _last_audio_end \
+            and (now - _last_audio_end) <= 120.0:
+        _stamp('audio_end_to_tts_audio', (now - _last_audio_end) * 1000.0)
 
 
 def snapshot() -> Dict[str, Any]:

@@ -27,7 +27,7 @@ from . import tools as tool_reg  # noqa: F401 — registers built-in tools on im
 from .control import apply_control
 from .jobs import store
 from .jobs.engine import get_engine
-from .loop import narrate_now, start_loop, stop_loop
+from .loop import narrate_now, set_persona_tier, start_loop, stop_loop
 from .mode import get_mode
 from .ws import SERVER_V, get_hub
 
@@ -266,12 +266,21 @@ async def cancel(job_id: str, body: Optional[CancelIn] = None,
 
 # ---- Control / status (PROTOCOL §3) ----------------------------------------
 class ControlIn(BaseModel):
-    action: str
+    action: Optional[str] = None       # required unless `tier` is given
     persist: bool = True
+    tier: Optional[str] = None         # Wave 5P P1: set (str) / get ('')
 
 
 @app.post('/control')
 async def control(body: ControlIn, auth: bool = Depends(token_auth)) -> Dict[str, Any]:
+    if body.tier is not None:
+        # set (non-empty) / get (empty string) — invalid tier = 422, loud.
+        try:
+            return {'ok': True, 'tier': set_persona_tier(body.tier or None)}
+        except ValueError as e:
+            raise HTTPException(status_code=422, detail=str(e))
+    if not body.action:
+        raise HTTPException(status_code=422, detail='action or tier required')
     try:
         result = apply_control(body.action, persist=body.persist)
     except ValueError as e:
@@ -295,10 +304,11 @@ async def status(auth: bool = Depends(token_auth)) -> Dict[str, Any]:
         router_block = {}
     except Exception:  # noqa: BLE001 — /status must stay up
         router_block = {'error': 'unavailable'}
-    from . import coreguard, latency
+    from . import coreguard, foreground, latency
     return {'ok': True, 'server_v': SERVER_V, 'mode': get_mode().label(),
             'sessions': get_hub().session_counts(), 'router': router_block,
             'latency': latency.snapshot(), 'core_guard': coreguard.status(),
+            'foreground': foreground.status_block(),
             **engine.stats()}
 
 

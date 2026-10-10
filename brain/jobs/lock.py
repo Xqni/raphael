@@ -20,6 +20,28 @@ class InputLock:
     def __init__(self):
         self._owner: Optional[int] = None
         self._waiters: Deque[Tuple[int, "asyncio.Future"]] = deque()
+        # Wave 5U P0.6: idle signal for ADMISSION parking — set exactly when
+        # nobody owns and nobody queues the lock (dead waiters drained).
+        self._idle: "asyncio.Event" = asyncio.Event()
+        self._idle.set()
+
+    def _sync_idle(self) -> None:
+        self._waiters = deque(
+            (j, f) for (j, f) in self._waiters if not f.done() and not f.cancelled())
+        if self._owner is None and not self._waiters:
+            self._idle.set()
+        else:
+            self._idle.clear()
+
+    async def wait_until_free(self) -> None:
+        """P0.6 admission: wait until NOBODY owns or queues the lock.
+        (Busy-wait free; re-checks after every wake because a promotion can
+        re-busy the lock between wake and check.)"""
+        while True:
+            self._sync_idle()
+            if self._idle.is_set():
+                return
+            await self._idle.wait()
 
     @property
     def owner(self) -> Optional[int]:
@@ -43,9 +65,11 @@ class InputLock:
         instantly when NOBODY is queued — in the transient ownerless state
         with waiters present, the oldest WAITING job is promoted instead of
         letting the newcomer jump the queue (starvation)."""
+        self._sync_idle()
         if self._owner is None:
             if not self._waiters:
                 self._owner = job_id
+                self._idle.clear()
                 return True
             # ownerless WITH waiters: promote the oldest live waiter; drain
             # dead (cancelled) entries first. If every waiter is dead the
@@ -59,12 +83,14 @@ class InputLock:
                 break
             if promoted is None:
                 self._owner = job_id
+                self._idle.clear()
                 return True
             self._owner = promoted[0]
             promoted[1].set_result(True)
             # fall through — the newcomer queues behind the promoted holder
         fut: "asyncio.Future" = asyncio.get_running_loop().create_future()
         self._waiters.append((job_id, fut))
+        self._idle.clear()
         try:
             await fut
         except asyncio.CancelledError:
@@ -87,6 +113,7 @@ class InputLock:
             self._owner = jid
             fut.set_result(True)
             break
+        self._sync_idle()
         return True
 
     def force_release(self) -> bool:
@@ -97,4 +124,5 @@ class InputLock:
             _, fut = self._waiters.popleft()
             if not fut.done():
                 fut.cancel()
+        self._sync_idle()
         return had_owner

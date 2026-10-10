@@ -103,6 +103,103 @@ def _extract_tool_call(text: str):
     return None, {}
 
 
+# ---- persona tier (Wave 5P P1: config persona.tier + /control set/get) ------
+_session_tier: Optional[str] = None   # runtime override; None = config default
+
+
+def _persona_tier_names() -> Tuple[str, ...]:
+    """Known tier names; brain.persona.tiers (evolution lane) is the
+    authority. Import failure degrades to the wave-5 names — never a crash."""
+    try:
+        from .persona.tiers import TIERS
+        return tuple(TIERS)
+    except Exception:  # noqa: BLE001 — persona degrades, the loop never does
+        return ('great_sage', 'raphael', 'ciel')
+
+
+def persona_tier() -> str:
+    """Effective tier: session override -> config persona.tier -> great_sage.
+    Unknown/missing values fail CLOSED to great_sage (never an error)."""
+    tiers = _persona_tier_names()
+    if _session_tier in tiers:
+        return _session_tier
+    try:
+        t = appcfg.cfg_get(appcfg.get_config(), 'persona.tier', None)
+    except Exception:  # noqa: BLE001
+        t = None
+    return t if t in tiers else 'great_sage'
+
+
+def set_persona_tier(value: Optional[str]) -> str:
+    """Runtime tier set/get (P1, /control surface). None/'' -> get (no
+    change); an INVALID tier is a LOUD ValueError — tier is owner/config
+    authority, the model can never self-raise it (addendum §14)."""
+    global _session_tier
+    tiers = _persona_tier_names()
+    if value is None or not str(value).strip():
+        return persona_tier()
+    v = str(value).strip().lower()
+    if v not in tiers:
+        raise ValueError(f'unknown persona tier: {value!r} '
+                         f'(valid: {", ".join(tiers)})')
+    _session_tier = v
+    return v
+
+
+def reset_persona_tier_for_tests() -> None:
+    global _session_tier
+    _session_tier = None
+
+
+def _tier_prompt_paths() -> Dict[str, str]:
+    """tier -> prompt-file path from config persona.tiers (P1); {} on error."""
+    try:
+        spec = appcfg.cfg_get(appcfg.get_config(), 'persona.tiers', {}) or {}
+    except Exception:  # noqa: BLE001
+        return {}
+    return {str(k): str(v.get('prompt')) for k, v in spec.items()
+            if isinstance(v, dict) and v.get('prompt')}
+
+
+def _read_tier_prompt(name: str) -> Optional[str]:
+    path = _tier_prompt_paths().get(name)
+    if not path:
+        return None
+    try:
+        with open(path, encoding='utf-8') as f:
+            txt = f.read().strip()
+        return txt or None
+    except OSError:
+        return None
+
+
+def _tier_prompt_block() -> str:
+    """Tier prompt-file content for message assembly (P1). A missing or
+    unreadable prompt file fails CLOSED: fall back to great_sage's file and
+    surface ONE warn Notice (ratelimited); if that is missing too, no block —
+    the base operational prompt carries on and the loop never dies."""
+    tier = persona_tier()
+    block = _read_tier_prompt(tier)
+    if block:
+        return f'Persona tier ({tier}):\n{block}'
+    try:
+        from . import notice
+        if tier == 'great_sage':
+            notice.emit('Persona prompt for tier "great_sage" unavailable — '
+                        'using the base prompt.', level='warn',
+                        key='persona-tier-great_sage', cooldown_s=60.0)
+        else:
+            notice.emit(f'Persona prompt for tier "{tier}" unavailable — '
+                        'fail-closed to great_sage.', level='warn',
+                        key=f'persona-tier-{tier}', cooldown_s=60.0)
+    except Exception:  # noqa: BLE001 — a notice can never break assembly
+        pass
+    if tier == 'great_sage':
+        return ''
+    fb = _read_tier_prompt('great_sage')
+    return f'Persona tier (great_sage, fallback):\n{fb}' if fb else ''
+
+
 # ---- persona + multi-turn context ------------------------------------------
 def persona_system_prompt() -> str:
     """Raphael's system prompt, BUILT from config.voice_personality (addendum §10)."""
@@ -126,6 +223,12 @@ def persona_system_prompt() -> str:
         'screen (the UI shows your full reply as text, so details are not '
         'lost).',
     ]
+    # Wave 5P P1: the active tier's prompt file rides as its own block right
+    # after the identity line (identity first — the tier block is register +
+    # posture, not a replacement for the operational rules below).
+    tier_block = _tier_prompt_block()
+    if tier_block:
+        lines.insert(1, tier_block)
     if forms:
         lines.append('Canonical reply shapes: '
                      + '; '.join(str(f) for f in forms))
@@ -527,11 +630,19 @@ def build_runner(hub=None):
                  t=decision.question)
             narrate(decision.question)
             if hub is not None:
+                # Wave 5U P0.3 (charter): the confirm frame carries what is
+                # being approved — action/target/risk + a <=200-char REDACTED
+                # detail — so orb/CLI confirm cards can show it (rule 16
+                # permits confirm cards; text-free orb otherwise holds).
+                from . import logjson as _lj
                 hub.broadcast({
                     'type': 'needs_confirm', 'v': 1, 'job': jid,
                     'question': decision.question,
                     'actions': decision.actions,
                     'risk': decision.risk,
+                    'action': decision.action,
+                    'target': str(decision.target or '')[:200],
+                    'detail': str(_lj.redact_value(decision.reason or ''))[:200],
                     'expires_at': int(time.time() * 1000)
                     + int(engine.confirmer.timeout_s * 1000),
                 })
@@ -554,8 +665,11 @@ def build_runner(hub=None):
             return answer
 
         async def _execute_tool(tool_name: str, tool_args: Dict[str, Any],
-                                lock_hint: bool = False) -> Tuple[bool, str]:
-            """Run ONE tool (confirm -> lock -> act/local). Returns (ok, out)."""
+                                lock_hint: bool = False,
+                                model_picked: bool = False) -> Tuple[bool, str]:
+            """Run ONE tool (confirm -> lock -> act/local). Returns (ok, out).
+            model_picked=True = the LLM chose this tool (P3: the policy's
+            declared default applies here; fastpath acts stay act-first)."""
             # AUD-21: SAFE MODE blocks dangerous capabilities — a Core Guard
             # mismatch (boot-time pass, mid-run reverify) disables ALL tool
             # dispatch until the manifest verifies again.
@@ -575,18 +689,39 @@ def build_runner(hub=None):
             # model-picked tool must clear the gate even when the user's TEXT
             # was benign — pattern+RISKY_TOOLS first, then registry `risky`
             # metadata for tools outside confirm.RISKY_TOOLS.
-            decision = confirm_mod.classify(text, tool=tool_name)
-            if not decision.needs and meta.get('risky'):
+            # P3 policy ladder (Wave 5P): the user's safety.confirm_policy
+            # map is consulted FIRST — class/category verdict -> regex
+            # classifier -> declared default (model-picked only). A 'never'
+            # verdict REFUSES outright (honest cancel, never a silent drop).
+            decision = confirm_mod.classify(
+                text, tool=tool_name, model_picked=model_picked,
+                confirm_category=(meta.get('confirm')
+                                  if meta.get('confirm') != 'voice_ok'
+                                  else None))
+            if decision.refused:
+                spoken = f"Blocked: {decision.reason}."
+                store.transition(rowid, 'cancelled', stage='done',
+                                 progress=1.0, error_code='E_CANCELLED',
+                                 result=spoken)
+                emit('cancelled', stage='done', progress=1.0, t=spoken,
+                     error_code='E_CANCELLED')
+                narrate(spoken)
+                raise _JobAborted()
+            if (not decision.needs and not decision.by_policy
+                    and meta.get('risky')):
                 decision = confirm_mod.tool_decision(tool_name, text)
             # AUD-09: ToolSpec confirmation categories propagate from
             # registry meta — declaring `confirm=` GATES the tool (if not
             # already gated); a category is non-voice unless it carries the
-            # explicit reviewed policy 'voice_ok'.
+            # explicit reviewed policy 'voice_ok'. P3: an explicit policy
+            # verdict (by_policy) outranks the force-gate — the map is the
+            # user's editable authority.
             if meta.get('confirm'):
-                if not decision.needs:
+                if not decision.needs and not decision.by_policy:
                     decision = confirm_mod.tool_decision(tool_name, text)
                 if meta['confirm'] == 'voice_ok':
-                    decision.risk = 'low'
+                    if decision.needs:
+                        decision.risk = 'low'
                 else:
                     decision.action = str(meta['confirm'])
                     decision.risk = 'high'
@@ -829,7 +964,8 @@ def build_runner(hub=None):
                     emit('running', stage='tool', progress=0.7,
                          t=f'Running {t_name}', tool=t_name)
                     latency.note_tool_start(rowid)   # ARCH-6 (first wins)
-                    ok, out = await _execute_tool(t_name, t_args)
+                    ok, out = await _execute_tool(t_name, t_args,
+                                                  model_picked=True)
                     if kind == 'analysis':
                         # point 2 (prompted output) + lock:false belt
                         out = analysis_mod.redact(out)

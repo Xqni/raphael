@@ -52,6 +52,25 @@ def provider() -> Optional[str]:
     return None
 
 
+def status_block() -> dict:
+    """Wave 5U P0.7: /status.foreground -> {state, age_s}.
+    ok = push-cache fresh (<5 s); stale = ring-only (<60 s); unknown = none.
+    Value-blind: no window titles here — only state + age."""
+    if _name and (time.monotonic() - _ts) <= FRESH_S:
+        return {'state': 'ok', 'age_s': round(time.monotonic() - _ts, 1)}
+    try:
+        from .vision import context as ring
+        hist = ring.recent_history(1)
+        if hist:
+            ts, _ident = hist[-1]
+            age = time.time() - ts
+            if age <= RING_FRESH_S:
+                return {'state': 'stale', 'age_s': round(age, 1)}
+    except Exception:  # noqa: BLE001 — status must never raise
+        pass
+    return {'state': 'unknown', 'age_s': None}
+
+
 def reset_for_tests() -> None:
     global _name, _ts
     _name = None

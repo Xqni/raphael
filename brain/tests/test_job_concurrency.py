@@ -22,6 +22,22 @@ from brain.jobs.engine import get_engine
 from brain.jobs.lock import InputLock
 
 
+@pytest.fixture(autouse=True)
+def _policy_default_auto(monkeypatch):
+    """P3 (Wave 5P): live config declares confirm_policy default=confirm for
+    MODEL-picked tools; this module tests job/lock PLUMBING, not the gate
+    (gate pins live in test_confirm_policy.py + qa's regression suite)."""
+    from brain import config as _cfg
+    cfg = dict(_cfg.get_config())
+    safety = dict(cfg.get('safety') or {})
+    pol = dict(safety.get('confirm_policy') or {})
+    pol['default'] = 'auto'
+    safety['confirm_policy'] = pol
+    cfg['safety'] = safety
+    monkeypatch.setattr(_cfg, 'get_config', lambda: cfg)
+    yield
+
+
 def run(coro):
     return asyncio.run(coro)
 

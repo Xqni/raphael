@@ -36,6 +36,8 @@ class LLMResult:
     model: Optional[str] = None
     code: Optional[str] = None   # PROTOCOL §10 error code when not ok
     error: Optional[str] = None
+    reason: Optional[str] = None  # Wave 5U P0.7: router refusal reason
+                                  # (e.g. foreground_unknown) — legibility
     tool_calls: List[Dict[str, Any]] = field(default_factory=list)
     finish: Optional[str] = None        # 'stop' | 'tool_calls' | 'length'
     usage: Dict[str, int] = field(default_factory=dict)
@@ -179,9 +181,18 @@ async def chat(messages: List[Dict[str, Any]],
         return out
     except Exception as e:  # noqa: BLE001 — degradation, never a crash
         code = _code_for(e)
-        if code in _OUTAGE_CODES:
+        reason = getattr(e, 'reason', None)
+        if reason == 'foreground_unknown':
+            # P0.7 legibility: a foreground refusal is NOT a provider outage
+            # — say WHY chat went dark (rate-limited), skip provider_down.
+            notice_mod.emit('Chat paused: the focused window is unknown — '
+                            'staying local until it can be verified.',
+                            level='warn', key='foreground_unknown',
+                            cooldown_s=60.0)
+        elif code in _OUTAGE_CODES:
             notice_mod.provider_down()
-        return LLMResult(ok=False, code=code, error=str(e)[:200])
+        return LLMResult(ok=False, code=code, error=str(e)[:200],
+                         reason=reason)
 
 
 async def _stream_via_facade(facade, messages, tools, purpose, task_kind,
@@ -209,10 +220,16 @@ async def _stream_via_facade(facade, messages, tools, purpose, task_kind,
                 yield {'delta': str(frame)}
     except Exception as e:  # noqa: BLE001 — degradation, never a crash
         code = _code_for(e)
-        if code in _OUTAGE_CODES:
+        reason = getattr(e, 'reason', None)
+        if reason == 'foreground_unknown':
+            notice_mod.emit('Chat paused: the focused window is unknown — '
+                            'staying local until it can be verified.',
+                            level='warn', key='foreground_unknown',
+                            cooldown_s=60.0)
+        elif code in _OUTAGE_CODES:
             notice_mod.provider_down()
         yield {'finish': 'error', 'provider': None, 'model': None,
-               'code': code, 'error': str(e)[:300]}
+               'code': code, 'error': str(e)[:300], 'reason': reason}
 
 
 async def plan(text: str, task_kind: Optional[str] = None,

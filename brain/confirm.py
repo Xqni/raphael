@@ -112,25 +112,105 @@ class RiskDecision:
     reason: str = ''
     action: str = ''          # normalized action id (config-list style)
     risk: str = 'low'         # 'high' -> NON-voice confirmation required
+    refused: bool = False     # P3 policy 'never': refuse outright, don't ask
+    by_policy: bool = False   # decided by safety.confirm_policy (P3)
+    target: str = ''          # Wave 5U P0.3: WHAT is acted on (shown by
+                              # orb/CLI confirm cards; <=200 chars, redacted
+                              # at the frame boundary — never a secret store)
+
+
+# ---- P3: user-editable confirmation policy (Wave 5P) -----------------------
+# `config.yaml → safety.confirm_policy` (integrator-owned block): a declared
+# `default` + per-class verdicts (auto = act-first, confirm = ask first,
+# never = refuse). The policy is consulted FIRST; the risk regex stays as the
+# classifier for ids the map doesn't name; NOTHING matched -> the declared
+# default, and only for MODEL-PICKED tools (fastpath + plain chat stay
+# act-first per the autonomy split — a declared default must never turn
+# "hello" into a confirmation prompt). Invalid values fail CLOSED to
+# 'confirm'. Design-review findings 1-2 (dead config + default contradiction).
+POLICY_VERDICTS = ('auto', 'confirm', 'never')
+
+
+def confirm_policy() -> Tuple[str, Dict[str, str]]:
+    """(default_verdict, class_verdicts) from config safety.confirm_policy.
+    Missing config / invalid verdicts fail closed to 'confirm'."""
+    try:
+        from brain import config as _cfg
+        pol = _cfg.cfg_get(_cfg.get_config(),
+                           'safety.confirm_policy', {}) or {}
+    except Exception:  # noqa: BLE001 — policy degrades closed, never open
+        pol = {}
+
+    def _v(x) -> str:
+        s = str(x or '').strip().lower()
+        return s if s in POLICY_VERDICTS else 'confirm'
+
+    default = _v(pol.get('default', 'confirm'))
+    classes: Dict[str, str] = {}
+    raw = pol.get('classes')
+    if isinstance(raw, dict):
+        for k, v in raw.items():
+            kk = str(k or '').strip()
+            if kk and kk != 'voice_ok':      # voice_ok = channel policy, not a class
+                classes[kk] = _v(v)
+    return default, classes
+
+
+def policy_summary() -> str:
+    """Spoken answer for "what requires your confirmation?" — the policy map,
+    said plainly (P3 spoken surface)."""
+    default, classes = confirm_policy()
+    by_verdict = {v: sorted(k for k, vv in classes.items() if vv == v)
+                  for v in POLICY_VERDICTS}
+    lead = ('By default I ask before anything my safety map does not '
+            'clearly classify.'
+            if default == 'confirm' else
+            'By default I act first and report, unless classified.'
+            if default == 'auto' else
+            'By default I refuse unclassified actions.')
+    parts = [lead]
+    if by_verdict['confirm']:
+        parts.append('Confirmed first: ' + ', '.join(by_verdict['confirm']) + '.')
+    if by_verdict['auto']:
+        parts.append('No questions asked: ' + ', '.join(by_verdict['auto']) + '.')
+    if by_verdict['never']:
+        parts.append('Blocked outright: ' + ', '.join(by_verdict['never']) + '.')
+    return ' '.join(parts)
 
 
 def high_risk_actions() -> set:
-    """The config authority for HIGH risk (Wave 2 task 3)."""
+    """The config authority for HIGH risk (Wave 2 task 3). Wave 5U P0.1:
+    HIGH = safety.confirm_actions OR safety.typed_confirm (absent list =
+    today's behavior)."""
     try:
         from brain import config as _cfg
-        actions = _cfg.cfg_get(_cfg.get_config(), 'safety.confirm_actions', []) or []
-        return {str(a) for a in actions}
+        cfg = _cfg.get_config()
+        actions = _cfg.cfg_get(cfg, 'safety.confirm_actions', []) or []
+        typed = _cfg.cfg_get(cfg, 'safety.typed_confirm', []) or []
+        return {str(a) for a in list(actions) + list(typed)}
     except Exception:  # noqa: BLE001 — config unavailable -> conservative default
         return {'delete_files', 'send_message', 'send_email', 'purchase',
                 'enter_password', 'system_settings_change', 'install_software',
                 'make_public_repo'}
 
 
-def classify(text: str, tool: Optional[str] = None) -> RiskDecision:
+def classify(text: str, tool: Optional[str] = None,
+             model_picked: bool = False,
+             confirm_category: Optional[str] = None) -> RiskDecision:
     """Decide whether a job needs user confirmation before dispatch.
 
+    P3 ladder (Wave 5P, sharpened by design-review findings 1-2):
+      1. safety.confirm_policy classes — the tool's declared confirm category
+         first, then any action id the risk regex/tools matched (the user's
+         map outranks the regex: auto -> act, confirm -> ask, never -> refuse);
+      2. the risk regex + RISKY_TOOLS stay the classifier for ids the map
+         does not name (unchanged questions/risk);
+      3. nothing matched -> the policy's declared default — and ONLY when a
+         TOOL is in play AND it was MODEL-picked (fastpath acts and plain
+         chat stay act-first; a default must never confirm "hello").
     All hits are collected; risk is HIGH when ANY hit maps onto
     `config.safety.confirm_actions` (the question prefers the high hit)."""
+    default, classes = confirm_policy()
     hits: List[Tuple[str, str]] = []       # (action id, human reason)
     if tool and str(tool).lower() in RISKY_TOOLS:
         tname = str(tool).lower()
@@ -138,8 +218,47 @@ def classify(text: str, tool: Optional[str] = None) -> RiskDecision:
     for pat, why in RISKY_PATTERNS:
         if pat.search(text or ''):
             hits.append((ACTION_BY_REASON.get(why, 'other'), why))
+    # 1. policy classes (category first — it is the tool's own declaration)
+    candidates = [str(confirm_category)] if confirm_category else []
+    candidates += [a for a, _ in hits]
+    for aid in candidates:
+        if aid not in classes:
+            continue
+        verdict = classes[aid]
+        if verdict == 'auto':
+            return RiskDecision(needs=False, by_policy=True, action=aid)
+        if verdict == 'never':
+            return RiskDecision(needs=False, refused=True, by_policy=True,
+                                reason=f'confirmation policy blocks `{aid}`',
+                                action=aid)
+        # 'confirm' -> fall through to the ask path below (policy-marked)
+        if not hits:
+            hits.append((aid, f'confirmation policy class `{aid}`'))
+        break
     if not hits:
+        # 3. declared default — model-picked tools only (see docstring).
+        # NOTE by_policy=False: the DEFAULT is the absence of classification,
+        # not a class verdict — the loop's registry risky/confirm-category
+        # force-gates still apply on top (classification outranks default;
+        # only an explicit class verdict may un-gate).
+        if model_picked and tool:
+            name = str(tool)
+            action = TOOL_ACTION.get(name.lower(), name.lower() or 'tool')
+            if default == 'auto':
+                return RiskDecision(needs=False, action=action)
+            if default == 'never':
+                return RiskDecision(needs=False, refused=True,
+                                    reason=f'confirmation policy blocks `{name}`',
+                                    action=action)
+            snippet = ' '.join((text or '').split())[:80]
+            question = (f"About to run tool `{name}`: “{snippet}”. Confirm?"
+                        if snippet else f"About to run tool `{name}`. Confirm?")
+            return RiskDecision(needs=True, question=question,
+                                actions=['yes', 'no'],
+                                reason=f'tool `{name}` (policy default)',
+                                action=action, risk='high', target=name)
         return RiskDecision(needs=False)
+    by_policy = any(aid in classes for aid in candidates)
     high = high_risk_actions()
     is_high = any(action in high for action, _ in hits)
     action, reason = next(((a, r) for a, r in hits if a in high), hits[0])
@@ -155,7 +274,9 @@ def classify(text: str, tool: Optional[str] = None) -> RiskDecision:
         f"About to {reason}. Confirm?"
     return RiskDecision(needs=True, question=question, actions=['yes', 'no'],
                         reason=reason, action=action,
-                        risk='high' if is_high else 'low')
+                        risk='high' if is_high else 'low',
+                        by_policy=by_policy,
+                        target=(snippet or (str(tool) if tool else '')))
 
 
 def voice_safe(job_id) -> bool:
@@ -195,7 +316,7 @@ def tool_decision(tool: str, text: str = '') -> RiskDecision:
                 if snippet else f"About to run tool `{name}`. Confirm?")
     return RiskDecision(needs=True, question=question, actions=['yes', 'no'],
                         reason=f'tool `{name}` (risky metadata)',
-                        action=action, risk=risk)
+                        action=action, risk=risk, target=name)
 
 
 def parse_free_text(answer: str) -> str:

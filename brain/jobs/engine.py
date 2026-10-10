@@ -36,6 +36,9 @@ class JobEngine:
         self._act_waiters: Dict[str, "asyncio.Future"] = {}
         self._tasks: Dict[int, asyncio.Task] = {}
         self._workers: List[asyncio.Task] = []
+        # Wave 5U P0.6: jobs parked at ADMISSION (waiting_lock) — they hold
+        # NO worker; this registry lets cancel/shutdown stop the requeue task.
+        self._parked: Dict[int, asyncio.Task] = {}
         self._submit_seq = 0
         self._running = False
         self._pause_event: Optional[asyncio.Event] = None
@@ -131,7 +134,10 @@ class JobEngine:
             w.cancel()
         for t in list(self._tasks.values()):
             t.cancel()
-        pending = list(self._tasks.values()) + list(self._workers)
+        for t in list(self._parked.values()):
+            t.cancel()
+        pending = (list(self._tasks.values()) + list(self._workers)
+                   + list(self._parked.values()))
         if pending:
             await asyncio.gather(*pending, return_exceptions=True)
         self._tasks.clear()
@@ -280,6 +286,21 @@ class JobEngine:
                 if not job or job['status'] != 'queued':
                     self._queue.task_done()
                     continue
+            # Wave 5U P0.6 admission-stage lock: a job that DECLARED
+            # input_lock parks here WITHOUT a worker while the lock is busy —
+            # chat jobs (input_lock=False) keep getting workers instantly,
+            # so a GUI burst can never starve conversation (review #4).
+            if job.get('input_lock') and not self.lock.is_held_by(rowid)                     and self.lock.busy():
+                store.transition(rowid, 'waiting_lock', stage='routing',
+                                 progress=0.05)
+                self.emit_event(store.get_job(rowid), 'waiting_lock',
+                                stage='routing', progress=0.05,
+                                text='Waiting for the input lock…')
+                self._queue.task_done()
+                pt = asyncio.create_task(self._requeue_when_free(rowid),
+                                         name=f'parked-{job["job"]}')
+                self._parked[rowid] = pt
+                continue
             task = asyncio.create_task(self._run_job(rowid), name=f'job-{job["job"]}')
             self._tasks[rowid] = task
             try:
@@ -299,6 +320,34 @@ class JobEngine:
                     self._queue.task_done()
                 except ValueError:
                     pass
+
+    async def _requeue_when_free(self, rowid: int) -> None:
+        """P0.6: requeue a waiting_lock job once the input lock is fully
+        free. Never requeues terminal jobs; the worker re-runs the admission
+        check (fairness: parked jobs re-enter at their own priority rank)."""
+        try:
+            await self.lock.wait_until_free()
+            job = store.get_job(rowid)
+            if not job or job['status'] != 'waiting_lock':
+                return                       # cancelled/terminal while parked
+            store.transition(rowid, 'queued', stage='routing', progress=0.0)
+            snap = store.get_job(rowid)
+            self.emit_event(snap, 'queued', stage='routing', progress=0.0)
+            self._submit_seq += 1
+            rank = store.PRIORITY_RANK.get(snap['priority'], 1)
+            q = self._ensure_queue()
+            await q.put((rank, self._submit_seq, snap['id']))
+        except asyncio.CancelledError:
+            raise
+        except Exception:  # noqa: BLE001 — never strand a parked job
+            try:
+                store.transition(rowid, 'failed', stage='done', progress=1.0,
+                                 error_code='E_INTERNAL',
+                                 result='input-lock requeue failed')
+            except Exception:  # noqa: BLE001
+                pass
+        finally:
+            self._parked.pop(rowid, None)
 
     async def _run_job(self, rowid: int):
         job = store.get_job(rowid)
@@ -372,6 +421,9 @@ class JobEngine:
             self.emit_event(job, job['status'],
                             text='Input lock released (scope=gui)')
             return store.get_job(rowid)
+        parked = self._parked.get(rowid)
+        if parked is not None and not parked.done():
+            parked.cancel()               # waiting_lock: dies with its job
         task = self._tasks.get(rowid)
         if task is not None and not task.done():
             task.cancel()
@@ -483,6 +535,7 @@ class JobEngine:
             'jobs_active': len(active),
             'jobs_queued': len([j for j in jobs if j['status'] == 'queued']),
             'jobs_pending_confirm': len([j for j in jobs if j['status'] == 'awaiting_confirm']),
+            'jobs_waiting_lock': len([j for j in jobs if j['status'] == 'waiting_lock']),
             'jobs_done': len([j for j in jobs if j['status'] == 'done']),
             'jobs_failed': len([j for j in jobs if j['status'] == 'failed']),
             'jobs_cancelled': len([j for j in jobs if j['status'] == 'cancelled']),
@@ -493,6 +546,7 @@ class JobEngine:
                 'job': ((store.get_job(self.lock.owner) or {}).get('job')
                         if self.lock.owner else None),
                 'waiting': self.lock.waiters,
+                'parked': len(self._parked),
             },
             'paused': self.paused,
             'running_tasks': len(self._tasks),

@@ -507,8 +507,13 @@ class WsHub:
         if self.engine is None:
             await self._send(s, {'type': 'error', 'v': 1, 'code': 'E_INTERNAL'})
             return None
-        snap = await self.engine.submit(text=text, priority=priority,
-                                        source=source, session=s.sid)
+        # Wave 5U P0.6: admission-stage lock — GUI fastpath jobs declare
+        # input_lock at SUBMIT so the engine parks them (no worker held)
+        # while chat jobs keep flowing.
+        from . import fastpath as _fp
+        snap = await self.engine.submit(
+            text=text, priority=priority, source=source, session=s.sid,
+            input_lock=_fp.needs_lock_hint(text))
         s.jobs.add(snap['id'])
         # instant cached ack (PROTOCOL §3) — job already allocated
         await self._send(s, {'type': 'ack', 'v': 1, 'job': snap['job'],
@@ -562,9 +567,11 @@ class WsHub:
                                          'accepted': False})
                     return
                 # 'none' — raced to completion; fall through
-        snap = await self.engine.submit(text=text, priority=priority,
-                                        source=source, session=s.sid,
-                                        kind=kind, parent=parent)
+        from . import fastpath as _fp
+        snap = await self.engine.submit(
+            text=text, priority=priority, source=source, session=s.sid,
+            kind=kind, parent=parent,
+            input_lock=_fp.needs_lock_hint(text))
         s.jobs.add(snap['id'])
         await self._send(s, {'type': 'ack', 'v': 1, 'job': snap['job'],
                              'text_id': msg.get('job_id')})
@@ -618,6 +625,19 @@ class WsHub:
                              'answer': answer, 'accepted': True})
 
     async def _on_control(self, s: Session, msg: Dict[str, Any]):
+        # Wave 5P P1: `tier` field = set (string) / get (null or '');
+        # invalid tier = loud E_BAD_MSG (never silently normalized).
+        if 'tier' in msg:
+            from . import loop
+            try:
+                tier = loop.set_persona_tier(msg.get('tier'))
+            except ValueError as e:
+                await self._send(s, {'type': 'error', 'v': 1,
+                                     'code': 'E_BAD_MSG', 'detail': str(e)})
+                return
+            await self._send(s, {'type': 'ack', 'v': 1, 'ok': True,
+                                 'tier': tier})
+            return
         action = msg.get('action')
         persist = bool(msg.get('persist', True))
         try:
@@ -896,6 +916,7 @@ class WsHub:
                 from . import notice as _notice
                 _notice.emit('Voice input sent to cloud STT.', level='info')
             from . import latency as _latency   # brain.ws -> brain.latency
+            _latency.note_audio_end()           # P0.8 derived-metric anchor
             _t0 = time.monotonic()
             res = await asyncio.wait_for(
                 asyncio.to_thread(voice.transcribe_result, buf, reason=reason),

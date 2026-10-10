@@ -81,6 +81,24 @@ def _fresh_state():
     get_mode().set('private_off', persist=False)
 
 
+@pytest.fixture(autouse=True)
+def _policy_default_auto(monkeypatch):
+    """P3 (Wave 5P): the live config now declares safety.confirm_policy
+    default=confirm for MODEL-picked tools. This module tests the tool LOOP
+    plumbing, not the gate — gate behavior is pinned in
+    test_confirm_policy.py / test_confirm_hardening.py / qa's regression
+    suite. Unclassified model-picked tools run act-first HERE by design."""
+    from brain import config as _cfg
+    cfg = dict(_cfg.get_config())
+    safety = dict(cfg.get('safety') or {})
+    pol = dict(safety.get('confirm_policy') or {})
+    pol['default'] = 'auto'
+    safety['confirm_policy'] = pol
+    cfg['safety'] = safety
+    monkeypatch.setattr(_cfg, 'get_config', lambda: cfg)
+    yield
+
+
 @pytest.fixture(scope='module')
 def token_path():
     fd, path = tempfile.mkstemp(prefix='raphael-test-token-agent-')
