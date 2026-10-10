@@ -69,6 +69,25 @@ AUDIO_MAX_BYTES = 10 * 1024 * 1024  # AUD-24: EXACT audio buffer cap
 MAX_SESSIONS = 32                   # AUD-24: global session bound
 _AUDIO_STOP = object()              # worker sentinel
 
+# P0-URGENT (coord inbox 47): wake-drop visibility. The user reports 'if she
+# ever replies' — segments DO reach STT but some wake segments are gate-dropped
+# silently. This counter (count + reason, NEVER content) lets us see the live
+# drop rate. reason ∈ 'no_wake_match' | 'silence' | 'ptt_only' | 'undecided'
+# | 'error_fail_closed' (the last four come from should_transcribe's verdict).
+_WAKE_DROP_COUNTS: Dict[str, int] = {}
+
+
+def note_wake_drop(reason: str) -> int:
+    """Increment + log a gate-dropped wake segment (lightweight, no content)."""
+    key = str(reason) or 'unknown'
+    _WAKE_DROP_COUNTS[key] = _WAKE_DROP_COUNTS.get(key, 0) + 1
+    try:
+        from .logjson import slog
+        slog('wake_drop', reason=key, total=_WAKE_DROP_COUNTS[key])
+    except Exception:  # noqa: BLE001 — visibility must never break the loop
+        pass
+    return _WAKE_DROP_COUNTS[key]
+
 
 def _clear_yes_no(text: str) -> Optional[str]:
     """'yes' | 'no' when the text clearly IS an answer, else None (used by the
@@ -915,6 +934,11 @@ class WsHub:
                 # sent to the cloud (ui+cli notice, presence-only text)
                 from . import notice as _notice
                 _notice.emit('Voice input sent to cloud STT.', level='info')
+            elif reason == 'wake':
+                # P0-URGENT (coord inbox 47): a wake segment the pre-STT gate
+                # refused (silence/ptt_only/undecided/error) — surface it
+                # (count + reason, no content) so we can see the drop rate.
+                note_wake_drop(decision.reason)
             from . import latency as _latency   # brain.ws -> brain.latency
             _latency.note_audio_end()           # P0.8 derived-metric anchor
             _t0 = time.monotonic()
@@ -955,6 +979,11 @@ class WsHub:
                 # submit transcript with wake word stripped
                 if self.engine is not None:
                     await self.engine.submit(text=match.command, priority='user_facing', source='voice', session=s.sid)
+            elif reason == 'wake':
+                # P0-URGENT (coord inbox 47): wake segment reached STT but
+                # matched no wake word -> previously dropped SILENTLY (the
+                # 'if she ever replies' gap). Count + reason, no content.
+                note_wake_drop('no_wake_match')
                     
         except VoiceSTTError as e:
             orbstate.mark_error()

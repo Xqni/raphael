@@ -63,6 +63,24 @@ KIND_MIC = 1
 QUEUE_MAX_CHUNKS = 600
 
 
+def _env_int(name: str, default: int, lo: int = 1, hi: int = 100) -> int:
+    """P0-URGENT (coord inbox 47): SILENCE_CLOSE / CONTINUATION_GRACE are
+    config-driven via env so the live latency lever needs no rebuild.
+
+    Out-of-range / non-integer values FAIL-CLOSED to the default (a typo
+    must never deafen the mic or split every clause): clamped into [lo, hi]
+    after int() attempt, default on any parse error."""
+    import os
+    raw = os.environ.get(name, "").strip()
+    if not raw:
+        return default
+    try:
+        val = int(raw)
+    except ValueError:
+        return default
+    return max(lo, min(hi, val))
+
+
 def _enqueue_bounded(queue, chunk, stats: dict) -> None:
     """Drop-oldest bounded put (runs on the LOOP thread — queue ops stay
     single-threaded). Never raises; every drop is counted + rate-limited
@@ -205,16 +223,30 @@ class VadSegmenter:
     """
 
     SPEECH_MIN = 2      # >=200ms above threshold to open a segment
-    SILENCE_CLOSE = 12  # >=1.2s silent -> CANDIDATE close (Cut A 2026-10-08;
-                        # brain-core utt-continuation-merge MERGED): audio_end
-                        # is then HELD for CONTINUATION_GRACE so a resume
-                        # inside the window APPENDS on the brain side instead
-                        # of splitting. close(12)+grace(13)=25 chunks = the OLD
+    SILENCE_CLOSE = _env_int("RAPHAEL_SILENCE_CLOSE", 12)  # >=N*100ms silent
+                        # -> CANDIDATE close (Cut A 2026-10-08; brain-core
+                        # utt-continuation-merge MERGED): audio_end is then
+                        # HELD for CONTINUATION_GRACE so a resume inside the
+                        # window APPENDS on the brain side instead of
+                        # splitting. close(12)+grace(13)=25 chunks = the OLD
                         # 2.5s worst-case end latency and the old no-split
                         # coverage -> ZERO split regressions (accepted target).
-    CONTINUATION_GRACE = 13  # chunks (x100ms = 1.3s) held before audio_end
+    CONTINUATION_GRACE = _env_int("RAPHAEL_CONTINUATION_GRACE", 8)  # chunks
+                        # (x100ms = 0.8s, was 1.3s) held before audio_end
                         # fires; a 'start' inside the window cancels the held
                         # end and sends reason='continuation' instead.
+                        # P0-URGENT (coord inbox 47, user: 'huge delay'):
+                        # 13->8 trims perceived speech->subtitle by ~0.5-0.7s
+                        # immediately (worst-case end latency drops ~0.5s).
+                        # TRADEOFF, honest: the no-split merge window shrinks
+                        # 1.3s->0.8s, so a resume gap longer than 0.8s now
+                        # SPLITS into a second utterance instead of appending
+                        # (brain merges only within the window). Measured
+                        # human pause between clauses stays well under 0.8s,
+                        # so real barge-in/resume still merges; only a >0.8s
+                        # hesitation can split. Override via
+                        # RAPHAEL_CONTINUATION_GRACE=13 to restore the old
+                        # window without a rebuild.
     MIN_LEN = 3         # discard segments <300ms (clicks/blips)
     MAX_LEN = 600       # force-close at 60s (long REQUESTS allowed; was 20s = hard mid-sentence chop)
     NOISE_EMA = 0.93    # quiet-level tracker (only updates when quiet)
@@ -231,7 +263,16 @@ class VadSegmenter:
                         # Only affects OPENING; open-segment hysteresis below
                         # is untouched (live-tested behavior preserved).
 
-    def __init__(self):
+    def __init__(self, silence_close: Optional[int] = None,
+                 continuation_grace: Optional[int] = None):
+        # P0-URGENT (coord inbox 47): close/grace are per-instance override-
+        # able (tests parameterize them); class defaults are the env-driven
+        # config values (_env_int) -> main runs grace=8 (0.8s hold).
+        self.SILENCE_CLOSE = (int(silence_close) if silence_close is not None
+                              else self.SILENCE_CLOSE)
+        self.CONTINUATION_GRACE = (
+            int(continuation_grace) if continuation_grace is not None
+            else self.CONTINUATION_GRACE)
         self.noise = self.ABS_FLOOR
         # Windowed evidence (measured speech RMS is peaky: 225,64,143,81...
         # — consecutive-run rules NEVER fire through the valleys). Open on
@@ -320,7 +361,7 @@ class WakeStream:
     CONTINUATION_GRACE = VadSegmenter.CONTINUATION_GRACE
 
     def __init__(self, on_frame, on_start, on_end, device=None,
-                 log=None):
+                 log=None, continuation_grace: Optional[int] = None):
         # pythonw stdout is a PIPE -> unflushed prints vanish for minutes;
         # every wake log line must flush (found: "armed" invisible live).
         self.log = log or (lambda m: print(m, flush=True))
@@ -328,7 +369,12 @@ class WakeStream:
         self.on_start = on_start
         self.on_end = on_end
         self.device = device
-        self.vad = VadSegmenter()
+        self.vad = VadSegmenter(continuation_grace=continuation_grace)
+        # P0-URGENT (coord inbox 47): the grace window is the instance's own
+        # (mirrors the vad we just built) — main default grace=8 (0.8s hold)
+        # so perceived speech->subtitle drops ~0.5-0.7s. Class attr kept as
+        # the config default for any construction that doesn't override.
+        self.CONTINUATION_GRACE = self.vad.CONTINUATION_GRACE
         self._loop = None
         self._queue = None
         self._stop = False

@@ -95,7 +95,25 @@ class VoiceConfig:
     tts_reference_required: bool = True   # USER DIRECTIVE (Bug D): never
     #  synthesize without the configured reference — no default/Zira voice ever
     persona_tier: str = "great_sage"       # great_sage|raphael|ciel (fail-closed)
+    # P2 (Wave 5P): per-tier fish sampling params, derived from the canon
+    # persona.tiers[].warmth through the config map voice.tier_fish. The
+    # defaults below are the MEASURED great_sage values (P0 drift battery
+    # 10/10 at T0.2/RP1.2) — fail-closed when config is missing/malformed.
+    tier_warmth: float = 0.0
+    tier_address: str = "none"
+    fish_temperature: float = 0.2
+    fish_repetition_penalty: float = 1.2
     tts_sample_rate: int = 24000
+    # Wave 5U §5.3 (item 1): engine seam — fish (JP-clone tier, server) or
+    # kokoro (local 82M, in-process). Default stays fish until the owner
+    # picks a Kokoro voice from the rendered samples; RAPHAEL_TTS_ENGINE
+    # flips it live. The phrase cache is namespaced per engine+voice, so
+    # switching engines can never replay the other engine's audio.
+    tts_engine: str = "fish"        # fish | kokoro
+    kokoro_voice: str = "af_heart"  # owner pick pending (af_nicole/af_heart/af_bella rendered)
+    kokoro_speed: float = 1.0       # kokoro create() speed (clamped 0.5-2.0 upstream)
+    kokoro_model: str = "brain/voice/models/kokoro/kokoro-v1.0.onnx"   # gitignored
+    kokoro_voices: str = "brain/voice/models/kokoro/voices-v1.0.bin"   # gitignored
     spoken_max_sentences: int = 2          # voice_personality
     #  spoken_reply_max_sentences: cap on what is SPOKEN (screen carries the rest)
     wake_word: str = "raphael"
@@ -106,6 +124,14 @@ class VoiceConfig:
     fish_host: str = "127.0.0.1"
     fish_port: int = field(default_factory=fish_port_for)  # derived, INTERFACES §d
     fish_device: str = "auto"         # auto|cuda|cpu for the fish server
+    # P2-adj (Wave 5P, TODO §6): torch.compile the fish server — eager, so the
+    # one-time warmup is paid at SERVER STARTUP (+~160s over the 22s baseline,
+    # measured once), after which steady-state synthesis is ~3.5x faster
+    # (5.6s -> 1.6s/phrase on the JP reference). The on-disk torch.compile
+    # cache persists across restarts, so repeat startups are cheap again.
+    # Measured in scripts/p2_compile_ab.py. Default ON per the user-spotted
+    # task [coord inbox 45]; set voice.fish_compile false to revert.
+    fish_compile: bool = True
     fish_checkpoint: str = "brain/voice/models/fish-speech-1.5"
     fish_venv: str = "brain/voice/.venv-fish"
     fish_vendor: str = "brain/voice/vendor/fish-speech"
@@ -140,6 +166,20 @@ class VoiceConfig:
             return slot, None
         return base, (f"tier '{self.persona_tier}' voice slot missing ({slot}) "
                       f"— using the current reference ({base})")
+
+    def tier_cache_fingerprint(self, ref_fp: str) -> str:
+        """Phrase-cache namespace for the effective tier (P2 Wave 5P).
+
+        Two tiers can share one reference file (great_sage/raphael both use
+        the approved JP reference) while speaking at DIFFERENT warmth — so
+        the reference fingerprint alone no longer separates their audio and
+        the same sentence must never replay another tier's wav. A warmer
+        tier tags the namespace with its warmth (`<ref_fp>-w30`); the
+        great_sage baseline (warmth 0.0) keeps the bare fingerprint, so
+        today's cache dirs stay valid.
+        """
+        w = int(round(self.tier_warmth * 100))
+        return ref_fp if w <= 0 else f"{ref_fp}-w{w:02d}"
 
     @property
     def reference_path(self) -> Path:
@@ -247,6 +287,58 @@ def _load_persona_tier(data: Dict[str, Any]) -> str:
     return tier if tier in ("great_sage", "raphael", "ciel") else "great_sage"
 
 
+def _load_tier_voice_params(data: Dict[str, Any], section: Dict[str, Any],
+                            tier: str) -> "tuple":
+    """P2 (Wave 5P): per-tier fish sampling params from config, NOT code.
+
+    warmth/address come from `persona.tiers[tier]` (main config, then
+    config.d fragments merged LAST-wins per tier — same overlay rule as
+    _load_persona_tier; lanes never edit each other's keys). temperature is
+    derived through the config map `voice.tier_fish`
+    (temperature = min(cap, baseline + scale * warmth)); repetition_penalty
+    is `voice.tier_fish.repetition_penalty`.
+
+    FAIL-CLOSED: any missing/malformed number falls back to the measured
+    great_sage values (warmth 0.0, T0.2, RP1.2 — P0 drift battery 10/10),
+    clamped to [0,1] warmth / [0,1] temperature. Returns
+    (warmth, address, temperature, repetition_penalty).
+    """
+    def _f(v: Any, default: float) -> float:
+        try:
+            return float(v)
+        except (TypeError, ValueError):
+            return default
+
+    tiers: Dict[str, Any] = {}
+    base_tiers = (((data or {}).get("persona") or {}).get("tiers") or {})
+    if isinstance(base_tiers, dict):
+        tiers.update(base_tiers)
+    for frag in sorted((REPO_ROOT / "config.d").glob("*.yaml")):
+        try:
+            d = yaml.safe_load(frag.read_text(encoding="utf-8")) or {}
+        except (yaml.YAMLError, OSError):
+            continue
+        ft = (((d or {}).get("persona") or {}).get("tiers") or {})
+        if isinstance(ft, dict):
+            for k, v in ft.items():
+                if isinstance(v, dict):
+                    tiers[k] = {**(tiers.get(k) or {}), **v}
+    entry = tiers.get(tier) if isinstance(tiers.get(tier), dict) else {}
+    entry = entry or {}
+
+    warmth = min(1.0, max(0.0, _f(entry.get("warmth"), 0.0)))
+    address = str(entry.get("address") or "none")
+    tf = section.get("tier_fish") if isinstance(section.get("tier_fish"),
+                                                dict) else {}
+    tf = tf or {}
+    baseline = min(1.0, max(0.0, _f(tf.get("baseline"), 0.2)))
+    scale = max(0.0, _f(tf.get("scale"), 0.33))
+    cap = min(1.0, max(0.0, _f(tf.get("cap"), 0.45)))
+    rp = min(2.0, max(1.0, _f(tf.get("repetition_penalty"), 1.2)))
+    temperature = round(min(cap, baseline + scale * warmth), 3)
+    return warmth, address, temperature, rp
+
+
 def load_voice_config(config_path: Optional[Path] = None) -> VoiceConfig:
     path = config_path or CONFIG_PATH
     section: Dict[str, Any] = {}
@@ -298,7 +390,9 @@ def load_voice_config(config_path: Optional[Path] = None) -> VoiceConfig:
         "tts_sample_rate", "wake_word",
         "ptt_hotkey", "always_listen", "ack_cache", "chunk_ms",
         "fish_host", "fish_port", "fish_device", "fish_checkpoint",
-        "fish_venv", "fish_vendor",
+        "fish_compile", "fish_venv", "fish_vendor",
+        "tts_engine", "kokoro_voice", "kokoro_speed", "kokoro_model",
+        "kokoro_voices",
     }
     extra = {k: v for k, v in section.items() if k not in known}
     cfg = VoiceConfig(
@@ -318,6 +412,13 @@ def load_voice_config(config_path: Optional[Path] = None) -> VoiceConfig:
         tts_reference_required=_as_bool(section.get("tts_reference_required",
                                                      True), True),
         tts_sample_rate=int(section.get("tts_sample_rate", 24000) or 24000),
+        tts_engine=str(section.get("tts_engine", "fish") or "fish").strip().lower(),
+        kokoro_voice=str(section.get("kokoro_voice", "af_heart") or "af_heart"),
+        kokoro_speed=float(section.get("kokoro_speed", 1.0) or 1.0),
+        kokoro_model=str(section.get("kokoro_model",
+                                     "brain/voice/models/kokoro/kokoro-v1.0.onnx")),
+        kokoro_voices=str(section.get("kokoro_voices",
+                                      "brain/voice/models/kokoro/voices-v1.0.bin")),
         spoken_max_sentences=int(vp.get("spoken_reply_max_sentences", 2) or 2),
         wake_word=str(section.get("wake_word", "raphael")),
         ptt_hotkey=str(section.get("ptt_hotkey", "ctrl+alt+space")),
@@ -326,9 +427,16 @@ def load_voice_config(config_path: Optional[Path] = None) -> VoiceConfig:
         fish_host=str(section.get("fish_host", "127.0.0.1")),
         fish_port=int(section.get("fish_port") or fish_port_for()),
         fish_device=str(section.get("fish_device", "auto")),
+        fish_compile=_as_bool(section.get("fish_compile", True), True),
         chunk_ms=int(section.get("chunk_ms", 250) or 250),
         extra=extra,
     )
+    # P2 (Wave 5P): per-tier fish sampling params — persona.tiers[].warmth
+    # through the config map voice.tier_fish (fail-closed to measured
+    # great_sage T0.2/RP1.2). No behavior change for warmth 0.0.
+    _w, _a, _t, _rp = _load_tier_voice_params(data, section, cfg.persona_tier)
+    cfg.tier_warmth, cfg.tier_address = _w, _a
+    cfg.fish_temperature, cfg.fish_repetition_penalty = _t, _rp
     # env overrides (voice module scope; never read .env -- explicit env only)
     cfg.stt_engine = _env("RAPHAEL_STT_ENGINE", cfg.stt_engine, str)
     cfg.stt_model = _env("RAPHAEL_STT_MODEL", cfg.stt_model, str)
@@ -343,6 +451,10 @@ def load_voice_config(config_path: Optional[Path] = None) -> VoiceConfig:
     cfg.fish_host = _env("RAPHAEL_FISH_HOST", cfg.fish_host, str)
     cfg.fish_port = _env("RAPHAEL_FISH_PORT", cfg.fish_port, int)
     cfg.fish_device = _env("RAPHAEL_FISH_DEVICE", cfg.fish_device, str)
+    cfg.fish_compile = _env("RAPHAEL_FISH_COMPILE", cfg.fish_compile, _as_bool_raw)
+    cfg.tts_engine = (_env("RAPHAEL_TTS_ENGINE", cfg.tts_engine, str)
+                      .strip().lower() or "fish")
+    cfg.kokoro_voice = _env("RAPHAEL_KOKORO_VOICE", cfg.kokoro_voice, str)
     cfg.always_listen = _env("RAPHAEL_ALWAYS_LISTEN", cfg.always_listen,
                              _as_bool_raw)
     return cfg
