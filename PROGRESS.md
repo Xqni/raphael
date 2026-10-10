@@ -135,3 +135,5 @@ T1 fast free · T2 strong free · T3/T4 paid (log to docs/PAID_USAGE.md).
 - R4 gap list: 14 grounded gaps (9 security, incl. the voice-confirm cluster that keeps qa's xfails red).
 - R5 decision gate: voice-confirm batch = top code priority when wave 6 opens; semgrep = only new CI adopt; everything else BUILD CUSTOM S/M or DEFER/HUMAN.
 - Nothing implemented; R1-R5 + this summary pushed to main for the human's review.
+- PERSONA RESEARCH COMPLETE (user side-quest): docs/research/persona/ — 5 canon-hardened reports (first pass had fabrications: Raziel/VA-Setoguchi/Hollow-Mixture/phantom arcs — all debunked via strong-model re-runs) + 00-CONSOLIDATED-BRIEF (lineage, service model, autonomy rules, tier mapping, TTS tone spec, debunk register). VA arbiter: Toyoguchi (JP)/Rodak (EN) for all three forms; Ciel = LN Vol15, not animated yet.
+- HER OWN OBSIDIAN VAULT created at C:\Users\jxesu\raphael-vault (persona/ + journal.md + README rules; the temporary section inside the damianqt vault was removed on user correction); repo skill .opencode/skills/raphael-vault added so every session can use it.
